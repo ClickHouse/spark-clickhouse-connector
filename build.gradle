@@ -1,0 +1,131 @@
+plugins {
+    id "antlr"
+    id "idea"
+    id "java"
+    id "scala"
+    id "maven-publish"
+    id "org.scoverage" version "5.0.0"
+    id "com.google.protobuf" version "0.8.16"
+    id "com.github.maiflai.scalatest" version "0.31"
+}
+
+repositories {
+    maven { url "https://maven.aliyun.com/repository/central" }
+}
+
+configurations.all {
+    exclude group: "org.slf4j", module: "slf4j-log4j12"
+    exclude group: "log4j", module: "log4j"
+
+    // use hadoop shaded client instead
+    exclude group: "org.apache.hadoop", module: "hadoop-client"
+    exclude group: "org.apache.hadoop", module: "hadoop-common"
+
+    resolutionStrategy {
+        force "org.scala-lang:scala-compiler:$scala_version"
+        force "org.scala-lang:scala-library:$scala_version"
+        force "org.scala-lang:scala-reflect:$scala_version"
+    }
+}
+
+configurations {
+    runtimeClasspath {
+        // workaround for https://github.com/gradle/gradle/issues/820
+        exclude group: "org.antlr", module: "antlr4"
+    }
+}
+
+dependencies {
+    antlr "org.antlr:antlr4:$antlr_version"
+
+    implementation "org.scala-lang:scala-library:$scala_version"
+    implementation "org.scala-lang:scala-reflect:$scala_version"
+
+    implementation "org.apache.spark:spark-core_$scala_binary_version:$spark_version"
+    implementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
+    implementation "org.apache.hadoop:hadoop-client-api:$hadoop_version"
+    runtimeOnly "org.apache.hadoop:hadoop-client-runtime:$hadoop_version"
+
+    implementation "com.fasterxml.jackson.core:jackson-annotations:$jackson_version"
+    implementation "com.fasterxml.jackson.core:jackson-core:$jackson_version"
+    implementation "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
+    implementation "com.fasterxml.jackson.datatype:jackson-datatype-jdk8:$jackson_version"
+    implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
+    implementation "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
+
+    implementation "commons-io:commons-io:$commons_io_version"
+    implementation "commons-collections:commons-collections:$commons_collections_version"
+    implementation "org.apache.commons:commons-pool2:$commons_pool2_version"
+
+    implementation "io.grpc:grpc-netty-shaded:$grpc_version"
+    implementation "io.grpc:grpc-protobuf:$grpc_version"
+    implementation "io.grpc:grpc-stub:$grpc_version"
+
+    implementation "ru.yandex.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
+    implementation "com.github.housepower:clickhouse-native-jdbc-shaded:$clickhouse_native_jdbc_version"
+
+    testImplementation "org.slf4j:log4j-over-slf4j:$slf4j_version"
+    testImplementation "ch.qos.logback:logback-classic:$logback_version"
+    testImplementation "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
+    testImplementation "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
+    testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
+    testImplementation "com.vladsch.flexmark:flexmark-all:$flexmark_version"
+}
+
+generateGrammarSource {
+    maxHeapSize = "64m"
+    arguments += ["-visitor", "-package", "xenon.clickhouse"]
+}
+
+sourceSets.main.scala {
+    srcDirs += "src/main/scala-$scala_binary_version"
+}
+
+compileScala {
+    options.fork = true
+    options.forkOptions.jvmArgs += ["-Xss8M"]
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:$protobuf_version"
+    }
+    plugins {
+        grpc {
+            artifact = "io.grpc:protoc-gen-grpc-java:$grpc_version"
+        }
+    }
+    generateProtoTasks {
+        all()*.plugins {
+            grpc {}
+        }
+    }
+}
+
+test {
+    maxParallelForks = 1
+}
+
+scoverage {
+    reportDir.set(file("${rootProject.buildDir}/reports/scoverage"))
+    highlighting.set(false)
+    minimumRate.set(0.0)
+}
+
+version = getProjectVersion()
+
+boolean isVersionFileExists() {
+    return file("version.txt").exists()
+}
+
+String getVersionFromFile() {
+    return file("version.txt").text.trim()
+}
+
+String getProjectVersion() {
+    if (isVersionFileExists())
+        return getVersionFromFile()
+
+    String baseVersion = new Date().format("yyyy.MM.dd")
+    return project.hasProperty("release") ? baseVersion : "$baseVersion-SNAPSHOT"
+}

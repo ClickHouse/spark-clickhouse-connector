@@ -1,0 +1,4 @@
+<?xml version="1.0"?>
+<yandex>
+    <interserver_http_host>clickhouse-s1r2</interserver_http_host>
+</yandex>

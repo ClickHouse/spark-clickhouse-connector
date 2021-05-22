@@ -1,0 +1,19 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<configuration>
+    <property name="CONSOLE_LOG_PATTERN"
+              value="%highlight(%5level) %green(%-20.20logger @%4L): %m%n"/>
+
+    <appender name="console" class="ch.qos.logback.core.ConsoleAppender">
+        <encoder>
+            <pattern>${CONSOLE_LOG_PATTERN}</pattern>
+            <charset>utf8</charset>
+        </encoder>
+    </appender>
+
+    <logger name="org.apache.hadoop.util.Shell" level="ERROR"/>
+    <logger name="org.apache.hadoop.util.NativeCodeLoader" level="ERROR"/>
+    <logger name="com.zy.dp" level="DEBUG"/>
+    <root level="INFO">
+        <appender-ref ref="console"/>
+    </root>
+</configuration>

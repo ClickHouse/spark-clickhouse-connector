@@ -1,0 +1,45 @@
+package xenon.clickhouse
+
+import java.util.concurrent.ConcurrentHashMap
+
+import scala.collection.JavaConverters._
+import scala.util.Random._
+
+import org.apache.spark.sql.ClickHouseAnalysisException
+import xenon.clickhouse.spec.ClusterSpec
+
+object GrpcClusterClient {
+  def apply(cluster: ClusterSpec) = new GrpcClusterClient(cluster)
+}
+
+class GrpcClusterClient(cluster: ClusterSpec) extends AutoCloseable {
+
+  @transient lazy val cache = new ConcurrentHashMap[(Int, Int), GrpcNodeClient]
+
+  def node(shard: Option[Int] = None, replica: Option[Int] = None): GrpcNodeClient = {
+    val (_shard, _replica) = (shard, replica) match {
+      case (Some(s), Some(r)) => (s, r)
+      case (Some(s), None) =>
+        val shardSpec = cluster.shards.filter(_.num == s).head
+        val replicaSpec = shuffle(shardSpec.replicas).head
+        (s, replicaSpec.num)
+      case (None, None) =>
+        val shardSpec = shuffle(cluster.shards).head
+        val replicaSpec = shuffle(shardSpec.replicas).head
+        (shardSpec.num, replicaSpec.num)
+      case _ =>
+        throw ClickHouseAnalysisException(s"invalid shard[$shard] replica[$replica] of cluster ${cluster.name}")
+    }
+
+    cache.computeIfAbsent(
+      (_shard, _replica),
+      { case (s, r) =>
+        val shardSpec = cluster.shards.find(_.num == s).get
+        val replicaSpec = shardSpec.replicas.find(_.num == r).get
+        new GrpcNodeClient(replicaSpec.node)
+      }
+    )
+  }
+
+  override def close(): Unit = cache.asScala.values.foreach(_.close())
+}

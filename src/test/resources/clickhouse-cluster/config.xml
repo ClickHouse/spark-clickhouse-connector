@@ -1,0 +1,102 @@
+<?xml version="1.0"?>
+<yandex>
+    <logger>
+        <level>debug</level>
+        <log>/var/log/clickhouse-server/clickhouse-server.log</log>
+        <errorlog>/var/log/clickhouse-server/clickhouse-server.err.log</errorlog>
+        <size>1000M</size>
+        <count>10</count>
+    </logger>
+    <query_log>
+        <database>system</database>
+        <table>query_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </query_log>
+    <query_thread_log>
+        <database>system</database>
+        <table>query_thread_log</table>
+        <partition_by>toYYYYMM(event_date)</partition_by>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+    </query_thread_log>
+    <metric_log>
+        <database>system</database>
+        <table>metric_log</table>
+        <flush_interval_milliseconds>7500</flush_interval_milliseconds>
+        <collect_interval_milliseconds>1000</collect_interval_milliseconds>
+    </metric_log>
+
+    <timezone>Asia/Shanghai</timezone>
+
+    <listen_host>::</listen_host>
+    <http_port>8123</http_port>
+    <grpc_port>9100</grpc_port>
+    <tcp_port>9000</tcp_port>
+    <interserver_http_port>9009</interserver_http_port>
+
+    <keep_alive_timeout>300</keep_alive_timeout>
+    <max_session_timeout>3600</max_session_timeout>
+    <default_session_timeout>60</default_session_timeout>
+
+    <grpc>
+        <enable_ssl>false</enable_ssl>
+
+        <!-- Default compression algorithm (applied if client doesn't specify another algorithm). Supported algorithms: none, deflate, gzip, stream_gzip -->
+        <compression>gzip</compression>
+
+        <!-- Default compression level (applied if client doesn't specify another level). Supported levels: none, low, medium, high -->
+        <compression_level>medium</compression_level>
+
+        <!-- Send/receive message size limits in bytes. -1 means unlimited -->
+        <max_send_message_size>-1</max_send_message_size>
+        <max_receive_message_size>-1</max_receive_message_size>
+
+        <verbose_logs>false</verbose_logs>
+    </grpc>
+
+    <max_connections>128</max_connections>
+    <max_concurrent_queries>100</max_concurrent_queries>
+
+    <uncompressed_cache_size>8589934592</uncompressed_cache_size>
+    <mark_cache_size>5368709120</mark_cache_size>
+
+    <!-- Path to data directory, with trailing slash. -->
+    <path>/var/lib/clickhouse/</path>
+    <!-- Path to temporary data for processing hard queries. -->
+    <tmp_path>/var/lib/clickhouse/tmp/</tmp_path>
+    <!-- Directory with user provided files that are accessible by 'file' table function. -->
+    <user_files_path>/var/lib/clickhouse/user_files/</user_files_path>
+    <!-- Path to folder where users and roles created by SQL commands are stored. -->
+    <access_control_path>/var/lib/clickhouse/access/</access_control_path>
+    <!-- Directory in <clickhouse-path> containing schema files for various input formats. The directory will be created if it doesn't exist. -->
+    <format_schema_path>/var/lib/clickhouse/format_schema/</format_schema_path>
+
+    <users_config>users.xml</users_config>
+
+    <default_profile>default</default_profile>
+    <default_database>default</default_database>
+
+    <max_table_size_to_drop>0</max_table_size_to_drop>
+    <max_partition_size_to_drop>0</max_partition_size_to_drop>
+
+    <mlock_executable>true</mlock_executable>
+
+    <builtin_dictionaries_reload_interval>3600</builtin_dictionaries_reload_interval>
+    <dictionaries_config>*_dictionary.xml</dictionaries_config>
+
+    <prometheus>
+        <endpoint>/metrics</endpoint>
+        <port>8001</port>
+        <metrics>true</metrics>
+        <events>true</events>
+        <asynchronous_metrics>true</asynchronous_metrics>
+    </prometheus>
+
+    <macros incl="macros" optional="true"/>
+    <zookeeper incl="zookeeper" optional="true"/>
+    <distributed_ddl>
+        <path>/clickhouse/task_queue/ddl</path>
+    </distributed_ddl>
+    <default_replica_path>/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
+    <default_replica_name>{replica}</default_replica_name>
+</yandex>
