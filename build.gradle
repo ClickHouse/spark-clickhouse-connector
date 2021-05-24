@@ -1,8 +1,8 @@
 plugins {
     id "antlr"
     id "idea"
-    id "java"
     id "scala"
+    id "java-library"
     id "maven-publish"
     id "org.scoverage" version "5.0.0"
     id "com.google.protobuf" version "0.8.16"
@@ -81,6 +81,12 @@ sourceSets.main.scala {
     srcDirs += "src/main/scala-$scala_binary_version"
 }
 
+java {
+    sourceCompatibility = JavaVersion.VERSION_1_8
+    targetCompatibility = JavaVersion.VERSION_1_8
+    withSourcesJar()
+}
+
 compileScala {
     options.fork = true
     options.forkOptions.jvmArgs += ["-Xss8M"]
@@ -128,4 +134,27 @@ String getProjectVersion() {
 
     String baseVersion = new Date().format("yyyy.MM.dd")
     return project.hasProperty("release") ? baseVersion : "$baseVersion-SNAPSHOT"
+}
+
+publishing {
+    publications {
+        lib(MavenPublication) {
+            from components.java
+        }
+    }
+
+    repositories {
+        maven {
+            String snapshotsRepoUrl = project.hasProperty('mavenSnapshotsRepo') ? "$mavenSnapshotsRepo"
+                    : "https://oss.sonatype.org/content/repositories/snapshots"
+            String releasesRepoUrl = project.hasProperty('mavenReleasesRepo') ? "$mavenReleasesRepo"
+                    : "https://oss.sonatype.org/service/local/staging/deploy/maven2"
+            url = project.version.endsWith('-SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+
+            credentials {
+                username = project.hasProperty('mavenUser') ? "$mavenUser" : ""
+                password = project.hasProperty('mavenPassword') ? "$mavenPassword" : ""
+            }
+        }
+    }
 }
