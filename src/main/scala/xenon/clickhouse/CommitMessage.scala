@@ -16,4 +16,4 @@ package xenon.clickhouse
 
 import org.apache.spark.sql.connector.write.WriterCommitMessage
 
-object CommitMessage extends WriterCommitMessage
+case class CommitMessage(msg: String = "") extends WriterCommitMessage

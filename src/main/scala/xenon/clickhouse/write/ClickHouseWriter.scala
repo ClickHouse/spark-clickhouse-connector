@@ -66,7 +66,7 @@ class ClickHouseBatchWriter(
 
   override def commit(): WriterCommitMessage = {
     if (buf.nonEmpty) flush()
-    CommitMessage
+    CommitMessage("flush write")
   }
 
   def flush(): Unit =
@@ -101,6 +101,6 @@ class ClickHouseTruncateWriter(
 
   override def commit(): WriterCommitMessage = {
     grpcConn.syncQueryAndCheck(s"TRUNCATE TABLE `$database`.`$table` $clusterExpr")
-    CommitMessage
+    CommitMessage("commit truncate")
   }
 }
