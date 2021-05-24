@@ -14,8 +14,6 @@
 
 package xenon.clickhouse.exception;
 
-import java.util.Locale;
-
 public enum ClickHouseErrCode {
     UNKNOWN_ERROR(-2, "UNKNOWN_ERROR"),
     CLIENT_ERROR(-1, "CLIENT_ERROR"),
@@ -569,6 +567,6 @@ public enum ClickHouseErrCode {
 
     @Override
     public String toString() {
-        return String.format(Locale.ROOT, "[%s] %s", code, name);
+        return String.format("[%s] %s", code, name);
     }
 }
