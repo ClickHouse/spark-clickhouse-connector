@@ -38,40 +38,46 @@ configurations {
 }
 
 dependencies {
+    api "org.slf4j:slf4j-api:$slf4j_version"
+
+    api "io.grpc:grpc-stub:$grpc_version"
+    api "io.grpc:grpc-protobuf:$grpc_version"
+    api "io.grpc:grpc-netty-shaded:$grpc_version"
+
     antlr "org.antlr:antlr4:$antlr_version"
 
-    implementation "org.scala-lang:scala-library:$scala_version"
-    implementation "org.scala-lang:scala-reflect:$scala_version"
+    compileOnlyApi "org.scala-lang:scala-library:$scala_version"
+    compileOnlyApi "org.scala-lang:scala-reflect:$scala_version"
 
-    implementation "org.apache.spark:spark-core_$scala_binary_version:$spark_version"
-    implementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
-    implementation "org.apache.hadoop:hadoop-client-api:$hadoop_version"
-    runtimeOnly "org.apache.hadoop:hadoop-client-runtime:$hadoop_version"
+    compileOnlyApi "org.apache.hadoop:hadoop-client-api:$hadoop_version"
 
-    implementation "com.fasterxml.jackson.core:jackson-annotations:$jackson_version"
-    implementation "com.fasterxml.jackson.core:jackson-core:$jackson_version"
-    implementation "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
-    implementation "com.fasterxml.jackson.datatype:jackson-datatype-jdk8:$jackson_version"
-    implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
-    implementation "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
+    compileOnlyApi "org.apache.spark:spark-core_$scala_binary_version:$spark_version"
+    compileOnlyApi "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
 
-    implementation "commons-io:commons-io:$commons_io_version"
-    implementation "commons-collections:commons-collections:$commons_collections_version"
-    implementation "org.apache.commons:commons-pool2:$commons_pool2_version"
+    compileOnlyApi "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
+    compileOnlyApi "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
 
-    implementation "io.grpc:grpc-netty-shaded:$grpc_version"
-    implementation "io.grpc:grpc-protobuf:$grpc_version"
-    implementation "io.grpc:grpc-stub:$grpc_version"
+    testImplementation "org.scala-lang:scala-library:$scala_version"
+    testImplementation "org.scala-lang:scala-reflect:$scala_version"
 
-    implementation "ru.yandex.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
-    implementation "com.github.housepower:clickhouse-native-jdbc-shaded:$clickhouse_native_jdbc_version"
+    testImplementation "org.apache.spark:spark-core_$scala_binary_version:$spark_version"
+    testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
 
-    testImplementation "org.slf4j:log4j-over-slf4j:$slf4j_version"
-    testImplementation "ch.qos.logback:logback-classic:$logback_version"
+    testImplementation "org.apache.hadoop:hadoop-client-api:$hadoop_version"
+    testRuntimeOnly "org.apache.hadoop:hadoop-client-runtime:$hadoop_version"
+    // required when using Hadoop Shaded Client, see SPARK-33212
+    testRuntimeOnly "commons-collections:commons-collections:$commons_collections_version"
+    testRuntimeOnly "commons-io:commons-io:$commons_io_version"
+
+    testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
+    testRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
+
     testImplementation "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
     testImplementation "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
-    testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
-    testImplementation "com.vladsch.flexmark:flexmark-all:$flexmark_version"
+    testRuntimeOnly "ru.yandex.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
+
+    testRuntimeOnly "org.slf4j:log4j-over-slf4j:$slf4j_version"
+    testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
 }
 
 generateGrammarSource {
