@@ -80,8 +80,7 @@ case class DistributedEngineSpec(
   local_table: String,
   sharding_key: Option[String] = None,
   storage_policy: Option[String] = None,
-  settings: Map[String, String] = Map.empty,
-  var localEngineSpec: Option[TableEngineSpec] = None
+  settings: Map[String, String] = Map.empty
 ) extends TableEngineSpec {
   override def is_distributed: Boolean = true
 }
