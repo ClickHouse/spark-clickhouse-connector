@@ -14,34 +14,30 @@
 
 package xenon.clickhouse
 
-import java.time.ZoneId
-import java.util
-
-import scala.collection.JavaConverters._
-import scala.collection.mutable.ArrayBuffer
-import scala.util.Using
-
-import org.apache.spark.sql.connector.catalog._
+import org.apache.spark.sql.TransformUtil._
 import org.apache.spark.sql.connector.catalog.TableCapability._
+import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read.ScanBuilder
 import org.apache.spark.sql.connector.write.LogicalWriteInfo
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
-import org.apache.spark.sql.ClickHouseAnalysisException
-import xenon.clickhouse.Utils.om
-import xenon.clickhouse.format.JSONOutput
 import xenon.clickhouse.read.ClickHouseScanBuilder
-import xenon.clickhouse.spec.{ClusterSpec, NodeSpec, TableSpec}
+import xenon.clickhouse.spec.{TableEngineSpec, _}
 import xenon.clickhouse.write.ClickHouseWriteBuilder
-import org.apache.spark.sql.TransformUtil._
+
+import java.time.ZoneId
+import java.util
+import scala.collection.JavaConverters._
+import scala.util.Using
 
 class ClickHouseTable(
   node: NodeSpec,
   cluster: Option[ClusterSpec],
-  preferLocalTable: Boolean,
-  tz: Either[ZoneId, ZoneId],
-  spec: TableSpec
+  implicit val tz: Either[ZoneId, ZoneId],
+  spec: TableSpec,
+  engineSpec: TableEngineSpec,
+  preferLocalTable: Boolean
 ) extends Table
     with SupportsRead
     with SupportsWrite
@@ -49,35 +45,42 @@ class ClickHouseTable(
     with ClickHouseHelper
     with Logging {
 
+  lazy val localEngineSpec: Option[MergeTreeEngineSpec] = engineSpec match {
+    case distributeSpec: DistributedEngineSpec => Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+        val localTableSpec = queryTableSpec(distributeSpec.local_db, distributeSpec.local_table)
+        Some(TableEngineUtil.resolveTableEngine(localTableSpec).asInstanceOf[MergeTreeEngineSpec])
+      }
+    case _ => None
+  }
+
   def database: String = spec.database
   def table: String = spec.name
-
-  def isDistributed: Boolean = spec.isInstanceOf
+  def isDistributed: Boolean = engineSpec.is_distributed
+  def shardingKey: Option[String] = engineSpec match {
+    case _spec: DistributedEngineSpec => _spec.sharding_key
+    case _ => None
+  }
+  def sortingKey: Option[String] = engineSpec match {
+    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => Some(mergeTreeFamilySpec.sorting_key).filter(_.nonEmpty)
+    case _: DistributedEngineSpec => localEngineSpec.map(_.sorting_key).filter(_.nonEmpty)
+    case _: TableEngineSpec => None
+  }
+  def partitionKey: Option[String] = engineSpec match {
+    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => mergeTreeFamilySpec.partition_key.filter(_.nonEmpty)
+    case _: DistributedEngineSpec => localEngineSpec.flatMap(_.partition_key).filter(_.nonEmpty)
+    case _: TableEngineSpec => None
+  }
 
   override def name: String = s"ClickHouse | ${spec.database}.${spec.name} | ${spec.engine}"
 
   override def capabilities(): util.Set[TableCapability] =
     Set(BATCH_READ, BATCH_WRITE, TRUNCATE).asJava
 
-  override lazy val schema: StructType = Using.resource(GrpcNodeClient(node)) { implicit grpcClient =>
+  override lazy val schema: StructType = Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
     queryTableSchema(database, table)
   }
 
-  // engine match {
-  //   case Distributed => ShardTransform :: PartitionTransforms
-  //   case _           => PartitionTransforms
-  // }
-  override lazy val partitioning: Array[Transform] = {
-    val partitionBuilder = new ArrayBuffer[Transform]
-    if (isDistributed) {
-      throw ClickHouseAnalysisException("Distributed not supported yet")
-    }
-
-    if (spec.partition_key.nonEmpty) {
-      partitionBuilder += fromClickHouse(spec.partition_key)
-    }
-    partitionBuilder.toArray
-  }
+  override lazy val partitioning: Array[Transform] = (shardingKey.seq ++: partitionKey.seq).map(fromClickHouse).toArray
 
   override def metadataColumns(): Array[MetadataColumn] = Array()
 

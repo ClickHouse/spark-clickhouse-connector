@@ -108,11 +108,14 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
         }
     }
 
-    val spec = queryTableSpec(database, table)
-
-    // val tableEngineSpec = resolveTableEngine(spec, clusters)
-    // resolveTableCluster(tableEngineSpec, clusters)
-    new ClickHouseTable(nodeSpec, None, preferLocalTable, tz, spec)
+    val tableSpec = queryTableSpec(database, table)
+    val tableEngineSpec = TableEngineUtil.resolveTableEngine(tableSpec)
+    val tableClusterSpec = tableEngineSpec match {
+      case distributeSpec: DistributedEngineSpec =>
+        Some(TableEngineUtil.resolveTableCluster(distributeSpec, clusterSpecs))
+      case _ => None
+    }
+    new ClickHouseTable(nodeSpec, tableClusterSpec, tz, tableSpec, tableEngineSpec, preferLocalTable)
   }
 
   /**

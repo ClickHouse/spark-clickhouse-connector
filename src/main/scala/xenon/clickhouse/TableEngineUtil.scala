@@ -34,7 +34,7 @@ object TableEngineUtil {
   // clause present in ordered.
 
   val merge_tree_engine_full_regex: Regex =
-    """MergeTree\(\)""".r
+    """MergeTree""".r.unanchored
 
   val replicated_merge_tree_engine_full_regex: Regex =
     """ReplicatedMergeTree\('([/\w{}]+)',\s*'([\w{}]+)'\)""".r

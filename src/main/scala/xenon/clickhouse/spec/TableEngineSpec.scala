@@ -1,10 +1,22 @@
 package xenon.clickhouse.spec
 
-sealed trait TableEngineSpec {
+sealed trait TableEngineSpec extends Serializable {
   def engine_expr: String
   def settings: Map[String, String]
   def is_distributed: Boolean = false
   def is_replicated: Boolean = false
+}
+
+trait MergeTreeFamilyEngineSpec extends TableEngineSpec {
+  def sorting_key: String
+  def partition_key: Option[String]
+  def primary_key: Option[String]
+  def sampling_key: Option[String]
+}
+
+trait ReplicatedEngineSpec extends TableEngineSpec { self: MergeTreeFamilyEngineSpec =>
+  def zk_path: String
+  def replica_name: String
 }
 
 case class UnknownTableEngineSpec(
@@ -21,7 +33,7 @@ case class MergeTreeEngineSpec(
   sampling_key: Option[String] = None,
   ttl_expr: Option[String] = None,
   settings: Map[String, String] = Map.empty
-) extends TableEngineSpec
+) extends MergeTreeFamilyEngineSpec
 
 case class ReplicatedMergeTreeEngineSpec(
   engine_expr: String,
@@ -33,7 +45,7 @@ case class ReplicatedMergeTreeEngineSpec(
   sampling_key: Option[String] = None,
   ttl_expr: Option[String] = None,
   settings: Map[String, String] = Map.empty
-) extends TableEngineSpec {
+) extends MergeTreeFamilyEngineSpec with ReplicatedEngineSpec {
   override def is_replicated: Boolean = true
 }
 
@@ -45,7 +57,7 @@ case class ReplacingMergeTreeEngineSpec(
   primary_key: Option[String] = None,
   sampling_key: Option[String] = None,
   settings: Map[String, String] = Map.empty
-) extends TableEngineSpec
+) extends MergeTreeFamilyEngineSpec
 
 case class ReplicatedReplacingMergeTreeEngineSpec(
   engine_expr: String,
@@ -57,7 +69,7 @@ case class ReplicatedReplacingMergeTreeEngineSpec(
   primary_key: Option[String] = None,
   sampling_key: Option[String] = None,
   settings: Map[String, String] = Map.empty
-) extends TableEngineSpec {
+) extends MergeTreeFamilyEngineSpec with ReplicatedEngineSpec {
   override def is_replicated: Boolean = true
 }
 
@@ -68,7 +80,8 @@ case class DistributedEngineSpec(
   local_table: String,
   sharding_key: Option[String] = None,
   storage_policy: Option[String] = None,
-  settings: Map[String, String] = Map.empty
+  settings: Map[String, String] = Map.empty,
+  var localEngineSpec: Option[TableEngineSpec] = None
 ) extends TableEngineSpec {
   override def is_distributed: Boolean = true
 }

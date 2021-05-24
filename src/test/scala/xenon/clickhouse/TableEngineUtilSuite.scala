@@ -5,9 +5,9 @@ import org.scalatest.funsuite.AnyFunSuite
 class TableEngineUtilSuite extends AnyFunSuite {
 
   test("parse MergeTree - 1") {
-    val ddl = "MergeTree()"
+    val ddl = "MergeTree PARTITION BY toYYYYMM(create_time) ORDER BY id"
     val tableEngine = TableEngineUtil.parseMergeTreeEngine(ddl)
-    assert(tableEngine.engine_expr == "MergeTree()")
+    assert(tableEngine.engine_expr.startsWith("MergeTree"))
   }
 
   test("parse ReplicatedMergeTree - 1") {
