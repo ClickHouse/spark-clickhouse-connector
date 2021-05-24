@@ -59,36 +59,8 @@ class ClickHouseTable(
   override def capabilities(): util.Set[TableCapability] =
     Set(BATCH_READ, BATCH_WRITE, TRUNCATE).asJava
 
-  override lazy val schema: StructType = Using.resource(GrpcNodeClient(node)) { grpcClient =>
-    val columnResult = grpcClient.syncQueryAndCheck(
-      s""" SELECT
-         |   `database`,                -- String
-         |   `table`,                   -- String
-         |   `name`,                    -- String
-         |   `type`,                    -- String
-         |   `position`,                -- UInt64
-         |   `default_kind`,            -- String
-         |   `default_expression`,      -- String
-         |   `data_compressed_bytes`,   -- UInt64
-         |   `data_uncompressed_bytes`, -- UInt64
-         |   `marks_bytes`,             -- UInt64
-         |   `comment`,                 -- String
-         |   `is_in_partition_key`,     -- UInt8
-         |   `is_in_sorting_key`,       -- UInt8
-         |   `is_in_primary_key`,       -- UInt8
-         |   `is_in_sampling_key`,      -- UInt8
-         |   `compression_codec`        -- String
-         | FROM `system`.`columns`
-         | WHERE `database`='$database' AND `table`='$table'
-         | ORDER BY `position` ASC
-         | """.stripMargin
-    )
-    val columnOutput = om.readValue[JSONOutput](columnResult.getOutput)
-    SchemaUtil.fromClickHouseSchema(columnOutput.data.map { row =>
-      val fieldName = row.get("name").asText
-      val ckType = row.get("type").asText
-      (fieldName, ckType)
-    })
+  override lazy val schema: StructType = Using.resource(GrpcNodeClient(node)) { implicit grpcClient =>
+    queryTableSchema(database, table)
   }
 
   // engine match {

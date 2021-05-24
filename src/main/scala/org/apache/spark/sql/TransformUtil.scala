@@ -14,23 +14,23 @@ object TransformUtil {
   // toHour     - Converts a date with time to a         UInt8  (0-23)                     Alias: HOUR
 
   // format: off
-  private[sql] val years_transform_regex:  Regex = """toYear\((\w+)\)""".r
+  private[sql] val years_transform_regex:  Regex = """(toYear|YEAR)\((\w+)\)""".r
   private[sql] val months_transform_regex: Regex = """toYYYYMM\((\w+)\)""".r
   private[sql] val days_transform_regex:   Regex = """toYYYYMMDD\((\w+)\)""".r
-  private[sql] val hours_transform_regex:  Regex = """toHour\((\w+)\)""".r
+  private[sql] val hours_transform_regex:  Regex = """(toHour|HOUR)\((\w+)\)""".r
   private[sql] val identity_regex:         Regex = """^(\w+)$""".r
   // format: on
 
   def fromClickHouse(transformExpr: String): Transform =
     transformExpr match {
-      case years_transform_regex(expr) => years(expr)
+      case years_transform_regex(_, expr) => years(expr)
       case months_transform_regex(expr) => months(expr)
       case days_transform_regex(expr) => days(expr)
-      case hours_transform_regex(expr) => hours(expr)
+      case hours_transform_regex(_, expr) => hours(expr)
       // Assume all others is just a column name without any transforms,
       // thus, `xxHash64(abc)` is not supported yet.
       case identity_regex(expr) => identity(expr)
-      case unsupported => throw ClickHouseAnalysisException(s"Unsupported transform expressions: $unsupported")
+      case unsupported => throw ClickHouseAnalysisException(s"Unsupported transform expression: $unsupported")
     }
 
   def toClickHouse(transform: Transform): String = transform match {
@@ -39,6 +39,8 @@ object TransformUtil {
     case DaysTransform(FieldReference(Seq(col))) => s"toYYYYMMDD($col)"
     case HoursTransform(FieldReference(Seq(col))) => s"toHour($col)"
     case IdentityTransform(FieldReference(parts)) => parts.mkString(", ")
-    case other: Transform => other.describe()
+    case function: ApplyTransform => function.describe()
+    case bucket: BucketTransform => throw ClickHouseAnalysisException(s"Bucket transform not support yet: $bucket")
+    case other: Transform => throw ClickHouseAnalysisException(s"Unsupported transform: $other")
   }
 }

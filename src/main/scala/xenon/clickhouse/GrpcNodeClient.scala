@@ -57,7 +57,7 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
   }
 
   def syncQuery(sql: String): Either[GException, Result] = {
-    log.info("Execute ClickHouse SQL:\n{}", sql)
+    onExecutingSQL(sql)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
       .setQueryId(UUID.randomUUID.toString)
@@ -67,7 +67,7 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
   }
 
   def syncQueryWithStreamOutput(sql: String): Iterator[Result] = {
-    log.info("Execute ClickHouse SQL:\n{}", sql)
+    onExecutingSQL(sql)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
       .setQueryId(UUID.randomUUID.toString)
@@ -87,9 +87,11 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
     inputFormat: String,
     data: Array[Array[Byte]]
   ): Either[GException, Result] = {
+    val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
+    onExecutingSQL(sql)
     val dataBytes = data.map(ByteString.copyFrom).reduce((l, r) => l concat r)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
-      .setQuery(s"INSERT INTO `$database`.`$table` FORMAT $inputFormat")
+      .setQuery(sql)
       .setQueryId(UUID.randomUUID.toString)
       .setInputDataBytes(dataBytes)
       .setOutputFormat("JSON")
@@ -102,4 +104,8 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
       case result: Result if result.getException.getCode == OK.code => Right(result)
       case result: Result => Left(result.getException)
     }
+
+  protected def onExecutingSQL(sql: String): Unit = {
+    log.debug("Execute ClickHouse SQL:\n{}", sql)
+  }
 }
