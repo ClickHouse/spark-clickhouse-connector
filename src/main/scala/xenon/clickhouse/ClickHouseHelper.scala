@@ -9,9 +9,6 @@ import java.time.format.DateTimeFormatter
 
 trait ClickHouseHelper {
 
-  @transient lazy val date: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-  @transient lazy val dateTimeFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
-
   def quoted(token: String) = s"`$token`"
 
   def unwrap(ident: Identifier): Option[(String, String)] = ident.namespace() match {

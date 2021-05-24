@@ -1,5 +1,9 @@
 package xenon.clickhouse.read
 
+import java.time.{LocalDate, ZonedDateTime, ZoneId, ZoneOffset}
+
+import scala.math.BigDecimal.RoundingMode
+
 import com.fasterxml.jackson.databind.node.NullNode
 import com.zy.dp.xenon.protocol.grpc.Result
 import org.apache.spark.sql.catalyst.InternalRow
@@ -7,13 +11,10 @@ import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 import xenon.clickhouse.{ClickHouseHelper, GrpcNodeClient}
-import xenon.clickhouse.Utils.om
+import xenon.clickhouse.Utils._
 import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.format.JSONOutput
 import xenon.clickhouse.spec.{ClusterSpec, NodeSpec}
-
-import java.time.{LocalDate, LocalDateTime, ZoneId}
-import scala.math.BigDecimal.RoundingMode
 
 class ClickHouseReader(
   node: NodeSpec,
@@ -68,11 +69,14 @@ class ClickHouseReader(
           case FloatType => jsonNode.asDouble.floatValue
           case DoubleType => jsonNode.asDouble
           case d: DecimalType => jsonNode.decimalValue.setScale(d.scale, RoundingMode.HALF_UP)
-          case TimestampType => LocalDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(tz.merge))
+          case TimestampType =>
+            ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(tz.merge))
+              .withZoneSameInstant(ZoneOffset.UTC)
+              .toEpochSecond * 1000 * 1000
           case StringType => UTF8String.fromString(jsonNode.asText)
-          case DateType => LocalDate.parse(jsonNode.asText, date.withZone(tz.merge))
+          case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay
           case BinaryType => jsonNode.binaryValue
-          case _ => throw new ClickHouseClientException(s"unsupported catalyst type ${field.name}[${field.dataType}]")
+          case _ => throw ClickHouseClientException(s"unsupported catalyst type ${field.name}[${field.dataType}]")
         }
       }
     })

@@ -36,7 +36,7 @@ class ClickHouseWriteBuilder(
   private var action: WriteAction = APPEND
 
   override def buildForBatch(): ClickHouseBatchWrite =
-    new ClickHouseBatchWrite(queryId, node, cluster, database, table, schema, action)
+    new ClickHouseBatchWrite(queryId, node, cluster, tz, database, table, schema, action)
 
   override def truncate(): WriteBuilder = {
     this.action = TRUNCATE
@@ -48,6 +48,7 @@ class ClickHouseBatchWrite(
   queryId: String,
   node: NodeSpec,
   cluster: Option[ClusterSpec],
+  tz: Either[ZoneId, ZoneId],
   database: String,
   table: String,
   schema: StructType,
@@ -55,7 +56,7 @@ class ClickHouseBatchWrite(
 ) extends BatchWrite {
 
   override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory =
-    new ClickHouseDataWriterFactory(queryId, node, cluster, database, table, schema, action)
+    new ClickHouseDataWriterFactory(queryId, node, cluster, tz, database, table, schema, action)
 
   override def commit(messages: Array[WriterCommitMessage]): Unit = {}
 
@@ -66,6 +67,7 @@ class ClickHouseDataWriterFactory(
   queryId: String,
   node: NodeSpec,
   cluster: Option[ClusterSpec],
+  tz: Either[ZoneId, ZoneId],
   database: String,
   table: String,
   schema: StructType,
@@ -73,7 +75,7 @@ class ClickHouseDataWriterFactory(
 ) extends DataWriterFactory {
 
   override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] = action match {
-    case APPEND => new ClickHouseBatchWriter(queryId, node, cluster, database, table, schema)
+    case APPEND => new ClickHouseBatchWriter(queryId, node, cluster, tz, database, table, schema)
     case TRUNCATE => new ClickHouseTruncateWriter(queryId, node, cluster, database, table)
   }
 }

@@ -14,18 +14,6 @@
 
 package xenon.clickhouse
 
-import org.apache.spark.sql.ClickHouseAnalysisException
-import org.apache.spark.sql.catalyst.analysis._
-import org.apache.spark.sql.connector.catalog._
-import org.apache.spark.sql.connector.expressions.Transform
-import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.util.CaseInsensitiveStringMap
-import xenon.clickhouse.Constants._
-import xenon.clickhouse.Utils._
-import xenon.clickhouse.TableEngineUtil._
-import xenon.clickhouse.exception.ClickHouseErrCode._
-import xenon.clickhouse.format.JSONOutput
-import xenon.clickhouse.spec._
 import java.time.{LocalDateTime, ZoneId}
 import java.util
 
@@ -33,6 +21,18 @@ import scala.collection.JavaConverters._
 
 import com.fasterxml.jackson.databind.node.NullNode
 import com.fasterxml.jackson.databind.JsonNode
+import org.apache.spark.sql.ClickHouseAnalysisException
+import org.apache.spark.sql.catalyst.analysis._
+import org.apache.spark.sql.connector.catalog._
+import org.apache.spark.sql.connector.expressions.Transform
+import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.util.CaseInsensitiveStringMap
+import org.apache.spark.sql.TransformUtil._
+import xenon.clickhouse.Constants._
+import xenon.clickhouse.Utils._
+import xenon.clickhouse.exception.ClickHouseErrCode._
+import xenon.clickhouse.format.JSONOutput
+import xenon.clickhouse.spec._
 
 class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickHouseHelper with Logging {
 
@@ -276,7 +276,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
       .getOrElse(throw ClickHouseAnalysisException("Missing property 'engine'"))
     val partitionsExpr = partitions match {
       case transforms if transforms.nonEmpty =>
-        transforms.map(_.describe).mkString("PARTITION BY (", ", ", ")")
+        transforms.map(toClickHouse).mkString("PARTITION BY (", ", ", ")")
       case _ => ""
     }
     val clusterExpr = props.get("cluster").map(c => s"ON CLUSTER $c").getOrElse("")

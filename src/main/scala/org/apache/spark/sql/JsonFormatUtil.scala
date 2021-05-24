@@ -11,17 +11,13 @@ import java.nio.charset.StandardCharsets
 object JsonFormatUtil {
 
   private val option = Map(
-    "timestampFormat" -> "yyyMMdd HH:mm:ss"
+    "timestampFormat" -> "yyyy-MM-dd HH:mm:ss"
   )
 
-  private val clientTimeZone = ZoneId.systemDefault()
-
-  private val jsonOptions = new JSONOptions(option, clientTimeZone.getId)
-
   // inefficiently
-  def row2Json(row: InternalRow, schema: StructType): Array[Byte] = {
+  def row2Json(row: InternalRow, schema: StructType, tz: ZoneId): Array[Byte] = {
     val line = new StringWriter()
-    val gen = new JacksonGenerator(schema, line, jsonOptions)
+    val gen = new JacksonGenerator(schema, line, new JSONOptions(option, tz.getId))
     gen.write(row)
     gen.writeLineEnding
     gen.flush

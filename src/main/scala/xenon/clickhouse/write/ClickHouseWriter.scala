@@ -22,8 +22,8 @@ import xenon.clickhouse._
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.exception.RetryableClickHouseException
 import xenon.clickhouse.spec.{ClusterSpec, NodeSpec}
+import java.time.{Duration, ZoneId}
 
-import java.time.Duration
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
 
@@ -46,6 +46,7 @@ class ClickHouseBatchWriter(
   val queryId: String,
   val node: NodeSpec,
   val cluster: Option[ClusterSpec],
+  tz: Either[ZoneId, ZoneId],
   val database: String,
   val table: String,
   val schema: StructType,
@@ -59,7 +60,7 @@ class ClickHouseBatchWriter(
   val buf: ArrayBuffer[Array[Byte]] = new ArrayBuffer[Array[Byte]](batchSize)
 
   override def write(record: InternalRow): Unit = {
-    buf += JsonFormatUtil.row2Json(record, schema)
+    buf += JsonFormatUtil.row2Json(record, schema, tz.merge)
     if (buf.size == batchSize) flush()
   }
 

@@ -7,7 +7,7 @@ case class NodeSpec(
   private val _http_port: Option[Int] = None,
   private val _tcp_port: Option[Int] = None,
   private val _grpc_port: Option[Int] = None,
-  username: String,
+  username: String = "default",
   password: String = "",
   database: String = "default"
 ) {
@@ -18,11 +18,13 @@ case class NodeSpec(
 
   private def findHost(source: String): String =
     if (isTesting) {
+      // workaround for testcontainers docker compose network mechanism
       sys.props.get(s"${PREFIX}_HOST_$source").getOrElse(source)
     } else source
 
   private def findPort(source: Option[Int]): Option[Int] =
     if (isTesting) {
+      // workaround for testcontainers docker compose network mechanism
       source.map(p => sys.props.get(s"${PREFIX}_HOST_${_host}_PORT_$p").map(_.toInt).getOrElse(p))
     } else source
 }

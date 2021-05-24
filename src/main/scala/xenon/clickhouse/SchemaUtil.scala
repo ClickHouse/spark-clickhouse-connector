@@ -21,14 +21,16 @@ import org.apache.spark.sql.types._
 
 object SchemaUtil {
 
-  private val arrayTypePattern: Regex = "^Array\\((.*)\\)$".r
-  private val dateTypePattern: Regex = "^[dD][aA][tT][eE]$".r
-  private val dateTimeTypePattern: Regex = "^[dD][aA][tT][eE][tT][iI][mM][eE](64)?(\\((.*)\\))?$".r
-  private val decimalTypePattern: Regex = "^[dD][eE][cC][iI][mM][aA][lL]\\((\\d+),\\s*(\\d+)\\)$".r
-  private val decimalTypePattern2: Regex = "^[dD][eE][cC][iI][mM][aA][lL](32|64|128|256)\\((\\d+)\\)$".r
-  private val enumTypePattern: Regex = "^Enum(8|16)$".r
-  private val fixedStringTypePattern: Regex = "^FixedString\\((\\d+)\\)$".r
-  private val nullableTypePattern: Regex = "^Nullable\\((.*)\\)".r
+  // format: off
+  private[clickhouse] val arrayTypePattern:       Regex = """^Array\((.*)\)$""".r
+  private[clickhouse] val dateTypePattern:        Regex = """^Date$""".r
+  private[clickhouse] val dateTimeTypePattern:    Regex = """^DateTime(64)?(\((.*)\))?$""".r
+  private[clickhouse] val decimalTypePattern:     Regex = """^Decimal\((\d+),\s*(\d+)\)$""".r
+  private[clickhouse] val decimalTypePattern2:    Regex = """^Decimal(32|64|128|256)\((\d+)\)$""".r
+  private[clickhouse] val enumTypePattern:        Regex = """^Enum(8|16)$""".r
+  private[clickhouse] val fixedStringTypePattern: Regex = """^FixedString\((\d+)\)$""".r
+  private[clickhouse] val nullableTypePattern:    Regex = """^Nullable\((.*)\)""".r
+  // format: on
 
   def fromClickHouseType(chType: String): (DataType, Boolean) = {
     val (unwrappedChType, nullable) = unwrapNullable(chType)
@@ -38,24 +40,25 @@ object SchemaUtil {
       case "UInt8" | "Int16" => ShortType
       case "UInt16" | "Int32" => IntegerType
       case "UInt32" | "Int64" | "UInt64" | "IPv4" => LongType
-      case "Int128" | "Int256" | "UInt256" => throw ClickHouseAnalysisException(s"unsupported type: $chType") // not support
+      case "Int128" | "Int256" | "UInt256" =>
+        throw ClickHouseAnalysisException(s"unsupported type: $chType") // not support
       case "Float32" => FloatType
       case "Float64" => DoubleType
       case dateTypePattern() => DateType
-      case dateTimeTypePattern() => TimestampType
+      case dateTimeTypePattern(_, _, _)  => TimestampType
       case decimalTypePattern(precision, scale) => DecimalType(precision.toInt, scale.toInt)
       case decimalTypePattern2(w, scale) => w match {
-        case "32" => DecimalType(9, scale.toInt)
-        case "64" => DecimalType(18, scale.toInt)
-        case "128" => DecimalType(38, scale.toInt)
-        case "256" => DecimalType(76, scale.toInt) // throw exception, spark support precision up to 38
-      }
+          case "32" => DecimalType(9, scale.toInt)
+          case "64" => DecimalType(18, scale.toInt)
+          case "128" => DecimalType(38, scale.toInt)
+          case "256" => DecimalType(76, scale.toInt) // throw exception, spark support precision up to 38
+        }
       case _ => throw ClickHouseAnalysisException(s"unsupported type: $chType")
     }
     (catalystType, nullable)
   }
 
-  def toClickHouseType(catalystType: DataType): String = {
+  def toClickHouseType(catalystType: DataType): String =
     catalystType match {
       case BooleanType => "UInt8"
       case ByteType => "Int8"
@@ -63,10 +66,10 @@ object SchemaUtil {
       case IntegerType => "Int32"
       case LongType => "Int64"
       case StringType => "String"
-      case DateType => "DateTime"
+      case DateType => "Date"
+      case TimestampType => "DateTime"
       case _ => throw ClickHouseAnalysisException(s"Unsupported type: $catalystType")
     }
-  }
 
   def fromClickHouseSchema(chSchema: Seq[(String, String)]): StructType = {
     val structFields = chSchema
@@ -84,9 +87,9 @@ object SchemaUtil {
         (field.name, if (field.nullable) wrapNullable(chType) else chType)
       }
 
-  private def wrapNullable(chType: String): String = s"Nullable($chType)"
+  private[clickhouse] def wrapNullable(chType: String): String = s"Nullable($chType)"
 
-  private def unwrapNullable(maybeNullableType: String): (String, Boolean) = maybeNullableType match {
+  private[clickhouse] def unwrapNullable(maybeNullableType: String): (String, Boolean) = maybeNullableType match {
     case nullableTypePattern(typeName) => (typeName, true)
     case _ => (maybeNullableType, false)
   }

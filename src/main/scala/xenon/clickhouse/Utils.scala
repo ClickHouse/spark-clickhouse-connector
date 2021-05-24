@@ -2,6 +2,7 @@ package xenon.clickhouse
 
 import java.net.URI
 import java.time.Duration
+import java.time.format.DateTimeFormatter
 import java.util.concurrent.locks.LockSupport
 
 import scala.annotation.tailrec
@@ -10,10 +11,16 @@ import scala.util.{Failure, Success, Try}
 
 import com.fasterxml.jackson.databind.{DeserializationFeature, ObjectMapper}
 import com.fasterxml.jackson.module.scala.ScalaObjectMapper
+import org.apache.commons.lang3.time.FastDateFormat
 
 object Utils extends Logging {
 
-  lazy val om: ObjectMapper with ScalaObjectMapper = {
+  @transient lazy val dateFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
+  @transient lazy val dateTimeFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+  @transient lazy val legacyDateFmt: FastDateFormat = FastDateFormat.getInstance("yyyy-MM-dd")
+  @transient lazy val legacyDateTimeFmt: FastDateFormat = FastDateFormat.getInstance("yyyy-MM-dd HH:mm:ss")
+
+  @transient lazy val om: ObjectMapper with ScalaObjectMapper = {
     val _om = new ObjectMapper() with ScalaObjectMapper
     _om.findAndRegisterModules()
     _om.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)

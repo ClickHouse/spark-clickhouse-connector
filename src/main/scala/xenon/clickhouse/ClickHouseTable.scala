@@ -18,7 +18,6 @@ import java.time.ZoneId
 import java.util
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Using
 
@@ -29,11 +28,13 @@ import org.apache.spark.sql.connector.read.ScanBuilder
 import org.apache.spark.sql.connector.write.LogicalWriteInfo
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
+import org.apache.spark.sql.ClickHouseAnalysisException
 import xenon.clickhouse.Utils.om
 import xenon.clickhouse.format.JSONOutput
 import xenon.clickhouse.read.ClickHouseScanBuilder
 import xenon.clickhouse.spec.{ClusterSpec, NodeSpec, TableSpec}
 import xenon.clickhouse.write.ClickHouseWriteBuilder
+import org.apache.spark.sql.TransformUtil._
 
 class ClickHouseTable(
   node: NodeSpec,
@@ -95,9 +96,15 @@ class ClickHouseTable(
   //   case _           => PartitionTransforms
   // }
   override lazy val partitioning: Array[Transform] = {
-    val partBuilder = new ArrayBuffer[Transform]
-    if (isDistributed) {}
-    partBuilder.toArray
+    val partitionBuilder = new ArrayBuffer[Transform]
+    if (isDistributed) {
+      throw ClickHouseAnalysisException("Distributed not supported yet")
+    }
+
+    if (spec.partition_key.nonEmpty) {
+      partitionBuilder += fromClickHouse(spec.partition_key)
+    }
+    partitionBuilder.toArray
   }
 
   override def metadataColumns(): Array[MetadataColumn] = Array()

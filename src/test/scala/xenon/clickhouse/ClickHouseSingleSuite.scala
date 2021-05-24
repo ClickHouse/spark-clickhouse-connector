@@ -1,11 +1,14 @@
 package xenon.clickhouse
 
+import org.apache.spark.sql.functions._
+import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
 import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseSingleSuiteMixIn}
 
 class ClickHouseSingleSuite extends BaseSparkSuite with ClickHouseSingleSuiteMixIn with Logging {
 
   override def sparkOptions: Map[String, String] = Map(
     "spark.master" -> "local[1]",
+    "spark.ui.enabled" -> "false", // enable when debug
     "spark.app.name" -> "spark-clickhouse-single-ut",
     "spark.sql.shuffle.partitions" -> "1",
     "spark.sql.defaultCatalog" -> "clickhouse",
@@ -50,26 +53,64 @@ class ClickHouseSingleSuite extends BaseSparkSuite with ClickHouseSingleSuiteMix
   }
 
   test("clickhouse write then read") {
+    import spark.implicits._
+
     spark.sql(
       """
         | CREATE TABLE default.spark_tbl (
-        |   a INT NOT NULL,
-        |   b LONG NOT NULL,
-        |   c STRING
+        |   create_time TIMESTAMP NOT NULL,
+        |   id          BIGINT    NOT NULL,
+        |   value       STRING
         | ) USING ClickHouse
-        | PARTITIONED BY (toDate(a))
+        | PARTITIONED BY (months(create_time))
         | TBLPROPERTIES (
-        | engine = 'MergeTree()',
-        | order_by = '(b)',
-        | settings.index_granularity = 8192
+        |   engine = 'MergeTree()',
+        |   order_by = '(id)',
+        |   settings.index_granularity = 8192
         | )
-        |""".stripMargin)
+        |""".stripMargin
+    )
 
-    spark.createDataFrame(Seq((1, 1L, "1"), (2, 2L, "2")))
-      .toDF("a", "b", "c")
+    spark.sql("DESC default.spark_tbl").show(false)
+    // +--------------+-------------------+-------+
+    // |col_name      |data_type          |comment|
+    // +--------------+-------------------+-------+
+    // |create_time   |timestamp          |       |
+    // |id            |bigint             |       |
+    // |value         |string             |       |
+    // |              |                   |       |
+    // |# Partitioning|                   |       |
+    // |Part 0        |months(create_time)|       |
+    // +--------------+-------------------+-------+
+
+    val tblSchema = spark.table("default.spark_tbl").schema
+
+    assert(tblSchema == StructType(
+      StructField("create_time", DataTypes.TimestampType, false) ::
+        StructField("id", DataTypes.LongType, false) ::
+        StructField("value", DataTypes.StringType, true) :: Nil
+    ))
+
+    val dataDF = spark.createDataFrame(Seq(
+      ("2021-01-01 10:10:10", 1L, "1"),
+      ("2021-02-02 10:10:10", 2L, "2")
+    )).toDF("create_time", "id", "value")
+      .withColumn("create_time", to_timestamp($"create_time"))
+
+    val dataDFWithExactlySchema = spark.createDataFrame(dataDF.rdd, tblSchema)
+
+    dataDFWithExactlySchema
       .writeTo("clickhouse.default.spark_tbl")
       .append
 
     spark.table("default.spark_tbl").show(false)
+    // +-------------------+---+-----+
+    // |create_time        |id |value|
+    // +-------------------+---+-----+
+    // |2021-01-01 10:10:10|1  |1    |
+    // |2021-02-02 10:10:10|2  |2    |
+    // +-------------------+---+-----+
+
+    // infiniteLoop()
   }
 }

@@ -78,4 +78,10 @@ abstract class BaseSparkSuite extends AnyFunSuite {
       spark.sql(s"DROP TABLE IF EXISTS `$database`.`$table`")
       spark.sql(s"DROP DATABASE IF EXISTS `$database`")
     }
+
+  // for debugging webui
+  protected def infiniteLoop(): Unit = while (true) {
+    Thread.sleep(1000)
+    spark.catalog.listTables()
+  }
 }
