@@ -10,7 +10,9 @@ plugins {
 }
 
 repositories {
-    maven { url "https://maven.aliyun.com/repository/central" }
+    String mavenRepoMirror = project.hasProperty('mavenRepoMirror') ? "$mavenRepoMirror"
+            : "https://maven.aliyun.com/repository/central"
+    maven { url = mavenRepoMirror }
 }
 
 configurations.all {
