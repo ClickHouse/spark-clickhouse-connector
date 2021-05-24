@@ -10,7 +10,7 @@ object Constants {
   final val CATALOG_PROP_PASSWORD = "password"
   final val CATALOG_PROP_DATABASE = "database"
   final val CATALOG_PROP_TZ = "timezone" // server(default), client, UTC+3, Asia/Shanghai, etc.
-  final val CATALOG_PROP_PREFER_LOCAL_TABLE = "prefer-local-table" // true/false
+  final val CATALOG_PROP_PREFER_LOCAL_TABLE = "prefer-local-table" // true, false(default)
 
   //////////////////////////////////////////////////////////
   ////////// clickhouse datasource read properties /////////

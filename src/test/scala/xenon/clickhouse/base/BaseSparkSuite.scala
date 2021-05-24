@@ -1,37 +1,39 @@
-package xenon.clickhouse
+package xenon.clickhouse.base
 
 import org.apache.hadoop.fs.FileSystem
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.SparkContext
-import org.apache.spark.sql.types.{LongType, StructField, StructType}
+import org.scalatest.funsuite.AnyFunSuite
+import xenon.clickhouse.{ClickHouseCommandRunner, Utils}
 
-abstract class BaseClickHouseSingleSuite extends ClickHouseSingleSuiteMixIn {
+abstract class BaseSparkSuite extends AnyFunSuite {
 
   Utils.setTesting()
+
+  test("is testing") {
+    assert(Utils.isTesting)
+  }
+
+  def sparkOptions: Map[String, String]
+
+  def cmdRunnerOptions: Map[String, String]
 
   /**
    * The spark session, which is the entrance point of DataFrame, DataSet and Spark SQL.
    */
   @transient implicit lazy val spark: SparkSession = {
-    val builder = SparkSession.builder().appName(this.getClass.getName)
+    val builder = SparkSession.builder()
 
     builder
-      .master("local[1]")
-      .appName("SparkUnitTesting")
+      .config("spark.master", "local[1]")
       .config("spark.ui.enabled", "false")
+      .config("spark.app.name", "spark-ut")
       .config("spark.driver.host", "localhost")
       .config("spark.driver.memory", "500M")
       .config("spark.executor.memory", "500M")
       .config("spark.sql.shuffle.partitions", "1")
-      .config("spark.sql.warehouse.dir", System.getProperty("java.io.tmpdir"))
-      .config("spark.sql.defaultCatalog", "clickhouse")
-      .config("spark.sql.catalog.clickhouse", "xenon.clickhouse.ClickHouseCatalog")
-      .config("spark.sql.catalog.clickhouse.host", clickhouseHost)
-      .config("spark.sql.catalog.clickhouse.port", clickhouseGrpcPort)
-      .config("spark.sql.catalog.clickhouse.user", CLICKHOUSE_USER)
-      .config("spark.sql.catalog.clickhouse.password", CLICKHOUSE_PASSWORD)
-      .config("spark.sql.catalog.clickhouse.database", CLICKHOUSE_DB)
-    // for test, hive support is not enabled. Use in-memory catalog implementation
+
+    sparkOptions.foreach { case (k, v) => builder.config(k, v) }
 
     builder.getOrCreate()
   }
@@ -49,18 +51,8 @@ abstract class BaseClickHouseSingleSuite extends ClickHouseSingleSuiteMixIn {
     FileSystem.get(hadoopConf)
   }
 
-  val cmdRunner: String = classOf[ClickHouseCommandRunner].getName
-
-  lazy val cmdRunnerOptions = Map(
-    "host" -> clickhouseHost,
-    "port" -> clickhouseGrpcPort.toString,
-    "user" -> CLICKHOUSE_USER,
-    "password" -> CLICKHOUSE_PASSWORD,
-    "database" -> CLICKHOUSE_DB
-  )
-
   def runClickHouseSQL(sql: String, options: Map[String, String] = cmdRunnerOptions): Array[Row] =
-    spark.executeCommand(cmdRunner, sql, options).collect
+    spark.executeCommand(classOf[ClickHouseCommandRunner].getName, sql, options).collect
 
   def withClickHouseSingleIdTable(
     database: String,

@@ -1,9 +1,10 @@
-package xenon.clickhouse
+package xenon.clickhouse.base
 
 import com.dimafeng.testcontainers.{ForAllTestContainer, JdbcDatabaseContainer, SingleContainer}
 import org.scalatest.funsuite.AnyFunSuite
 import org.testcontainers.containers.ClickHouseContainer
 import org.testcontainers.utility.MountableFile
+import xenon.clickhouse.Utils
 
 trait ClickHouseSingleSuiteMixIn extends AnyFunSuite with ForAllTestContainer {
 
@@ -23,8 +24,10 @@ trait ClickHouseSingleSuiteMixIn extends AnyFunSuite with ForAllTestContainer {
         .withEnv("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
         .withEnv("CLICKHOUSE_DB", CLICKHOUSE_DB)
         .withExposedPorts(CLICKHOUSE_GRPC_PORT)
-        .withCopyFileToContainer(MountableFile.forClasspathResource("clickhouse-single/grpc_config.xml"), "/etc/clickhouse-server/config.d/grpc_config.xml")
-        .asInstanceOf[ClickHouseContainer]
+        .withCopyFileToContainer(
+          MountableFile.forClasspathResource("clickhouse-single/grpc_config.xml"),
+          "/etc/clickhouse-server/config.d/grpc_config.xml"
+        ).asInstanceOf[ClickHouseContainer]
     }
 
   def clickhouseHost: String = container.host

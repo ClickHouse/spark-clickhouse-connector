@@ -1,17 +1,18 @@
-package xenon.clickhouse
+package xenon.clickhouse.base
 
 import java.io.File
 
-import com.dimafeng.testcontainers._
+import com.dimafeng.testcontainers.{DockerComposeContainer, ExposedService, ForAllTestContainer}
 import org.scalatest.funsuite.AnyFunSuite
-import xenon.clickhouse.Utils._
+import xenon.clickhouse.Utils
+import xenon.clickhouse.Utils.PREFIX
 
 trait ClickHouseClusterSuiteMixIn extends AnyFunSuite with ForAllTestContainer {
 
   protected val ZOOKEEPER_CLIENT_PORT = 2181
   protected val CLICKHOUSE_HTTP_PORT = 8123
   protected val CLICKHOUSE_GRPC_PORT = 9100
-  protected val CLICKHOUSE_TCP_PORT  = 9000
+  protected val CLICKHOUSE_TCP_PORT = 9000
 
   override val container: DockerComposeContainer =
     DockerComposeContainer
@@ -33,7 +34,7 @@ trait ClickHouseClusterSuiteMixIn extends AnyFunSuite with ForAllTestContainer {
           // s2r2
           ExposedService("clickhouse-s2r2", CLICKHOUSE_HTTP_PORT) ::
           ExposedService("clickhouse-s2r2", CLICKHOUSE_GRPC_PORT) ::
-          ExposedService("clickhouse-s2r2", CLICKHOUSE_TCP_PORT) :: Nil,
+          ExposedService("clickhouse-s2r2", CLICKHOUSE_TCP_PORT) :: Nil
       )
       .createContainer()
 
