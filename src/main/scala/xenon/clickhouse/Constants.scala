@@ -11,6 +11,7 @@ object Constants {
   final val CATALOG_PROP_PASSWORD = "password"
   final val CATALOG_PROP_DATABASE = "database"
   final val CATALOG_PROP_TZ       = "timezone" // server(default), client, UTC+3, Asia/Shanghai, etc.
+  final val CATALOG_PROP_WRITE_BATCH_SIZE = "write.batch-size" // default 1000
   final val CATALOG_PROP_DIST_WRITE_USE_CLUSTER_NODES = "distributed.write.use-cluster-nodes" // true(default), false
   final val CATALOG_PROP_DIST_READ_USE_CLUSTER_NODES  = "distributed.read.use-cluster-nodes"  // true(default), false
   final val CATALOG_PROP_DIST_WRITE_CONVERT_TO_LOCAL  = "distributed.write.convert-to-local"  // true, false(default)

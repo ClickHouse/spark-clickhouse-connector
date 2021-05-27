@@ -48,6 +48,8 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
 
   private var currentDb: String = _
 
+  private var writeBatchSize: Int = _
+
   /////////////////////////////////////////////////////
   ///////////////////// CLUSTERS //////////////////////
   /////////////////////////////////////////////////////
@@ -59,6 +61,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.catalogName = name
+    this.writeBatchSize = options.getOrDefault(CATALOG_PROP_WRITE_BATCH_SIZE, "1000").toInt
     this.distWriteUseClusterNodes = options.getOrDefault(CATALOG_PROP_DIST_WRITE_USE_CLUSTER_NODES, "true").toBoolean
     this.distReadUseClusterNodes = options.getOrDefault(CATALOG_PROP_DIST_READ_USE_CLUSTER_NODES, "true").toBoolean
     this.distWriteConvertToLocal = options.getOrDefault(CATALOG_PROP_DIST_WRITE_CONVERT_TO_LOCAL, "false").toBoolean
@@ -127,6 +130,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
       tz,
       tableSpec,
       tableEngineSpec,
+      writeBatchSize,
       distWriteUseClusterNodes,
       distReadUseClusterNodes,
       distWriteConvertToLocal,

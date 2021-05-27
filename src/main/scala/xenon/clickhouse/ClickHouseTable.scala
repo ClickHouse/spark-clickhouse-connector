@@ -37,6 +37,7 @@ class ClickHouseTable(
   implicit val tz: Either[ZoneId, ZoneId],
   spec: TableSpec,
   engineSpec: TableEngineSpec,
+  globalWriteBatchSize: Int,
   globalDistWriteUseClusterNodes: Boolean,
   globalDistReadUseClusterNodes: Boolean,
   globalDistWriteConvertToLocal: Boolean,
@@ -57,17 +58,22 @@ class ClickHouseTable(
   }
 
   def database: String = spec.database
+
   def table: String = spec.name
+
   def isDistributed: Boolean = engineSpec.is_distributed
+
   def shardingKey: Option[String] = engineSpec match {
     case _spec: DistributedEngineSpec => _spec.sharding_key
     case _ => None
   }
+
   def sortingKey: Option[String] = engineSpec match {
     case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => Some(mergeTreeFamilySpec.sorting_key).filter(_.nonEmpty)
     case _: DistributedEngineSpec => localEngineSpec.map(_.sorting_key).filter(_.nonEmpty)
     case _: TableEngineSpec => None
   }
+
   def partitionKey: Option[String] = engineSpec match {
     case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => mergeTreeFamilySpec.partition_key.filter(_.nonEmpty)
     case _: DistributedEngineSpec => localEngineSpec.flatMap(_.partition_key).filter(_.nonEmpty)
@@ -94,7 +100,16 @@ class ClickHouseTable(
   override def newScanBuilder(options: CaseInsensitiveStringMap): ScanBuilder = {
     log.info(s"read options ${options.asScala}")
     // TODO handle read options
-    new ClickHouseScanBuilder(node, cluster, tz, database, table, schema)
+    new ClickHouseScanBuilder(
+      node,
+      cluster,
+      tz,
+      database,
+      table,
+      schema,
+      globalDistReadUseClusterNodes,
+      globalDistReadConvertToLocal
+    )
   }
 
   override def newWriteBuilder(info: LogicalWriteInfo): ClickHouseWriteBuilder = {
@@ -108,6 +123,7 @@ class ClickHouseTable(
       database,
       table,
       info.schema(),
+      globalWriteBatchSize,
       globalDistWriteUseClusterNodes,
       globalDistWriteConvertToLocal
     )

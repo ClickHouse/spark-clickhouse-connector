@@ -30,6 +30,7 @@ class ClickHouseWriteBuilder(
   database: String,
   table: String,
   schema: StructType,
+  batchSize: Int,
   distWriteUseClusterNodes: Boolean,
   distWriteConvertToLocal: Boolean
 ) extends WriteBuilder
@@ -38,7 +39,19 @@ class ClickHouseWriteBuilder(
   private var action: WriteAction = APPEND
 
   override def buildForBatch(): ClickHouseBatchWrite =
-    new ClickHouseBatchWrite(queryId, node, cluster, tz, database, table, schema, action)
+    new ClickHouseBatchWrite(
+      queryId,
+      node,
+      cluster,
+      tz,
+      database,
+      table,
+      schema,
+      action,
+      batchSize,
+      distWriteUseClusterNodes,
+      distWriteConvertToLocal
+    )
 
   override def truncate(): WriteBuilder = {
     this.action = TRUNCATE
@@ -54,11 +67,26 @@ class ClickHouseBatchWrite(
   database: String,
   table: String,
   schema: StructType,
-  action: WriteAction
+  action: WriteAction,
+  batchSize: Int,
+  distWriteUseClusterNodes: Boolean,
+  distWriteConvertToLocal: Boolean
 ) extends BatchWrite {
 
   override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory =
-    new ClickHouseDataWriterFactory(queryId, node, cluster, tz, database, table, schema, action)
+    new ClickHouseDataWriterFactory(
+      queryId,
+      node,
+      cluster,
+      tz,
+      database,
+      table,
+      schema,
+      action,
+      batchSize,
+      distWriteUseClusterNodes,
+      distWriteConvertToLocal
+    )
 
   override def commit(messages: Array[WriterCommitMessage]): Unit = {}
 
@@ -73,11 +101,33 @@ class ClickHouseDataWriterFactory(
   database: String,
   table: String,
   schema: StructType,
-  action: WriteAction
+  action: WriteAction,
+  batchSize: Int,
+  distWriteUseClusterNodes: Boolean,
+  distWriteConvertToLocal: Boolean
 ) extends DataWriterFactory {
 
   override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] = action match {
-    case APPEND => new ClickHouseBatchWriter(queryId, node, cluster, tz, database, table, schema)
-    case TRUNCATE => new ClickHouseTruncateWriter(queryId, node, cluster, database, table)
+    case APPEND => new ClickHouseBatchWriter(
+        queryId,
+        node,
+        cluster,
+        tz,
+        database,
+        table,
+        schema,
+        batchSize,
+        distWriteUseClusterNodes,
+        distWriteConvertToLocal
+      )
+    case TRUNCATE => new ClickHouseTruncateWriter(
+        queryId,
+        node,
+        cluster,
+        database,
+        table,
+        distWriteUseClusterNodes,
+        distWriteConvertToLocal
+      )
   }
 }

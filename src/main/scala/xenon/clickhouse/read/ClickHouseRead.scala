@@ -34,7 +34,9 @@ class ClickHouseScanBuilder(
   // 2. calculated columns, which calculate the values on-the-fly when reading
   // but consider that usually CPU would not be bottleneck of clickhouse but IO does, it's not properly suppose that
   // reading calculated columns is expensive than materialized columns
-  physicalSchema: StructType
+  physicalSchema: StructType,
+  distWriteUseClusterNodes: Boolean,
+  distWriteConvertToLocal: Boolean
 ) extends ScanBuilder
     with SupportsPushDownFilters
     with SupportsPushDownRequiredColumns {
@@ -57,7 +59,7 @@ class ClickHouseScanBuilder(
 
 case class ClickHouseInputPartition(
   shard: Option[ShardSpec],
-  part: Option[String]
+  partition: Option[String]
 ) extends InputPartition {
 
   override def preferredLocations(): Array[String] = shard match {
@@ -100,6 +102,7 @@ class ClickHouseReaderFactory(
     partition.asInstanceOf[ClickHouseInputPartition] match {
       case ClickHouseInputPartition(None, None) =>
         new ClickHouseReader(node, cluster, tz, database, table, readSchema, filterExpr)
-      case ClickHouseInputPartition(Some(shard), Some(part)) => ???
+      case ClickHouseInputPartition(Some(shard), Some(partition)) => ???
+      case _ => ???
     }
 }

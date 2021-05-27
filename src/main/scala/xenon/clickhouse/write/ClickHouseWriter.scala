@@ -34,12 +34,16 @@ abstract class ClickHouseWriter extends DataWriter[InternalRow] with Logging {
   val cluster: Option[ClusterSpec]
   val database: String
   val table: String
+  val distWriteUseClusterNodes: Boolean
+  val distWriteConvertToLocal: Boolean
 
-  @transient lazy val grpcConn: GrpcNodeClient = GrpcNodeClient(node)
+  @transient lazy val _grpcConn: GrpcNodeClient = GrpcNodeClient(node)
 
-  override def abort(): Unit = grpcConn.shutdownNow()
+  def grpcNodeClient: GrpcNodeClient = _grpcConn
 
-  override def close(): Unit = grpcConn.close()
+  override def abort(): Unit = grpcNodeClient.shutdownNow()
+
+  override def close(): Unit = grpcNodeClient.close()
 }
 
 class ClickHouseBatchWriter(
@@ -50,7 +54,9 @@ class ClickHouseBatchWriter(
   val database: String,
   val table: String,
   val schema: StructType,
-  val batchSize: Int = 10000
+  val batchSize: Int,
+  val distWriteUseClusterNodes: Boolean,
+  val distWriteConvertToLocal: Boolean
 ) extends ClickHouseWriter {
 
   val ckSchema: Map[String, String] = SchemaUtil
@@ -71,7 +77,7 @@ class ClickHouseBatchWriter(
 
   def flush(): Unit =
     Utils.retry[Unit, RetryableClickHouseException](3, Duration.ofSeconds(10)) {
-      grpcConn.syncInsert(database, table, "JSONEachRow", buf.toArray) match {
+      grpcNodeClient.syncInsert(database, table, "JSONEachRow", buf.toArray) match {
         case Left(exception) if exception.getCode == MEMORY_LIMIT_EXCEEDED.code =>
           throw new RetryableClickHouseException(exception)
         case Right(_) => buf.clear
@@ -87,7 +93,9 @@ class ClickHouseTruncateWriter(
   val node: NodeSpec,
   val cluster: Option[ClusterSpec],
   val database: String,
-  val table: String
+  val table: String,
+  val distWriteUseClusterNodes: Boolean,
+  val distWriteConvertToLocal: Boolean
 ) extends ClickHouseWriter {
 
   private lazy val clusterExpr = cluster match {
@@ -100,7 +108,7 @@ class ClickHouseTruncateWriter(
   }
 
   override def commit(): WriterCommitMessage = {
-    grpcConn.syncQueryAndCheck(s"TRUNCATE TABLE `$database`.`$table` $clusterExpr")
+    grpcNodeClient.syncQueryAndCheck(s"TRUNCATE TABLE `$database`.`$table` $clusterExpr")
     CommitMessage("commit truncate")
   }
 }
