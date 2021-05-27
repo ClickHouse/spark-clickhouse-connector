@@ -37,7 +37,10 @@ class ClickHouseTable(
   implicit val tz: Either[ZoneId, ZoneId],
   spec: TableSpec,
   engineSpec: TableEngineSpec,
-  preferLocalTable: Boolean
+  globalDistWriteUseClusterNodes: Boolean,
+  globalDistReadUseClusterNodes: Boolean,
+  globalDistWriteConvertToLocal: Boolean,
+  globalDistReadConvertToLocal: Boolean
 ) extends Table
     with SupportsRead
     with SupportsWrite
@@ -46,8 +49,8 @@ class ClickHouseTable(
     with Logging {
 
   lazy val localEngineSpec: Option[MergeTreeEngineSpec] = engineSpec match {
-    case distributeSpec: DistributedEngineSpec => Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
-        val localTableSpec = queryTableSpec(distributeSpec.local_db, distributeSpec.local_table)
+    case distSpec: DistributedEngineSpec => Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+        val localTableSpec = queryTableSpec(distSpec.local_db, distSpec.local_table)
         Some(TableEngineUtil.resolveTableEngine(localTableSpec).asInstanceOf[MergeTreeEngineSpec])
       }
     case _ => None
@@ -71,7 +74,7 @@ class ClickHouseTable(
     case _: TableEngineSpec => None
   }
 
-  override def name: String = s"ClickHouse | ${spec.database}.${spec.name} | ${spec.engine}"
+  override def name: String = s"ClickHouse Table | ${spec.database}.${spec.name} | ${spec.engine}"
 
   override def capabilities(): util.Set[TableCapability] =
     Set(BATCH_READ, BATCH_WRITE, TRUNCATE).asJava
@@ -80,7 +83,9 @@ class ClickHouseTable(
     queryTableSchema(database, table)
   }
 
-  override lazy val partitioning: Array[Transform] = (shardingKey.seq ++: partitionKey.seq).map(fromClickHouse).toArray
+  override lazy val partitioning: Array[Transform] = (
+    shardingKey.map(fromClickHouse).map(wrapShard).seq ++: partitionKey.map(fromClickHouse).map(wrapPartition).seq
+  ).toArray
 
   override def metadataColumns(): Array[MetadataColumn] = Array()
 
@@ -95,6 +100,16 @@ class ClickHouseTable(
   override def newWriteBuilder(info: LogicalWriteInfo): ClickHouseWriteBuilder = {
     log.info(s"write options ${info.options.asScala}")
     // TODO handle write options info.options()
-    new ClickHouseWriteBuilder(info.queryId(), node, cluster, tz, database, table, info.schema())
+    new ClickHouseWriteBuilder(
+      info.queryId(),
+      node,
+      cluster,
+      tz,
+      database,
+      table,
+      info.schema(),
+      globalDistWriteUseClusterNodes,
+      globalDistWriteConvertToLocal
+    )
   }
 }

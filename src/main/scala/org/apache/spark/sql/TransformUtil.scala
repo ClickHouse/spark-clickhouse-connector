@@ -5,6 +5,27 @@ import scala.util.matching.Regex
 import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions._
 
+abstract class TransformWrapper extends Transform {
+
+  def delegate: Transform
+
+  override def name(): String = s"clickhouse_shard(${delegate.name})"
+
+  override def references(): Array[NamedReference] = delegate.references
+
+  override def arguments(): Array[Expression] = delegate.arguments
+
+  override def describe(): String = delegate.describe
+}
+
+case class ClickHouseShardTransform(override val delegate: Transform) extends TransformWrapper {
+  override def name(): String = s"clickhouse_shard__${delegate.name}"
+}
+
+case class ClickHousePartitionTransform(override val delegate: Transform) extends TransformWrapper {
+  override def name(): String = s"clickhouse_partition__${delegate.name}"
+}
+
 object TransformUtil {
   // Some functions of ClickHouse which match Spark pre-defined Transforms
   //
@@ -43,4 +64,8 @@ object TransformUtil {
     case bucket: BucketTransform => throw ClickHouseAnalysisException(s"Bucket transform not support yet: $bucket")
     case other: Transform => throw ClickHouseAnalysisException(s"Unsupported transform: $other")
   }
+
+  def wrapShard(transform: Transform): ClickHouseShardTransform = ClickHouseShardTransform(transform)
+
+  def wrapPartition(transform: Transform): ClickHousePartitionTransform = ClickHousePartitionTransform(transform)
 }

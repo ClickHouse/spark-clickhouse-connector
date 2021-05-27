@@ -52,11 +52,17 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
   ///////////////////// CLUSTERS //////////////////////
   /////////////////////////////////////////////////////
   private var clusterSpecs: Seq[ClusterSpec] = Nil
-  private var preferLocalTable: Boolean = false
+  private var distWriteUseClusterNodes: Boolean = _
+  private var distReadUseClusterNodes: Boolean = _
+  private var distWriteConvertToLocal: Boolean = _
+  private var distReadConvertToLocal: Boolean = _
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.catalogName = name
-    this.preferLocalTable = options.getOrDefault(CATALOG_PROP_PREFER_LOCAL_TABLE, "false").toBoolean
+    this.distWriteUseClusterNodes = options.getOrDefault(CATALOG_PROP_DIST_WRITE_USE_CLUSTER_NODES, "true").toBoolean
+    this.distReadUseClusterNodes = options.getOrDefault(CATALOG_PROP_DIST_READ_USE_CLUSTER_NODES, "true").toBoolean
+    this.distWriteConvertToLocal = options.getOrDefault(CATALOG_PROP_DIST_WRITE_CONVERT_TO_LOCAL, "false").toBoolean
+    this.distReadConvertToLocal = options.getOrDefault(CATALOG_PROP_DIST_READ_CONVERT_TO_LOCAL, "false").toBoolean
     this.nodeSpec = buildNodeSpec(options)
     this.currentDb = nodeSpec.database
     this.grpcNodeClient = GrpcNodeClient(nodeSpec)
@@ -115,7 +121,17 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
         Some(TableEngineUtil.resolveTableCluster(distributeSpec, clusterSpecs))
       case _ => None
     }
-    new ClickHouseTable(nodeSpec, tableClusterSpec, tz, tableSpec, tableEngineSpec, preferLocalTable)
+    new ClickHouseTable(
+      nodeSpec,
+      tableClusterSpec,
+      tz,
+      tableSpec,
+      tableEngineSpec,
+      distWriteUseClusterNodes,
+      distReadUseClusterNodes,
+      distWriteConvertToLocal,
+      distReadConvertToLocal
+    )
   }
 
   /**

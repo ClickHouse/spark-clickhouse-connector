@@ -29,7 +29,9 @@ class ClickHouseWriteBuilder(
   tz: Either[ZoneId, ZoneId],
   database: String,
   table: String,
-  schema: StructType
+  schema: StructType,
+  distWriteUseClusterNodes: Boolean,
+  distWriteConvertToLocal: Boolean
 ) extends WriteBuilder
     with SupportsTruncate {
 
