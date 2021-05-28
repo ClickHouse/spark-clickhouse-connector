@@ -13,7 +13,7 @@
     <logger name="org.apache.hadoop.util.Shell" level="ERROR"/>
     <logger name="org.apache.hadoop.util.NativeCodeLoader" level="ERROR"/>
     <logger name="xenon.clickhouse" level="DEBUG"/>
-    <root level="WARN">
+    <root level="INFO">
         <appender-ref ref="console"/>
     </root>
 </configuration>

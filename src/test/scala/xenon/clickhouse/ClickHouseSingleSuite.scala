@@ -21,12 +21,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite with ClickHouseSingleSuiteMix
     "spark.clickhouse.write.batchSize" -> "2",
     "spark.clickhouse.write.maxRetry" -> "2",
     "spark.clickhouse.write.retryInterval" -> "1",
-    "spark.clickhouse.write.retryableErrorCodes" -> "241",
-    "spark.clickhouse.write.distributed.useClusterNodes" -> "true",
-    "spark.clickhouse.read.distributed.useClusterNodes" -> "true",
-    "spark.clickhouse.write.distributed.convertLocal" -> "false",
-    "spark.clickhouse.read.distributed.convertLocal" -> "false",
-    "spark.clickhouse.truncate.distributed.convertLocal" -> "true"
+    "spark.clickhouse.write.retryableErrorCodes" -> "241"
   )
 
   override def cmdRunnerOptions: Map[String, String] = Map(

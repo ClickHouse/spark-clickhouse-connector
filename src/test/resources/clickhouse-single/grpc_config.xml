@@ -1,6 +1,6 @@
 <yandex>
     <!-- gRPC protocol (see src/Server/grpc_protos/clickhouse_grpc.proto for the API) -->
-    <grpc_port>9100</grpc_port>
+    <grpc_port>19100</grpc_port>
     <grpc>
         <enable_ssl>false</enable_ssl>
 

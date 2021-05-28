@@ -4,9 +4,10 @@ import org.apache.hadoop.fs.FileSystem
 import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.SparkContext
 import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.BeforeAndAfterAll
 import xenon.clickhouse.{ClickHouseCommandRunner, Utils}
 
-abstract class BaseSparkSuite extends AnyFunSuite {
+abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll {
 
   Utils.setTesting()
 
@@ -83,5 +84,10 @@ abstract class BaseSparkSuite extends AnyFunSuite {
   protected def infiniteLoop(): Unit = while (true) {
     Thread.sleep(1000)
     spark.catalog.listTables()
+  }
+
+  override def afterAll(): Unit = {
+    spark.stop
+    super.afterAll()
   }
 }
