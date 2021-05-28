@@ -181,6 +181,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
         transforms.map(toClickHouse).mkString("PARTITION BY (", ", ", ")")
       case _ => ""
     }
+    // TODO we need consider to support other DML, like alter table, drop table, truncate table ...
     val clusterExpr = props.get("cluster").map(c => s"ON CLUSTER $c").getOrElse("")
     val orderExpr = props.get("order_by").map(o => s"ORDER BY $o").getOrElse("")
     val primaryKeyExpr = props.get("primary_key").map(p => s"PRIMARY KEY $p").getOrElse("")

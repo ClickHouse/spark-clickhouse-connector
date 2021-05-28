@@ -14,9 +14,15 @@
 
 package xenon.clickhouse
 
+import java.time.ZoneId
+import java.util
+
+import scala.collection.JavaConverters._
+import scala.util.Using
+
 import org.apache.spark.sql.clickhouse.util.TransformUtil._
-import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.catalog._
+import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read.ScanBuilder
 import org.apache.spark.sql.connector.write.LogicalWriteInfo
@@ -25,11 +31,7 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.read.ClickHouseScanBuilder
 import xenon.clickhouse.spec.{TableEngineSpec, _}
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDesc}
-import java.time.ZoneId
-import java.util
-
-import scala.collection.JavaConverters._
-import scala.util.Using
+import xenon.clickhouse.TableEngineUtil._
 
 class ClickHouseTable(
   node: NodeSpec,
@@ -44,19 +46,20 @@ class ClickHouseTable(
     with ClickHouseHelper
     with Logging {
 
-  lazy val localEngineSpec: Option[MergeTreeEngineSpec] = engineSpec match {
-    case distSpec: DistributedEngineSpec => Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
-        val localTableSpec = queryTableSpec(distSpec.local_db, distSpec.local_table)
-        Some(TableEngineUtil.resolveTableEngine(localTableSpec).asInstanceOf[MergeTreeEngineSpec])
-      }
-    case _ => None
-  }
-
   def database: String = spec.database
 
   def table: String = spec.name
 
   def isDistributed: Boolean = engineSpec.is_distributed
+
+  lazy val (localTableSpec, localTableEngineSpec): (Option[TableSpec], Option[MergeTreeEngineSpec]) = engineSpec match {
+    case distSpec: DistributedEngineSpec => Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+        val _localTableSpec = queryTableSpec(distSpec.local_db, distSpec.local_table)
+        val _localTableEngineSpec = resolveTableEngine(_localTableSpec).asInstanceOf[MergeTreeEngineSpec]
+        (Some(_localTableSpec), Some(_localTableEngineSpec))
+      }
+    case _ => (None, None)
+  }
 
   def shardingKey: Option[String] = engineSpec match {
     case _spec: DistributedEngineSpec => _spec.sharding_key
@@ -65,13 +68,13 @@ class ClickHouseTable(
 
   def sortingKey: Option[String] = engineSpec match {
     case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => Some(mergeTreeFamilySpec.sorting_key).filter(_.nonEmpty)
-    case _: DistributedEngineSpec => localEngineSpec.map(_.sorting_key).filter(_.nonEmpty)
+    case _: DistributedEngineSpec => localTableEngineSpec.map(_.sorting_key).filter(_.nonEmpty)
     case _: TableEngineSpec => None
   }
 
   def partitionKey: Option[String] = engineSpec match {
     case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => mergeTreeFamilySpec.partition_key.filter(_.nonEmpty)
-    case _: DistributedEngineSpec => localEngineSpec.flatMap(_.partition_key).filter(_.nonEmpty)
+    case _: DistributedEngineSpec => localTableEngineSpec.flatMap(_.partition_key).filter(_.nonEmpty)
     case _: TableEngineSpec => None
   }
 
@@ -104,12 +107,14 @@ class ClickHouseTable(
 
     val jobDesc = WriteJobDesc(
       id = info.queryId,
-      tz = tz.merge,
+      schema = info.schema,
       node = node,
+      tz = tz.merge,
+      tableSpec = spec,
+      tableEngineSpec = engineSpec,
       cluster = cluster,
-      database = database,
-      table = table,
-      schema = info.schema
+      localTableSpec = localTableSpec,
+      localTableEngineSpec = localTableEngineSpec
     )
 
     new ClickHouseWriteBuilder(jobDesc)

@@ -3,14 +3,16 @@ package xenon.clickhouse.write
 import java.time.ZoneId
 
 import org.apache.spark.sql.types.StructType
-import xenon.clickhouse.spec.{ClusterSpec, NodeSpec}
+import xenon.clickhouse.spec.{ClusterSpec, NodeSpec, TableEngineSpec, TableSpec}
 
 case class WriteJobDesc(
   id: String,
-  tz: ZoneId,
+  schema: StructType,
   node: NodeSpec,
+  tz: ZoneId,
+  tableSpec: TableSpec,
+  tableEngineSpec: TableEngineSpec,
   cluster: Option[ClusterSpec],
-  database: String,
-  table: String,
-  schema: StructType
+  localTableSpec: Option[TableSpec],
+  localTableEngineSpec: Option[TableEngineSpec]
 )

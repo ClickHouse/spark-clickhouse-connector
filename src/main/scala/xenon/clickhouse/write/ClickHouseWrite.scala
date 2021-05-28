@@ -53,6 +53,6 @@ class ClickHouseDataWriterFactory(
     case APPEND =>
       new ClickHouseAppendWriter(jobDesc)
     case TRUNCATE =>
-      new ClickHouseTruncateWriter(jobDesc.id, jobDesc.node, jobDesc.cluster, jobDesc.database, jobDesc.table)
+      new ClickHouseTruncateWriter(jobDesc)
   }
 }

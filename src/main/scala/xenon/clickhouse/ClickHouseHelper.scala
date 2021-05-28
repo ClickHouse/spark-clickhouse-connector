@@ -154,14 +154,14 @@ trait ClickHouseHelper {
       uuid = tableRow.get("uuid").asText,
       engine = tableRow.get("engine").asText,
       is_temporary = tableRow.get("is_temporary").asBoolean,
-      data_paths = tableRow.get("data_paths").elements().asScala.map(_.asText).toSeq,
+      data_paths = tableRow.get("data_paths").elements().asScala.map(_.asText).toArray,
       metadata_path = tableRow.get("metadata_path").asText,
       metadata_modification_time = LocalDateTime.parse(
         tableRow.get("metadata_modification_time").asText,
         dateTimeFmt.withZone(tz.merge)
       ),
-      dependencies_database = tableRow.get("dependencies_database").elements().asScala.map(_.asText).toSeq,
-      dependencies_table = tableRow.get("dependencies_table").elements().asScala.map(_.asText).toSeq,
+      dependencies_database = tableRow.get("dependencies_database").elements().asScala.map(_.asText).toArray,
+      dependencies_table = tableRow.get("dependencies_table").elements().asScala.map(_.asText).toArray,
       create_table_query = tableRow.get("create_table_query").asText,
       engine_full = tableRow.get("engine_full").asText,
       partition_key = tableRow.get("partition_key").asText,

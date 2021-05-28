@@ -20,48 +20,50 @@ import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
 
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf
+import org.apache.spark.sql.clickhouse.{ClickHouseAnalysisException, ClickHouseSQLConf}
 import org.apache.spark.sql.clickhouse.util.JsonFormatUtil
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import xenon.clickhouse._
 import xenon.clickhouse.exception.RetryableClickHouseException
-import xenon.clickhouse.spec.{ClusterSpec, NodeSpec}
+import xenon.clickhouse.spec.DistributedEngineSpec
 
-abstract class ClickHouseWriter extends DataWriter[InternalRow] with SQLConfHelper with Logging {
-
-  def queryId: String
-  def node: NodeSpec
-  def cluster: Option[ClusterSpec]
-  def database: String
-  def table: String
-
-  def writeDistributedUseClusterNodes: Boolean = conf.getConf(ClickHouseSQLConf.WRITE_DISTRIBUTED_USE_CLUSTER_NODES)
-  def writeDistributedConvertToLocal: Boolean = conf.getConf(ClickHouseSQLConf.WRITE_DISTRIBUTED_CONVERT_LOCAL)
-
-  @transient lazy val _grpcConn: GrpcNodeClient = GrpcNodeClient(node)
-
-  def grpcNodeClient: GrpcNodeClient = _grpcConn
-
-  override def abort(): Unit = grpcNodeClient.shutdownNow()
-
-  override def close(): Unit = grpcNodeClient.close()
-}
-
-class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends ClickHouseWriter {
-
-  override def queryId: String = jobDesc.id
-  override def node: NodeSpec = jobDesc.node
-  override def cluster: Option[ClusterSpec] = jobDesc.cluster
-  override def database: String = jobDesc.database
-  override def table: String = jobDesc.table
+class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends DataWriter[InternalRow] with SQLConfHelper with Logging {
 
   val batchSize: Int = conf.getConf(ClickHouseSQLConf.WRITE_BATCH_SIZE)
+  val writeDistributedUseClusterNodes: Boolean = conf.getConf(ClickHouseSQLConf.WRITE_DISTRIBUTED_USE_CLUSTER_NODES)
+  val writeDistributedConvertLocal: Boolean = conf.getConf(ClickHouseSQLConf.WRITE_DISTRIBUTED_CONVERT_LOCAL)
+
+  // DataSet schema, not ClickHouse table schema
+  val ckSchema: Map[String, String] = SchemaUtil.toClickHouseSchema(jobDesc.schema).toMap
+
+  val database: String = jobDesc.tableEngineSpec match {
+    case dist: DistributedEngineSpec if writeDistributedConvertLocal => dist.local_db
+    case _ => jobDesc.tableSpec.database
+  }
+
+  val table: String = jobDesc.tableEngineSpec match {
+    case dist: DistributedEngineSpec if writeDistributedConvertLocal => dist.local_table
+    case _ => jobDesc.tableSpec.name
+  }
+
+  private lazy val grpcClient: Either[GrpcClusterClient, GrpcNodeClient] =
+    (jobDesc.tableEngineSpec, writeDistributedUseClusterNodes, writeDistributedConvertLocal) match {
+      case (_: DistributedEngineSpec, _, true) =>
+        // FIXME: Since we don't know the corresponding ClickHouse shard and partition of the RDD partition now,
+        //        we can't pick the right nodes from cluster here
+        throw ClickHouseAnalysisException(
+          s"${ClickHouseSQLConf.WRITE_DISTRIBUTED_CONVERT_LOCAL.key} is not support yet."
+        )
+      case (_: DistributedEngineSpec, true, false) => Left(GrpcClusterClient(jobDesc.cluster.get))
+      case _ => Right(GrpcNodeClient(jobDesc.node))
+    }
+
+  def grpcNodeClient: GrpcNodeClient = grpcClient match {
+    case Left(clusterClient) => clusterClient.node()
+    case Right(nodeClient) => nodeClient
+  }
 
   val buf: ArrayBuffer[Array[Byte]] = new ArrayBuffer[Array[Byte]](batchSize)
-
-  val ckSchema: Map[String, String] = SchemaUtil
-    .toClickHouseSchema(jobDesc.schema)
-    .toMap
 
   override def write(record: InternalRow): Unit = {
     buf += JsonFormatUtil.row2Json(record, jobDesc.schema, jobDesc.tz)
@@ -70,7 +72,14 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends ClickHouseWriter {
 
   override def commit(): WriterCommitMessage = {
     if (buf.nonEmpty) flush()
-    CommitMessage("flush write")
+    CommitMessage(s"Job[${jobDesc.id}]: commit")
+  }
+
+  override def abort(): Unit = close()
+
+  override def close(): Unit = grpcClient match {
+    case Left(clusterClient) => clusterClient.close()
+    case Right(nodeClient) => nodeClient.close()
   }
 
   def flush(): Unit =
@@ -85,30 +94,39 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends ClickHouseWriter {
         case Right(_) => buf.clear
       }
     } match {
-      case Success(_) =>
+      case Success(_) => log.info(s"Job[${jobDesc.id}]: flush batch")
       case Failure(rethrow) => throw rethrow
     }
 }
 
 class ClickHouseTruncateWriter(
-  val queryId: String,
-  val node: NodeSpec,
-  val cluster: Option[ClusterSpec],
-  val database: String,
-  val table: String
-) extends ClickHouseWriter {
+  jobDesc: WriteJobDesc
+) extends DataWriter[InternalRow] with SQLConfHelper with Logging {
 
-  def truncateDistributedConvertToLocal: Boolean = conf.getConf(ClickHouseSQLConf.TRUNCATE_DISTRIBUTED_CONVERT_LOCAL)
+  val truncateDistributedConvertToLocal: Boolean = conf.getConf(ClickHouseSQLConf.TRUNCATE_DISTRIBUTED_CONVERT_LOCAL)
 
-  def clusterExpr: String = cluster match {
-    case Some(cluster) if truncateDistributedConvertToLocal => s"ON CLUSTER ${cluster.name}"
-    case _ => ""
+  val database: String = jobDesc.tableEngineSpec match {
+    case dist: DistributedEngineSpec if truncateDistributedConvertToLocal => dist.local_db
+    case _ => jobDesc.tableSpec.database
   }
+
+  val table: String = jobDesc.tableEngineSpec match {
+    case dist: DistributedEngineSpec if truncateDistributedConvertToLocal => dist.local_table
+    case _ => jobDesc.tableSpec.name
+  }
+
+  lazy val grpcNodeClient: GrpcNodeClient = GrpcNodeClient(jobDesc.node)
+
+  def clusterExpr: String = if (truncateDistributedConvertToLocal) s"ON CLUSTER ${jobDesc.cluster.get.name}" else ""
 
   override def write(record: InternalRow): Unit = {}
 
   override def commit(): WriterCommitMessage = {
     grpcNodeClient.syncQueryAndCheck(s"TRUNCATE TABLE `$database`.`$table` $clusterExpr")
-    CommitMessage("commit truncate")
+    CommitMessage("Job[]: commit truncate")
   }
+
+  override def abort(): Unit = grpcNodeClient.shutdownNow()
+
+  override def close(): Unit = grpcNodeClient.close()
 }
