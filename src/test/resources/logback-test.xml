@@ -12,8 +12,8 @@
 
     <logger name="org.apache.hadoop.util.Shell" level="ERROR"/>
     <logger name="org.apache.hadoop.util.NativeCodeLoader" level="ERROR"/>
-    <logger name="com.zy.dp" level="DEBUG"/>
-    <root level="INFO">
+    <logger name="xenon.clickhouse" level="DEBUG"/>
+    <root level="WARN">
         <appender-ref ref="console"/>
     </root>
 </configuration>

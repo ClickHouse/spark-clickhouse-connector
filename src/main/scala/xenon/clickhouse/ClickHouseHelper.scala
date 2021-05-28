@@ -67,7 +67,8 @@ trait ClickHouseHelper {
               val replicaNum = row.get("replica_num").asInt
               // should other properties be provided by `SparkConf`?
               val clickhouseNode = nodeSpec.copy(
-                _host = row.get("host_address").asText,
+                // host_address is not works for testcontainers
+                _host = row.get("host_name").asText,
                 _tcp_port = Some(row.get("port").asInt)
               )
               ReplicaSpec(replicaNum, clickhouseNode)

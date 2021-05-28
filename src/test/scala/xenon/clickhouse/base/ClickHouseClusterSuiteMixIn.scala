@@ -14,6 +14,28 @@ trait ClickHouseClusterSuiteMixIn extends AnyFunSuite with ForAllTestContainer {
   protected val CLICKHOUSE_GRPC_PORT = 9100
   protected val CLICKHOUSE_TCP_PORT = 9000
 
+  test("clickhouse cluster up") {
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s1r1").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s1r1_PORT_$CLICKHOUSE_HTTP_PORT").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s1r1_PORT_$CLICKHOUSE_GRPC_PORT").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s1r1_PORT_$CLICKHOUSE_TCP_PORT").isDefined)
+
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s1r2").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s1r2_PORT_$CLICKHOUSE_HTTP_PORT").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s1r2_PORT_$CLICKHOUSE_GRPC_PORT").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s1r2_PORT_$CLICKHOUSE_TCP_PORT").isDefined)
+
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s2r1").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s2r1_PORT_$CLICKHOUSE_HTTP_PORT").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s2r1_PORT_$CLICKHOUSE_GRPC_PORT").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s2r1_PORT_$CLICKHOUSE_TCP_PORT").isDefined)
+
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s2r2").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s2r2_PORT_$CLICKHOUSE_HTTP_PORT").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s2r2_PORT_$CLICKHOUSE_GRPC_PORT").isDefined)
+    assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s2r2_PORT_$CLICKHOUSE_TCP_PORT").isDefined)
+  }
+
   override val container: DockerComposeContainer =
     DockerComposeContainer
       .Def(
@@ -64,24 +86,24 @@ trait ClickHouseClusterSuiteMixIn extends AnyFunSuite with ForAllTestContainer {
   override def afterStart(): Unit = {
     super.afterStart()
     // s1r1
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s1r1", clickhouse_s1r1_host))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s1r1_PORT_$CLICKHOUSE_HTTP_PORT", clickhouse_s1r1_http_port.toString))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s1r1_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s1r1_grpc_port.toString))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s1r1_PORT_$CLICKHOUSE_TCP_PORT", clickhouse_s1r1_tcp_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r1", clickhouse_s1r1_host))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r1_PORT_$CLICKHOUSE_HTTP_PORT", clickhouse_s1r1_http_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r1_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s1r1_grpc_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r1_PORT_$CLICKHOUSE_TCP_PORT", clickhouse_s1r1_tcp_port.toString))
     // s1r2
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s1r2", clickhouse_s1r2_host))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s1r2_PORT_$CLICKHOUSE_HTTP_PORT", clickhouse_s1r2_http_port.toString))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s1r2_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s1r2_grpc_port.toString))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s1r2_PORT_$CLICKHOUSE_TCP_PORT", clickhouse_s1r2_tcp_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r2", clickhouse_s1r2_host))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r2_PORT_$CLICKHOUSE_HTTP_PORT", clickhouse_s1r2_http_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r2_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s1r2_grpc_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r2_PORT_$CLICKHOUSE_TCP_PORT", clickhouse_s1r2_tcp_port.toString))
     // s2r1
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s2r1", clickhouse_s2r1_host))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s2r1_PORT_$CLICKHOUSE_HTTP_PORT", clickhouse_s2r1_http_port.toString))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s2r1_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s2r1_grpc_port.toString))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s2r1_PORT_$CLICKHOUSE_TCP_PORT", clickhouse_s2r1_tcp_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r1", clickhouse_s2r1_host))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r1_PORT_$CLICKHOUSE_HTTP_PORT", clickhouse_s2r1_http_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r1_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s2r1_grpc_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r1_PORT_$CLICKHOUSE_TCP_PORT", clickhouse_s2r1_tcp_port.toString))
     // s2r2
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s2r2", clickhouse_s2r2_host))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s2r2_PORT_$CLICKHOUSE_HTTP_PORT", clickhouse_s2r2_http_port.toString))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s2r2_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s2r2_grpc_port.toString))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse_s2r2_PORT_$CLICKHOUSE_TCP_PORT", clickhouse_s2r2_tcp_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r2", clickhouse_s2r2_host))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r2_PORT_$CLICKHOUSE_HTTP_PORT", clickhouse_s2r2_http_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r2_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s2r2_grpc_port.toString))
+    sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r2_PORT_$CLICKHOUSE_TCP_PORT", clickhouse_s2r2_tcp_port.toString))
   }
 }

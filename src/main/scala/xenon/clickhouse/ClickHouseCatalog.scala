@@ -162,6 +162,8 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
    * }}}
    *
    * `ver` — column with version. Type `UInt*`, `Date` or `DateTime`.
+   *
+   * TODO Support create Distributed tables
    */
   override def createTable(
     ident: Identifier,
