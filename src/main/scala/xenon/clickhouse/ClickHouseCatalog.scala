@@ -14,8 +14,7 @@
 
 package xenon.clickhouse
 
-import org.apache.spark.sql.ClickHouseAnalysisException
-import org.apache.spark.sql.TransformUtil._
+import org.apache.spark.sql.clickhouse.util.TransformUtil._
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -26,10 +25,12 @@ import xenon.clickhouse.Utils._
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.format.JSONOutput
 import xenon.clickhouse.spec._
-
 import java.time.ZoneId
 import java.util
+
 import scala.collection.JavaConverters._
+
+import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
 
 class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickHouseHelper with Logging {
 
@@ -48,24 +49,13 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
 
   private var currentDb: String = _
 
-  private var writeBatchSize: Int = _
-
   /////////////////////////////////////////////////////
   ///////////////////// CLUSTERS //////////////////////
   /////////////////////////////////////////////////////
   private var clusterSpecs: Seq[ClusterSpec] = Nil
-  private var distWriteUseClusterNodes: Boolean = _
-  private var distReadUseClusterNodes: Boolean = _
-  private var distWriteConvertToLocal: Boolean = _
-  private var distReadConvertToLocal: Boolean = _
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.catalogName = name
-    this.writeBatchSize = options.getOrDefault(CATALOG_PROP_WRITE_BATCH_SIZE, "1000").toInt
-    this.distWriteUseClusterNodes = options.getOrDefault(CATALOG_PROP_DIST_WRITE_USE_CLUSTER_NODES, "true").toBoolean
-    this.distReadUseClusterNodes = options.getOrDefault(CATALOG_PROP_DIST_READ_USE_CLUSTER_NODES, "true").toBoolean
-    this.distWriteConvertToLocal = options.getOrDefault(CATALOG_PROP_DIST_WRITE_CONVERT_TO_LOCAL, "false").toBoolean
-    this.distReadConvertToLocal = options.getOrDefault(CATALOG_PROP_DIST_READ_CONVERT_TO_LOCAL, "false").toBoolean
     this.nodeSpec = buildNodeSpec(options)
     this.currentDb = nodeSpec.database
     this.grpcNodeClient = GrpcNodeClient(nodeSpec)
@@ -129,12 +119,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
       tableClusterSpec,
       tz,
       tableSpec,
-      tableEngineSpec,
-      writeBatchSize,
-      distWriteUseClusterNodes,
-      distReadUseClusterNodes,
-      distWriteConvertToLocal,
-      distReadConvertToLocal
+      tableEngineSpec
     )
   }
 

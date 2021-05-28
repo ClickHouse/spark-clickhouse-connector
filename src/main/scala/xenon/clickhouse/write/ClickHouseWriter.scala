@@ -14,28 +14,29 @@
 
 package xenon.clickhouse.write
 
-import org.apache.spark.sql.JsonFormatUtil
-import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
-import org.apache.spark.sql.types.StructType
-import xenon.clickhouse._
-import xenon.clickhouse.exception.ClickHouseErrCode._
-import xenon.clickhouse.exception.RetryableClickHouseException
-import xenon.clickhouse.spec.{ClusterSpec, NodeSpec}
-import java.time.{Duration, ZoneId}
+import java.time.Duration
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
 
-abstract class ClickHouseWriter extends DataWriter[InternalRow] with Logging {
+import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf
+import org.apache.spark.sql.clickhouse.util.JsonFormatUtil
+import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
+import xenon.clickhouse._
+import xenon.clickhouse.exception.RetryableClickHouseException
+import xenon.clickhouse.spec.{ClusterSpec, NodeSpec}
 
-  val queryId: String
-  val node: NodeSpec
-  val cluster: Option[ClusterSpec]
-  val database: String
-  val table: String
-  val distWriteUseClusterNodes: Boolean
-  val distWriteConvertToLocal: Boolean
+abstract class ClickHouseWriter extends DataWriter[InternalRow] with SQLConfHelper with Logging {
+
+  def queryId: String
+  def node: NodeSpec
+  def cluster: Option[ClusterSpec]
+  def database: String
+  def table: String
+
+  def writeDistributedUseClusterNodes: Boolean = conf.getConf(ClickHouseSQLConf.WRITE_DISTRIBUTED_USE_CLUSTER_NODES)
+  def writeDistributedConvertToLocal: Boolean = conf.getConf(ClickHouseSQLConf.WRITE_DISTRIBUTED_CONVERT_LOCAL)
 
   @transient lazy val _grpcConn: GrpcNodeClient = GrpcNodeClient(node)
 
@@ -46,27 +47,24 @@ abstract class ClickHouseWriter extends DataWriter[InternalRow] with Logging {
   override def close(): Unit = grpcNodeClient.close()
 }
 
-class ClickHouseBatchWriter(
-  val queryId: String,
-  val node: NodeSpec,
-  val cluster: Option[ClusterSpec],
-  tz: Either[ZoneId, ZoneId],
-  val database: String,
-  val table: String,
-  val schema: StructType,
-  val batchSize: Int,
-  val distWriteUseClusterNodes: Boolean,
-  val distWriteConvertToLocal: Boolean
-) extends ClickHouseWriter {
+class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends ClickHouseWriter {
 
-  val ckSchema: Map[String, String] = SchemaUtil
-    .toClickHouseSchema(schema)
-    .toMap
+  override def queryId: String = jobDesc.id
+  override def node: NodeSpec = jobDesc.node
+  override def cluster: Option[ClusterSpec] = jobDesc.cluster
+  override def database: String = jobDesc.database
+  override def table: String = jobDesc.table
+
+  val batchSize: Int = conf.getConf(ClickHouseSQLConf.WRITE_BATCH_SIZE)
 
   val buf: ArrayBuffer[Array[Byte]] = new ArrayBuffer[Array[Byte]](batchSize)
 
+  val ckSchema: Map[String, String] = SchemaUtil
+    .toClickHouseSchema(jobDesc.schema)
+    .toMap
+
   override def write(record: InternalRow): Unit = {
-    buf += JsonFormatUtil.row2Json(record, schema, tz.merge)
+    buf += JsonFormatUtil.row2Json(record, jobDesc.schema, jobDesc.tz)
     if (buf.size == batchSize) flush()
   }
 
@@ -76,9 +74,13 @@ class ClickHouseBatchWriter(
   }
 
   def flush(): Unit =
-    Utils.retry[Unit, RetryableClickHouseException](3, Duration.ofSeconds(10)) {
+    Utils.retry[Unit, RetryableClickHouseException](
+      conf.getConf(ClickHouseSQLConf.WRITE_MAX_RETRY),
+      Duration.ofSeconds(conf.getConf(ClickHouseSQLConf.WRITE_RETRY_INTERVAL))
+    ) {
       grpcNodeClient.syncInsert(database, table, "JSONEachRow", buf.toArray) match {
-        case Left(exception) if exception.getCode == MEMORY_LIMIT_EXCEEDED.code =>
+        case Left(exception)
+            if conf.getConf(ClickHouseSQLConf.WRITE_RETRYABLE_ERROR_CODES).contains(exception.getCode) =>
           throw new RetryableClickHouseException(exception)
         case Right(_) => buf.clear
       }
@@ -93,19 +95,17 @@ class ClickHouseTruncateWriter(
   val node: NodeSpec,
   val cluster: Option[ClusterSpec],
   val database: String,
-  val table: String,
-  val distWriteUseClusterNodes: Boolean,
-  val distWriteConvertToLocal: Boolean
+  val table: String
 ) extends ClickHouseWriter {
 
-  private lazy val clusterExpr = cluster match {
-    case Some(cluster) => s"ON CLUSTER ${cluster.name}"
-    case None => ""
+  def truncateDistributedConvertToLocal: Boolean = conf.getConf(ClickHouseSQLConf.TRUNCATE_DISTRIBUTED_CONVERT_LOCAL)
+
+  def clusterExpr: String = cluster match {
+    case Some(cluster) if truncateDistributedConvertToLocal => s"ON CLUSTER ${cluster.name}"
+    case _ => ""
   }
 
-  override def write(record: InternalRow): Unit = {
-    // TODO check, forbid truncate Distribute table
-  }
+  override def write(record: InternalRow): Unit = {}
 
   override def commit(): WriterCommitMessage = {
     grpcNodeClient.syncQueryAndCheck(s"TRUNCATE TABLE `$database`.`$table` $clusterExpr")

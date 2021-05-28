@@ -1,10 +1,10 @@
 package xenon.clickhouse
 
 import com.google.common.annotations.VisibleForTesting
-import org.apache.spark.sql.ClickHouseAnalysisException
 import xenon.clickhouse.spec._
-
 import scala.util.matching.Regex
+
+import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
 
 object TableEngineUtil {
 

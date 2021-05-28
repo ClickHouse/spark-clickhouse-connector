@@ -16,7 +16,7 @@ package xenon.clickhouse
 
 import scala.util.matching.Regex
 
-import org.apache.spark.sql.ClickHouseAnalysisException
+import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
 import org.apache.spark.sql.types._
 
 object SchemaUtil {

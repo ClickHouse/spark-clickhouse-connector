@@ -34,9 +34,7 @@ class ClickHouseScanBuilder(
   // 2. calculated columns, which calculate the values on-the-fly when reading
   // but consider that usually CPU would not be bottleneck of clickhouse but IO does, it's not properly suppose that
   // reading calculated columns is expensive than materialized columns
-  physicalSchema: StructType,
-  distWriteUseClusterNodes: Boolean,
-  distWriteConvertToLocal: Boolean
+  physicalSchema: StructType
 ) extends ScanBuilder
     with SupportsPushDownFilters
     with SupportsPushDownRequiredColumns {

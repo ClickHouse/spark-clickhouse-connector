@@ -1,12 +1,12 @@
-package org.apache.spark.sql
+package org.apache.spark.sql.clickhouse.util
 
 import java.io.StringWriter
+import java.nio.charset.StandardCharsets
 import java.time.ZoneId
+
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.json.{JSONOptions, JacksonGenerator}
 import org.apache.spark.sql.types.StructType
-
-import java.nio.charset.StandardCharsets
 
 object JsonFormatUtil {
 

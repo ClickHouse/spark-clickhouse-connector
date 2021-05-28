@@ -19,39 +19,14 @@ import org.apache.spark.sql.connector.write._
 import org.apache.spark.sql.types.StructType
 import xenon.clickhouse.spec.{ClusterSpec, NodeSpec}
 import xenon.clickhouse.write.WriteAction._
-
 import java.time.ZoneId
 
-class ClickHouseWriteBuilder(
-  queryId: String,
-  node: NodeSpec,
-  cluster: Option[ClusterSpec],
-  tz: Either[ZoneId, ZoneId],
-  database: String,
-  table: String,
-  schema: StructType,
-  batchSize: Int,
-  distWriteUseClusterNodes: Boolean,
-  distWriteConvertToLocal: Boolean
-) extends WriteBuilder
-    with SupportsTruncate {
+class ClickHouseWriteBuilder(jobDesc: WriteJobDesc) extends WriteBuilder with SupportsTruncate {
 
   private var action: WriteAction = APPEND
 
   override def buildForBatch(): ClickHouseBatchWrite =
-    new ClickHouseBatchWrite(
-      queryId,
-      node,
-      cluster,
-      tz,
-      database,
-      table,
-      schema,
-      action,
-      batchSize,
-      distWriteUseClusterNodes,
-      distWriteConvertToLocal
-    )
+    new ClickHouseBatchWrite(jobDesc, action)
 
   override def truncate(): WriteBuilder = {
     this.action = TRUNCATE
@@ -59,34 +34,10 @@ class ClickHouseWriteBuilder(
   }
 }
 
-class ClickHouseBatchWrite(
-  queryId: String,
-  node: NodeSpec,
-  cluster: Option[ClusterSpec],
-  tz: Either[ZoneId, ZoneId],
-  database: String,
-  table: String,
-  schema: StructType,
-  action: WriteAction,
-  batchSize: Int,
-  distWriteUseClusterNodes: Boolean,
-  distWriteConvertToLocal: Boolean
-) extends BatchWrite {
+class ClickHouseBatchWrite(jobDesc: WriteJobDesc, action: WriteAction) extends BatchWrite {
 
   override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory =
-    new ClickHouseDataWriterFactory(
-      queryId,
-      node,
-      cluster,
-      tz,
-      database,
-      table,
-      schema,
-      action,
-      batchSize,
-      distWriteUseClusterNodes,
-      distWriteConvertToLocal
-    )
+    new ClickHouseDataWriterFactory(jobDesc, action)
 
   override def commit(messages: Array[WriterCommitMessage]): Unit = {}
 
@@ -94,40 +45,14 @@ class ClickHouseBatchWrite(
 }
 
 class ClickHouseDataWriterFactory(
-  queryId: String,
-  node: NodeSpec,
-  cluster: Option[ClusterSpec],
-  tz: Either[ZoneId, ZoneId],
-  database: String,
-  table: String,
-  schema: StructType,
-  action: WriteAction,
-  batchSize: Int,
-  distWriteUseClusterNodes: Boolean,
-  distWriteConvertToLocal: Boolean
+  jobDesc: WriteJobDesc,
+  action: WriteAction
 ) extends DataWriterFactory {
 
   override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] = action match {
-    case APPEND => new ClickHouseBatchWriter(
-        queryId,
-        node,
-        cluster,
-        tz,
-        database,
-        table,
-        schema,
-        batchSize,
-        distWriteUseClusterNodes,
-        distWriteConvertToLocal
-      )
-    case TRUNCATE => new ClickHouseTruncateWriter(
-        queryId,
-        node,
-        cluster,
-        database,
-        table,
-        distWriteUseClusterNodes,
-        distWriteConvertToLocal
-      )
+    case APPEND =>
+      new ClickHouseAppendWriter(jobDesc)
+    case TRUNCATE =>
+      new ClickHouseTruncateWriter(jobDesc.id, jobDesc.node, jobDesc.cluster, jobDesc.database, jobDesc.table)
   }
 }
