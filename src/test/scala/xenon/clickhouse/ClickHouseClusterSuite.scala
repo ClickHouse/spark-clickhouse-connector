@@ -11,13 +11,7 @@ class ClickHouseClusterSuite extends BaseSparkSuite with ClickHouseClusterSuiteM
     "spark.ui.enabled" -> "false", // enable when debug
     "spark.app.name" -> "spark-clickhouse-cluster-ut",
     "spark.sql.shuffle.partitions" -> "4",
-    "spark.sql.defaultCatalog" -> "clickhouse",
-    "spark.sql.catalog.clickhouse" -> "xenon.clickhouse.ClickHouseCatalog",
-    "spark.sql.catalog.clickhouse.host" -> clickhouse_s1r1_host,
-    "spark.sql.catalog.clickhouse.port" -> clickhouse_s1r1_grpc_port.toString,
-    "spark.sql.catalog.clickhouse.user" -> "default",
-    "spark.sql.catalog.clickhouse.password" -> "",
-    "spark.sql.catalog.clickhouse.database" -> "default",
+    "spark.sql.defaultCatalog" -> "clickhouse-s1r1",
     "spark.sql.catalog.clickhouse-s1r1" -> "xenon.clickhouse.ClickHouseCatalog",
     "spark.sql.catalog.clickhouse-s1r1.host" -> clickhouse_s1r1_host,
     "spark.sql.catalog.clickhouse-s1r1.port" -> clickhouse_s1r1_grpc_port.toString,
@@ -121,7 +115,7 @@ class ClickHouseClusterSuite extends BaseSparkSuite with ClickHouseClusterSuiteM
     val dataDFWithExactlySchema = spark.createDataFrame(dataDF.rdd, tblSchema)
 
     dataDFWithExactlySchema
-      .writeTo("clickhouse.default.t_dist")
+      .writeTo("`clickhouse-s1r1`.default.t_dist")
       .append
 
     log.info("==== [Distributed] default.t_dist_local ====")
