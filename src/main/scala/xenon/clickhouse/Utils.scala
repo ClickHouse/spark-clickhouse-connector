@@ -40,9 +40,10 @@ object Utils extends Logging {
   @tailrec
   def retry[R, T <: Throwable: ClassTag](retryTimes: Int, interval: Duration)(f: () => R): Try[R] = {
     assert(retryTimes >= 0)
+    val clazz = implicitly[ClassTag[T]].runtimeClass
     Try(f()) match {
       case Success(result) => Success(result)
-      case Failure(exception) if exception.isInstanceOf[T] && retryTimes > 0 =>
+      case Failure(exception) if clazz.isInstance(exception) && retryTimes > 0 =>
         log.warn(s"execution failed cause by", exception)
         log.warn(s"$retryTimes times retry remaining, the next will be in ${interval.toMillis}ms")
         LockSupport.parkNanos(interval.toNanos)
