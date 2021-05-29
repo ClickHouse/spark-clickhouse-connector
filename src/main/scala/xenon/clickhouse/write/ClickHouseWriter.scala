@@ -123,7 +123,7 @@ class ClickHouseTruncateWriter(
 
   override def commit(): WriterCommitMessage = {
     grpcNodeClient.syncQueryAndCheck(s"TRUNCATE TABLE `$database`.`$table` $clusterExpr")
-    CommitMessage("Job[]: commit truncate")
+    CommitMessage(s"Job[${jobDesc.id}]: commit truncate")
   }
 
   override def abort(): Unit = grpcNodeClient.shutdownNow()
