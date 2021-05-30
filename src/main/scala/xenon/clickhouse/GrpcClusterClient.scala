@@ -21,11 +21,11 @@ class GrpcClusterClient(cluster: ClusterSpec) extends AutoCloseable {
       case (Some(s), Some(r)) => (s, r)
       case (Some(s), None) =>
         val shardSpec = cluster.shards.filter(_.num == s).head
-        val replicaSpec = shuffle(shardSpec.replicas).head
+        val replicaSpec = shuffle(shardSpec.replicas.toSeq).head
         (s, replicaSpec.num)
       case (None, None) =>
-        val shardSpec = shuffle(cluster.shards).head
-        val replicaSpec = shuffle(shardSpec.replicas).head
+        val shardSpec = shuffle(cluster.shards.toSeq).head
+        val replicaSpec = shuffle(shardSpec.replicas.toSeq).head
         (shardSpec.num, replicaSpec.num)
       case _ =>
         throw ClickHouseAnalysisException(s"invalid shard[$shard] replica[$replica] of cluster ${cluster.name}")

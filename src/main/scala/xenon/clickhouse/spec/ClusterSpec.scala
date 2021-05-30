@@ -39,14 +39,14 @@ case class ReplicaSpec(
 case class ShardSpec(
   num: Int,
   weight: Int,
-  replicas: Seq[ReplicaSpec]
+  replicas: Array[ReplicaSpec]
 ) extends Ordered[ShardSpec] {
   override def compare(that: ShardSpec): Int = Ordering[Int].compare(num, that.num)
 }
 
 case class ClusterSpec(
   name: String,
-  shards: Seq[ShardSpec]
+  shards: Array[ShardSpec]
 ) {
-  def nodes: Seq[NodeSpec] = shards.flatten(_.replicas.map(_.node))
+  def nodes: Seq[NodeSpec] = shards.toSeq.flatten(_.replicas.map(_.node).toSeq)
 }

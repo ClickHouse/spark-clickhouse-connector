@@ -72,9 +72,9 @@ trait ClickHouseHelper {
                 _tcp_port = Some(row.get("port").asInt)
               )
               ReplicaSpec(replicaNum, clickhouseNode)
-            }
+            }.toArray
             ShardSpec(shardNum, shardWeight, nodes)
-          }.toSeq
+          }.toArray
         ClusterSpec(cluster, shards)
       }.toSeq
   }

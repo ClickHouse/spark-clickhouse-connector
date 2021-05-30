@@ -66,6 +66,7 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends DataWriter[InternalR
   val buf: ArrayBuffer[Array[Byte]] = new ArrayBuffer[Array[Byte]](batchSize)
 
   override def write(record: InternalRow): Unit = {
+    // TODO evaluate shard, flush if shard change or reach batchSize
     buf += JsonFormatUtil.row2Json(record, jobDesc.schema, jobDesc.tz)
     if (buf.size == batchSize) flush()
   }
