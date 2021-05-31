@@ -7,10 +7,11 @@ plugins {
     id "org.scoverage" version "5.0.0"
     id "com.google.protobuf" version "0.8.16"
     id "com.github.maiflai.scalatest" version "0.31"
+    id "com.github.johnrengelman.shadow" version "7.0.0"
 }
 
 repositories {
-    String mavenRepoMirror = project.hasProperty('mavenRepoMirror') ? "$mavenRepoMirror"
+    String mavenRepoMirror = project.hasProperty("mavenRepoMirror") ? "$mavenRepoMirror"
             : "https://maven.aliyun.com/repository/central"
     maven { url = mavenRepoMirror }
 }
@@ -40,11 +41,33 @@ configurations {
 }
 
 dependencies {
-    api "org.slf4j:slf4j-api:$slf4j_version"
-
-    api "io.grpc:grpc-stub:$grpc_version"
-    api "io.grpc:grpc-protobuf:$grpc_version"
-    api "io.grpc:grpc-netty-shaded:$grpc_version"
+    api("com.google.guava:guava:$guava_version") {
+        // Guava has one dependency that is needed for linkage at runtime: com.google.guava:failureaccess
+        exclude group: "com.google.code.findbugs", module: "jsr305"
+        exclude group: "com.google.errorprone", module: "error_prone_annotations"
+        exclude group: "com.google.guava", module: "listenablefuture"
+        exclude group: "com.google.j2objc", module: "j2objc-annotations"
+        exclude group: "org.checkerframework", module: "checker-qual"
+    }
+    api("io.grpc:grpc-stub:$grpc_version") {
+        exclude group: "com.google.guava", module: "guava"
+        exclude group: "com.google.code.findbugs", module: "jsr305"
+        exclude group: "com.google.errorprone", module: "error_prone_annotations"
+        exclude group: "org.codehaus.mojo", module: "animal-sniffer-annotations"
+    }
+    api("io.grpc:grpc-protobuf:$grpc_version") {
+        exclude group: "com.google.guava", module: "guava"
+        exclude group: "com.google.code.findbugs", module: "jsr305"
+        exclude group: "com.google.errorprone", module: "error_prone_annotations"
+        exclude group: "org.codehaus.mojo", module: "animal-sniffer-annotations"
+    }
+    api("io.grpc:grpc-netty-shaded:$grpc_version") {
+        exclude group: "com.google.guava", module: "guava"
+        exclude group: "com.google.android", module: "annotations"
+        exclude group: "com.google.code.findbugs", module: "jsr305"
+        exclude group: "com.google.errorprone", module: "error_prone_annotations"
+        exclude group: "org.codehaus.mojo", module: "animal-sniffer-annotations"
+    }
 
     antlr "org.antlr:antlr4:$antlr_version"
 
@@ -127,6 +150,15 @@ scoverage {
     minimumRate.set(0.0)
 }
 
+shadowJar {
+    classifier null
+    zip64 true
+
+    relocate "com.google", "xenon.relocated.com.google"
+    relocate "io.grpc", "xenon.relocated.io.grpc"
+    relocate "io.perfmark", "xenon.relocated.io.perfmark"
+}
+
 version = getProjectVersion()
 
 boolean isVersionFileExists() {
@@ -147,17 +179,17 @@ String getProjectVersion() {
 
 publishing {
     publications {
-        lib(MavenPublication) {
-            from components.java
+        shadow(MavenPublication) { publication ->
+            project.shadow.component(publication)
             artifactId = archivesBaseName
             pom {
-                name = 'Spark ClickHouse Connector'
-                url = 'https://github.com/pan3793/spark-clickhouse-connector'
+                name = "Spark ClickHouse Connector"
+                url = "https://github.com/pan3793/spark-clickhouse-connector"
                 licenses {
                     license {
-                        name = 'The Apache License, Version 2.0'
-                        url = 'http://www.apache.org/licenses/LICENSE-2.0.txt'
-                        distribution = 'repo'
+                        name = "The Apache License, Version 2.0"
+                        url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                        distribution = "repo"
                     }
                 }
             }
@@ -166,15 +198,15 @@ publishing {
 
     repositories {
         maven {
-            String snapshotsRepoUrl = project.hasProperty('mavenSnapshotsRepo') ? "$mavenSnapshotsRepo"
+            String snapshotsRepoUrl = project.hasProperty("mavenSnapshotsRepo") ? "$mavenSnapshotsRepo"
                     : "https://oss.sonatype.org/content/repositories/snapshots"
-            String releasesRepoUrl = project.hasProperty('mavenReleasesRepo') ? "$mavenReleasesRepo"
+            String releasesRepoUrl = project.hasProperty("mavenReleasesRepo") ? "$mavenReleasesRepo"
                     : "https://oss.sonatype.org/service/local/staging/deploy/maven2"
-            url = project.version.endsWith('-SNAPSHOT') ? snapshotsRepoUrl : releasesRepoUrl
+            url = project.version.endsWith("-SNAPSHOT") ? snapshotsRepoUrl : releasesRepoUrl
 
             credentials {
-                username = project.hasProperty('mavenUser') ? "$mavenUser" : ""
-                password = project.hasProperty('mavenPassword') ? "$mavenPassword" : ""
+                username = project.hasProperty("mavenUser") ? "$mavenUser" : ""
+                password = project.hasProperty("mavenPassword") ? "$mavenPassword" : ""
             }
         }
     }
