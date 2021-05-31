@@ -12,7 +12,7 @@ object GrpcClusterClient {
   def apply(cluster: ClusterSpec) = new GrpcClusterClient(cluster)
 }
 
-class GrpcClusterClient(cluster: ClusterSpec) extends AutoCloseable {
+class GrpcClusterClient(cluster: ClusterSpec) extends AutoCloseable with Logging {
 
   @transient lazy val cache = new ConcurrentHashMap[(Int, Int), GrpcNodeClient]
 
@@ -28,7 +28,7 @@ class GrpcClusterClient(cluster: ClusterSpec) extends AutoCloseable {
         val replicaSpec = shuffle(shardSpec.replicas.toSeq).head
         (shardSpec.num, replicaSpec.num)
       case _ =>
-        throw ClickHouseAnalysisException(s"invalid shard[$shard] replica[$replica] of cluster ${cluster.name}")
+        throw ClickHouseAnalysisException(s"Invalid shard[$shard] replica[$replica] of cluster ${cluster.name}")
     }
 
     cache.computeIfAbsent(
@@ -36,7 +36,9 @@ class GrpcClusterClient(cluster: ClusterSpec) extends AutoCloseable {
       { case (s, r) =>
         val shardSpec = cluster.shards.find(_.num == s).get
         val replicaSpec = shardSpec.replicas.find(_.num == r).get
-        new GrpcNodeClient(replicaSpec.node)
+        val nodeSpec = replicaSpec.node
+        log.info(s"Create gRPC client to ${nodeSpec.host}:${nodeSpec.grpc_port}, shard $s replica $r")
+        new GrpcNodeClient(nodeSpec)
       }
     )
   }

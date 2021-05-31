@@ -54,8 +54,14 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends DataWriter[InternalR
         throw ClickHouseAnalysisException(
           s"${ClickHouseSQLConf.WRITE_DISTRIBUTED_CONVERT_LOCAL.key} is not support yet."
         )
-      case (_: DistributedEngineSpec, true, false) => Left(GrpcClusterClient(jobDesc.cluster.get))
-      case _ => Right(GrpcNodeClient(jobDesc.node))
+      case (_: DistributedEngineSpec, true, _) =>
+        val clusterSpec = jobDesc.cluster.get
+        log.info(s"Connect to ClickHouse cluster ${clusterSpec.name}, which has ${clusterSpec.nodes.size} nodes.")
+        Left(GrpcClusterClient(clusterSpec))
+      case _ =>
+        val nodeSpec = jobDesc.node
+        log.info("Connect to ClickHouse single node.")
+        Right(GrpcNodeClient(nodeSpec))
     }
 
   def grpcNodeClient: GrpcNodeClient = grpcClient match {
