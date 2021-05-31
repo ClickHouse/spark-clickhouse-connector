@@ -14,7 +14,7 @@
 
 syntax = "proto3";
 
-option java_package = "com.zy.dp.xenon.protocol.grpc";
+option java_package = "xenon.protocol.grpc";
 option java_outer_classname = "CHGrpc";
 option java_multiple_files = true;
 option optimize_for = SPEED;

@@ -1,6 +1,6 @@
 package org.apache.spark.sql.clickhouse
 
-import com.zy.dp.xenon.protocol.grpc.{Exception => GException}
+import xenon.protocol.grpc.{Exception => GException}
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.AnalysisException
 

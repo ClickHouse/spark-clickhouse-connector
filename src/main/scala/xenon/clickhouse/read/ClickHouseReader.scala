@@ -5,7 +5,7 @@ import java.time.{LocalDate, ZonedDateTime, ZoneId, ZoneOffset}
 import scala.math.BigDecimal.RoundingMode
 
 import com.fasterxml.jackson.databind.node.NullNode
-import com.zy.dp.xenon.protocol.grpc.Result
+import xenon.protocol.grpc.Result
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._

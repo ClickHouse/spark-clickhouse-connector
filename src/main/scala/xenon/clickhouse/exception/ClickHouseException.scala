@@ -1,6 +1,6 @@
 package xenon.clickhouse.exception
 
-import com.zy.dp.xenon.protocol.grpc.{Exception => GException}
+import xenon.protocol.grpc.{Exception => GException}
 
 trait ClickHouseException extends RuntimeException {
   def code: Int

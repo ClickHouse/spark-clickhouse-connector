@@ -1,7 +1,7 @@
 package xenon.clickhouse
 
 import com.google.protobuf.ByteString
-import com.zy.dp.xenon.protocol.grpc.{ClickHouseGrpc, QueryInfo, Result, Exception => GException}
+import xenon.protocol.grpc.{ClickHouseGrpc, QueryInfo, Result, Exception => GException}
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.spec.NodeSpec
