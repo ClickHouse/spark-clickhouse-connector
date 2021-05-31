@@ -14,18 +14,18 @@
 
 package xenon.clickhouse.write
 
-import java.time.Duration
-
-import scala.collection.mutable.ArrayBuffer
-import scala.util.{Failure, Success}
-
+import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
-import org.apache.spark.sql.clickhouse.{ClickHouseAnalysisException, ClickHouseSQLConf}
 import org.apache.spark.sql.clickhouse.util.JsonFormatUtil
+import org.apache.spark.sql.clickhouse.{ClickHouseAnalysisException, ClickHouseSQLConf}
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import xenon.clickhouse._
 import xenon.clickhouse.exception.RetryableClickHouseException
 import xenon.clickhouse.spec.DistributedEngineSpec
+
+import java.time.Duration
+import scala.collection.mutable.ArrayBuffer
+import scala.util.{Failure, Success}
 
 class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends DataWriter[InternalRow] with SQLConfHelper with Logging {
 
@@ -69,7 +69,7 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends DataWriter[InternalR
     case Right(nodeClient) => nodeClient
   }
 
-  val buf: ArrayBuffer[Array[Byte]] = new ArrayBuffer[Array[Byte]](batchSize)
+  val buf: ArrayBuffer[ByteString] = new ArrayBuffer[ByteString](batchSize)
 
   override def write(record: InternalRow): Unit = {
     // TODO evaluate shard, flush if shard change or reach batchSize
@@ -94,7 +94,7 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends DataWriter[InternalR
       conf.getConf(ClickHouseSQLConf.WRITE_MAX_RETRY),
       Duration.ofSeconds(conf.getConf(ClickHouseSQLConf.WRITE_RETRY_INTERVAL))
     ) {
-      grpcNodeClient.syncInsert(database, table, "JSONEachRow", buf.toArray) match {
+      grpcNodeClient.syncInsert(database, table, "JSONEachRow", buf.reduce((l, r) => l concat r)) match {
         case Left(exception)
             if conf.getConf(ClickHouseSQLConf.WRITE_RETRYABLE_ERROR_CODES).contains(exception.getCode) =>
           throw new RetryableClickHouseException(exception)

@@ -86,15 +86,15 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
     database: String,
     table: String,
     inputFormat: String,
-    data: Array[Array[Byte]]
+    data: ByteString
   ): Either[GException, Result] = {
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecutingSQL(sql)
-    val dataBytes = data.map(ByteString.copyFrom).reduce((l, r) => l concat r)
+    //val dataBytes = data.map(ByteString.copyFrom).reduce((l, r) => l concat r)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
       .setQueryId(UUID.randomUUID.toString)
-      .setInputDataBytes(dataBytes)
+      .setInputDataBytes(data)
       .setOutputFormat("JSON")
       .build
     executeQuery(queryInfo)

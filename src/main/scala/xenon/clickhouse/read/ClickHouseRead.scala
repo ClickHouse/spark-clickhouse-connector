@@ -55,19 +55,6 @@ class ClickHouseScanBuilder(
   }
 }
 
-case class ClickHouseInputPartition(
-  shard: Option[ShardSpec],
-  partition: Option[String]
-) extends InputPartition {
-
-  override def preferredLocations(): Array[String] = shard match {
-    case Some(ShardSpec(_, _, replicas)) => replicas.map(_.node.host).toArray
-    case None => Array()
-  }
-}
-
-object ClickHouseWholeTable extends ClickHouseInputPartition(None, None)
-
 class ClickHouseBatchScan(
   node: NodeSpec,
   cluster: Option[ClusterSpec] = None,
