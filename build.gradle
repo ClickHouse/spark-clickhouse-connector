@@ -18,14 +18,14 @@ repositories {
 archivesBaseName = "${project.name}_${scala_binary_version}"
 
 configurations.all {
-    exclude group: "org.slf4j", module: "slf4j-log4j12"
-    exclude group: "log4j", module: "log4j"
-
-    // use hadoop shaded client instead
-    exclude group: "org.apache.hadoop", module: "hadoop-client"
-    exclude group: "org.apache.hadoop", module: "hadoop-common"
-
     resolutionStrategy {
+        force "com.fasterxml.jackson.core:jackson-annotations:$jackson_version"
+        force "com.fasterxml.jackson.core:jackson-core:$jackson_version"
+        force "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
+        force "com.fasterxml.jackson.module:jackson-module-paranamer:$jackson_version"
+        force "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
+
+        force "org.scala-lang.modules:scala-xml_$scala_binary_version:$scala_xml_version"
         force "org.scala-lang:scala-compiler:$scala_version"
         force "org.scala-lang:scala-library:$scala_version"
         force "org.scala-lang:scala-reflect:$scala_version"
@@ -33,9 +33,9 @@ configurations.all {
 }
 
 configurations {
-    runtimeClasspath {
+    api {
         // workaround for https://github.com/gradle/gradle/issues/820
-        exclude group: "org.antlr", module: "antlr4"
+        extendsFrom = extendsFrom.findAll { it != configurations.antlr }
     }
 }
 
@@ -48,22 +48,19 @@ dependencies {
 
     antlr "org.antlr:antlr4:$antlr_version"
 
-    compileOnlyApi "org.scala-lang:scala-library:$scala_version"
-    compileOnlyApi "org.scala-lang:scala-reflect:$scala_version"
+    compileOnly("org.apache.spark:spark-sql_$scala_binary_version:$spark_version") {
+        exclude group: "org.apache.hadoop", module: "hadoop-client" // use hadoop shaded client instead
+        exclude group: "org.slf4j", module: "slf4j-log4j12" // use logback instead
+        exclude group: "log4j", module: "log4j"
+    }
 
-    compileOnlyApi "org.apache.hadoop:hadoop-client-api:$hadoop_version"
+    compileOnly "org.apache.hadoop:hadoop-client-api:$hadoop_version"
 
-    compileOnlyApi "org.apache.spark:spark-core_$scala_binary_version:$spark_version"
-    compileOnlyApi "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
-
-    compileOnlyApi "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
-    compileOnlyApi "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
-
-    testImplementation "org.scala-lang:scala-library:$scala_version"
-    testImplementation "org.scala-lang:scala-reflect:$scala_version"
-
-    testImplementation "org.apache.spark:spark-core_$scala_binary_version:$spark_version"
-    testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
+    testImplementation("org.apache.spark:spark-sql_$scala_binary_version:$spark_version") {
+        exclude group: "org.apache.hadoop", module: "hadoop-client" // use hadoop shaded client instead
+        exclude group: "org.slf4j", module: "slf4j-log4j12" // use logback instead
+        exclude group: "log4j", module: "log4j"
+    }
 
     testImplementation "org.apache.hadoop:hadoop-client-api:$hadoop_version"
     testRuntimeOnly "org.apache.hadoop:hadoop-client-runtime:$hadoop_version"
@@ -72,7 +69,9 @@ dependencies {
     testRuntimeOnly "commons-io:commons-io:$commons_io_version"
 
     testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
-    testRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
+    testRuntimeOnly("com.vladsch.flexmark:flexmark-all:$flexmark_version") {
+        exclude group: "log4j", module: "log4j"
+    }
 
     testImplementation "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
     testImplementation "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
