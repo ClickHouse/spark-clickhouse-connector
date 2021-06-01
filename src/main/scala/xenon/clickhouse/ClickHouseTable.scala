@@ -36,7 +36,7 @@ import xenon.clickhouse.TableEngineUtil._
 class ClickHouseTable(
   node: NodeSpec,
   cluster: Option[ClusterSpec],
-  implicit val tz: Either[ZoneId, ZoneId],
+  implicit val tz: ZoneId,
   spec: TableSpec,
   engineSpec: TableEngineSpec
 ) extends Table
@@ -101,7 +101,7 @@ class ClickHouseTable(
 
     val jobDesc = ScanJobDesc(
       node = node,
-      tz = tz.merge,
+      tz = tz,
       tableSpec = spec,
       tableEngineSpec = engineSpec,
       cluster = cluster,
@@ -120,7 +120,7 @@ class ClickHouseTable(
       queryId = info.queryId,
       dataSetSchema = info.schema,
       node = node,
-      tz = tz.merge,
+      tz = tz,
       tableSpec = spec,
       tableEngineSpec = engineSpec,
       cluster = cluster,

@@ -22,8 +22,6 @@ trait ClickHouseHelper {
   @volatile lazy val DEFAULT_ACTION_IF_NO_SUCH_TABLE: (String, String) => Unit =
     (database, table) => throw new NoSuchTableException(s"$database.$table")
 
-  def quoted(token: String) = s"`$token`"
-
   def unwrap(ident: Identifier): Option[(String, String)] = ident.namespace() match {
     case Array(database) => Some((database, ident.name()))
     case _ => None
@@ -115,7 +113,7 @@ trait ClickHouseHelper {
     actionIfNoSuchTable: (String, String) => Unit = DEFAULT_ACTION_IF_NO_SUCH_TABLE
   )(implicit
     grpcNodeClient: GrpcNodeClient,
-    tz: Either[ZoneId, ZoneId]
+    tz: ZoneId
   ): TableSpec = {
     val tableResult = grpcNodeClient.syncQueryAndCheck(
       s""" SELECT
@@ -159,7 +157,7 @@ trait ClickHouseHelper {
       metadata_path = tableRow.get("metadata_path").asText,
       metadata_modification_time = LocalDateTime.parse(
         tableRow.get("metadata_modification_time").asText,
-        dateTimeFmt.withZone(tz.merge)
+        dateTimeFmt.withZone(tz)
       ),
       dependencies_database = tableRow.get("dependencies_database").elements().asScala.map(_.asText).toArray,
       dependencies_table = tableRow.get("dependencies_table").elements().asScala.map(_.asText).toArray,

@@ -14,6 +14,8 @@
 
 package xenon.clickhouse.read
 
+import java.time.ZoneId
+
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read._
@@ -35,10 +37,15 @@ class ClickHouseScanBuilder(
     with SupportsPushDownFilters
     with SupportsPushDownRequiredColumns {
 
+  implicit private val tz: ZoneId = jobDesc.tz
+
   // default read not include meta columns, like _shard_num UInt32 of Distributed tables.
   private var readSchema: StructType = physicalSchema.copy()
 
-  override def pushFilters(filters: Array[Filter]): Array[Filter] = Array()
+  override def pushFilters(filters: Array[Filter]): Array[Filter] = {
+
+    Array()
+  }
 
   override def pushedFilters(): Array[Filter] = Array()
 

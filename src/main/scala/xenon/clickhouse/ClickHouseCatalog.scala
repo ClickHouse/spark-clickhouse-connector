@@ -14,8 +14,14 @@
 
 package xenon.clickhouse
 
-import org.apache.spark.sql.clickhouse.util.TransformUtil._
+import java.time.ZoneId
+import java.util
+
+import scala.collection.JavaConverters._
+
 import org.apache.spark.sql.catalyst.analysis._
+import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
+import org.apache.spark.sql.clickhouse.util.TransformUtil._
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.StructType
@@ -25,14 +31,9 @@ import xenon.clickhouse.Utils._
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.format.JSONOutput
 import xenon.clickhouse.spec._
-import java.time.ZoneId
-import java.util
 
-import scala.collection.JavaConverters._
-
-import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
-
-class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickHouseHelper with Logging {
+class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
+    with ClickHouseHelper with SQLHelper with Logging {
 
   private var catalogName: String = _
 
@@ -45,7 +46,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
 
   // case Left  => server timezone
   // case Right => client timezone or user specific timezone
-  implicit private var tz: Either[ZoneId, ZoneId] = _
+  private var tz: Either[ZoneId, ZoneId] = _
 
   private var currentDb: String = _
 
@@ -106,7 +107,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
           case Right(_) => (db, tbl)
         }
     }
-
+    implicit val _tz: ZoneId = tz.merge
     val tableSpec = queryTableSpec(database, table)
     val tableEngineSpec = TableEngineUtil.resolveTableEngine(tableSpec)
     val tableClusterSpec = tableEngineSpec match {
@@ -117,7 +118,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces with ClickH
     new ClickHouseTable(
       nodeSpec,
       tableClusterSpec,
-      tz,
+      _tz,
       tableSpec,
       tableEngineSpec
     )
