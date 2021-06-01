@@ -21,7 +21,8 @@ import xenon.clickhouse.spec.{ClusterSpec, NodeSpec}
 import xenon.clickhouse.write.WriteAction._
 import java.time.ZoneId
 
-class ClickHouseWriteBuilder(jobDesc: WriteJobDesc) extends WriteBuilder with SupportsTruncate {
+class ClickHouseWriteBuilder(jobDesc: WriteJobDesc)
+    extends WriteBuilder with SupportsTruncate {
 
   private var action: WriteAction = APPEND
 
@@ -34,20 +35,14 @@ class ClickHouseWriteBuilder(jobDesc: WriteJobDesc) extends WriteBuilder with Su
   }
 }
 
-class ClickHouseBatchWrite(jobDesc: WriteJobDesc, action: WriteAction) extends BatchWrite {
+class ClickHouseBatchWrite(jobDesc: WriteJobDesc, action: WriteAction)
+    extends BatchWrite with DataWriterFactory {
 
-  override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory =
-    new ClickHouseDataWriterFactory(jobDesc, action)
+  override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory = this
 
   override def commit(messages: Array[WriterCommitMessage]): Unit = {}
 
   override def abort(messages: Array[WriterCommitMessage]): Unit = {}
-}
-
-class ClickHouseDataWriterFactory(
-  jobDesc: WriteJobDesc,
-  action: WriteAction
-) extends DataWriterFactory {
 
   override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] = action match {
     case APPEND =>

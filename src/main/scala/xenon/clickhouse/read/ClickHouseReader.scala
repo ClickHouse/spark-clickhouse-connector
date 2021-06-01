@@ -1,40 +1,70 @@
 package xenon.clickhouse.read
 
-import java.time.{LocalDate, ZonedDateTime, ZoneId, ZoneOffset}
+import java.time.{LocalDate, ZonedDateTime, ZoneOffset}
 
 import scala.math.BigDecimal.RoundingMode
 
 import com.fasterxml.jackson.databind.node.NullNode
-import xenon.protocol.grpc.Result
-import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
+import org.apache.spark.sql.clickhouse.{ClickHouseAnalysisException, ClickHouseSQLConf}
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
-import xenon.clickhouse.{ClickHouseHelper, GrpcNodeClient}
+import xenon.clickhouse.{ClickHouseHelper, GrpcClusterClient, GrpcNodeClient, Logging}
 import xenon.clickhouse.Utils._
 import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.format.JSONOutput
-import xenon.clickhouse.spec.{ClusterSpec, NodeSpec}
+import xenon.clickhouse.spec.DistributedEngineSpec
+import xenon.protocol.grpc.Result
 
-class ClickHouseReader(
-  node: NodeSpec,
-  cluster: Option[ClusterSpec] = None,
-  tz: Either[ZoneId, ZoneId],
-  database: String,
-  table: String,
-  readSchema: StructType,
-  filterExpr: String
-) extends PartitionReader[InternalRow]
-    with ClickHouseHelper {
+class ClickHouseReader(jobDesc: ScanJobDesc)
+    extends PartitionReader[InternalRow]
+    with ClickHouseHelper
+    with SQLConfHelper
+    with Logging {
 
-  private lazy val grpcConn: GrpcNodeClient = GrpcNodeClient(node)
+  val readDistributedUseClusterNodes: Boolean = conf.getConf(ClickHouseSQLConf.READ_DISTRIBUTED_USE_CLUSTER_NODES)
+  val readDistributedConvertLocal: Boolean = conf.getConf(ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL)
 
-  lazy val iterator: Iterator[Result] = grpcConn.syncQueryWithStreamOutput(
+  def readSchema: StructType = jobDesc.readSchema
+
+  val database: String = jobDesc.tableEngineSpec match {
+    case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_db
+    case _ => jobDesc.tableSpec.database
+  }
+
+  val table: String = jobDesc.tableEngineSpec match {
+    case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_table
+    case _ => jobDesc.tableSpec.name
+  }
+
+  private lazy val grpcClient: Either[GrpcClusterClient, GrpcNodeClient] =
+    (jobDesc.tableEngineSpec, readDistributedUseClusterNodes, readDistributedConvertLocal) match {
+      case (_: DistributedEngineSpec, _, true) =>
+        throw ClickHouseAnalysisException(
+          s"${ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL.key} is not support yet."
+        )
+      case (_: DistributedEngineSpec, true, _) =>
+        val clusterSpec = jobDesc.cluster.get
+        log.info(s"Connect to ClickHouse cluster ${clusterSpec.name}, which has ${clusterSpec.nodes.size} nodes.")
+        Left(GrpcClusterClient(clusterSpec))
+      case _ =>
+        val nodeSpec = jobDesc.node
+        log.info("Connect to ClickHouse single node.")
+        Right(GrpcNodeClient(nodeSpec))
+    }
+
+  def grpcNodeClient: GrpcNodeClient = grpcClient match {
+    case Left(clusterClient) => clusterClient.node()
+    case Right(nodeClient) => nodeClient
+  }
+
+  lazy val iterator: Iterator[Result] = grpcNodeClient.syncQueryWithStreamOutput(
     s"""
        | SELECT 
        |  ${readSchema.map(field => s"`${field.name}`").mkString(", ")}
        | FROM `$database`.`$table`
-       | WHERE ($filterExpr)
+       | WHERE (${jobDesc.filterExpr})
        | -- AND ( shardExpr )
        | -- AND ( partExpr )
        |""".stripMargin
@@ -70,19 +100,22 @@ class ClickHouseReader(
           case DoubleType => jsonNode.asDouble
           case d: DecimalType => jsonNode.decimalValue.setScale(d.scale, RoundingMode.HALF_UP)
           case TimestampType =>
-            ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(tz.merge))
+            ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(jobDesc.tz))
               .withZoneSameInstant(ZoneOffset.UTC)
               .toEpochSecond * 1000 * 1000
           case StringType => UTF8String.fromString(jsonNode.asText)
           case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay
           case BinaryType => jsonNode.binaryValue
-          case _ => throw ClickHouseClientException(s"unsupported catalyst type ${field.name}[${field.dataType}]")
+          case _ => throw ClickHouseClientException(s"Unsupported catalyst type ${field.name}[${field.dataType}]")
         }
       }
     })
   }
 
-  override def close(): Unit = grpcConn.close()
+  override def close(): Unit = grpcClient match {
+    case Left(clusterClient) => clusterClient.close()
+    case Right(nodeClient) => nodeClient.close()
+  }
 }
 
 class ClickHouseColumnarReader {}

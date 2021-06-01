@@ -17,7 +17,9 @@ package xenon.clickhouse.format
 import com.fasterxml.jackson.annotation.JsonProperty
 import com.fasterxml.jackson.databind.node.ObjectNode
 
-trait Output
+// Call it Output from ClickHouse server perspective,
+// it's actually Input from Spark perspective.
+trait OutputFormat
 
 case class MetaItem(name: String, @JsonProperty("type") typ: String)
 
@@ -26,4 +28,4 @@ case class JSONOutput(
     data: Seq[ObjectNode],
     rows: Long,
     @JsonProperty("rows_before_limit_at_least") rowsBeforeLimitAtLeast: Long
-) extends Output
+) extends OutputFormat

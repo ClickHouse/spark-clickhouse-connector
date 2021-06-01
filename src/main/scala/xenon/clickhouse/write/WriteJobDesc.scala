@@ -6,8 +6,8 @@ import org.apache.spark.sql.types.StructType
 import xenon.clickhouse.spec.{ClusterSpec, NodeSpec, TableEngineSpec, TableSpec}
 
 case class WriteJobDesc(
-  id: String,
-  schema: StructType,
+  queryId: String,
+  dataSetSchema: StructType,
   node: NodeSpec,
   tz: ZoneId,
   tableSpec: TableSpec,
@@ -15,4 +15,6 @@ case class WriteJobDesc(
   cluster: Option[ClusterSpec],
   localTableSpec: Option[TableSpec],
   localTableEngineSpec: Option[TableEngineSpec]
+  // need something like partitionSpec here, to calculate shard, partition of records.
+  // but need to add an repartition to make sure RDD distribution match clickhouse firstly
 )

@@ -27,14 +27,12 @@ import java.time.Duration
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
 
-class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends DataWriter[InternalRow] with SQLConfHelper with Logging {
+class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
+    extends DataWriter[InternalRow] with SQLConfHelper with Logging {
 
   val batchSize: Int = conf.getConf(ClickHouseSQLConf.WRITE_BATCH_SIZE)
   val writeDistributedUseClusterNodes: Boolean = conf.getConf(ClickHouseSQLConf.WRITE_DISTRIBUTED_USE_CLUSTER_NODES)
   val writeDistributedConvertLocal: Boolean = conf.getConf(ClickHouseSQLConf.WRITE_DISTRIBUTED_CONVERT_LOCAL)
-
-  // DataSet schema, not ClickHouse table schema
-  val ckSchema: Map[String, String] = SchemaUtil.toClickHouseSchema(jobDesc.schema).toMap
 
   val database: String = jobDesc.tableEngineSpec match {
     case dist: DistributedEngineSpec if writeDistributedConvertLocal => dist.local_db
@@ -73,13 +71,13 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends DataWriter[InternalR
 
   override def write(record: InternalRow): Unit = {
     // TODO evaluate shard, flush if shard change or reach batchSize
-    buf += JsonFormatUtil.row2Json(record, jobDesc.schema, jobDesc.tz)
+    buf += JsonFormatUtil.row2Json(record, jobDesc.dataSetSchema, jobDesc.tz)
     if (buf.size == batchSize) flush()
   }
 
   override def commit(): WriterCommitMessage = {
     if (buf.nonEmpty) flush()
-    CommitMessage(s"Job[${jobDesc.id}]: commit")
+    CommitMessage(s"Job[${jobDesc.queryId}]: commit")
   }
 
   override def abort(): Unit = close()
@@ -101,14 +99,13 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc) extends DataWriter[InternalR
         case Right(_) => buf.clear
       }
     } match {
-      case Success(_) => log.info(s"Job[${jobDesc.id}]: flush batch")
+      case Success(_) => log.info(s"Job[${jobDesc.queryId}]: flush batch")
       case Failure(rethrow) => throw rethrow
     }
 }
 
-class ClickHouseTruncateWriter(
-  jobDesc: WriteJobDesc
-) extends DataWriter[InternalRow] with SQLConfHelper with Logging {
+class ClickHouseTruncateWriter(jobDesc: WriteJobDesc)
+    extends DataWriter[InternalRow] with SQLConfHelper with Logging {
 
   val truncateDistributedConvertToLocal: Boolean = conf.getConf(ClickHouseSQLConf.TRUNCATE_DISTRIBUTED_CONVERT_LOCAL)
 
@@ -130,7 +127,7 @@ class ClickHouseTruncateWriter(
 
   override def commit(): WriterCommitMessage = {
     grpcNodeClient.syncQueryAndCheck(s"TRUNCATE TABLE `$database`.`$table` $clusterExpr")
-    CommitMessage(s"Job[${jobDesc.id}]: commit truncate")
+    CommitMessage(s"Job[${jobDesc.queryId}]: commit truncate")
   }
 
   override def abort(): Unit = grpcNodeClient.shutdownNow()

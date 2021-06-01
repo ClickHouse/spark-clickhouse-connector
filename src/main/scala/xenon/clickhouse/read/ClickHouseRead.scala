@@ -15,34 +15,28 @@
 package xenon.clickhouse.read
 
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.sources.Filter
 import org.apache.spark.sql.types.StructType
-import xenon.clickhouse.spec.{ClusterSpec, NodeSpec, ShardSpec}
-
-import java.time.ZoneId
 
 class ClickHouseScanBuilder(
-  node: NodeSpec,
-  cluster: Option[ClusterSpec],
-  tz: Either[ZoneId, ZoneId],
-  database: String,
-  table: String,
+  jobDesc: ScanJobDesc,
   // some thoughts on schema.
   // we can divide the columns into 2 kinks:
   // 1. materialized columns, which store the values on local/remote storage
   // 2. calculated columns, which calculate the values on-the-fly when reading
   // but consider that usually CPU would not be bottleneck of clickhouse but IO does, it's not properly suppose that
   // reading calculated columns is expensive than materialized columns
-  physicalSchema: StructType
+  physicalSchema: StructType,
+  metadataSchema: StructType,
+  partitionTransforms: Array[Transform]
 ) extends ScanBuilder
     with SupportsPushDownFilters
     with SupportsPushDownRequiredColumns {
 
+  // default read not include meta columns, like _shard_num UInt32 of Distributed tables.
   private var readSchema: StructType = physicalSchema.copy()
-
-  override def build(): Scan =
-    new ClickHouseBatchScan(node, cluster, tz, database, table, readSchema)
 
   override def pushFilters(filters: Array[Filter]): Array[Filter] = Array()
 
@@ -53,40 +47,27 @@ class ClickHouseScanBuilder(
     // what if column required buf not exists?
     this.readSchema = StructType(physicalSchema.filter(field => requiredCols.contains(field.name)))
   }
+
+  override def build(): Scan =
+    new ClickHouseBatchScan(jobDesc.copy(readSchema = readSchema))
 }
 
-class ClickHouseBatchScan(
-  node: NodeSpec,
-  cluster: Option[ClusterSpec] = None,
-  tz: Either[ZoneId, ZoneId],
-  database: String,
-  table: String,
-  override val readSchema: StructType,
-  filterExpr: String = "1=1"
-) extends Scan
-    with Batch {
+class ClickHouseBatchScan(jobDesc: ScanJobDesc)
+    extends Scan with Batch with PartitionReaderFactory {
+
+  // may contains meta columns
+  override def readSchema(): StructType = jobDesc.readSchema
 
   override def toBatch: Batch = this
 
+  override def createReaderFactory(): PartitionReaderFactory = this
+
   override def planInputPartitions(): Array[InputPartition] = Array(ClickHouseWholeTable)
 
-  override def createReaderFactory(): PartitionReaderFactory =
-    new ClickHouseReaderFactory(node, cluster, tz, database, table, readSchema, filterExpr)
-}
-
-class ClickHouseReaderFactory(
-  node: NodeSpec,
-  cluster: Option[ClusterSpec] = None,
-  tz: Either[ZoneId, ZoneId],
-  database: String,
-  table: String,
-  readSchema: StructType,
-  filterExpr: String
-) extends PartitionReaderFactory {
   override def createReader(partition: InputPartition): PartitionReader[InternalRow] =
     partition.asInstanceOf[ClickHouseInputPartition] match {
       case ClickHouseInputPartition(None, None) =>
-        new ClickHouseReader(node, cluster, tz, database, table, readSchema, filterExpr)
+        new ClickHouseReader(jobDesc)
       case ClickHouseInputPartition(Some(shard), Some(partition)) => ???
       case _ => ???
     }

@@ -28,7 +28,7 @@ import org.apache.spark.sql.connector.read.ScanBuilder
 import org.apache.spark.sql.connector.write.LogicalWriteInfo
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
-import xenon.clickhouse.read.ClickHouseScanBuilder
+import xenon.clickhouse.read.{ClickHouseScanBuilder, ScanJobDesc}
 import xenon.clickhouse.spec.{TableEngineSpec, _}
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDesc}
 import xenon.clickhouse.TableEngineUtil._
@@ -98,7 +98,18 @@ class ClickHouseTable(
   override def newScanBuilder(options: CaseInsensitiveStringMap): ScanBuilder = {
     log.info(s"read options ${options.asScala}")
     // TODO handle read options
-    new ClickHouseScanBuilder(node, cluster, tz, database, table, schema)
+
+    val jobDesc = ScanJobDesc(
+      node = node,
+      tz = tz.merge,
+      tableSpec = spec,
+      tableEngineSpec = engineSpec,
+      cluster = cluster,
+      localTableSpec = localTableSpec,
+      localTableEngineSpec = localTableEngineSpec
+    )
+    // TODO schema of meta columns, partitions
+    new ClickHouseScanBuilder(jobDesc, schema, new StructType(), Array())
   }
 
   override def newWriteBuilder(info: LogicalWriteInfo): ClickHouseWriteBuilder = {
@@ -106,8 +117,8 @@ class ClickHouseTable(
     // TODO handle write options info.options()
 
     val jobDesc = WriteJobDesc(
-      id = info.queryId,
-      schema = info.schema,
+      queryId = info.queryId,
+      dataSetSchema = info.schema,
       node = node,
       tz = tz.merge,
       tableSpec = spec,
