@@ -15,12 +15,12 @@
 package xenon.clickhouse.read
 
 import java.time.ZoneId
-
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.sources.Filter
 import org.apache.spark.sql.types.StructType
+import xenon.clickhouse.{Logging, SQLHelper}
 
 class ClickHouseScanBuilder(
   jobDesc: ScanJobDesc,
@@ -35,19 +35,24 @@ class ClickHouseScanBuilder(
   partitionTransforms: Array[Transform]
 ) extends ScanBuilder
     with SupportsPushDownFilters
-    with SupportsPushDownRequiredColumns {
+    with SupportsPushDownRequiredColumns
+    with SQLHelper
+    with Logging {
 
   implicit private val tz: ZoneId = jobDesc.tz
 
   // default read not include meta columns, like _shard_num UInt32 of Distributed tables.
   private var readSchema: StructType = physicalSchema.copy()
 
-  override def pushFilters(filters: Array[Filter]): Array[Filter] = {
+  private var pushedFilter = Array.empty[Filter]
 
-    Array()
+  override def pushFilters(filters: Array[Filter]): Array[Filter] = {
+    val (pushed, unSupported) = filters.partition(f => compileFilter(f).isDefined)
+    this.pushedFilter = pushed
+    unSupported
   }
 
-  override def pushedFilters(): Array[Filter] = Array()
+  override def pushedFilters(): Array[Filter] = this.pushedFilter
 
   override def pruneColumns(requiredSchema: StructType): Unit = {
     val requiredCols = requiredSchema.map(_.name)
@@ -55,8 +60,10 @@ class ClickHouseScanBuilder(
     this.readSchema = StructType(physicalSchema.filter(field => requiredCols.contains(field.name)))
   }
 
-  override def build(): Scan =
-    new ClickHouseBatchScan(jobDesc.copy(readSchema = readSchema))
+  override def build(): Scan = new ClickHouseBatchScan(jobDesc.copy(
+    readSchema = readSchema,
+    filterExpr = filterWhereClause(pushedFilter)
+  ))
 }
 
 class ClickHouseBatchScan(jobDesc: ScanJobDesc)
