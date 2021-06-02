@@ -14,7 +14,6 @@ trait SQLHelper {
   // null => null, ' => ''
   def escapeSql(value: String): String = StringUtils.replace(value, "'", "''")
 
-  // TODO timezone
   def compileValue(value: Any)(implicit tz: ZoneId): Any = value match {
     case stringValue: String => s"'${escapeSql(stringValue)}'"
     case timestampValue: Timestamp => "'" + timestampValue + "'"
@@ -29,11 +28,9 @@ trait SQLHelper {
     case AlwaysTrue => "1=1"
     case AlwaysFalse => "1=0"
     case EqualTo(attr, value) => s"${quoted(attr)} = ${compileValue(value)}"
-    case EqualNullSafe(attr, value) =>
-      val col = quoted(attr)
-      s"(NOT ($col != ${compileValue(value)} OR $col IS NULL OR " +
-        s"${compileValue(value)} IS NULL) OR " +
-        s"($col IS NULL AND ${compileValue(value)} IS NULL))"
+    case EqualNullSafe(attr, nullableValue) =>
+      val (col, value) = (quoted(attr), compileValue(nullableValue))
+      s"(NOT ($col != $value OR $col IS NULL OR $value IS NULL) OR ($col IS NULL AND $value IS NULL))"
     case LessThan(attr, value) => s"${quoted(attr)} < ${compileValue(value)}"
     case GreaterThan(attr, value) => s"${quoted(attr)} > ${compileValue(value)}"
     case LessThanOrEqual(attr, value) => s"${quoted(attr)} <= ${compileValue(value)}"
@@ -55,7 +52,7 @@ trait SQLHelper {
     case _ => null
   })
 
-  def filterWhereClause(filters: Array[Filter])(implicit tz: ZoneId): String =
+  def filterWhereClause(filters: Seq[Filter])(implicit tz: ZoneId): String =
     filters
       .flatMap(_f => compileFilter(_f)(tz))
       .map(p => s"($p)").mkString(" AND ")
