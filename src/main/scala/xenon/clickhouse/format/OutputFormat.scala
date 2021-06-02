@@ -19,6 +19,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 
 // Call it Output from ClickHouse server perspective,
 // it's actually Input from Spark perspective.
+// TODO JSONCompactEachRowWithNamesAndTypes
 trait OutputFormat
 
 case class MetaItem(name: String, @JsonProperty("type") typ: String)

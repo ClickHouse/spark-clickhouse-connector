@@ -1,6 +1,6 @@
 package xenon.clickhouse.read
 
-import java.time.{LocalDate, ZonedDateTime, ZoneOffset}
+import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
 
 import scala.math.BigDecimal.RoundingMode
 
@@ -61,8 +61,8 @@ class ClickHouseReader(jobDesc: ScanJobDesc)
 
   lazy val iterator: Iterator[Result] = grpcNodeClient.syncQueryWithStreamOutput(
     s"""
-       | SELECT 
-       |  ${readSchema.map(field => s"`${field.name}`").mkString(", ")}
+       | SELECT
+       |  ${if (readSchema.isEmpty) 1 else readSchema.map(field => s"`${field.name}`").mkString(", ")}
        | FROM `$database`.`$table`
        | WHERE (${jobDesc.filterExpr})
        | -- AND ( shardExpr )
@@ -74,12 +74,25 @@ class ClickHouseReader(jobDesc: ScanJobDesc)
   var currentOffset: Int = 0
 
   override def next(): Boolean = {
-    if (currentOutput == null || currentOffset >= currentOutput.rows) {
-      if (!iterator.hasNext) return false
-      currentOutput = om.readValue[JSONOutput](iterator.next.getOutput)
-      currentOffset = 0
+    if (currentOutput != null && currentOffset < currentOutput.rows)
+      return true
+
+    var nextOutput: String = ""
+    while (iterator.hasNext) {
+      nextOutput = iterator.next.getOutput
+      if (nextOutput.nonEmpty) { // skip empty nextOutput
+        currentOutput =
+          try om.readValue[JSONOutput](nextOutput)
+          catch {
+            case rethrow: Throwable =>
+              log.error(s"Invalid JSONOutput: $nextOutput")
+              throw rethrow
+          }
+        currentOffset = 0
+        return true
+      }
     }
-    true
+    false
   }
 
   override def get(): InternalRow = {
