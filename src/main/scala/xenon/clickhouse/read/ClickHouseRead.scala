@@ -57,7 +57,6 @@ class ClickHouseScanBuilder(
 
   override def pruneColumns(requiredSchema: StructType): Unit = {
     val requiredCols = requiredSchema.map(_.name)
-    // what if column required buf not exists?
     this.readSchema = StructType(physicalSchema.filter(field => requiredCols.contains(field.name)))
   }
 

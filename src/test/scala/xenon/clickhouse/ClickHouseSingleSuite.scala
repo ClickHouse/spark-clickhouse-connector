@@ -124,6 +124,11 @@ class ClickHouseSingleSuite extends BaseSparkSuite with ClickHouseSingleSuiteMix
     // |2021-02-02 10:10:10|2  |2    |
     // +-------------------+---+-----+
 
+    spark.table("default.spark_tbl")
+      .filter($"id" > 1)
+      .count
+    // 1
+
     // infiniteLoop()
   }
 }
