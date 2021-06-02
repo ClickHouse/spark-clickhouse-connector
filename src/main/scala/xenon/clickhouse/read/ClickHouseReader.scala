@@ -1,21 +1,22 @@
 package xenon.clickhouse.read
 
-import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
-
-import scala.math.BigDecimal.RoundingMode
-
+import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.{ClickHouseAnalysisException, ClickHouseSQLConf}
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
-import xenon.clickhouse.{ClickHouseHelper, GrpcClusterClient, GrpcNodeClient, Logging}
+import xenon.clickhouse.SchemaUtil.fromClickHouseType
 import xenon.clickhouse.Utils._
-import xenon.clickhouse.exception.ClickHouseClientException
-import xenon.clickhouse.format.JSONOutput
+import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
 import xenon.clickhouse.spec.DistributedEngineSpec
+import xenon.clickhouse.{ClickHouseHelper, GrpcClusterClient, GrpcNodeClient, Logging}
 import xenon.protocol.grpc.Result
+import xenon.clickhouse.exception.ClickHouseErrCode._
+
+import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
+import scala.math.BigDecimal.RoundingMode
 
 class ClickHouseReader(jobDesc: ScanJobDesc)
     extends PartitionReader[InternalRow]
@@ -59,7 +60,7 @@ class ClickHouseReader(jobDesc: ScanJobDesc)
     case Right(nodeClient) => nodeClient
   }
 
-  lazy val iterator: Iterator[Result] = grpcNodeClient.syncQueryWithStreamOutput(
+  lazy val iterator: Iterator[Array[JsonNode]] = grpcNodeClient.syncQueryWithStreamOutput(
     s"""
        | SELECT
        |  ${if (readSchema.isEmpty) 1 else readSchema.map(field => s"`${field.name}`").mkString(", ")}
@@ -69,41 +70,34 @@ class ClickHouseReader(jobDesc: ScanJobDesc)
        | -- AND ( partExpr )
        |""".stripMargin
   )
+    .map { result => onReceiveStreamResult(result); result }
+    .flatMap(_.getOutput.linesIterator)
+    .filter(_.nonEmpty)
+    .map(line => om.readValue[Array[JsonNode]](line))
 
-  var currentOutput: JSONOutput = _
-  var currentOffset: Int = 0
+  private var currentRow: Array[JsonNode] = _
+
+  private var names: Array[String] = _
+  private var types: Array[(DataType, Boolean)] = _
 
   override def next(): Boolean = {
-    if (currentOutput != null && currentOffset < currentOutput.rows)
-      return true
-
-    var nextOutput: String = ""
-    while (iterator.hasNext) {
-      nextOutput = iterator.next.getOutput
-      if (nextOutput.nonEmpty) { // skip empty nextOutput
-        currentOutput =
-          try om.readValue[JSONOutput](nextOutput)
-          catch {
-            case rethrow: Throwable =>
-              log.error(s"Invalid JSONOutput: $nextOutput")
-              throw rethrow
-          }
-        currentOffset = 0
+    while (iterator.hasNext)
+      if (names == null)
+        names = iterator.next.map(_.asText)
+      else if (types == null)
+        types = iterator.next.map(_.asText).map(fromClickHouseType)
+      else {
+        currentRow = iterator.next
         return true
       }
-    }
     false
   }
 
-  override def get(): InternalRow = {
-    val row = currentOutput.data(currentOffset)
-    currentOffset = currentOffset + 1
-    InternalRow.fromSeq(readSchema.map { field =>
-      val jsonNode = row.get(field.name)
-      if (field.nullable && (jsonNode == null || jsonNode.isInstanceOf[NullNode])) {
-        null
-      } else {
-        field.dataType match {
+  override def get(): InternalRow =
+    InternalRow.fromSeq((currentRow zip readSchema).map {
+      case (null, StructField(_, _, true, _)) => null
+      case (_: NullNode, StructField(_, _, true, _)) => null
+      case (jsonNode: JsonNode, StructField(name, dataType, _, _)) => dataType match {
           case BooleanType => jsonNode.asBoolean
           case ByteType => jsonNode.asInt.byteValue
           case ShortType => jsonNode.asInt.byteValue
@@ -119,15 +113,18 @@ class ClickHouseReader(jobDesc: ScanJobDesc)
           case StringType => UTF8String.fromString(jsonNode.asText)
           case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay
           case BinaryType => jsonNode.binaryValue
-          case _ => throw ClickHouseClientException(s"Unsupported catalyst type ${field.name}[${field.dataType}]")
+          case _ => throw ClickHouseClientException(s"Unsupported catalyst type $name[$dataType]")
         }
-      }
     })
-  }
 
   override def close(): Unit = grpcClient match {
     case Left(clusterClient) => clusterClient.close()
     case Right(nodeClient) => nodeClient.close()
+  }
+
+  def onReceiveStreamResult(result: Result): Unit = result match {
+    case _ if result.getException.getCode == OK.code =>
+    case _ => throw new ClickHouseServerException(result.getException)
   }
 }
 

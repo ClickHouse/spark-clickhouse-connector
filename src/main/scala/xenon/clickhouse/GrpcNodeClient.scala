@@ -1,17 +1,16 @@
 package xenon.clickhouse
 
 import com.google.protobuf.ByteString
-import xenon.protocol.grpc.{ClickHouseGrpc, QueryInfo, Result, Exception => GException}
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
+import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.spec.NodeSpec
+import xenon.protocol.grpc.{ClickHouseGrpc, QueryInfo, Result, Exception => GException}
+
 import java.util.UUID
 import java.util.concurrent.TimeUnit
-
-import scala.util.control.NonFatal
 import scala.collection.JavaConverters._
-
-import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
+import scala.util.control.NonFatal
 
 object GrpcNodeClient {
   def apply(node: NodeSpec): GrpcNodeClient = new GrpcNodeClient(node)
@@ -72,7 +71,7 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
       .setQueryId(UUID.randomUUID.toString)
-      .setOutputFormat("JSON")
+      .setOutputFormat("JSONCompactEachRowWithNamesAndTypes")
       .build
     blockingStub.executeQueryWithStreamOutput(queryInfo).asScala
   }
