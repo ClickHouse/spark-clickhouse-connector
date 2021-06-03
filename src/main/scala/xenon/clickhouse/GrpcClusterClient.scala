@@ -37,7 +37,7 @@ class GrpcClusterClient(cluster: ClusterSpec) extends AutoCloseable with Logging
         val shardSpec = cluster.shards.find(_.num == s).get
         val replicaSpec = shardSpec.replicas.find(_.num == r).get
         val nodeSpec = replicaSpec.node
-        log.info(s"Create gRPC client to ${nodeSpec.host}:${nodeSpec.grpc_port}, shard $s replica $r")
+        log.info(s"Create gRPC client to ${nodeSpec.host}:${nodeSpec.grpc_port.get}, shard $s replica $r")
         new GrpcNodeClient(nodeSpec)
       }
     )
