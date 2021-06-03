@@ -52,6 +52,7 @@ object TransformUtil {
       // Assume all others is just a column name without any transforms,
       // thus, `xxHash64(abc)` is not supported yet.
       case identity_regex(expr) => identity(expr)
+      // TODO support xxHash64
       case unsupported => throw ClickHouseAnalysisException(s"Unsupported transform expression: $unsupported")
     }
 
