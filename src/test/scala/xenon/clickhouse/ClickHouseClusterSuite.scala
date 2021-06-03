@@ -41,9 +41,9 @@ class ClickHouseClusterSuite extends BaseSparkSuite with ClickHouseClusterSuiteM
     "spark.clickhouse.write.retryInterval" -> "1",
     "spark.clickhouse.write.retryableErrorCodes" -> "241",
     "spark.clickhouse.write.distributed.useClusterNodes" -> "true",
-    "spark.clickhouse.read.distributed.useClusterNodes" -> "true",
+    "spark.clickhouse.read.distributed.useClusterNodes" -> "false",
     "spark.clickhouse.write.distributed.convertLocal" -> "false",
-    "spark.clickhouse.read.distributed.convertLocal" -> "false",
+    "spark.clickhouse.read.distributed.convertLocal" -> "true",
     "spark.clickhouse.truncate.distributed.convertLocal" -> "true"
   )
 

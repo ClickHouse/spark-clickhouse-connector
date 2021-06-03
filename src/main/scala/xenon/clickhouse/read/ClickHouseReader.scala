@@ -1,25 +1,28 @@
 package xenon.clickhouse.read
 
+import java.time.{LocalDate, ZonedDateTime, ZoneOffset}
+
+import scala.math.BigDecimal.RoundingMode
+
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
-import org.apache.spark.sql.clickhouse.{ClickHouseAnalysisException, ClickHouseSQLConf}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
+import xenon.clickhouse.{ClickHouseHelper, Logging}
 import xenon.clickhouse.SchemaUtil.fromClickHouseType
 import xenon.clickhouse.Utils._
 import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
-import xenon.clickhouse.spec.DistributedEngineSpec
-import xenon.clickhouse.{ClickHouseHelper, GrpcClusterClient, GrpcNodeClient, Logging}
-import xenon.protocol.grpc.Result
 import xenon.clickhouse.exception.ClickHouseErrCode._
+import xenon.clickhouse.grpc.{GrpcNodeClient, GrpcNodesClient}
+import xenon.protocol.grpc.Result
 
-import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
-import scala.math.BigDecimal.RoundingMode
-
-class ClickHouseReader(jobDesc: ScanJobDesc)
-    extends PartitionReader[InternalRow]
+class ClickHouseReader(
+  jobDesc: ScanJobDesc,
+  part: ClickHouseInputPartition
+) extends PartitionReader[InternalRow]
     with ClickHouseHelper
     with SQLConfHelper
     with Logging {
@@ -27,38 +30,14 @@ class ClickHouseReader(jobDesc: ScanJobDesc)
   val readDistributedUseClusterNodes: Boolean = conf.getConf(ClickHouseSQLConf.READ_DISTRIBUTED_USE_CLUSTER_NODES)
   val readDistributedConvertLocal: Boolean = conf.getConf(ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL)
 
+  val database: String = part.table.database
+  val table: String = part.table.name
+
   def readSchema: StructType = jobDesc.readSchema
 
-  val database: String = jobDesc.tableEngineSpec match {
-    case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_db
-    case _ => jobDesc.tableSpec.database
-  }
+  private lazy val grpcClient: GrpcNodesClient = GrpcNodesClient(part.candidateNodes)
 
-  val table: String = jobDesc.tableEngineSpec match {
-    case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_table
-    case _ => jobDesc.tableSpec.name
-  }
-
-  private lazy val grpcClient: Either[GrpcClusterClient, GrpcNodeClient] =
-    (jobDesc.tableEngineSpec, readDistributedUseClusterNodes, readDistributedConvertLocal) match {
-      case (_: DistributedEngineSpec, _, true) =>
-        throw ClickHouseAnalysisException(
-          s"${ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL.key} is not support yet."
-        )
-      case (_: DistributedEngineSpec, true, _) =>
-        val clusterSpec = jobDesc.cluster.get
-        log.info(s"Connect to ClickHouse cluster ${clusterSpec.name}, which has ${clusterSpec.nodes.size} nodes.")
-        Left(GrpcClusterClient(clusterSpec))
-      case _ =>
-        val nodeSpec = jobDesc.node
-        log.info("Connect to ClickHouse single node.")
-        Right(GrpcNodeClient(nodeSpec))
-    }
-
-  def grpcNodeClient: GrpcNodeClient = grpcClient match {
-    case Left(clusterClient) => clusterClient.node()
-    case Right(nodeClient) => nodeClient
-  }
+  def grpcNodeClient: GrpcNodeClient = grpcClient.node
 
   lazy val iterator: Iterator[Array[JsonNode]] = grpcNodeClient.syncQueryWithStreamOutput(
     s"""
@@ -66,8 +45,7 @@ class ClickHouseReader(jobDesc: ScanJobDesc)
        |  ${if (readSchema.isEmpty) 1 else readSchema.map(field => s"`${field.name}`").mkString(", ")}
        | FROM `$database`.`$table`
        | WHERE (${jobDesc.filterExpr})
-       | -- AND ( shardExpr )
-       | -- AND ( partExpr )
+       | AND ( ${part.partFilterExpr} )
        |""".stripMargin
   )
     .map { result => onReceiveStreamResult(result); result }
@@ -117,10 +95,7 @@ class ClickHouseReader(jobDesc: ScanJobDesc)
         }
     })
 
-  override def close(): Unit = grpcClient match {
-    case Left(clusterClient) => clusterClient.close()
-    case Right(nodeClient) => nodeClient.close()
-  }
+  override def close(): Unit = grpcClient.close()
 
   def onReceiveStreamResult(result: Result): Unit = result match {
     case _ if result.getException.getCode == OK.code =>

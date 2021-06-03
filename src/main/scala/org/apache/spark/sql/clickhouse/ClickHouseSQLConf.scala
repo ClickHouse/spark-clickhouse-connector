@@ -49,21 +49,23 @@ trait ClickHouseSQLConfBase {
     buildConf("read.distributed.useClusterNodes")
       .doc("Read from all nodes of cluster when reading Distributed table.")
       .booleanConf
-      .createWithDefault(true)
+      .checkValue(_ == false, "`read.distributed.useClusterNodes` is not support yet.")
+      .createWithDefault(false)
 
   val WRITE_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
     buildConf("write.distributed.convertLocal")
-      .doc("When writing Distributed table, write local table instead of itself.")
+      .doc("When writing Distributed table, write local table instead of itself. " +
+        "If `true`, ignore `write.distributed.useClusterNodes`.")
       .booleanConf
       .checkValue(_ == false, "`write.distributed.convertLocal` is not support yet.")
       .createWithDefault(false)
 
   val READ_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
     buildConf("read.distributed.convertLocal")
-      .doc("When reading Distributed table, read local table instead of itself.")
+      .doc("When reading Distributed table, read local table instead of itself. " +
+        "If `true`, ignore `read.distributed.useClusterNodes`.")
       .booleanConf
-      .checkValue(_ == false, "`read.distributed.convertLocal` is not support yet.")
-      .createWithDefault(false)
+      .createWithDefault(true)
 
   val TRUNCATE_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
     buildConf("truncate.distributed.convertLocal")

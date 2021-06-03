@@ -1,16 +1,18 @@
-package xenon.clickhouse
+package xenon.clickhouse.grpc
+
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+
+import scala.collection.JavaConverters._
+import scala.util.control.NonFatal
 
 import com.google.protobuf.ByteString
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
 import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.spec.NodeSpec
+import xenon.clickhouse.Logging
 import xenon.protocol.grpc.{ClickHouseGrpc, QueryInfo, Result, Exception => GException}
-
-import java.util.UUID
-import java.util.concurrent.TimeUnit
-import scala.collection.JavaConverters._
-import scala.util.control.NonFatal
 
 object GrpcNodeClient {
   def apply(node: NodeSpec): GrpcNodeClient = new GrpcNodeClient(node)

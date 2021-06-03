@@ -32,6 +32,7 @@ import xenon.clickhouse.read.{ClickHouseScanBuilder, ScanJobDesc}
 import xenon.clickhouse.spec.{TableEngineSpec, _}
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDesc}
 import xenon.clickhouse.TableEngineUtil._
+import xenon.clickhouse.grpc.GrpcNodeClient
 
 class ClickHouseTable(
   node: NodeSpec,

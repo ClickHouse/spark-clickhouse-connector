@@ -16,12 +16,19 @@ package xenon.clickhouse.read
 
 import java.time.ZoneId
 
-import org.apache.spark.sql.catalyst.InternalRow
+import scala.util.Using
+
+import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
+import org.apache.spark.sql.clickhouse.{ClickHouseAnalysisException, ClickHouseSQLConf}
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read._
+import org.apache.spark.sql.connector.read.partitioning.Partitioning
 import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types.StructType
-import xenon.clickhouse.{Logging, SQLHelper}
+import org.apache.spark.sql.vectorized.ColumnarBatch
+import xenon.clickhouse.{ClickHouseHelper, Logging, SQLHelper}
+import xenon.clickhouse.grpc.GrpcNodeClient
+import xenon.clickhouse.spec.{DistributedEngineSpec, NoPartitionSpec, TableEngineSpec}
 
 class ClickHouseScanBuilder(
   jobDesc: ScanJobDesc,
@@ -66,23 +73,65 @@ class ClickHouseScanBuilder(
   ))
 }
 
-class ClickHouseBatchScan(jobDesc: ScanJobDesc)
-    extends Scan with Batch with PartitionReaderFactory {
+class ClickHouseBatchScan(jobDesc: ScanJobDesc) extends Scan with Batch
+    with SupportsReportPartitioning
+    with PartitionReaderFactory
+    with ClickHouseHelper
+    with SQLConfHelper {
+
+  val readDistributedUseClusterNodes: Boolean = conf.getConf(ClickHouseSQLConf.READ_DISTRIBUTED_USE_CLUSTER_NODES)
+  val readDistributedConvertLocal: Boolean = conf.getConf(ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL)
+
+  val database: String = jobDesc.tableEngineSpec match {
+    case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_db
+    case _ => jobDesc.tableSpec.database
+  }
+
+  val table: String = jobDesc.tableEngineSpec match {
+    case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_table
+    case _ => jobDesc.tableSpec.name
+  }
+
+  lazy val inputPartitions: Array[ClickHouseInputPartition] = jobDesc.tableEngineSpec match {
+    case DistributedEngineSpec(_, _, local_db, local_table, _, _, _) if readDistributedConvertLocal =>
+      jobDesc.cluster.get.shards.flatMap { shardSpec =>
+        Using.resource(GrpcNodeClient(shardSpec.nodes.head)) { implicit grpcNodeClient: GrpcNodeClient =>
+          queryPartitionSpec(local_db, local_table).map(partitionSpec =>
+            ClickHouseInputPartition(jobDesc.localTableSpec.get, partitionSpec, shardSpec) // TODO pickup preferred
+          )
+        }
+      }
+    case _: DistributedEngineSpec if readDistributedUseClusterNodes =>
+      throw ClickHouseAnalysisException(
+        s"${ClickHouseSQLConf.READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
+      )
+    case _: DistributedEngineSpec =>
+      // we can not collect all partitions from single node, thus should treat table as no partitioned table
+      Array(ClickHouseInputPartition(jobDesc.tableSpec, NoPartitionSpec, jobDesc.node))
+    case _: TableEngineSpec =>
+      Using.resource(GrpcNodeClient(jobDesc.node)) { implicit grpcNodeClient: GrpcNodeClient =>
+        queryPartitionSpec(database, table).map(partitionSpec =>
+          ClickHouseInputPartition(jobDesc.tableSpec, partitionSpec, jobDesc.node) // TODO pickup preferred
+        )
+      }.toArray
+  }
+
+  override def toBatch: Batch = this
 
   // may contains meta columns
   override def readSchema(): StructType = jobDesc.readSchema
 
-  override def toBatch: Batch = this
+  override def planInputPartitions: Array[InputPartition] = inputPartitions.toArray
 
-  override def createReaderFactory(): PartitionReaderFactory = this
+  override def outputPartitioning(): Partitioning = ClickHousePartitioning(inputPartitions)
 
-  override def planInputPartitions(): Array[InputPartition] = Array(ClickHouseWholeTable)
+  override def createReaderFactory: PartitionReaderFactory = this
 
   override def createReader(partition: InputPartition): PartitionReader[InternalRow] =
-    partition.asInstanceOf[ClickHouseInputPartition] match {
-      case ClickHouseInputPartition(None, None) =>
-        new ClickHouseReader(jobDesc)
-      case ClickHouseInputPartition(Some(shard), Some(partition)) => ???
-      case _ => ???
-    }
+    new ClickHouseReader(jobDesc, partition.asInstanceOf[ClickHouseInputPartition])
+
+  override def supportColumnarReads(partition: InputPartition): Boolean = false
+
+  override def createColumnarReader(partition: InputPartition): PartitionReader[ColumnarBatch] =
+    super.createColumnarReader(partition)
 }

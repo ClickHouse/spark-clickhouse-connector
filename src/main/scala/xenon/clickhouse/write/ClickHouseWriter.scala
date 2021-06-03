@@ -22,10 +22,12 @@ import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import xenon.clickhouse._
 import xenon.clickhouse.exception.RetryableClickHouseException
 import xenon.clickhouse.spec.DistributedEngineSpec
-
 import java.time.Duration
+
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
+
+import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
 
 class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
     extends DataWriter[InternalRow] with SQLConfHelper with Logging {
@@ -44,6 +46,8 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
     case _ => jobDesc.tableSpec.name
   }
 
+  // put the node select strategy in executor side because we need to calculate shard and don't know the records
+  // util DataWriter#write(InternalRow) invoked.
   private lazy val grpcClient: Either[GrpcClusterClient, GrpcNodeClient] =
     (jobDesc.tableEngineSpec, writeDistributedUseClusterNodes, writeDistributedConvertLocal) match {
       case (_: DistributedEngineSpec, _, true) =>
@@ -54,7 +58,7 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
         )
       case (_: DistributedEngineSpec, true, _) =>
         val clusterSpec = jobDesc.cluster.get
-        log.info(s"Connect to ClickHouse cluster ${clusterSpec.name}, which has ${clusterSpec.nodes.size} nodes.")
+        log.info(s"Connect to ClickHouse cluster ${clusterSpec.name}, which has ${clusterSpec.nodes.length} nodes.")
         Left(GrpcClusterClient(clusterSpec))
       case _ =>
         val nodeSpec = jobDesc.node

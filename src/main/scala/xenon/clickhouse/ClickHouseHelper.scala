@@ -1,5 +1,9 @@
 package xenon.clickhouse
 
+import java.time.{LocalDateTime, ZoneId}
+
+import scala.collection.JavaConverters._
+
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.analysis.{NoSuchDatabaseException, NoSuchTableException}
@@ -9,10 +13,8 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
 import xenon.clickhouse.Utils.{dateTimeFmt, om}
 import xenon.clickhouse.format.JSONOutput
-import xenon.clickhouse.spec.{ClusterSpec, DatabaseSpec, NodeSpec, ReplicaSpec, ShardSpec, TableSpec}
-
-import java.time.{LocalDateTime, ZoneId}
-import scala.collection.JavaConverters._
+import xenon.clickhouse.grpc.GrpcNodeClient
+import xenon.clickhouse.spec._
 
 trait ClickHouseHelper {
 
@@ -224,5 +226,33 @@ trait ClickHouseHelper {
       val ckType = row.get("type").asText
       (fieldName, ckType)
     })
+  }
+
+  def queryPartitionSpec(
+    database: String,
+    table: String
+  )(implicit grpcNodeClient: GrpcNodeClient): Seq[PartitionSpec] = {
+    val partResult = grpcNodeClient.syncQueryAndCheck(
+      s""" SELECT
+         |   partition,                           -- String
+         |   sum(rows)          AS row_count,     -- UInt64
+         |   sum(bytes_on_disk) AS size_in_bytes  -- UInt64
+         | FROM `system`.`parts`
+         | WHERE `database`='$database' AND `table`='$table'
+         | GROUP BY `partition`
+         | ORDER BY `partition` ASC
+         | """.stripMargin
+    )
+    val partOutput = om.readValue[JSONOutput](partResult.getOutput)
+    if (partOutput.rows == 0) {
+      return Array(NoPartitionSpec)
+    }
+    partOutput.data.map { row =>
+      PartitionSpec(
+        partition = row.get("partition").asText,
+        row_count = row.get("row_count").asLong,
+        size_in_bytes = row.get("size_in_bytes").asLong
+      )
+    }
   }
 }

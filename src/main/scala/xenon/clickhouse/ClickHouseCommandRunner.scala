@@ -1,9 +1,10 @@
 package xenon.clickhouse
 
+import scala.util.Using
+
 import org.apache.spark.sql.connector.ExternalCommandRunner
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
-
-import scala.util.Using
+import xenon.clickhouse.grpc.GrpcNodeClient
 
 class ClickHouseCommandRunner extends ExternalCommandRunner with ClickHouseHelper {
 

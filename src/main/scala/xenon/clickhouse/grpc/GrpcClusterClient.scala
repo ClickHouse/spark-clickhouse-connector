@@ -1,4 +1,4 @@
-package xenon.clickhouse
+package xenon.clickhouse.grpc
 
 import java.util.concurrent.ConcurrentHashMap
 
@@ -7,6 +7,7 @@ import scala.util.Random._
 
 import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
 import xenon.clickhouse.spec.ClusterSpec
+import xenon.clickhouse.Logging
 
 object GrpcClusterClient {
   def apply(cluster: ClusterSpec) = new GrpcClusterClient(cluster)

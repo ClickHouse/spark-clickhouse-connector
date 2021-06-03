@@ -30,6 +30,7 @@ import xenon.clickhouse.Constants._
 import xenon.clickhouse.Utils._
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.format.JSONOutput
+import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
 
 class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
