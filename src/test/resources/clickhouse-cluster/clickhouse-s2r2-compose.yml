@@ -2,8 +2,7 @@ version: '3.5'
 
 services:
   zookeeper:
-    # zookeeper 3.6.3 is out, but docker image is unavailable yet
-    image: zookeeper:3.6.2
+    image: zookeeper:3.6.3
     ports:
       - 2181
     hostname: zookeeper
