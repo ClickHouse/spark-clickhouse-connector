@@ -11,26 +11,30 @@ class TableEngineUtilSuite extends AnyFunSuite {
   }
 
   test("parse ReplicatedMergeTree - 1") {
-    val ddl = "ReplicatedMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}')"
+    val ddl = "ReplicatedMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}') " +
+      "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
     val tableEngine = TableEngineUtil.parseReplicatedMergeTreeEngine(ddl)
     assert(tableEngine.zk_path == "/clickhouse/tables/{shard}/wj_report/wj_respondent")
     assert(tableEngine.replica_name == "{replica}")
   }
 
   test("parse ReplacingMergeTree - 1") {
-    val ddl = "ReplacingMergeTree()"
+    val ddl = "ReplacingMergeTree() " +
+      "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
     val tableEngine = TableEngineUtil.parseReplacingMergeTreeEngine(ddl)
     assert(tableEngine.version_column.isEmpty)
   }
 
   test("parse ReplacingMergeTree - 2") {
-    val ddl = "ReplacingMergeTree(ts)"
+    val ddl = "ReplacingMergeTree(ts) " +
+      "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
     val tableEngine = TableEngineUtil.parseReplacingMergeTreeEngine(ddl)
     assert(tableEngine.version_column.contains("ts"))
   }
 
   test("parse ReplicatedReplacingMergeTree - 1") {
-    val ddl = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}')"
+    val ddl = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}') " +
+      "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
     val tableEngine = TableEngineUtil.parseReplicatedReplacingMergeTreeEngine(ddl)
     assert(tableEngine.zk_path == "/clickhouse/tables/{shard}/wj_report/wj_respondent")
     assert(tableEngine.replica_name == "{replica}")
@@ -38,7 +42,8 @@ class TableEngineUtilSuite extends AnyFunSuite {
   }
 
   test("parse ReplicatedReplacingMergeTree - 2") {
-    val ddl = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}', ts)"
+    val ddl = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}', ts) " +
+      "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
     val tableEngine = TableEngineUtil.parseReplicatedReplacingMergeTreeEngine(ddl)
     assert(tableEngine.zk_path == "/clickhouse/tables/{shard}/wj_report/wj_respondent")
     assert(tableEngine.replica_name == "{replica}")

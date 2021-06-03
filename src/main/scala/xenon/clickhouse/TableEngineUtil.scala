@@ -34,17 +34,21 @@ object TableEngineUtil {
   // clause present in ordered.
 
   val merge_tree_engine_full_regex: Regex =
-    """MergeTree""".r.unanchored
+    """MergeTree(\(\))?( PARTITION BY .*)?""".r.unanchored
 
+  // FIXME support no partitioned
   val replicated_merge_tree_engine_full_regex: Regex =
-    """ReplicatedMergeTree\('([/\w{}]+)',\s*'([\w{}]+)'\)""".r
+    """ReplicatedMergeTree\('([/\w{}]+)',\s*'([\w{}]+)'\) PARTITION BY .*""".r
 
+  // FIXME support no partitioned
   val replacing_merge_tree_engine_full_regex: Regex =
-    """ReplacingMergeTree\(([^,]+)?\)""".r
+    """ReplacingMergeTree\(([^,]+)?\) PARTITION BY .*""".r
 
+  // FIXME support no partitioned
   val replicated_replacing_merge_tree_engine_full_regex: Regex =
-    """ReplicatedReplacingMergeTree\('([/\w{}]+)',\s*'([\w{}]+)'(,\s*([^,]+))?\)""".r
+    """ReplicatedReplacingMergeTree\('([/\w{}]+)',\s*'([\w{}]+)'(,\s*([^,]+))?\) PARTITION BY .*""".r
 
+  // FIXME support no partitioned
   val distributed_engine_full_regex: Regex =
     """Distributed\('(\w+)',\s*'(\w+)',\s*'(\w+)'(,\s*([^,]+)(,\s*([^,]+))?)?\)""".r
 
@@ -105,7 +109,7 @@ object TableEngineUtil {
   @VisibleForTesting
   private[clickhouse] def parseMergeTreeEngine(engine_full: String): MergeTreeEngineSpec =
     engine_full match {
-      case merge_tree_engine_full_regex() =>
+      case merge_tree_engine_full_regex(_, _) =>
         MergeTreeEngineSpec(engine_full)
       case _ => throw ClickHouseAnalysisException(s"parse full engine failed. $engine_full")
     }
@@ -134,8 +138,6 @@ object TableEngineUtil {
   @VisibleForTesting
   private[clickhouse] def parseReplacingMergeTreeEngine(engine_full: String): ReplacingMergeTreeEngineSpec =
     engine_full match {
-      case replacing_merge_tree_engine_full_regex() =>
-        ReplacingMergeTreeEngineSpec(engine_full)
       case replacing_merge_tree_engine_full_regex(version_col) =>
         ReplacingMergeTreeEngineSpec(engine_full, Option(version_col))
       case _ => throw ClickHouseAnalysisException(s"parse full engine failed. $engine_full")
@@ -152,8 +154,6 @@ object TableEngineUtil {
   private[clickhouse] def parseReplicatedReplacingMergeTreeEngine(engine_full: String)
     : ReplicatedReplacingMergeTreeEngineSpec =
     engine_full match {
-      case replicated_replacing_merge_tree_engine_full_regex(zk_path, replica_name) =>
-        ReplicatedReplacingMergeTreeEngineSpec(engine_full, zk_path, replica_name)
       case replicated_replacing_merge_tree_engine_full_regex(zk_path, replica_name, _, version_col) =>
         ReplicatedReplacingMergeTreeEngineSpec(engine_full, zk_path, replica_name, Option(version_col))
       case _ => throw ClickHouseAnalysisException(s"parse full engine failed. $engine_full")
@@ -170,10 +170,6 @@ object TableEngineUtil {
   @VisibleForTesting
   private[clickhouse] def parseDistributedEngine(engine_full: String): DistributedEngineSpec =
     engine_full match {
-      case distributed_engine_full_regex(cluster, local_db, local_tbl) =>
-        DistributedEngineSpec(engine_full, cluster, local_db, local_tbl)
-      case distributed_engine_full_regex(cluster, local_db, local_tbl, _, sharding_key) =>
-        DistributedEngineSpec(engine_full, cluster, local_db, local_tbl, Option(sharding_key))
       case distributed_engine_full_regex(cluster, local_db, local_tbl, _, sharding_key, _, policy) =>
         DistributedEngineSpec(engine_full, cluster, local_db, local_tbl, Option(sharding_key), Option(policy))
       case _ => throw ClickHouseAnalysisException(s"parse full engine failed. $engine_full")
