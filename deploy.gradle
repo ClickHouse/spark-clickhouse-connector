@@ -6,10 +6,8 @@ subprojects {
             publications {
                 shadow(MavenPublication) { publication ->
                     if (project.name.endsWith("-runtime")) {
-                        println "project ${project.name} publish shadow jar"
                         project.shadow.component(publication)
                     } else {
-                        println "project ${project.name} publish normal jar"
                         from components.java
                     }
                     artifactId = archivesBaseName

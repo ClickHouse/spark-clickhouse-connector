@@ -1,12 +1,12 @@
 dependencies {
-    implementation "org.scala-lang:scala-library:$scala_version"
+    implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
+    implementation project(":clickhouse-spark-31-runtime")       // for IDEA source code index
 
-//    implementation project(":clickhouse-spark-31-runtime")
-    implementation project(path: ":clickhouse-spark-31-runtime", configuration: "shadow")
+    testImplementation project(path: ":clickhouse-spark-31-runtime", configuration: "shadow")
 
     testImplementation("org.apache.spark:spark-sql_$scala_binary_version:$spark_version") {
         exclude group: "org.apache.hadoop", module: "hadoop-client" // use hadoop shaded client instead
-        exclude group: "org.slf4j", module: "slf4j-log4j12" // use logback instead
+        exclude group: "org.slf4j", module: "slf4j-log4j12"         // use logback instead
         exclude group: "log4j", module: "log4j"
     }
 
