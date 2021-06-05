@@ -1,4 +1,4 @@
-package xenon.clickhouse.base
+package clickhouse.base
 
 import org.apache.hadoop.fs.FileSystem
 import org.apache.spark.sql.{Row, SparkSession}

@@ -1,11 +1,11 @@
-package xenon.clickhouse.base
+package clickhouse.base
 
 import java.io.File
+import xenon.clickhouse.Utils
+import xenon.clickhouse.Utils.PREFIX
 
 import com.dimafeng.testcontainers.{DockerComposeContainer, ExposedService, ForAllTestContainer}
 import org.scalatest.funsuite.AnyFunSuite
-import xenon.clickhouse.Utils
-import xenon.clickhouse.Utils.PREFIX
 
 trait ClickHouseClusterSuiteMixIn extends AnyFunSuite with ForAllTestContainer {
 

@@ -1,8 +1,9 @@
-package xenon.clickhouse
+package clickhouse
 
+import clickhouse.base.{BaseSparkSuite, ClickHouseClusterSuiteMixIn}
 import org.apache.spark.sql.functions.to_timestamp
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
-import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseClusterSuiteMixIn}
+import xenon.clickhouse.Logging
 
 class ClickHouseClusterSuite extends BaseSparkSuite with ClickHouseClusterSuiteMixIn with Logging {
 
@@ -56,6 +57,7 @@ class ClickHouseClusterSuite extends BaseSparkSuite with ClickHouseClusterSuiteM
   )
 
   test("clickhouse write cluster") {
+
     import spark.implicits._
 
     spark.sql(

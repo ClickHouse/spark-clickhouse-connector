@@ -5,8 +5,7 @@ import java.util.concurrent.ConcurrentHashMap
 import scala.collection.JavaConverters._
 import scala.util.Random._
 
-import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
-import xenon.clickhouse.spec.{ClusterSpec, NodeSpec, Nodes}
+import xenon.clickhouse.spec.{Nodes, NodeSpec}
 import xenon.clickhouse.Logging
 
 object GrpcNodesClient {

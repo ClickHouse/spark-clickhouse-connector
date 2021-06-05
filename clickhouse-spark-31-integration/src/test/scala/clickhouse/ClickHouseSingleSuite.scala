@@ -1,8 +1,9 @@
-package xenon.clickhouse
+package clickhouse
 
+import clickhouse.base.{BaseSparkSuite, ClickHouseSingleSuiteMixIn}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
-import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseSingleSuiteMixIn}
+import xenon.clickhouse.Logging
 
 class ClickHouseSingleSuite extends BaseSparkSuite with ClickHouseSingleSuiteMixIn with Logging {
 
@@ -57,6 +58,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite with ClickHouseSingleSuiteMix
   }
 
   test("clickhouse write then read") {
+
     import spark.implicits._
 
     spark.sql(

@@ -1,0 +1,77 @@
+plugins {
+    id "antlr"
+    id "com.google.protobuf"
+}
+
+sourceSets.main.scala {
+    srcDirs += "src/main/scala-$scala_binary_version"
+}
+
+configurations {
+    api {
+        // workaround for https://github.com/gradle/gradle/issues/820
+        extendsFrom = extendsFrom.findAll { it != configurations.antlr }
+    }
+}
+
+generateGrammarSource {
+    maxHeapSize = "64m"
+    arguments += ["-visitor", "-package", "xenon.clickhouse"]
+}
+
+protobuf {
+    protoc {
+        artifact = "com.google.protobuf:protoc:$protobuf_version"
+    }
+    plugins {
+        grpc {
+            artifact = "io.grpc:protoc-gen-grpc-java:$grpc_version"
+        }
+    }
+    generateProtoTasks {
+        all()*.plugins {
+            grpc {}
+        }
+    }
+}
+
+dependencies {
+    api "org.scala-lang:scala-library:$scala_version"
+
+    antlr "org.antlr:antlr4:$antlr_version"
+    api "org.antlr:antlr4-runtime:$antlr_version"
+
+    api "org.slf4j:slf4j-api:$slf4j_version"
+    api "org.apache.commons:commons-lang3:$commons_lang3_version"
+
+    api "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
+    api "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
+
+    api("com.google.guava:guava:$guava_version") {
+        // Guava has one dependency that is needed for linkage at runtime: com.google.guava:failureaccess
+        exclude group: "com.google.code.findbugs", module: "jsr305"
+        exclude group: "com.google.errorprone", module: "error_prone_annotations"
+        exclude group: "com.google.guava", module: "listenablefuture"
+        exclude group: "com.google.j2objc", module: "j2objc-annotations"
+        exclude group: "org.checkerframework", module: "checker-qual"
+    }
+    api("io.grpc:grpc-stub:$grpc_version") {
+        exclude group: "com.google.guava", module: "guava"
+        exclude group: "com.google.code.findbugs", module: "jsr305"
+        exclude group: "com.google.errorprone", module: "error_prone_annotations"
+        exclude group: "org.codehaus.mojo", module: "animal-sniffer-annotations"
+    }
+    api("io.grpc:grpc-protobuf:$grpc_version") {
+        exclude group: "com.google.guava", module: "guava"
+        exclude group: "com.google.code.findbugs", module: "jsr305"
+        exclude group: "com.google.errorprone", module: "error_prone_annotations"
+        exclude group: "org.codehaus.mojo", module: "animal-sniffer-annotations"
+    }
+    api("io.grpc:grpc-netty-shaded:$grpc_version") {
+        exclude group: "com.google.guava", module: "guava"
+        exclude group: "com.google.android", module: "annotations"
+        exclude group: "com.google.code.findbugs", module: "jsr305"
+        exclude group: "com.google.errorprone", module: "error_prone_annotations"
+        exclude group: "org.codehaus.mojo", module: "animal-sniffer-annotations"
+    }
+}
