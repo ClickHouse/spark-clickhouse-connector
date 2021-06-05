@@ -1,165 +1,96 @@
 plugins {
-    id "antlr"
     id "idea"
-    id "scala"
-    id "java-library"
-    id "maven-publish"
-    id "org.scoverage" version "5.0.0"
-    id "com.google.protobuf" version "0.8.16"
-    id "com.github.maiflai.scalatest" version "0.31"
-    id "com.github.johnrengelman.shadow" version "7.0.0"
+    id "org.scoverage" version "5.0.0" apply false
+    id "com.google.protobuf" version "0.8.16" apply false
+    id "com.github.maiflai.scalatest" version "0.31" apply false
+    id "com.github.johnrengelman.shadow" version "7.0.0" apply false
 }
 
-repositories {
-    String mavenRepoMirror = project.hasProperty("mavenRepoMirror") ? "$mavenRepoMirror"
-            : "https://maven.aliyun.com/repository/central"
-    maven { url = mavenRepoMirror }
-}
+subprojects {
+    apply plugin: "idea"
+    apply plugin: "scala"
+    apply plugin: "java-library"
+    apply plugin: "org.scoverage"
+    apply plugin: "com.github.maiflai.scalatest"
 
-archivesBaseName = "${project.name}_${scala_binary_version}"
-
-configurations.all {
-    resolutionStrategy {
-        force "com.fasterxml.jackson.core:jackson-annotations:$jackson_version"
-        force "com.fasterxml.jackson.core:jackson-core:$jackson_version"
-        force "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
-        force "com.fasterxml.jackson.module:jackson-module-paranamer:$jackson_version"
-        force "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
-
-        force "org.scala-lang.modules:scala-xml_$scala_binary_version:$scala_xml_version"
-        force "org.scala-lang:scala-compiler:$scala_version"
-        force "org.scala-lang:scala-library:$scala_version"
-        force "org.scala-lang:scala-reflect:$scala_version"
-    }
-}
-
-configurations {
-    api {
-        // workaround for https://github.com/gradle/gradle/issues/820
-        extendsFrom = extendsFrom.findAll { it != configurations.antlr }
-    }
-}
-
-dependencies {
-    api("com.google.guava:guava:$guava_version") {
-        // Guava has one dependency that is needed for linkage at runtime: com.google.guava:failureaccess
-        exclude group: "com.google.code.findbugs", module: "jsr305"
-        exclude group: "com.google.errorprone", module: "error_prone_annotations"
-        exclude group: "com.google.guava", module: "listenablefuture"
-        exclude group: "com.google.j2objc", module: "j2objc-annotations"
-        exclude group: "org.checkerframework", module: "checker-qual"
-    }
-    api("io.grpc:grpc-stub:$grpc_version") {
-        exclude group: "com.google.guava", module: "guava"
-        exclude group: "com.google.code.findbugs", module: "jsr305"
-        exclude group: "com.google.errorprone", module: "error_prone_annotations"
-        exclude group: "org.codehaus.mojo", module: "animal-sniffer-annotations"
-    }
-    api("io.grpc:grpc-protobuf:$grpc_version") {
-        exclude group: "com.google.guava", module: "guava"
-        exclude group: "com.google.code.findbugs", module: "jsr305"
-        exclude group: "com.google.errorprone", module: "error_prone_annotations"
-        exclude group: "org.codehaus.mojo", module: "animal-sniffer-annotations"
-    }
-    api("io.grpc:grpc-netty-shaded:$grpc_version") {
-        exclude group: "com.google.guava", module: "guava"
-        exclude group: "com.google.android", module: "annotations"
-        exclude group: "com.google.code.findbugs", module: "jsr305"
-        exclude group: "com.google.errorprone", module: "error_prone_annotations"
-        exclude group: "org.codehaus.mojo", module: "animal-sniffer-annotations"
+    repositories {
+        String mavenRepoMirror = project.hasProperty("mavenRepoMirror") ? "$mavenRepoMirror"
+                : "https://maven.aliyun.com/repository/central"
+        maven { url = mavenRepoMirror }
     }
 
-    antlr "org.antlr:antlr4:$antlr_version"
+    version = getProjectVersion()
 
-    compileOnly("org.apache.spark:spark-sql_$scala_binary_version:$spark_version") {
-        exclude group: "org.apache.hadoop", module: "hadoop-client" // use hadoop shaded client instead
-        exclude group: "org.slf4j", module: "slf4j-log4j12" // use logback instead
-        exclude group: "log4j", module: "log4j"
-    }
+    archivesBaseName = "${project.name}_${scala_binary_version}"
 
-    compileOnly "org.apache.hadoop:hadoop-client-api:$hadoop_version"
+    configurations.all {
+        resolutionStrategy {
+            force "com.fasterxml.jackson.core:jackson-annotations:$jackson_version"
+            force "com.fasterxml.jackson.core:jackson-core:$jackson_version"
+            force "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
+            force "com.fasterxml.jackson.module:jackson-module-paranamer:$jackson_version"
+            force "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
 
-    testImplementation("org.apache.spark:spark-sql_$scala_binary_version:$spark_version") {
-        exclude group: "org.apache.hadoop", module: "hadoop-client" // use hadoop shaded client instead
-        exclude group: "org.slf4j", module: "slf4j-log4j12" // use logback instead
-        exclude group: "log4j", module: "log4j"
-    }
-
-    testImplementation "org.apache.hadoop:hadoop-client-api:$hadoop_version"
-    testRuntimeOnly "org.apache.hadoop:hadoop-client-runtime:$hadoop_version"
-    // required when using Hadoop Shaded Client, see SPARK-33212
-    testRuntimeOnly "commons-collections:commons-collections:$commons_collections_version"
-    testRuntimeOnly "commons-io:commons-io:$commons_io_version"
-
-    testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
-    testRuntimeOnly("com.vladsch.flexmark:flexmark-all:$flexmark_version") {
-        exclude group: "log4j", module: "log4j"
-    }
-
-    testImplementation "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
-    testImplementation "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
-    testRuntimeOnly "ru.yandex.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
-
-    testRuntimeOnly "org.slf4j:log4j-over-slf4j:$slf4j_version"
-    testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
-}
-
-generateGrammarSource {
-    maxHeapSize = "64m"
-    arguments += ["-visitor", "-package", "xenon.clickhouse"]
-}
-
-sourceSets.main.scala {
-    srcDirs += "src/main/scala-$scala_binary_version"
-}
-
-java {
-    sourceCompatibility = JavaVersion.VERSION_1_8
-    targetCompatibility = JavaVersion.VERSION_1_8
-    withSourcesJar()
-}
-
-compileScala {
-    options.fork = true
-    options.forkOptions.jvmArgs += ["-Xss8M"]
-}
-
-protobuf {
-    protoc {
-        artifact = "com.google.protobuf:protoc:$protobuf_version"
-    }
-    plugins {
-        grpc {
-            artifact = "io.grpc:protoc-gen-grpc-java:$grpc_version"
+            force "org.scala-lang.modules:scala-xml_$scala_binary_version:$scala_xml_version"
+            force "org.scala-lang:scala-compiler:$scala_version"
+            force "org.scala-lang:scala-library:$scala_version"
+            force "org.scala-lang:scala-reflect:$scala_version"
         }
     }
-    generateProtoTasks {
-        all()*.plugins {
-            grpc {}
-        }
+
+    java {
+        sourceCompatibility = JavaVersion.VERSION_1_8
+        targetCompatibility = JavaVersion.VERSION_1_8
+        withSourcesJar()
+    }
+
+    compileScala {
+        options.fork = true
+        options.forkOptions.jvmArgs += ["-Xss8M"]
+    }
+
+    test {
+        maxParallelForks = 1
+    }
+
+    scoverage {
+        reportDir.set(file("${rootProject.buildDir}/reports/scoverage"))
+        highlighting.set(false)
+        minimumRate.set(0.0)
     }
 }
 
-test {
-    maxParallelForks = 1
+project(":clickhouse-spark-31-runtime") {
+    apply plugin: "com.github.johnrengelman.shadow"
+
+    tasks.jar.dependsOn tasks.shadowJar
+
+    dependencies {
+        compileOnly "org.scala-lang:scala-library:$scala_version"
+
+        implementation(project(":clickhouse-spark-31")) {
+            exclude group: "org.scala-lang", module: "scala-library"
+            exclude group: "org.slf4j", module: "slf4j-api"
+            exclude group: "org.apache.commons", module: "commons-lang3"
+            exclude group: "com.fasterxml.jackson.core", module: "jackson-databind"
+            exclude group: "com.fasterxml.jackson.module", module: "jackson-module-scala_$scala_binary_version"
+        }
+    }
+
+    shadowJar {
+        zip64 true
+        classifier null
+
+        relocate "org.antlr.v4.runtime", "xenon.relocated.org.antlr.v4.runtime"
+        relocate "com.google", "xenon.relocated.com.google"
+        relocate "io.grpc", "xenon.relocated.io.grpc"
+        relocate "io.perfmark", "xenon.relocated.io.perfmark"
+    }
+
+    jar {
+        enabled = false
+    }
 }
-
-scoverage {
-    reportDir.set(file("${rootProject.buildDir}/reports/scoverage"))
-    highlighting.set(false)
-    minimumRate.set(0.0)
-}
-
-shadowJar {
-    classifier null
-    zip64 true
-
-    relocate "com.google", "xenon.relocated.com.google"
-    relocate "io.grpc", "xenon.relocated.io.grpc"
-    relocate "io.perfmark", "xenon.relocated.io.perfmark"
-}
-
-version = getProjectVersion()
 
 boolean isVersionFileExists() {
     return file("version.txt").exists()
@@ -177,37 +108,4 @@ String getProjectVersion() {
     return project.hasProperty("release") ? baseVersion : "$baseVersion-SNAPSHOT"
 }
 
-publishing {
-    publications {
-        shadow(MavenPublication) { publication ->
-            project.shadow.component(publication)
-            artifactId = archivesBaseName
-            pom {
-                name = "Spark ClickHouse Connector"
-                url = "https://github.com/pan3793/spark-clickhouse-connector"
-                licenses {
-                    license {
-                        name = "The Apache License, Version 2.0"
-                        url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
-                        distribution = "repo"
-                    }
-                }
-            }
-        }
-    }
-
-    repositories {
-        maven {
-            String snapshotsRepoUrl = project.hasProperty("mavenSnapshotsRepo") ? "$mavenSnapshotsRepo"
-                    : "https://oss.sonatype.org/content/repositories/snapshots"
-            String releasesRepoUrl = project.hasProperty("mavenReleasesRepo") ? "$mavenReleasesRepo"
-                    : "https://oss.sonatype.org/service/local/staging/deploy/maven2"
-            url = project.version.endsWith("-SNAPSHOT") ? snapshotsRepoUrl : releasesRepoUrl
-
-            credentials {
-                username = project.hasProperty("mavenUser") ? "$mavenUser" : ""
-                password = project.hasProperty("mavenPassword") ? "$mavenPassword" : ""
-            }
-        }
-    }
-}
+apply from: "deploy.gradle"

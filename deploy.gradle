@@ -1,0 +1,46 @@
+subprojects {
+    apply plugin: "maven-publish"
+
+    publishing {
+        if (!project.name.endsWith("-integration")) {
+            publications {
+                shadow(MavenPublication) { publication ->
+                    if (project.name.endsWith("-runtime")) {
+                        println "project ${project.name} publish shadow jar"
+                        project.shadow.component(publication)
+                    } else {
+                        println "project ${project.name} publish normal jar"
+                        from components.java
+                    }
+                    artifactId = archivesBaseName
+                    pom {
+                        name = "Spark ClickHouse Connector"
+                        url = "https://github.com/pan3793/spark-clickhouse-connector"
+                        licenses {
+                            license {
+                                name = "The Apache License, Version 2.0"
+                                url = "http://www.apache.org/licenses/LICENSE-2.0.txt"
+                                distribution = "repo"
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        repositories {
+            maven {
+                String snapshotsRepoUrl = project.hasProperty("mavenSnapshotsRepo") ? "$mavenSnapshotsRepo"
+                        : "https://oss.sonatype.org/content/repositories/snapshots"
+                String releasesRepoUrl = project.hasProperty("mavenReleasesRepo") ? "$mavenReleasesRepo"
+                        : "https://oss.sonatype.org/service/local/staging/deploy/maven2"
+                url = project.version.endsWith("-SNAPSHOT") ? snapshotsRepoUrl : releasesRepoUrl
+
+                credentials {
+                    username = project.hasProperty("mavenUser") ? "$mavenUser" : ""
+                    password = project.hasProperty("mavenPassword") ? "$mavenPassword" : ""
+                }
+            }
+        }
+    }
+}
