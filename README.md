@@ -13,7 +13,7 @@ The projects haven't published to Maven Central, you need to build and publish t
 
 ```
 dependencies {
-    implementation("com.github.xenon:spark-clickhouse-connector_2.12:$version")
+    implementation("com.github.xenon:clickhouse-spark-31-runtime_2.12:$version")
 }
 ```
 
@@ -21,7 +21,7 @@ dependencies {
 ```
 <dependency>
   <groupId>com.github.xenon</groupId>
-  <artifactId>spark-clickhouse-connector_2.12</artifactId>
+  <artifactId>clickhouse-spark-31-runtime_2.12</artifactId>
   <version>${version}</version>
 </dependency>
 ```
