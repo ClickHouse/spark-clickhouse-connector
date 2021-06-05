@@ -1,6 +1,5 @@
 dependencies {
     implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
-    implementation project(":clickhouse-spark-31-runtime")       // for IDEA source code index
 
     testImplementation project(path: ":clickhouse-spark-31-runtime", configuration: "shadow")
 
