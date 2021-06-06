@@ -1,4 +1,4 @@
-package clickhouse.base
+package xenon.clickhouse.base
 
 import java.io.File
 import xenon.clickhouse.Utils

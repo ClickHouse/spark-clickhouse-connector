@@ -1,9 +1,8 @@
-package clickhouse
+package xenon.clickhouse
 
-import clickhouse.base.{BaseSparkSuite, ClickHouseSingleSuiteMixIn}
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
-import xenon.clickhouse.Logging
+import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseSingleSuiteMixIn}
 
 class ClickHouseSingleSuite extends BaseSparkSuite with ClickHouseSingleSuiteMixIn with Logging {
 

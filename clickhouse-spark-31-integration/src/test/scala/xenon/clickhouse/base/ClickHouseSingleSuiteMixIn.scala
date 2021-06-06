@@ -1,4 +1,4 @@
-package clickhouse.base
+package xenon.clickhouse.base
 
 import com.dimafeng.testcontainers.{ForAllTestContainer, JdbcDatabaseContainer, SingleContainer}
 import org.scalatest.funsuite.AnyFunSuite

@@ -1,9 +1,8 @@
-package clickhouse
+package xenon.clickhouse
 
-import clickhouse.base.{BaseSparkSuite, ClickHouseClusterSuiteMixIn}
 import org.apache.spark.sql.functions.to_timestamp
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
-import xenon.clickhouse.Logging
+import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseClusterSuiteMixIn}
 
 class ClickHouseClusterSuite extends BaseSparkSuite with ClickHouseClusterSuiteMixIn with Logging {
 
