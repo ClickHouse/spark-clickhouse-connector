@@ -3,7 +3,7 @@ package xenon.clickhouse.read
 import java.time.ZoneId
 
 import org.apache.spark.sql.types.StructType
-import xenon.clickhouse.spec.{ClusterSpec, NodeSpec, TableEngineSpec, TableSpec}
+import xenon.clickhouse.spec._
 
 case class ScanJobDesc(
   node: NodeSpec,

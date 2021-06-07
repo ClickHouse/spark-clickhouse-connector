@@ -31,7 +31,7 @@ trait ClickHouseHelper {
 
   def buildNodeSpec(options: CaseInsensitiveStringMap): NodeSpec = {
     val host = options.getOrDefault(CATALOG_PROP_HOST, "localhost")
-    val port = options.getInt(CATALOG_PROP_PORT, 9100)
+    val port = options.getInt(CATALOG_PROP_GRPC_PORT, 9100)
     val user = options.getOrDefault(CATALOG_PROP_USER, "default")
     val password = options.getOrDefault(CATALOG_PROP_PASSWORD, "")
     val database = options.getOrDefault(CATALOG_PROP_DATABASE, "default")

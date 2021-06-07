@@ -5,12 +5,12 @@ object Constants {
   //////////////////////////////////////////////////////////
   //////// clickhouse datasource catalog properties ////////
   //////////////////////////////////////////////////////////
-  final val CATALOG_PROP_HOST     = "host"
-  final val CATALOG_PROP_PORT     = "port"
-  final val CATALOG_PROP_USER     = "user"
-  final val CATALOG_PROP_PASSWORD = "password"
-  final val CATALOG_PROP_DATABASE = "database"
-  final val CATALOG_PROP_TZ       = "timezone" // server(default), client, UTC+3, Asia/Shanghai, etc.
+  final val CATALOG_PROP_HOST      = "host"
+  final val CATALOG_PROP_GRPC_PORT = "grpc_port"
+  final val CATALOG_PROP_USER      = "user"
+  final val CATALOG_PROP_PASSWORD  = "password"
+  final val CATALOG_PROP_DATABASE  = "database"
+  final val CATALOG_PROP_TZ        = "timezone" // server(default), client, UTC+3, Asia/Shanghai, etc.
 
   //////////////////////////////////////////////////////////
   ////////// clickhouse datasource read properties /////////

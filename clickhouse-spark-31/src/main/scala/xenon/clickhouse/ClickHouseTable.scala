@@ -29,7 +29,7 @@ import org.apache.spark.sql.connector.write.LogicalWriteInfo
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.read.{ClickHouseScanBuilder, ScanJobDesc}
-import xenon.clickhouse.spec.{TableEngineSpec, _}
+import xenon.clickhouse.spec._
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDesc}
 import xenon.clickhouse.TableEngineUtil._
 import xenon.clickhouse.grpc.GrpcNodeClient

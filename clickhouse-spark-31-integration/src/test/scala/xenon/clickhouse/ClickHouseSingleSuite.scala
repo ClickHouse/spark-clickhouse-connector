@@ -14,7 +14,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite with ClickHouseSingleSuiteMix
     "spark.sql.defaultCatalog" -> "clickhouse",
     "spark.sql.catalog.clickhouse" -> "xenon.clickhouse.ClickHouseCatalog",
     "spark.sql.catalog.clickhouse.host" -> clickhouseHost,
-    "spark.sql.catalog.clickhouse.port" -> clickhouseGrpcPort.toString,
+    "spark.sql.catalog.clickhouse.grpc_port" -> clickhouseGrpcPort.toString,
     "spark.sql.catalog.clickhouse.user" -> CLICKHOUSE_USER,
     "spark.sql.catalog.clickhouse.password" -> CLICKHOUSE_PASSWORD,
     "spark.sql.catalog.clickhouse.database" -> CLICKHOUSE_DB,
@@ -26,7 +26,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite with ClickHouseSingleSuiteMix
 
   override def cmdRunnerOptions: Map[String, String] = Map(
     "host" -> clickhouseHost,
-    "port" -> clickhouseGrpcPort.toString,
+    "grpc_port" -> clickhouseGrpcPort.toString,
     "user" -> CLICKHOUSE_USER,
     "password" -> CLICKHOUSE_PASSWORD,
     "database" -> CLICKHOUSE_DB

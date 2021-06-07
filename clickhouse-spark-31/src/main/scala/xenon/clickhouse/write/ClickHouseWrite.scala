@@ -16,10 +16,7 @@ package xenon.clickhouse.write
 
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.connector.write._
-import org.apache.spark.sql.types.StructType
-import xenon.clickhouse.spec.{ClusterSpec, NodeSpec}
 import xenon.clickhouse.write.WriteAction._
-import java.time.ZoneId
 
 class ClickHouseWriteBuilder(jobDesc: WriteJobDesc)
     extends WriteBuilder with SupportsTruncate {
