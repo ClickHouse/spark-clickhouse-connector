@@ -134,7 +134,7 @@ class ClickHouseTruncateWriter(jobDesc: WriteJobDesc)
     CommitMessage(s"Job[${jobDesc.queryId}]: commit truncate")
   }
 
-  override def abort(): Unit = grpcNodeClient.shutdownNow()
+  override def abort(): Unit = grpcNodeClient.close()
 
   override def close(): Unit = grpcNodeClient.close()
 }

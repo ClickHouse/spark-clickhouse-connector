@@ -53,14 +53,15 @@ class ClickHouseTable(
 
   def isDistributed: Boolean = engineSpec.is_distributed
 
-  lazy val (localTableSpec, localTableEngineSpec): (Option[TableSpec], Option[MergeTreeFamilyEngineSpec]) = engineSpec match {
-    case distSpec: DistributedEngineSpec => Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
-        val _localTableSpec = queryTableSpec(distSpec.local_db, distSpec.local_table)
-        val _localTableEngineSpec = resolveTableEngine(_localTableSpec).asInstanceOf[MergeTreeFamilyEngineSpec]
-        (Some(_localTableSpec), Some(_localTableEngineSpec))
-      }
-    case _ => (None, None)
-  }
+  lazy val (localTableSpec, localTableEngineSpec): (Option[TableSpec], Option[MergeTreeFamilyEngineSpec]) =
+    engineSpec match {
+      case distSpec: DistributedEngineSpec => Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+          val _localTableSpec = queryTableSpec(distSpec.local_db, distSpec.local_table)
+          val _localTableEngineSpec = resolveTableEngine(_localTableSpec).asInstanceOf[MergeTreeFamilyEngineSpec]
+          (Some(_localTableSpec), Some(_localTableEngineSpec))
+        }
+      case _ => (None, None)
+    }
 
   def shardingKey: Option[String] = engineSpec match {
     case _spec: DistributedEngineSpec => _spec.sharding_key

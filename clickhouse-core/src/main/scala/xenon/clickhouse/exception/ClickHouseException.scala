@@ -1,6 +1,6 @@
 package xenon.clickhouse.exception
 
-import xenon.protocol.grpc.{Exception => GException}
+import xenon.protocol.grpc.{Exception => GRPCException}
 
 trait ClickHouseException extends RuntimeException {
   def code: Int
@@ -11,7 +11,7 @@ case class ClickHouseServerException(
   override val code: Int,
   override val msg: String
 ) extends ClickHouseException {
-  def this(exception: GException) = this(exception.getCode, exception.getDisplayText)
+  def this(exception: GRPCException) = this(exception.getCode, exception.getDisplayText)
 }
 
 case class ClickHouseClientException(
@@ -24,5 +24,5 @@ case class RetryableClickHouseException(
   override val code: Int,
   override val msg: String
 ) extends ClickHouseException {
-  def this(exception: GException) = this(exception.getCode, exception.getDisplayText)
+  def this(exception: GRPCException) = this(exception.getCode, exception.getDisplayText)
 }

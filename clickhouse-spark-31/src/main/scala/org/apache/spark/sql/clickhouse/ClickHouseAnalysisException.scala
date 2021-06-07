@@ -1,6 +1,6 @@
 package org.apache.spark.sql.clickhouse
 
-import xenon.protocol.grpc.{Exception => GException}
+import xenon.protocol.grpc.{Exception => GRPCException}
 import org.apache.spark.sql.catalyst.plans.logical.LogicalPlan
 import org.apache.spark.sql.AnalysisException
 
@@ -13,5 +13,5 @@ case class ClickHouseAnalysisException(
   override val cause: Option[Throwable] = None
 ) extends AnalysisException(message, line, startPosition, plan, cause) {
 
-  def this(exception: GException) = this(message = s"Error[${exception.getCode}] ${exception.getDisplayText}")
+  def this(exception: GRPCException) = this(message = s"Error[${exception.getCode}] ${exception.getDisplayText}")
 }
