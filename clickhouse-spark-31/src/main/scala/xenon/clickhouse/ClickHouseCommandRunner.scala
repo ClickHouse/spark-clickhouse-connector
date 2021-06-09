@@ -10,6 +10,7 @@ class ClickHouseCommandRunner extends ExternalCommandRunner with ClickHouseHelpe
 
   override def executeCommand(sql: String, options: CaseInsensitiveStringMap): Array[String] =
     Using.resource(GrpcNodeClient(buildNodeSpec(options))) { grpcNodeClient =>
+      // TODO refactor the output as tableau
       Array(grpcNodeClient.syncQueryAndCheck(sql).getOutput)
     }
 }

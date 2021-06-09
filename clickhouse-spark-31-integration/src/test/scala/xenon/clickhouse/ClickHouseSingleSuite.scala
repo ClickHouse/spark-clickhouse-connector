@@ -2,35 +2,12 @@ package xenon.clickhouse
 
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
-import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseSingleSuiteMixIn}
+import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseSingleSuiteMixIn, SparkClickHouseSingleSuiteMixin}
 
-class ClickHouseSingleSuite extends BaseSparkSuite with ClickHouseSingleSuiteMixIn with Logging {
-
-  override def sparkOptions: Map[String, String] = Map(
-    "spark.master" -> "local[1]",
-    "spark.ui.enabled" -> "false", // enable when debug
-    "spark.app.name" -> "spark-clickhouse-single-ut",
-    "spark.sql.shuffle.partitions" -> "1",
-    "spark.sql.defaultCatalog" -> "clickhouse",
-    "spark.sql.catalog.clickhouse" -> "xenon.clickhouse.ClickHouseCatalog",
-    "spark.sql.catalog.clickhouse.host" -> clickhouseHost,
-    "spark.sql.catalog.clickhouse.grpc_port" -> clickhouseGrpcPort.toString,
-    "spark.sql.catalog.clickhouse.user" -> CLICKHOUSE_USER,
-    "spark.sql.catalog.clickhouse.password" -> CLICKHOUSE_PASSWORD,
-    "spark.sql.catalog.clickhouse.database" -> CLICKHOUSE_DB,
-    "spark.clickhouse.write.batchSize" -> "2",
-    "spark.clickhouse.write.maxRetry" -> "2",
-    "spark.clickhouse.write.retryInterval" -> "1",
-    "spark.clickhouse.write.retryableErrorCodes" -> "241"
-  )
-
-  override def cmdRunnerOptions: Map[String, String] = Map(
-    "host" -> clickhouseHost,
-    "grpc_port" -> clickhouseGrpcPort.toString,
-    "user" -> CLICKHOUSE_USER,
-    "password" -> CLICKHOUSE_PASSWORD,
-    "database" -> CLICKHOUSE_DB
-  )
+class ClickHouseSingleSuite extends BaseSparkSuite
+    with ClickHouseSingleSuiteMixIn
+    with SparkClickHouseSingleSuiteMixin
+    with Logging {
 
   test("clickhouse command runner") {
     runClickHouseSQL("CREATE TABLE default.abc(a UInt8) ENGINE=Log()")
