@@ -13,28 +13,18 @@ The projects haven't published to Maven Central, you need to build and publish t
 
 ```
 dependencies {
-    implementation("com.github.xenon:clickhouse-spark-31-runtime_2.12:$version")
+    implementation("com.github.housepower:clickhouse-spark-31-runtime_2.12:$version")
 }
 ```
 
 ### Maven
 ```
 <dependency>
-  <groupId>com.github.xenon</groupId>
+  <groupId>com.github.housepower</groupId>
   <artifactId>clickhouse-spark-31-runtime_2.12</artifactId>
   <version>${version}</version>
 </dependency>
 ```
-
-### Version Format
-
-`{year}.{month}.{date}[.{patch}][-SNAPSHOT]`
-
-e.g.
-
-- `2021.05.31-SNAPSHOT`
-- `2021.05.31`
-- `2021.05.31.1`
 
 ## Requirements
 
@@ -74,7 +64,7 @@ mavenSnapshotsRepo=xxx
 
 Versions
 
-The default version is `{year}.{month}.{date}[-SNAPSHOT]`, use `echo '1.0.0-stable' > version.txt` to custom version.
+Use content of `./version.txt` if the file exists, otherwise fallback to `{year}.{month}.{date}[-SNAPSHOT]`.
 
 Publish Snapshots
 
