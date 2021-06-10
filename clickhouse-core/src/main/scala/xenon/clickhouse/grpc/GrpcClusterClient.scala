@@ -5,9 +5,9 @@ import java.util.concurrent.ConcurrentHashMap
 import scala.collection.JavaConverters._
 import scala.util.Random._
 
-import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
 import xenon.clickhouse.spec.ClusterSpec
 import xenon.clickhouse.Logging
+import xenon.clickhouse.exception.ClickHouseClientException
 
 object GrpcClusterClient {
   def apply(cluster: ClusterSpec) = new GrpcClusterClient(cluster)
@@ -29,7 +29,7 @@ class GrpcClusterClient(cluster: ClusterSpec) extends AutoCloseable with Logging
         val replicaSpec = shuffle(shardSpec.replicas.toSeq).head
         (shardSpec.num, replicaSpec.num)
       case _ =>
-        throw ClickHouseAnalysisException(s"Invalid shard[$shard] replica[$replica] of cluster ${cluster.name}")
+        throw ClickHouseClientException(s"Invalid shard[$shard] replica[$replica] of cluster ${cluster.name}")
     }
 
     cache.computeIfAbsent(

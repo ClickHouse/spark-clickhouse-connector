@@ -19,7 +19,7 @@ import java.time.ZoneId
 import scala.util.Using
 
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
-import org.apache.spark.sql.clickhouse.{ClickHouseAnalysisException, ClickHouseSQLConf}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.connector.read.partitioning.Partitioning
@@ -27,6 +27,7 @@ import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.vectorized.ColumnarBatch
 import xenon.clickhouse.{ClickHouseHelper, Logging, SQLHelper}
+import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec.{DistributedEngineSpec, NoPartitionSpec, TableEngineSpec}
 
@@ -102,7 +103,7 @@ class ClickHouseBatchScan(jobDesc: ScanJobDesc) extends Scan with Batch
         }
       }
     case _: DistributedEngineSpec if readDistributedUseClusterNodes =>
-      throw ClickHouseAnalysisException(
+      throw ClickHouseClientException(
         s"${ClickHouseSQLConf.READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
       )
     case _: DistributedEngineSpec =>

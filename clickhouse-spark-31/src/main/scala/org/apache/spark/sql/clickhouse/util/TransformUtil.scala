@@ -2,9 +2,9 @@ package org.apache.spark.sql.clickhouse.util
 
 import scala.util.matching.Regex
 
-import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
 import org.apache.spark.sql.connector.expressions._
 import org.apache.spark.sql.connector.expressions.Expressions._
+import xenon.clickhouse.exception.ClickHouseClientException
 
 abstract class TransformWrapper extends Transform {
 
@@ -53,7 +53,7 @@ object TransformUtil {
       // thus, `xxHash64(abc)` is not supported yet.
       case identity_regex(expr) => identity(expr)
       // TODO support xxHash64
-      case unsupported => throw ClickHouseAnalysisException(s"Unsupported transform expression: $unsupported")
+      case unsupported => throw ClickHouseClientException(s"Unsupported transform expression: $unsupported")
     }
 
   def toClickHouse(transform: Transform): String = transform match {
@@ -63,8 +63,8 @@ object TransformUtil {
     case HoursTransform(FieldReference(Seq(col))) => s"toHour($col)"
     case IdentityTransform(FieldReference(parts)) => parts.mkString(", ")
     case function: ApplyTransform => function.describe()
-    case bucket: BucketTransform => throw ClickHouseAnalysisException(s"Bucket transform not support yet: $bucket")
-    case other: Transform => throw ClickHouseAnalysisException(s"Unsupported transform: $other")
+    case bucket: BucketTransform => throw ClickHouseClientException(s"Bucket transform not support yet: $bucket")
+    case other: Transform => throw ClickHouseClientException(s"Unsupported transform: $other")
   }
 
   def wrapShard(transform: Transform): ClickHouseShardTransform = ClickHouseShardTransform(transform)

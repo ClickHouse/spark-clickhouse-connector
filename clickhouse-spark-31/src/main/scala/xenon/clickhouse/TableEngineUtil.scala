@@ -4,7 +4,7 @@ import com.google.common.annotations.VisibleForTesting
 import xenon.clickhouse.spec._
 import scala.util.matching.Regex
 
-import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
+import xenon.clickhouse.exception.ClickHouseClientException
 
 object TableEngineUtil {
 
@@ -95,7 +95,7 @@ object TableEngineUtil {
 
   def resolveTableCluster(distributedEngineSpec: DistributedEngineSpec, clusterSpecs: Seq[ClusterSpec]): ClusterSpec =
     clusterSpecs.find(_.name == distributedEngineSpec.cluster)
-      .getOrElse(throw ClickHouseAnalysisException(s"unknown cluster: ${distributedEngineSpec.cluster}"))
+      .getOrElse(throw ClickHouseClientException(s"unknown cluster: ${distributedEngineSpec.cluster}"))
 
   /////////////////////////////////////////////
   ////////// Parse Engine Expression //////////
@@ -111,7 +111,7 @@ object TableEngineUtil {
     engine_full match {
       case merge_tree_engine_full_regex(_, _) =>
         MergeTreeEngineSpec(engine_full)
-      case _ => throw ClickHouseAnalysisException(s"parse full engine failed. $engine_full")
+      case _ => throw ClickHouseClientException(s"parse full engine failed. $engine_full")
     }
 
   /**
@@ -126,7 +126,7 @@ object TableEngineUtil {
     engine_full match {
       case replicated_merge_tree_engine_full_regex(zk_path, replica_name) =>
         ReplicatedMergeTreeEngineSpec(engine_full, zk_path, replica_name)
-      case _ => throw ClickHouseAnalysisException(s"parse full engine failed. $engine_full")
+      case _ => throw ClickHouseClientException(s"parse full engine failed. $engine_full")
     }
 
   /**
@@ -140,7 +140,7 @@ object TableEngineUtil {
     engine_full match {
       case replacing_merge_tree_engine_full_regex(version_col) =>
         ReplacingMergeTreeEngineSpec(engine_full, Option(version_col))
-      case _ => throw ClickHouseAnalysisException(s"parse full engine failed. $engine_full")
+      case _ => throw ClickHouseClientException(s"parse full engine failed. $engine_full")
     }
 
   /**
@@ -156,7 +156,7 @@ object TableEngineUtil {
     engine_full match {
       case replicated_replacing_merge_tree_engine_full_regex(zk_path, replica_name, _, version_col) =>
         ReplicatedReplacingMergeTreeEngineSpec(engine_full, zk_path, replica_name, Option(version_col))
-      case _ => throw ClickHouseAnalysisException(s"parse full engine failed. $engine_full")
+      case _ => throw ClickHouseClientException(s"parse full engine failed. $engine_full")
     }
 
   /**
@@ -172,6 +172,6 @@ object TableEngineUtil {
     engine_full match {
       case distributed_engine_full_regex(cluster, local_db, local_tbl, _, sharding_key, _, policy) =>
         DistributedEngineSpec(engine_full, cluster, local_db, local_tbl, Option(sharding_key), Option(policy))
-      case _ => throw ClickHouseAnalysisException(s"parse full engine failed. $engine_full")
+      case _ => throw ClickHouseClientException(s"parse full engine failed. $engine_full")
     }
 }

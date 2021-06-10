@@ -8,7 +8,8 @@ import scala.util.control.NonFatal
 
 import com.google.protobuf.ByteString
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
-import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
+import xenon.clickhouse.exception.ClickHouseServerException
+// import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.spec.NodeSpec
 import xenon.clickhouse.Logging
@@ -44,7 +45,7 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
   }
 
   def syncQueryAndCheck(sql: String): Result = syncQuery(sql) match {
-    case Left(exception) => throw new ClickHouseAnalysisException(exception)
+    case Left(exception) => throw new ClickHouseServerException(exception)
     case Right(result) => result
   }
 

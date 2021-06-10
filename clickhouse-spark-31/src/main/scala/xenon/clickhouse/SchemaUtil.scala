@@ -16,8 +16,8 @@ package xenon.clickhouse
 
 import scala.util.matching.Regex
 
-import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
 import org.apache.spark.sql.types._
+import xenon.clickhouse.exception.ClickHouseClientException
 
 object SchemaUtil {
 
@@ -41,7 +41,7 @@ object SchemaUtil {
       case "UInt16" | "Int32" => IntegerType
       case "UInt32" | "Int64" | "UInt64" | "IPv4" => LongType
       case "Int128" | "Int256" | "UInt256" =>
-        throw ClickHouseAnalysisException(s"unsupported type: $chType") // not support
+        throw ClickHouseClientException(s"unsupported type: $chType") // not support
       case "Float32" => FloatType
       case "Float64" => DoubleType
       case dateTypePattern() => DateType
@@ -53,7 +53,7 @@ object SchemaUtil {
           case "128" => DecimalType(38, scale.toInt)
           case "256" => DecimalType(76, scale.toInt) // throw exception, spark support precision up to 38
         }
-      case _ => throw ClickHouseAnalysisException(s"unsupported type: $chType")
+      case _ => throw ClickHouseClientException(s"unsupported type: $chType")
     }
     (catalystType, nullable)
   }
@@ -68,7 +68,7 @@ object SchemaUtil {
       case StringType => "String"
       case DateType => "Date"
       case TimestampType => "DateTime"
-      case _ => throw ClickHouseAnalysisException(s"Unsupported type: $catalystType")
+      case _ => throw ClickHouseClientException(s"Unsupported type: $catalystType")
     }
 
   def fromClickHouseSchema(chSchema: Seq[(String, String)]): StructType = {

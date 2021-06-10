@@ -14,20 +14,20 @@
 
 package xenon.clickhouse.write
 
-import com.google.protobuf.ByteString
-import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
-import org.apache.spark.sql.clickhouse.util.JsonFormatUtil
-import org.apache.spark.sql.clickhouse.{ClickHouseAnalysisException, ClickHouseSQLConf}
-import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
-import xenon.clickhouse._
-import xenon.clickhouse.exception.RetryableClickHouseException
-import xenon.clickhouse.spec.DistributedEngineSpec
 import java.time.Duration
 
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
 
+import com.google.protobuf.ByteString
+import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
+import org.apache.spark.sql.clickhouse.util.JsonFormatUtil
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf
+import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
+import xenon.clickhouse._
+import xenon.clickhouse.exception.{ClickHouseClientException, RetryableClickHouseException}
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
+import xenon.clickhouse.spec.DistributedEngineSpec
 
 class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
     extends DataWriter[InternalRow] with SQLConfHelper with Logging {
@@ -53,7 +53,7 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
       case (_: DistributedEngineSpec, _, true) =>
         // FIXME: Since we don't know the corresponding ClickHouse shard and partition of the RDD partition now,
         //        we can't pick the right nodes from cluster here
-        throw ClickHouseAnalysisException(
+        throw ClickHouseClientException(
           s"${ClickHouseSQLConf.WRITE_DISTRIBUTED_CONVERT_LOCAL.key} is not support yet."
         )
       case (_: DistributedEngineSpec, true, _) =>

@@ -11,7 +11,6 @@ class ClickHouseUDFSuite extends BaseSparkSuite
     ClickHouseUDF.register
 
   test("UDF ck_xx_hash64") {
-
     spark.sql(
       """
         | SELECT
