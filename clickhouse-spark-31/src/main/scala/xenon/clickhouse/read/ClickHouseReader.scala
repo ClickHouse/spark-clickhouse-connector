@@ -48,7 +48,6 @@ class ClickHouseReader(
        | AND ( ${part.partFilterExpr} )
        |""".stripMargin
   )
-    .map { result => onReceiveStreamResult(result); result }
     .flatMap(_.getOutput.linesIterator)
     .filter(_.nonEmpty)
     .map(line => om.readValue[Array[JsonNode]](line))
@@ -97,10 +96,7 @@ class ClickHouseReader(
 
   override def close(): Unit = grpcClient.close()
 
-  def onReceiveStreamResult(result: Result): Unit = result match {
-    case _ if result.getException.getCode == OK.code =>
-    case _ => throw new ClickHouseServerException(result.getException)
-  }
+
 }
 
 class ClickHouseColumnarReader {}

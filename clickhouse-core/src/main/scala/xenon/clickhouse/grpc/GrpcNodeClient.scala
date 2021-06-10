@@ -56,7 +56,9 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
       .setQueryId(UUID.randomUUID.toString)
       .setOutputFormat("JSONCompactEachRowWithNamesAndTypes")
       .build
-    blockingStub.executeQueryWithStreamOutput(queryInfo).asScala
+    blockingStub.executeQueryWithStreamOutput(queryInfo)
+      .asScala
+      .map { result => onReceiveStreamResult(result); result }
   }
 
   def syncInsert(
@@ -83,6 +85,11 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
     }
 
   protected def onExecuteQuery(sql: String): Unit = log.debug("Execute ClickHouse SQL:\n{}", sql)
+
+  def onReceiveStreamResult(result: Result): Unit = result match {
+    case _ if result.getException.getCode == OK.code =>
+    case _ => throw new ClickHouseServerException(result.getException)
+  }
 
   override def close(): Unit = synchronized {
     if (!channel.isShutdown) {

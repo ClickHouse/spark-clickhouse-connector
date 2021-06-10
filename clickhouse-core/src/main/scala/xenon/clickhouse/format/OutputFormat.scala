@@ -28,5 +28,4 @@ case class JSONOutput(
     meta: Seq[MetaItem],
     data: Seq[ObjectNode],
     rows: Long,
-    @JsonProperty("rows_before_limit_at_least") rowsBeforeLimitAtLeast: Long
 ) extends OutputFormat
