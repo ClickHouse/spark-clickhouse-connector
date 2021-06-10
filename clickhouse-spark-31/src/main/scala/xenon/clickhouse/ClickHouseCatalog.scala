@@ -107,7 +107,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
             throw new NoSuchTableException(ident.toString)
           // not sure if this check is necessary
           case Left(exception) if exception.getCode == UNKNOWN_DATABASE.code =>
-            throw new NoSuchDatabaseException(database)
+            throw new NoSuchDatabaseException(db)
           case Left(exception) =>
             throw new ClickHouseServerException(exception)
           case Right(_) => (db, tbl)
