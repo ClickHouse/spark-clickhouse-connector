@@ -1,10 +1,11 @@
 package xenon.clickhouse.base
 
 import org.apache.hadoop.fs.FileSystem
-import org.apache.spark.sql.{Row, SparkSession}
 import org.apache.spark.SparkContext
-import org.scalatest.funsuite.AnyFunSuite
+import org.apache.spark.sql.clickhouse.SparkUtils
+import org.apache.spark.sql.{Row, SparkSession}
 import org.scalatest.BeforeAndAfterAll
+import org.scalatest.funsuite.AnyFunSuite
 import xenon.clickhouse.{ClickHouseCommandRunner, Utils}
 
 abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll {
@@ -89,5 +90,16 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll {
   override def afterAll(): Unit = {
     spark.stop
     super.afterAll()
+  }
+
+  def spark_32_only(testFun: => Any): Unit = {
+    assume(
+      SparkUtils.MAJOR_MINOR_VERSION match {
+        case (3, 2) => true
+        case _ => false
+      },
+      "The test only for Spark 3.2"
+    )
+    testFun
   }
 }

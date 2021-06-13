@@ -23,13 +23,14 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     spark.sql("SHOW tables").show(false)
   }
 
-  // TRUNCATE TABLE is not supported for v2 tables
   ignore("clickhouse truncate table") {
-    withClickHouseSingleIdTable("db_trunc", "tbl_trunc") { (db, tbl) =>
-      spark.range(10).toDF("id").writeTo(s"$db.$tbl")
-      assert(spark.table(s"$db.$tbl").count == 10)
-      spark.sql(s"TRUNCATE TABLE $db.$tbl")
-      assert(spark.table(s"$db.$tbl").count == 0)
+    spark_32_only {
+      withClickHouseSingleIdTable("db_trunc", "tbl_trunc") { (db, tbl) =>
+        spark.range(10).toDF("id").writeTo(s"$db.$tbl")
+        assert(spark.table(s"$db.$tbl").count == 10)
+        spark.sql(s"TRUNCATE TABLE $db.$tbl")
+        assert(spark.table(s"$db.$tbl").count == 0)
+      }
     }
   }
 
