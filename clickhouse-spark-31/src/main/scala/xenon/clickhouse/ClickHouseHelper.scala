@@ -1,9 +1,5 @@
 package xenon.clickhouse
 
-import java.time.{LocalDateTime, ZoneId}
-
-import scala.collection.JavaConverters._
-
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.analysis.{NoSuchDatabaseException, NoSuchTableException}
@@ -11,10 +7,12 @@ import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
-import xenon.clickhouse.Utils.{dateTimeFmt, om}
-import xenon.clickhouse.format.JSONOutput
+import xenon.clickhouse.Utils.dateTimeFmt
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
+
+import java.time.{LocalDateTime, ZoneId}
+import scala.collection.JavaConverters._
 
 trait ClickHouseHelper {
 
@@ -39,7 +37,7 @@ trait ClickHouseHelper {
   }
 
   def queryClusterSpecs(nodeSpec: NodeSpec)(implicit grpcNodeClient: GrpcNodeClient): Seq[ClusterSpec] = {
-    val clustersResult = grpcNodeClient.syncQueryAndCheck(
+    val clustersOutput = grpcNodeClient.syncQueryAndCheck(
       """ SELECT
         |   `cluster`,                 -- String
         |   `shard_num`,               -- UInt32
@@ -56,7 +54,7 @@ trait ClickHouseHelper {
         | FROM `system`.`clusters`
         |""".stripMargin
     )
-    om.readValue[JSONOutput](clustersResult.getOutput).data
+    clustersOutput.records
       .groupBy(_.get("cluster").asText)
       .map { case (cluster, rows) =>
         val shards = rows
@@ -83,7 +81,7 @@ trait ClickHouseHelper {
     database: String,
     actionIfNoSuchDatabase: String => Unit = DEFAULT_ACTION_IF_NO_SUCH_DATABASE
   )(implicit grpcNodeClient: GrpcNodeClient): DatabaseSpec = {
-    val result = grpcNodeClient.syncQueryAndCheck(
+    val output = grpcNodeClient.syncQueryAndCheck(
       s"""
          | SELECT
          |   `name`,          -- String
@@ -95,11 +93,10 @@ trait ClickHouseHelper {
          | WHERE `name`='$database'
          | """.stripMargin
     )
-    val output = om.readValue[JSONOutput](result.getOutput)
     if (output.rows == 0) {
       actionIfNoSuchDatabase(database)
     }
-    val row = output.data.head
+    val row = output.records.head
     DatabaseSpec(
       name = row.get("name").asText,
       engine = row.get("engine").asText,
@@ -117,7 +114,7 @@ trait ClickHouseHelper {
     grpcNodeClient: GrpcNodeClient,
     tz: ZoneId
   ): TableSpec = {
-    val tableResult = grpcNodeClient.syncQueryAndCheck(
+    val tableOutput = grpcNodeClient.syncQueryAndCheck(
       s""" SELECT
          |   `database`,                   -- String
          |   `name`,                       -- String
@@ -144,11 +141,10 @@ trait ClickHouseHelper {
          | WHERE `database`='$database' AND `name`='$table'
          | """.stripMargin
     )
-    val tableOutput = om.readValue[JSONOutput](tableResult.getOutput)
-    if (tableOutput.rows == 0) {
+    if (tableOutput.isEmpty) {
       actionIfNoSuchTable(database, table)
     }
-    val tableRow = tableOutput.data.head
+    val tableRow = tableOutput.records.head
     TableSpec(
       database = tableRow.get("database").asText,
       name = tableRow.get("name").asText,
@@ -194,7 +190,7 @@ trait ClickHouseHelper {
     table: String,
     actionIfNoSuchTable: (String, String) => Unit = DEFAULT_ACTION_IF_NO_SUCH_TABLE
   )(implicit grpcNodeClient: GrpcNodeClient): StructType = {
-    val columnResult = grpcNodeClient.syncQueryAndCheck(
+    val columnOutput = grpcNodeClient.syncQueryAndCheck(
       s""" SELECT
          |   `database`,                -- String
          |   `table`,                   -- String
@@ -217,11 +213,10 @@ trait ClickHouseHelper {
          | ORDER BY `position` ASC
          | """.stripMargin
     )
-    val columnOutput = om.readValue[JSONOutput](columnResult.getOutput)
-    if (columnOutput.rows == 0) {
+    if (columnOutput.isEmpty) {
       actionIfNoSuchTable(database, table)
     }
-    SchemaUtil.fromClickHouseSchema(columnOutput.data.map { row =>
+    SchemaUtil.fromClickHouseSchema(columnOutput.records.map { row =>
       val fieldName = row.get("name").asText
       val ckType = row.get("type").asText
       (fieldName, ckType)
@@ -232,7 +227,7 @@ trait ClickHouseHelper {
     database: String,
     table: String
   )(implicit grpcNodeClient: GrpcNodeClient): Seq[PartitionSpec] = {
-    val partResult = grpcNodeClient.syncQueryAndCheck(
+    val partOutput = grpcNodeClient.syncQueryAndCheck(
       s""" SELECT
          |   partition,                           -- String
          |   sum(rows)          AS row_count,     -- UInt64
@@ -243,11 +238,10 @@ trait ClickHouseHelper {
          | ORDER BY `partition` ASC
          | """.stripMargin
     )
-    val partOutput = om.readValue[JSONOutput](partResult.getOutput)
-    if (partOutput.rows == 0) {
+    if (partOutput.isEmpty) {
       return Array(NoPartitionSpec)
     }
-    partOutput.data.map { row =>
+    partOutput.records.map { row =>
       PartitionSpec(
         partition = row.get("partition").asText,
         row_count = row.get("row_count").asLong,

@@ -1,9 +1,5 @@
 package xenon.clickhouse.read
 
-import java.time.{LocalDate, ZonedDateTime, ZoneOffset}
-
-import scala.math.BigDecimal.RoundingMode
-
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
@@ -11,13 +7,14 @@ import org.apache.spark.sql.clickhouse.ClickHouseSQLConf
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
-import xenon.clickhouse.{ClickHouseHelper, Logging}
-import xenon.clickhouse.SchemaUtil.fromClickHouseType
 import xenon.clickhouse.Utils._
-import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
-import xenon.clickhouse.exception.ClickHouseErrCode._
+import xenon.clickhouse.exception.ClickHouseClientException
+import xenon.clickhouse.format.StreamOutput
 import xenon.clickhouse.grpc.{GrpcNodeClient, GrpcNodesClient}
-import xenon.protocol.grpc.Result
+import xenon.clickhouse.{ClickHouseHelper, Logging}
+
+import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
+import scala.math.BigDecimal.RoundingMode
 
 class ClickHouseReader(
   jobDesc: ScanJobDesc,
@@ -39,7 +36,7 @@ class ClickHouseReader(
 
   def grpcNodeClient: GrpcNodeClient = grpcClient.node
 
-  lazy val iterator: Iterator[Array[JsonNode]] = grpcNodeClient.syncQueryWithStreamOutput(
+  lazy val streamOutput: StreamOutput[Array[JsonNode]] = grpcNodeClient.syncStreamQuery(
     s"""
        | SELECT
        |  ${if (readSchema.isEmpty) 1 else readSchema.map(field => s"`${field.name}`").mkString(", ")}
@@ -48,26 +45,13 @@ class ClickHouseReader(
        | AND ( ${part.partFilterExpr} )
        |""".stripMargin
   )
-    .flatMap(_.getOutput.linesIterator)
-    .filter(_.nonEmpty)
-    .map(line => om.readValue[Array[JsonNode]](line))
 
   private var currentRow: Array[JsonNode] = _
 
-  private var names: Array[String] = _
-  private var types: Array[(DataType, Boolean)] = _
-
   override def next(): Boolean = {
-    while (iterator.hasNext)
-      if (names == null)
-        names = iterator.next.map(_.asText)
-      else if (types == null)
-        types = iterator.next.map(_.asText).map(fromClickHouseType)
-      else {
-        currentRow = iterator.next
-        return true
-      }
-    false
+    val hasNext = streamOutput.hasNext
+    if (hasNext) currentRow = streamOutput.next
+    hasNext
   }
 
   override def get(): InternalRow =
@@ -95,8 +79,6 @@ class ClickHouseReader(
     })
 
   override def close(): Unit = grpcClient.close()
-
-
 }
 
 class ClickHouseColumnarReader {}

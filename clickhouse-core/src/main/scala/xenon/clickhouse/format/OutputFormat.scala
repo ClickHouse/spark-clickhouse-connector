@@ -14,18 +14,22 @@
 
 package xenon.clickhouse.format
 
-import com.fasterxml.jackson.annotation.JsonProperty
-import com.fasterxml.jackson.databind.node.ObjectNode
+import scala.collection.immutable.ListMap
 
-// Call it Output from ClickHouse server perspective,
-// it's actually Input from Spark perspective.
-// TODO JSONCompactEachRowWithNamesAndTypes
 trait OutputFormat
 
-case class MetaItem(name: String, @JsonProperty("type") typ: String)
+trait NamesAndTypes { self: OutputFormat =>
 
-case class JSONOutput(
-    meta: Seq[MetaItem],
-    data: Seq[ObjectNode],
-    rows: Long,
-) extends OutputFormat
+  def namesAndTypes: ListMap[String, String]
+}
+
+trait SimpleOutput[T] extends OutputFormat {
+
+  def records: Seq[T]
+
+  def rows: Long = records.length
+
+  def isEmpty: Boolean = records.isEmpty
+}
+
+trait StreamOutput[T] extends Iterator[T] with OutputFormat

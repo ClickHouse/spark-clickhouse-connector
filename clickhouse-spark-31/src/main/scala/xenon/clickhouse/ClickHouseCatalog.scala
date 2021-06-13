@@ -14,11 +14,6 @@
 
 package xenon.clickhouse
 
-import java.time.ZoneId
-import java.util
-
-import scala.collection.JavaConverters._
-
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.clickhouse.util.TransformUtil._
 import org.apache.spark.sql.connector.catalog._
@@ -26,12 +21,14 @@ import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
-import xenon.clickhouse.Utils._
-import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
 import xenon.clickhouse.exception.ClickHouseErrCode._
-import xenon.clickhouse.format.JSONOutput
+import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
+
+import java.time.ZoneId
+import java.util
+import scala.collection.JavaConverters._
 
 class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
     with ClickHouseHelper with SQLHelper with Logging {
@@ -66,10 +63,9 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
 
     this.tz = options.get(CATALOG_PROP_TZ) match {
       case tz if tz == null || tz.isEmpty || tz.toLowerCase == "server" =>
-        val timezoneResult = this.grpcNodeClient.syncQueryAndCheck("SELECT timezone() AS tz")
-        val timezoneOutput = om.readValue[JSONOutput](timezoneResult.getOutput)
+        val timezoneOutput = this.grpcNodeClient.syncQueryAndCheck("SELECT timezone() AS tz")
         assert(timezoneOutput.rows == 1)
-        val serverTz = ZoneId.of(timezoneOutput.data.head.get("tz").asText)
+        val serverTz = ZoneId.of(timezoneOutput.records.head.get("tz").asText)
         log.info(s"detect clickhouse server timezone: $serverTz")
         Left(serverTz)
       case tz if tz.toLowerCase == "client" => Right(ZoneId.systemDefault)
@@ -91,9 +87,11 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
           throw new NoSuchDatabaseException(namespace.mkString("."))
         case Left(exception) =>
           throw new ClickHouseServerException(exception)
-        case Right(result) =>
-          val output = om.readValue[JSONOutput](result.getOutput)
-          output.data.map(row => row.get("name").asText()).map(table => Identifier.of(namespace, table)).toArray
+        case Right(output) =>
+          output.records
+            .map(row => row.get("name").asText)
+            .map(table => Identifier.of(namespace, table))
+            .toArray
       }
     case _ => throw new NoSuchDatabaseException(namespace.mkString("."))
   }
@@ -249,9 +247,8 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
 
   @throws[NoSuchNamespaceException]
   override def listNamespaces(): Array[Array[String]] = {
-    val result = grpcNodeClient.syncQueryAndCheck("SHOW DATABASES")
-    val output = om.readValue[JSONOutput](result.getOutput)
-    output.data.map(row => Array(row.get("name").asText)).toArray
+    val output = grpcNodeClient.syncQueryAndCheck("SHOW DATABASES")
+    output.records.map(row => Array(row.get("name").asText)).toArray
   }
 
   @throws[NoSuchNamespaceException]

@@ -1,18 +1,20 @@
 package xenon.clickhouse.grpc
 
-import java.util.UUID
-import java.util.concurrent.TimeUnit
-
-import scala.collection.JavaConverters._
-import scala.util.control.NonFatal
-
+import com.fasterxml.jackson.databind.JsonNode
+import com.fasterxml.jackson.databind.node.ObjectNode
 import com.google.protobuf.ByteString
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
+import xenon.clickhouse.Utils.om
 import xenon.clickhouse.exception.ClickHouseServerException
-// import org.apache.spark.sql.clickhouse.ClickHouseAnalysisException
+import xenon.clickhouse.format.{JSONCompactEachRowWithNamesAndTypesStreamOutput, JSONEachRowSimpleOutput, SimpleOutput, StreamOutput}
+
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+import scala.collection.JavaConverters._
+import scala.util.control.NonFatal
+import xenon.clickhouse.Logging
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.spec.NodeSpec
-import xenon.clickhouse.Logging
 import xenon.protocol.grpc.{ClickHouseGrpc, QueryInfo, Result, Exception => GRPCException}
 
 object GrpcNodeClient {
@@ -34,31 +36,36 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
     .setPassword(node.password)
     .buildPartial
 
-  def syncQuery(sql: String): Either[GRPCException, Result] = {
+  def syncQuery(sql: String): Either[GRPCException, SimpleOutput[ObjectNode]] = {
     onExecuteQuery(sql)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
       .setQueryId(UUID.randomUUID.toString)
-      .setOutputFormat("JSON")
+      .setOutputFormat("JSONEachRow")
       .build
     executeQuery(queryInfo)
   }
 
-  def syncQueryAndCheck(sql: String): Result = syncQuery(sql) match {
+  def syncQueryAndCheck(sql: String): SimpleOutput[ObjectNode] = syncQuery(sql) match {
     case Left(exception) => throw new ClickHouseServerException(exception)
-    case Right(result) => result
+    case Right(output) => output
   }
 
-  def syncQueryWithStreamOutput(sql: String): Iterator[Result] = {
+  def syncStreamQuery(sql: String): StreamOutput[Array[JsonNode]] = {
     onExecuteQuery(sql)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
       .setQueryId(UUID.randomUUID.toString)
       .setOutputFormat("JSONCompactEachRowWithNamesAndTypes")
       .build
-    blockingStub.executeQueryWithStreamOutput(queryInfo)
+    val stream = blockingStub.executeQueryWithStreamOutput(queryInfo)
       .asScala
-      .map { result => onReceiveStreamResult(result); result }
+      .map { result => onReceiveResult(result); result }
+      .flatMap(_.getOutput.linesIterator)
+      .filter(_.nonEmpty)
+      .map(line => om.readValue[Array[JsonNode]](line))
+
+    new JSONCompactEachRowWithNamesAndTypesStreamOutput(stream)
   }
 
   def syncInsert(
@@ -66,29 +73,35 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
     table: String,
     inputFormat: String,
     data: ByteString
-  ): Either[GRPCException, Result] = {
+  ): Either[GRPCException, SimpleOutput[ObjectNode]] = {
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecuteQuery(sql)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
       .setQueryId(UUID.randomUUID.toString)
       .setInputDataBytes(data)
-      .setOutputFormat("JSON")
+      .setOutputFormat("JSONEachRow")
       .build
     executeQuery(queryInfo)
   }
 
-  private def executeQuery(request: QueryInfo): Either[GRPCException, Result] =
+  private def executeQuery(request: QueryInfo): Either[GRPCException, SimpleOutput[ObjectNode]] =
     blockingStub.executeQuery(request) match {
-      case result: Result if result.getException.getCode == OK.code => Right(result)
+      case result: Result if result.getException.getCode == OK.code =>
+        val records = result.getOutput
+          .lines
+          .filter(_.nonEmpty)
+          .map(line => om.readValue[ObjectNode](line))
+          .toSeq
+        Right(new JSONEachRowSimpleOutput(records))
       case result: Result => Left(result.getException)
     }
 
   protected def onExecuteQuery(sql: String): Unit = log.debug("Execute ClickHouse SQL:\n{}", sql)
 
-  def onReceiveStreamResult(result: Result): Unit = result match {
-    case _ if result.getException.getCode == OK.code =>
-    case _ => throw new ClickHouseServerException(result.getException)
+  def onReceiveResult(result: Result): Unit = {
+    if (result.getException.getCode != OK.code)
+      throw new ClickHouseServerException(result.getException)
   }
 
   override def close(): Unit = synchronized {
