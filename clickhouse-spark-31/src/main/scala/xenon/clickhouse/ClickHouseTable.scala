@@ -83,7 +83,14 @@ class ClickHouseTable(
   override def name: String = s"ClickHouse Table | ${spec.database}.${spec.name} | ${spec.engine}"
 
   override def capabilities(): util.Set[TableCapability] =
-    Set(BATCH_READ, BATCH_WRITE, TRUNCATE).asJava
+    Set(
+      BATCH_READ,
+      BATCH_WRITE,
+      TRUNCATE,
+      // to support any schema, we need to do schema check before write,
+      // and handle extra column, e.g. throw exception, drop columns, add columns to table
+      // ACCEPT_ANY_SCHEMA
+    ).asJava
 
   override lazy val schema: StructType = Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
     queryTableSchema(database, table)

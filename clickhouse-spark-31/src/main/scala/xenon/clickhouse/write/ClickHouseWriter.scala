@@ -14,27 +14,26 @@
 
 package xenon.clickhouse.write
 
-import java.time.Duration
-
-import scala.collection.mutable.ArrayBuffer
-import scala.util.{Failure, Success}
-
 import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.clickhouse.util.JsonFormatUtil
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import xenon.clickhouse._
-import xenon.clickhouse.exception.{ClickHouseClientException, RetryableClickHouseException}
+import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException, RetryableClickHouseException}
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
 import xenon.clickhouse.spec.DistributedEngineSpec
+
+import java.time.Duration
+import scala.collection.mutable.ArrayBuffer
+import scala.util.{Failure, Success}
 
 class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
     extends DataWriter[InternalRow] with SQLConfHelper with Logging {
 
-  val batchSize: Int = conf.getConf(ClickHouseSQLConf.WRITE_BATCH_SIZE)
-  val writeDistributedUseClusterNodes: Boolean = conf.getConf(ClickHouseSQLConf.WRITE_DISTRIBUTED_USE_CLUSTER_NODES)
-  val writeDistributedConvertLocal: Boolean = conf.getConf(ClickHouseSQLConf.WRITE_DISTRIBUTED_CONVERT_LOCAL)
+  val batchSize: Int = conf.getConf(WRITE_BATCH_SIZE)
+  val writeDistributedUseClusterNodes: Boolean = conf.getConf(WRITE_DISTRIBUTED_USE_CLUSTER_NODES)
+  val writeDistributedConvertLocal: Boolean = conf.getConf(WRITE_DISTRIBUTED_CONVERT_LOCAL)
 
   val database: String = jobDesc.tableEngineSpec match {
     case dist: DistributedEngineSpec if writeDistributedConvertLocal => dist.local_db
@@ -54,7 +53,7 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
         // FIXME: Since we don't know the corresponding ClickHouse shard and partition of the RDD partition now,
         //        we can't pick the right nodes from cluster here
         throw ClickHouseClientException(
-          s"${ClickHouseSQLConf.WRITE_DISTRIBUTED_CONVERT_LOCAL.key} is not support yet."
+          s"${WRITE_DISTRIBUTED_CONVERT_LOCAL.key} is not support yet."
         )
       case (_: DistributedEngineSpec, true, _) =>
         val clusterSpec = jobDesc.cluster.get
@@ -93,14 +92,14 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
 
   def flush(): Unit =
     Utils.retry[Unit, RetryableClickHouseException](
-      conf.getConf(ClickHouseSQLConf.WRITE_MAX_RETRY),
-      Duration.ofSeconds(conf.getConf(ClickHouseSQLConf.WRITE_RETRY_INTERVAL))
+      conf.getConf(WRITE_MAX_RETRY),
+      Duration.ofSeconds(conf.getConf(WRITE_RETRY_INTERVAL))
     ) {
       grpcNodeClient.syncInsert(database, table, "JSONEachRow", buf.reduce((l, r) => l concat r)) match {
-        case Left(exception)
-            if conf.getConf(ClickHouseSQLConf.WRITE_RETRYABLE_ERROR_CODES).contains(exception.getCode) =>
-          throw new RetryableClickHouseException(exception)
         case Right(_) => buf.clear
+        case Left(retryable) if conf.getConf(WRITE_RETRYABLE_ERROR_CODES).contains(retryable.getCode) =>
+          throw new RetryableClickHouseException(retryable)
+        case Left(rethrow) => throw new ClickHouseServerException(rethrow)
       }
     } match {
       case Success(_) => log.info(s"Job[${jobDesc.queryId}]: flush batch")
@@ -111,7 +110,7 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
 class ClickHouseTruncateWriter(jobDesc: WriteJobDesc)
     extends DataWriter[InternalRow] with SQLConfHelper with Logging {
 
-  val truncateDistributedConvertToLocal: Boolean = conf.getConf(ClickHouseSQLConf.TRUNCATE_DISTRIBUTED_CONVERT_LOCAL)
+  val truncateDistributedConvertToLocal: Boolean = conf.getConf(TRUNCATE_DISTRIBUTED_CONVERT_LOCAL)
 
   val database: String = jobDesc.tableEngineSpec match {
     case dist: DistributedEngineSpec if truncateDistributedConvertToLocal => dist.local_db

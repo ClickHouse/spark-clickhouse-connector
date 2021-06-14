@@ -2,6 +2,10 @@ dependencies {
     implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
 
     testImplementation project(path: ":clickhouse-spark-31-runtime", configuration: "shadow")
+    testImplementation(testFixtures(project(":clickhouse-core-integration"))) {
+        exclude module: "clickhouse-core-integration"
+        exclude module: "clickhouse-core-runtime"
+    }
 
     testImplementation("org.apache.spark:spark-sql_$scala_binary_version:$spark_version") {
         exclude group: "org.apache.hadoop", module: "hadoop-client" // use hadoop shaded client instead
@@ -15,15 +19,10 @@ dependencies {
     testRuntimeOnly "commons-collections:commons-collections:$commons_collections_version"
     testRuntimeOnly "commons-io:commons-io:$commons_io_version"
 
-    testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
-    testRuntimeOnly("com.vladsch.flexmark:flexmark-all:$flexmark_version") {
-        exclude group: "log4j", module: "log4j"
-    }
-
-    testImplementation "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
-    testImplementation "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
-    testRuntimeOnly "ru.yandex.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
-
     testRuntimeOnly "org.slf4j:log4j-over-slf4j:$slf4j_version"
     testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
+}
+
+test {
+    classpath += files("${project(':clickhouse-core-integration').projectDir}/src/testFixtures/conf")
 }

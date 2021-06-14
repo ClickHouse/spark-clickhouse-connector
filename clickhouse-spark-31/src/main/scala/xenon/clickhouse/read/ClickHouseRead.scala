@@ -19,7 +19,7 @@ import java.time.ZoneId
 import scala.util.Using
 
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.connector.read.partitioning.Partitioning
@@ -80,8 +80,8 @@ class ClickHouseBatchScan(jobDesc: ScanJobDesc) extends Scan with Batch
     with ClickHouseHelper
     with SQLConfHelper {
 
-  val readDistributedUseClusterNodes: Boolean = conf.getConf(ClickHouseSQLConf.READ_DISTRIBUTED_USE_CLUSTER_NODES)
-  val readDistributedConvertLocal: Boolean = conf.getConf(ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL)
+  val readDistributedUseClusterNodes: Boolean = conf.getConf(READ_DISTRIBUTED_USE_CLUSTER_NODES)
+  val readDistributedConvertLocal: Boolean = conf.getConf(READ_DISTRIBUTED_CONVERT_LOCAL)
 
   val database: String = jobDesc.tableEngineSpec match {
     case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_db
@@ -104,7 +104,7 @@ class ClickHouseBatchScan(jobDesc: ScanJobDesc) extends Scan with Batch
       }
     case _: DistributedEngineSpec if readDistributedUseClusterNodes =>
       throw ClickHouseClientException(
-        s"${ClickHouseSQLConf.READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
+        s"${READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
       )
     case _: DistributedEngineSpec =>
       // we can not collect all partitions from single node, thus should treat table as no partitioned table

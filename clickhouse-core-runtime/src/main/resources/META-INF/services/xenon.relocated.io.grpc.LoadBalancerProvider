@@ -1,0 +1,2 @@
+xenon.relocated.io.grpc.internal.PickFirstLoadBalancerProvider
+xenon.relocated.io.grpc.util.SecretRoundRobinLoadBalancerProvider$Provider

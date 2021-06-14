@@ -1,6 +1,9 @@
 rootProject.name = 'spark-clickhouse-connector'
 
 include ":clickhouse-core"
+include ":clickhouse-core-integration"
+include ":clickhouse-core-runtime"
+
 include ":clickhouse-spark-31"
 include ":clickhouse-spark-31-integration"
 include ":clickhouse-spark-31-runtime"

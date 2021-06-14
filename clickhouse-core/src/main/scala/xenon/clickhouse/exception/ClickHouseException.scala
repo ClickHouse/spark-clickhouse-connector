@@ -2,27 +2,15 @@ package xenon.clickhouse.exception
 
 import xenon.protocol.grpc.{Exception => GRPCException}
 
-trait ClickHouseException extends RuntimeException {
-  def code: Int
-  def reason: String
-}
+abstract class ClickHouseException(code: Int, reason: String) extends RuntimeException(s"[$code] $reason")
 
-case class ClickHouseServerException(
-  override val code: Int,
-  override val reason: String
-) extends ClickHouseException {
+case class ClickHouseServerException(code: Int, reason: String) extends ClickHouseException(code, reason) {
   def this(exception: GRPCException) = this(exception.getCode, exception.getDisplayText)
 }
 
-case class ClickHouseClientException(
-  override val reason: String
-) extends ClickHouseException {
-  def code: Int = ClickHouseErrCode.CLIENT_ERROR.code()
-}
+case class ClickHouseClientException(reason: String)
+    extends ClickHouseException(ClickHouseErrCode.CLIENT_ERROR.code(), reason)
 
-case class RetryableClickHouseException(
-  override val code: Int,
-  override val reason: String
-) extends ClickHouseException {
+case class RetryableClickHouseException(code: Int, reason: String) extends ClickHouseException(code, reason) {
   def this(exception: GRPCException) = this(exception.getCode, exception.getDisplayText)
 }

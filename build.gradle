@@ -60,6 +60,40 @@ subprojects {
     }
 }
 
+// it should execute before deploy.gradle
+project(":clickhouse-core-runtime") {
+    apply plugin: "com.github.johnrengelman.shadow"
+
+    tasks.jar.dependsOn tasks.shadowJar
+
+    dependencies {
+        compileOnly "org.scala-lang:scala-library:$scala_version"
+
+        implementation(project(":clickhouse-core")) {
+            exclude group: "org.scala-lang", module: "scala-library"
+            exclude group: "org.slf4j", module: "slf4j-api"
+        }
+    }
+
+    shadowJar {
+        zip64 true
+        classifier null
+
+        relocate "org.antlr.v4.runtime", "xenon.relocated.org.antlr.v4.runtime"
+        relocate "org.apache.commons", "xenon.relocated.org.apache.commons"
+        relocate "com.fasterxml.jackson", "xenon.relocated.com.fasterxml.jackson"
+        relocate "com.google", "xenon.relocated.com.google"
+        relocate "com.thoughtworks.paranamer", "xenon.relocated.com.thoughtworks.paranamer"
+        relocate "io.grpc", "xenon.relocated.io.grpc"
+        relocate "io.perfmark", "xenon.relocated.io.perfmark"
+    }
+
+    jar {
+        archiveClassifier.set('empty')
+    }
+}
+
+// it should execute before deploy.gradle
 project(":clickhouse-spark-31-runtime") {
     apply plugin: "com.github.johnrengelman.shadow"
 
@@ -88,7 +122,7 @@ project(":clickhouse-spark-31-runtime") {
     }
 
     jar {
-        archiveClassifier = 'empty'
+        archiveClassifier.set('empty')
     }
 }
 
