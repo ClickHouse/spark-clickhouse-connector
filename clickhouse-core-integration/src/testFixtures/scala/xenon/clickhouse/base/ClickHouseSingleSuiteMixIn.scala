@@ -27,7 +27,12 @@ trait ClickHouseSingleSuiteMixIn extends AnyFunSuite with ForAllTestContainer {
         .withCopyFileToContainer(
           MountableFile.forClasspathResource("clickhouse-single/grpc_config.xml"),
           "/etc/clickhouse-server/config.d/grpc_config.xml"
-        ).asInstanceOf[ClickHouseContainer]
+        )
+        .withCopyFileToContainer(
+          MountableFile.forClasspathResource("clickhouse-single/users.xml"),
+          "/etc/clickhouse-server/users.xml"
+        )
+        .asInstanceOf[ClickHouseContainer]
     }
   // format: off
   def clickhouseHost:  String = container.host
