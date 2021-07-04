@@ -13,7 +13,7 @@ The projects haven't published to Maven Central, you need to build and publish t
 
 ```
 dependencies {
-    implementation("com.github.housepower:clickhouse-spark-31-runtime_2.12:$version")
+    implementation("com.github.housepower:clickhouse-spark-32-runtime_2.12:$version")
 }
 ```
 
@@ -21,7 +21,7 @@ dependencies {
 ```
 <dependency>
   <groupId>com.github.housepower</groupId>
-  <artifactId>clickhouse-spark-31-runtime_2.12</artifactId>
+  <artifactId>clickhouse-spark-32-runtime_2.12</artifactId>
   <version>${version}</version>
 </dependency>
 ```
@@ -30,7 +30,7 @@ dependencies {
 
 - Java 8
 - Scala 2.12
-- Apache Spark 3.1.x
+- Apache Spark 3.2.x (not released yet)
 - ClickHouse 21.3.x
 
 Notes:
