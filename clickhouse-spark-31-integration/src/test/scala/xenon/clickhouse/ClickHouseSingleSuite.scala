@@ -24,7 +24,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     spark.sql("SHOW tables").show(false)
   }
 
-  ignore("clickhouse truncate table") {
+  test("clickhouse truncate table") {
     spark_32_only {
       withClickHouseSingleIdTable("db_trunc", "tbl_trunc") { (db, tbl) =>
         spark.range(10).toDF("id").writeTo(s"$db.$tbl").append
