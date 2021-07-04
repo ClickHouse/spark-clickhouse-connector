@@ -3,9 +3,11 @@ on:
   push:
     branches:
       - "main"
+      - "spark-32"
   pull_request:
     branches:
       - "main"
+      - "spark-32"
 
 jobs:
   run-tests:
@@ -20,4 +22,4 @@ jobs:
           path: ~/.gradle/caches
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
           restore-keys: ${{ runner.os }}-gradle
-      - run: ./gradlew clean test
+      - run: ./gradlew clean test --refresh-dependencies
