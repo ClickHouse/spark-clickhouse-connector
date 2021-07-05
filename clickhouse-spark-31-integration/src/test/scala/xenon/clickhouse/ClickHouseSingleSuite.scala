@@ -2,6 +2,7 @@ package xenon.clickhouse
 
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
+import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseSingleSuiteMixIn, SparkClickHouseSingleSuiteMixin}
 
 class ClickHouseSingleSuite extends BaseSparkSuite
@@ -26,9 +27,10 @@ class ClickHouseSingleSuite extends BaseSparkSuite
   ignore("clickhouse truncate table") {
     spark_32_only {
       withClickHouseSingleIdTable("db_trunc", "tbl_trunc") { (db, tbl) =>
-        spark.range(10).toDF("id").writeTo(s"$db.$tbl")
+        spark.range(10).toDF("id").writeTo(s"$db.$tbl").append
         assert(spark.table(s"$db.$tbl").count == 10)
         spark.sql(s"TRUNCATE TABLE $db.$tbl")
+        spark.sql(s"REFRESH TABLE $db.$tbl")
         assert(spark.table(s"$db.$tbl").count == 0)
       }
     }

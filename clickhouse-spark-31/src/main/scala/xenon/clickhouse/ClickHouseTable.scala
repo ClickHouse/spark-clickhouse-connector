@@ -80,13 +80,13 @@ class ClickHouseTable(
     case _: TableEngineSpec => None
   }
 
-  override def name: String = s"ClickHouse Table | ${spec.database}.${spec.name} | ${spec.engine}"
+  override def name: String = s"ClickHouse [${spec.database}.${spec.name}] engine=${spec.engine}"
 
   override def capabilities(): util.Set[TableCapability] =
     Set(
       BATCH_READ,
       BATCH_WRITE,
-      TRUNCATE,
+      TRUNCATE
       // to support any schema, we need to do schema check before write,
       // and handle extra column, e.g. throw exception, drop columns, add columns to table
       // ACCEPT_ANY_SCHEMA

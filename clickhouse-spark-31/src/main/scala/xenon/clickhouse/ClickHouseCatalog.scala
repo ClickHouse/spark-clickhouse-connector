@@ -256,7 +256,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
     case Array() => listNamespaces()
     case Array(_) =>
       loadNamespaceMetadata(namespace)
-      Array(namespace)
+      Array()
     case _ => throw new NoSuchNamespaceException(namespace.map(quoted).mkString("."))
   }
 

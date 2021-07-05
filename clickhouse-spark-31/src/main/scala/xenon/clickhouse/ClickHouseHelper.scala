@@ -238,7 +238,7 @@ trait ClickHouseHelper {
          | ORDER BY `partition` ASC
          | """.stripMargin
     )
-    if (partOutput.isEmpty) {
+    if (partOutput.isEmpty || partOutput.rows == 1 && partOutput.records.head.get("partition").asText == "tuple()") {
       return Array(NoPartitionSpec)
     }
     partOutput.records.map { row =>

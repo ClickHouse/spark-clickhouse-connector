@@ -5,10 +5,11 @@ import org.apache.spark.SparkContext
 import org.apache.spark.sql.clickhouse.SparkUtils
 import org.apache.spark.sql.{Row, SparkSession}
 import org.scalatest.BeforeAndAfterAll
+import org.scalatest.concurrent.Eventually
 import org.scalatest.funsuite.AnyFunSuite
 import xenon.clickhouse.{ClickHouseCommandRunner, Utils}
 
-abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll {
+abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Eventually {
 
   Utils.setTesting()
 
