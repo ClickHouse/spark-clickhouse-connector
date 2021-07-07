@@ -31,7 +31,10 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
     .asInstanceOf[ManagedChannelBuilder[_]]
     .build
 
-  lazy val blockingStub: ClickHouseGrpc.ClickHouseBlockingStub = ClickHouseGrpc.newBlockingStub(channel)
+  lazy val blockingStub: ClickHouseGrpc.ClickHouseBlockingStub =
+    ClickHouseGrpc
+      .newBlockingStub(channel)
+      .withMaxInboundMessageSize(128 * 1024 * 1024) // 128M
 
   private lazy val baseQueryInfo = QueryInfo.newBuilder
     .setUserName(node.username)
