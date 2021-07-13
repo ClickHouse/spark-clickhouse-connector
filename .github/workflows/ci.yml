@@ -2,11 +2,11 @@ name: "CI"
 on:
   push:
     branches:
-      - "main"
+      - "master"
       - "spark-32"
   pull_request:
     branches:
-      - "main"
+      - "master"
       - "spark-32"
 
 jobs:
