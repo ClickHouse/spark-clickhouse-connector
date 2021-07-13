@@ -61,7 +61,7 @@ class ClickHouseReader(
       case (jsonNode: JsonNode, StructField(name, dataType, _, _)) => dataType match {
           case BooleanType => jsonNode.asBoolean
           case ByteType => jsonNode.asInt.byteValue
-          case ShortType => jsonNode.asInt.byteValue
+          case ShortType => jsonNode.asInt.shortValue
           case IntegerType => jsonNode.asInt
           case LongType => jsonNode.asLong
           case FloatType => jsonNode.asDouble.floatValue
