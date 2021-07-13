@@ -2,7 +2,6 @@ package xenon.clickhouse
 
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
-import org.scalatest.time.SpanSugar.convertIntToGrainOfTime
 import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseSingleSuiteMixIn, SparkClickHouseSingleSuiteMixin}
 
 class ClickHouseSingleSuite extends BaseSparkSuite

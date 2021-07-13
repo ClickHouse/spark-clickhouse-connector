@@ -41,6 +41,7 @@ object TransformUtil {
   private[sql] val days_transform_regex:   Regex = """toYYYYMMDD\((\w+)\)""".r
   private[sql] val hours_transform_regex:  Regex = """(toHour|HOUR)\((\w+)\)""".r
   private[sql] val identity_regex:         Regex = """^(\w+)$""".r
+  private[sql] val xx_hash_64_regex:       Regex = """^xxHash64\((.+)\)$"""r
   // format: on
 
   def fromClickHouse(transformExpr: String): Transform =
@@ -52,7 +53,8 @@ object TransformUtil {
       // Assume all others is just a column name without any transforms,
       // thus, `xxHash64(abc)` is not supported yet.
       case identity_regex(expr) => identity(expr)
-      // TODO support xxHash64
+      case xx_hash_64_regex(expr) => apply("ck_xx_hash64", column(expr))
+      // TODO support arbitrary functions
       case unsupported => throw ClickHouseClientException(s"Unsupported transform expression: $unsupported")
     }
 
