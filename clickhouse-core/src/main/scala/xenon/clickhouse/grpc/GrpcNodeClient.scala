@@ -47,7 +47,7 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
       try channel.awaitTermination(10, TimeUnit.SECONDS)
       catch {
         case NonFatal(exception) =>
-          log.error("Error on shutdown grpc channel, force shutdown.", exception)
+          log.error("Error on shutdown gRPC channel, force shutdown.", exception)
           shutdownNow()
       }
     }
@@ -59,7 +59,7 @@ class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
       try channel.awaitTermination(3, TimeUnit.SECONDS)
       catch {
         case NonFatal(exception) =>
-          log.error("Error on shutdown grpc channel, abandon.", exception)
+          log.error("Error on shutdown gRPC channel, abandon.", exception)
       }
     }
   }
