@@ -1,7 +1,7 @@
 plugins {
     id "idea"
     id "org.scoverage" version "5.0.0" apply false
-    id "com.google.protobuf" version "0.8.16" apply false
+    id "com.google.protobuf" version "0.8.17" apply false
     id "com.github.maiflai.scalatest" version "0.31" apply false
     id "com.github.johnrengelman.shadow" version "7.0.0" apply false
 }
