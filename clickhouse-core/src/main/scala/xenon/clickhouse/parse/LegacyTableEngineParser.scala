@@ -1,12 +1,12 @@
-package xenon.clickhouse
+package xenon.clickhouse.parse
 
-import com.google.common.annotations.VisibleForTesting
-import xenon.clickhouse.spec._
 import scala.util.matching.Regex
 
+import com.google.common.annotations.VisibleForTesting
 import xenon.clickhouse.exception.ClickHouseClientException
+import xenon.clickhouse.spec._
 
-object TableEngineUtil {
+object LegacyTableEngineParser {
 
   // part of information from `system`.`tables`
 

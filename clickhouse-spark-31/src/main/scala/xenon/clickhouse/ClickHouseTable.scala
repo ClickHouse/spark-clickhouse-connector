@@ -31,7 +31,7 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.read.{ClickHouseScanBuilder, ScanJobDesc}
 import xenon.clickhouse.spec._
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDesc}
-import xenon.clickhouse.TableEngineUtil._
+import xenon.clickhouse.parse.LegacyTableEngineParser._
 import xenon.clickhouse.grpc.GrpcNodeClient
 
 class ClickHouseTable(

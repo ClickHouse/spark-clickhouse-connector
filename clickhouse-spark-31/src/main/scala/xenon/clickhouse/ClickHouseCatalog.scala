@@ -25,10 +25,12 @@ import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
-
 import java.time.ZoneId
 import java.util
+
 import scala.collection.JavaConverters._
+
+import xenon.clickhouse.parse.LegacyTableEngineParser
 
 class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
     with ClickHouseHelper with SQLHelper with Logging {
@@ -113,10 +115,10 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
     }
     implicit val _tz: ZoneId = tz.merge
     val tableSpec = queryTableSpec(database, table)
-    val tableEngineSpec = TableEngineUtil.resolveTableEngine(tableSpec)
+    val tableEngineSpec = LegacyTableEngineParser.resolveTableEngine(tableSpec)
     val tableClusterSpec = tableEngineSpec match {
       case distributeSpec: DistributedEngineSpec =>
-        Some(TableEngineUtil.resolveTableCluster(distributeSpec, clusterSpecs))
+        Some(LegacyTableEngineParser.resolveTableCluster(distributeSpec, clusterSpecs))
       case _ => None
     }
     new ClickHouseTable(
@@ -146,7 +148,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
    * [TTL expr
    *     [DELETE|TO DISK 'xxx'|TO VOLUME 'xxx' [, ...] ]
    *     [WHERE conditions]
-   *     [GROUP BY key_expr [SET v1 = aggr_func(v1) [, v2 = aggr_func(v2) ...]] ]]
+   *     [GROUP BY key_expr [SET v1 = agg_func(v1) [, v2 = agg_func(v2) ...]] ]]
    * [SETTINGS name=value, ...]
    * }}}
    * <p>

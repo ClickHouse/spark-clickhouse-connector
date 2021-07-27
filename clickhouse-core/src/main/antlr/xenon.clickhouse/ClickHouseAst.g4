@@ -1,5 +1,9 @@
-// Modified based on ClickHouse@d0c0054ff0
-grammar ClickHouseParser;
+// Modified based on
+//   https://github.com/ClickHouse/ClickHouse/blob/master/utils/antlr/ClickHouseLexer.g4 and
+//   https://github.com/ClickHouse/ClickHouse/blob/master/utils/antlr/ClickHouseParser.g4
+////
+
+grammar ClickHouseAst;
 
 // Top-level statements
 

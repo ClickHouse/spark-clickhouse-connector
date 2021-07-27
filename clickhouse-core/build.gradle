@@ -74,4 +74,12 @@ dependencies {
         exclude group: "com.google.errorprone", module: "error_prone_annotations"
         exclude group: "org.codehaus.mojo", module: "animal-sniffer-annotations"
     }
+
+    testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
+    testRuntimeOnly("com.vladsch.flexmark:flexmark-all:$flexmark_version") {
+        exclude group: "log4j", module: "log4j"
+    }
+
+    testRuntimeOnly "org.slf4j:log4j-over-slf4j:$slf4j_version"
+    testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
 }
