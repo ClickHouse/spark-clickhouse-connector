@@ -6,7 +6,7 @@ import org.antlr.v4.runtime.tree.ParseTree
 import xenon.clickhouse.ClickHouseAstBaseVisitor
 import xenon.clickhouse.spec.{TableEngineSpec, UnknownTableEngineSpec}
 import xenon.clickhouse.ClickHouseAstParser._
-import xenon.clickhouse.expr.{Expr, FieldExpr, FuncExpr, StringLiteral}
+import xenon.clickhouse.expr.{Expr, FieldRef, FuncExpr, OrderExpr, StringLiteral}
 
 class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] {
   import ParseUtil._
@@ -26,26 +26,24 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] {
 
     engine match {
       case eg: String if "MergeTree" equalsIgnoreCase eg =>
-      case eg: String if "ReplicatedMergeTree" equalsIgnoreCase eg =>
       case eg: String if "ReplacingMergeTree" equalsIgnoreCase eg =>
+      case eg: String if "ReplicatedMergeTree" equalsIgnoreCase eg =>
       case eg: String if "ReplicatedReplacingMergeTree" equalsIgnoreCase eg =>
       case eg: String if "Distributed" equalsIgnoreCase eg =>
     }
 
-    val orderByOpt = listToOption(ctx.orderByClause).map(source)
+    val orderByOpt = listToOption(ctx.orderByClause).map(visitOrderByClause)
     val partOpt = listToOption(ctx.partitionByClause).map(_.columnExpr).map(visitColumnExpr)
     val pkOpt = listToOption(ctx.primaryKeyClause).map(_.columnExpr).map(visitColumnExpr)
     val sampleByOpt = listToOption(ctx.sampleByClause).map(_.columnExpr).map(visitColumnExpr)
-
     // we don't care about ttl now
     val ttlOpt = listToOption(ctx.ttlClause).map(source)
-
     val settingsOpt = listToOption(ctx.settingsClause).map(visitSettingsClause)
 
     println(s"engine expr: $engineExpr")
     println(s"engine: $engine")
-    println(s"engine args: $engineArgs")
-    println(s"order by: $orderByOpt")
+    println(s"engine args: ${engineArgs.mkString(",")}")
+    println(s"order by: ${orderByOpt.map(_.mkString(","))}")
     println(s"partition by: $partOpt")
     println(s"primary key: $pkOpt")
     println(s"sample by: $sampleByOpt")
@@ -63,33 +61,46 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] {
     case literalCtx: ColumnExprLiteralContext => visitColumnExprLiteral(literalCtx)
     case funcCtx: ColumnExprFunctionContext => visitColumnExprFunction(funcCtx)
     case other: ColumnExprContext => throw new IllegalArgumentException(
-        s"unsupported ColumnExpr: [${other.getClass.getSimpleName}] ${other.getText}"
+        s"Unsupported ColumnExpr: [${other.getClass.getSimpleName}] ${other.getText}"
       )
   }
 
-  override def visitColumnExprIdentifier(ctx: ColumnExprIdentifierContext): FieldExpr =
-    FieldExpr(source(ctx.columnIdentifier))
+  override def visitColumnExprIdentifier(ctx: ColumnExprIdentifierContext): FieldRef =
+    FieldRef(source(ctx.columnIdentifier))
 
   override def visitColumnExprLiteral(ctx: ColumnExprLiteralContext): StringLiteral =
     StringLiteral(source(ctx.literal))
 
   override def visitColumnExprFunction(ctx: ColumnExprFunctionContext): FuncExpr = {
     if (ctx.columnExprList != null) throw new IllegalArgumentException(
-      s"unsupported ColumnExprFunction with columnExprList: [${ctx.getClass.getSimpleName}] ${ctx.getText}"
+      s"Unsupported ColumnExprFunction with columnExprList: [${ctx.getClass.getSimpleName}] ${ctx.getText}"
     )
     if (ctx.DISTINCT != null) throw new IllegalArgumentException(
-      s"unsupported ColumnExprFunction with DISTINCT: [${ctx.getClass.getSimpleName}] ${ctx.getText}"
+      s"Unsupported ColumnExprFunction with DISTINCT: [${ctx.getClass.getSimpleName}] ${ctx.getText}"
     )
 
     val funcName = ctx.identifier.getText
     val funArgs = ctx.columnArgList.columnArgExpr.asScala.toArray.map { columnArgExprCtx =>
       if (columnArgExprCtx.columnLambdaExpr != null) throw new IllegalArgumentException(
-        s"unsupported ColumnLambdaExpr: ${source(columnArgExprCtx)}"
+        s"Unsupported ColumnLambdaExpr: ${source(columnArgExprCtx)}"
       )
       // recursive visit, but not sure if spark support the nested transform
       visitColumnExpr(columnArgExprCtx.columnExpr)
     }
     FuncExpr(funcName, funArgs)
+  }
+
+  ////////////////////////////////////////////////
+  //////////////// visit order by ////////////////
+  ////////////////////////////////////////////////
+
+  override def visitOrderByClause(ctx: OrderByClauseContext): Array[OrderExpr] =
+    ctx.orderExprList.orderExpr.asScala.toArray.map(visitOrderExpr)
+
+  override def visitOrderExpr(ctx: OrderExprContext): OrderExpr = {
+    val desc = Seq(ctx.DESC, ctx.DESCENDING).exists(_ != null)
+    val nullLast = Option(ctx.LAST).nonEmpty
+    OrderExpr(visitColumnExpr(ctx.columnExpr()), !desc, !nullLast)
   }
 
   ////////////////////////////////////////////////

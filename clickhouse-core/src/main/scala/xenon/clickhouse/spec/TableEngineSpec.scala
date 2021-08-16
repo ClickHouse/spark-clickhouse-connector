@@ -1,5 +1,19 @@
 package xenon.clickhouse.spec
 
+import xenon.clickhouse.expr.{Expr, OrderExpr}
+
+trait TableEngineSpecV2 extends Serializable {
+  def engine_expr: String
+  def engine: String
+  def args: Array[Expr]
+  def order_by: Array[OrderExpr]
+  def primary_key: Array[Expr]
+  def partition_key: Array[Expr]
+  def sample_by: Array[Expr]
+  def ttl: Option[String] // don't care about it now
+  def settings: Map[String, String]
+}
+
 sealed trait TableEngineSpec extends Serializable {
   def engine_expr: String
   def settings: Map[String, String]
