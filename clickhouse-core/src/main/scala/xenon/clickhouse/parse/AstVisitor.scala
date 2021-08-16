@@ -1,14 +1,13 @@
 package xenon.clickhouse.parse
 
 import scala.collection.JavaConverters._
-
 import org.antlr.v4.runtime.tree.ParseTree
-import xenon.clickhouse.ClickHouseAstBaseVisitor
-import xenon.clickhouse.spec.{TableEngineSpecV2, UnknownTableEngineSpecV2}
+import xenon.clickhouse.{ClickHouseAstBaseVisitor, Logging}
+import xenon.clickhouse.spec._
 import xenon.clickhouse.ClickHouseAstParser._
 import xenon.clickhouse.expr._
 
-class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] {
+class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
   import ParseUtil._
 
   protected def typedVisit[T](ctx: ParseTree): T =
@@ -24,33 +23,82 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] {
         .getOrElse(List.empty)
         .map(visitColumnsExpr)
 
-    engine match {
-      case eg: String if "MergeTree" equalsIgnoreCase eg =>
-      case eg: String if "ReplacingMergeTree" equalsIgnoreCase eg =>
-      case eg: String if "ReplicatedMergeTree" equalsIgnoreCase eg =>
-      case eg: String if "ReplicatedReplacingMergeTree" equalsIgnoreCase eg =>
-      case eg: String if "Distributed" equalsIgnoreCase eg =>
-    }
-
     val orderByOpt = listToOption(ctx.orderByClause).map(visitOrderByClause)
-    val partOpt = listToOption(ctx.partitionByClause).map(_.columnExpr).map(visitColumnExpr)
     val pkOpt = listToOption(ctx.primaryKeyClause).map(_.columnExpr).map(visitColumnExpr)
+    val partOpt = listToOption(ctx.partitionByClause).map(_.columnExpr).map(visitColumnExpr)
     val sampleByOpt = listToOption(ctx.sampleByClause).map(_.columnExpr).map(visitColumnExpr)
     // we don't care about ttl now
     val ttlOpt = listToOption(ctx.ttlClause).map(source)
-    val settingsOpt = listToOption(ctx.settingsClause).map(visitSettingsClause)
+    val settings = listToOption(ctx.settingsClause).map(visitSettingsClause).getOrElse(Map.empty)
 
-    println(s"engine expr: $engineExpr")
-    println(s"engine: $engine")
-    println(s"engine args: ${engineArgs.mkString(",")}")
-    println(s"order by: ${orderByOpt.map(_.mkString(","))}")
-    println(s"partition by: $partOpt")
-    println(s"primary key: $pkOpt")
-    println(s"sample by: $sampleByOpt")
-    println(s"ttl: $ttlOpt")
-    println(s"settings: $settingsOpt")
+    log.debug(s"engine expr: $engineExpr")
+    log.debug(s"engine: $engine")
+    log.debug(s"engine args: ${engineArgs.mkString(",")}")
+    log.debug(s"order by: ${orderByOpt.map(_.mkString(","))}")
+    log.debug(s"partition by: $partOpt")
+    log.debug(s"primary key: $pkOpt")
+    log.debug(s"sample by: $sampleByOpt")
+    log.debug(s"ttl: $ttlOpt")
+    log.debug(s"settings: $settings")
 
-    UnknownTableEngineSpecV2(engineExpr)
+    engine match {
+      case eg: String if "MergeTree" equalsIgnoreCase eg =>
+        MergeTreeEngineSpecV2(
+          engine_expr = engineExpr,
+          _sorting_key = orderByOpt.getOrElse(Array.empty),
+          _primary_key = TupleExpr(pkOpt.toArray),
+          _partition_key = TupleExpr(partOpt.toArray),
+          _sampling_key = TupleExpr(sampleByOpt.toArray),
+          _ttl = ttlOpt,
+          _settings = settings
+        )
+      case eg: String if "ReplacingMergeTree" equalsIgnoreCase eg =>
+        ReplacingMergeTreeEngineSpecV2(
+          engine_expr = engineExpr,
+          version_column = seqToOption(engineArgs).map(_.asInstanceOf[FieldRef]),
+          _sorting_key = orderByOpt.getOrElse(Array.empty),
+          _primary_key = TupleExpr(pkOpt.toArray),
+          _partition_key = TupleExpr(partOpt.toArray),
+          _sampling_key = TupleExpr(sampleByOpt.toArray),
+          _ttl = ttlOpt,
+          _settings = settings
+        )
+      case eg: String if "ReplicatedMergeTree" equalsIgnoreCase eg =>
+        ReplicatedMergeTreeEngineSpecV2(
+          engine_expr = engineExpr,
+          zk_path = engineArgs.head.sql,
+          replica_name = engineArgs(1).sql,
+          _sorting_key = orderByOpt.getOrElse(Array.empty),
+          _primary_key = TupleExpr(pkOpt.toArray),
+          _partition_key = TupleExpr(partOpt.toArray),
+          _sampling_key = TupleExpr(sampleByOpt.toArray),
+          _ttl = ttlOpt,
+          _settings = settings
+        )
+      case eg: String if "ReplicatedReplacingMergeTree" equalsIgnoreCase eg =>
+        ReplicatedReplacingMergeTreeEngineSpecV2(
+          engine_expr = engineExpr,
+          zk_path = engineArgs.head.sql,
+          replica_name = engineArgs(1).sql,
+          version_column = seqToOption(engineArgs.drop(2)).map(_.asInstanceOf[FieldRef]),
+          _sorting_key = orderByOpt.getOrElse(Array.empty),
+          _primary_key = TupleExpr(pkOpt.toArray),
+          _partition_key = TupleExpr(partOpt.toArray),
+          _sampling_key = TupleExpr(sampleByOpt.toArray),
+          _ttl = ttlOpt,
+          _settings = settings
+        )
+      case eg: String if "Distributed" equalsIgnoreCase eg =>
+        DistributedEngineSpecV2(
+          engine_expr = engineExpr,
+          cluster = engineArgs.head.sql,
+          local_db = engineArgs(1).sql,
+          local_table = engineArgs(2).sql,
+          sharding_key = Option(engineArgs.drop(2).head),
+          _settings = settings
+        )
+      case _ => UnknownTableEngineSpecV2(engineExpr)
+    }
   }
 
   ////////////////////////////////////////////////
@@ -69,7 +117,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] {
     FieldRef(source(ctx.columnIdentifier))
 
   override def visitColumnExprLiteral(ctx: ColumnExprLiteralContext): StringLiteral =
-    StringLiteral(source(ctx.literal))
+    StringLiteral(source(ctx.literal).stripSuffix("'").stripSuffix("'"))
 
   override def visitColumnExprFunction(ctx: ColumnExprFunctionContext): FuncExpr = {
     if (ctx.columnExprList != null) throw new IllegalArgumentException(

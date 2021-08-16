@@ -1,17 +1,20 @@
 package xenon.clickhouse.parse
 
 import java.util
-
 import org.antlr.v4.runtime.{ParserRuleContext, Token}
 import org.antlr.v4.runtime.misc.Interval
 
+import scala.collection.JavaConverters._
+
 object ParseUtil {
 
-  def listToOption[T](list: util.List[T]): Option[T] = list.size match {
+  def seqToOption[T](seq: Seq[T]): Option[T] = seq.size match {
     case 0 => None
-    case 1 => Some(list.get(0))
+    case 1 => Some(seq.head)
     case illegal => throw new IllegalArgumentException(s"expect list size 0 or 1, but got $illegal")
   }
+
+  def listToOption[T](list: util.List[T]): Option[T] = seqToOption(list.asScala)
 
   def source(ctx: ParserRuleContext): String = {
     val stream = ctx.getStart.getInputStream

@@ -4,10 +4,12 @@ import org.antlr.v4.runtime._
 import org.antlr.v4.runtime.atn.PredictionMode
 import org.antlr.v4.runtime.misc.ParseCancellationException
 import xenon.clickhouse._
+import xenon.clickhouse.spec.TableEngineSpecV2
 
 class SQLParser(astVisitor: AstVisitor) extends Logging {
 
-  def parseEngineClause(sql: String): Unit = parse(sql)(parser => astVisitor.visitEngineClause(parser.engineClause))
+  def parseEngineClause(sql: String): TableEngineSpecV2 =
+    parse(sql)(parser => astVisitor.visitEngineClause(parser.engineClause))
 
   private def parse[T](sql: String)(toResult: ClickHouseAstParser => T): T = {
 

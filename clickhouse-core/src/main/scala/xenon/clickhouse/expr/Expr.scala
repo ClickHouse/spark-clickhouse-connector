@@ -25,3 +25,5 @@ case class OrderExpr(expr: Expr, asc: Boolean, nullFirst: Boolean) extends Expr 
 case class TupleExpr(exprList: Array[Expr]) extends Expr {
   override def sql: String = exprList.mkString("(", ",", ")")
 }
+
+object ZeroTupleExpr extends TupleExpr(Array.empty)
