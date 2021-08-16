@@ -4,9 +4,9 @@ import scala.collection.JavaConverters._
 
 import org.antlr.v4.runtime.tree.ParseTree
 import xenon.clickhouse.ClickHouseAstBaseVisitor
-import xenon.clickhouse.spec.{TableEngineSpec, UnknownTableEngineSpec}
+import xenon.clickhouse.spec.{TableEngineSpecV2, UnknownTableEngineSpecV2}
 import xenon.clickhouse.ClickHouseAstParser._
-import xenon.clickhouse.expr.{Expr, FieldRef, FuncExpr, OrderExpr, StringLiteral}
+import xenon.clickhouse.expr._
 
 class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] {
   import ParseUtil._
@@ -14,7 +14,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] {
   protected def typedVisit[T](ctx: ParseTree): T =
     ctx.accept(this).asInstanceOf[T]
 
-  override def visitEngineClause(ctx: EngineClauseContext): TableEngineSpec = {
+  override def visitEngineClause(ctx: EngineClauseContext): TableEngineSpecV2 = {
     val engineExpr = source(ctx.engineExpr)
     val engine = source(ctx.engineExpr.identifierOrNull)
 
@@ -50,7 +50,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] {
     println(s"ttl: $ttlOpt")
     println(s"settings: $settingsOpt")
 
-    UnknownTableEngineSpec(engineExpr)
+    UnknownTableEngineSpecV2(engineExpr)
   }
 
   ////////////////////////////////////////////////

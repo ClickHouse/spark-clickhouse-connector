@@ -1,17 +1,121 @@
 package xenon.clickhouse.spec
 
-import xenon.clickhouse.expr.{Expr, OrderExpr}
+import xenon.clickhouse.expr.{Expr, FieldRef, OrderExpr}
 
-trait TableEngineSpecV2 extends Serializable {
+sealed trait TableEngineSpecV2 extends Serializable {
   def engine_expr: String
   def engine: String
-  def args: Array[Expr]
-  def order_by: Array[OrderExpr]
-  def primary_key: Array[Expr]
-  def partition_key: Array[Expr]
-  def sample_by: Array[Expr]
-  def ttl: Option[String] // don't care about it now
+  def args: Array[Expr] = Array.empty
+  def sorting_key: Array[OrderExpr] = Array.empty
+  def primary_key: Array[Expr] = Array.empty
+  def partition_key: Array[Expr] = Array.empty
+  def sampling_key: Array[Expr] = Array.empty
+  def ttl: Option[String] = None // don't care about it now
   def settings: Map[String, String]
+}
+
+trait MergeTreeFamilyEngineSpecV2 extends TableEngineSpecV2
+
+trait ReplicatedEngineSpecV2 extends MergeTreeFamilyEngineSpecV2 {
+  def zk_path: String
+  def replica_name: String
+}
+
+case class UnknownTableEngineSpecV2(
+  engine_expr: String
+) extends TableEngineSpecV2 {
+  def engine: String = "Unknown"
+  def settings: Map[String, String] = Map.empty
+}
+
+case class MergeTreeEngineSpecV2(
+  engine_expr: String,
+  var _sorting_key: Array[OrderExpr] = Array.empty,
+  var _primary_key: Array[Expr] = Array.empty,
+  var _partition_key: Array[Expr] = Array.empty,
+  var _sampling_key: Array[Expr] = Array.empty,
+  var _ttl: Option[String] = None,
+  var _settings: Map[String, String] = Map.empty
+) extends MergeTreeFamilyEngineSpecV2 {
+  override def engine: String = "MergeTree"
+  override def sorting_key: Array[OrderExpr] = _sorting_key
+  override def primary_key: Array[Expr] = _primary_key
+  override def partition_key: Array[Expr] = _partition_key
+  override def sampling_key: Array[Expr] = _sampling_key
+  override def ttl: Option[String] = _ttl
+  override def settings: Map[String, String] = _settings
+}
+
+case class ReplicatedMergeTreeEngineSpecV2(
+  engine_expr: String,
+  zk_path: String,
+  replica_name: String,
+  var _sorting_key: Array[OrderExpr] = Array.empty,
+  var _primary_key: Array[Expr] = Array.empty,
+  var _partition_key: Array[Expr] = Array.empty,
+  var _sampling_key: Array[Expr] = Array.empty,
+  var _ttl: Option[String] = None,
+  var _settings: Map[String, String] = Map.empty
+) extends MergeTreeFamilyEngineSpecV2 with ReplicatedEngineSpecV2 {
+  def engine: String = "ReplicatedMergeTree"
+  override def sorting_key: Array[OrderExpr] = _sorting_key
+  override def primary_key: Array[Expr] = _primary_key
+  override def partition_key: Array[Expr] = _partition_key
+  override def sampling_key: Array[Expr] = _sampling_key
+  override def ttl: Option[String] = _ttl
+  override def settings: Map[String, String] = _settings
+}
+
+case class ReplacingMergeTreeEngineSpecV2(
+  engine_expr: String,
+  version_column: Option[FieldRef] = None,
+  var _sorting_key: Array[OrderExpr] = Array.empty,
+  var _primary_key: Array[Expr] = Array.empty,
+  var _partition_key: Array[Expr] = Array.empty,
+  var _sampling_key: Array[Expr] = Array.empty,
+  var _ttl: Option[String] = None,
+  var _settings: Map[String, String] = Map.empty
+) extends MergeTreeFamilyEngineSpecV2 {
+  override def engine: String = "ReplacingMergeTree"
+  override def sorting_key: Array[OrderExpr] = _sorting_key
+  override def primary_key: Array[Expr] = _primary_key
+  override def partition_key: Array[Expr] = _partition_key
+  override def sampling_key: Array[Expr] = _sampling_key
+  override def ttl: Option[String] = _ttl
+  override def settings: Map[String, String] = _settings
+}
+
+case class ReplicatedReplacingMergeTreeEngineSpecV2(
+  engine_expr: String,
+  zk_path: String,
+  replica_name: String,
+  version_column: Option[String] = None,
+  var _sorting_key: Array[OrderExpr] = Array.empty,
+  var _primary_key: Array[Expr] = Array.empty,
+  var _partition_key: Array[Expr] = Array.empty,
+  var _sampling_key: Array[Expr] = Array.empty,
+  var _ttl: Option[String] = None,
+  var _settings: Map[String, String] = Map.empty
+) extends MergeTreeFamilyEngineSpecV2 with ReplicatedEngineSpecV2 {
+  override def engine: String = "ReplicatedReplacingMergeTree"
+  override def sorting_key: Array[OrderExpr] = _sorting_key
+  override def primary_key: Array[Expr] = _primary_key
+  override def partition_key: Array[Expr] = _partition_key
+  override def sampling_key: Array[Expr] = _sampling_key
+  override def ttl: Option[String] = _ttl
+  override def settings: Map[String, String] = _settings
+}
+
+case class DistributedEngineSpecV2(
+  engine_expr: String,
+  cluster: String,
+  local_db: String,
+  local_table: String,
+  sharding_key: Option[String] = None,
+  var _settings: Map[String, String] = Map.empty
+) extends TableEngineSpecV2 {
+  override def engine: String = "Distributed"
+  override def settings: Map[String, String] = _settings
 }
 
 sealed trait TableEngineSpec extends Serializable {
