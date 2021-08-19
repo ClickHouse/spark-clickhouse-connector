@@ -1,5 +1,6 @@
 package org.apache.spark.sql.clickhouse.util
 
+import scala.language.postfixOps
 import scala.util.matching.Regex
 
 import org.apache.spark.sql.connector.expressions._

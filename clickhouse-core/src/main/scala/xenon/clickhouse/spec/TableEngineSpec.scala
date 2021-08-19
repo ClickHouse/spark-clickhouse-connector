@@ -12,6 +12,8 @@ sealed trait TableEngineSpecV2 extends Serializable {
   def sampling_key: TupleExpr = ZeroTupleExpr
   def ttl: Option[String] = None // don't care about it now
   def settings: Map[String, String]
+  def is_distributed: Boolean = false
+  def is_replicated: Boolean = false
 }
 
 trait MergeTreeFamilyEngineSpecV2 extends TableEngineSpecV2
@@ -19,6 +21,7 @@ trait MergeTreeFamilyEngineSpecV2 extends TableEngineSpecV2
 trait ReplicatedEngineSpecV2 extends MergeTreeFamilyEngineSpecV2 {
   def zk_path: String
   def replica_name: String
+  override def is_replicated: Boolean = true
 }
 
 case class UnknownTableEngineSpecV2(
@@ -116,6 +119,7 @@ case class DistributedEngineSpecV2(
 ) extends TableEngineSpecV2 {
   override def engine: String = "Distributed"
   override def settings: Map[String, String] = _settings
+  override def is_distributed: Boolean = false
 }
 
 sealed trait TableEngineSpec extends Serializable {
