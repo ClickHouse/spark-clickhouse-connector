@@ -1,8 +1,9 @@
 package xenon.clickhouse.parse
 
 import scala.collection.JavaConverters._
+
 import org.antlr.v4.runtime.tree.ParseTree
-import xenon.clickhouse.{ClickHouseAstBaseVisitor, Logging}
+import xenon.clickhouse.{ClickHouseAstBaseVisitor, Logging, Utils}
 import xenon.clickhouse.spec._
 import xenon.clickhouse.ClickHouseAstParser._
 import xenon.clickhouse.expr._
@@ -117,7 +118,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
     FieldRef(source(ctx.columnIdentifier))
 
   override def visitColumnExprLiteral(ctx: ColumnExprLiteralContext): StringLiteral =
-    StringLiteral(source(ctx.literal).stripSuffix("'").stripSuffix("'"))
+    StringLiteral(Utils.stripSingleQuote(source(ctx.literal)))
 
   override def visitColumnExprFunction(ctx: ColumnExprFunctionContext): FuncExpr = {
     if (ctx.columnExprList != null) throw new IllegalArgumentException(

@@ -3,13 +3,13 @@ package xenon.clickhouse
 import com.fasterxml.jackson.databind.{DeserializationFeature, ObjectMapper}
 import com.fasterxml.jackson.module.scala.ScalaObjectMapper
 import org.apache.commons.lang3.time.FastDateFormat
-
 import java.io.{File, InputStream}
 import java.net.URI
 import java.nio.file.{Files, Path, StandardCopyOption}
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.locks.LockSupport
+
 import scala.annotation.tailrec
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try, Using}
@@ -50,6 +50,15 @@ object Utils extends Logging {
   }
 
   def load(key: String, defValue: String = ""): String = sys.props.getOrElse(key, sys.env.getOrElse(key, defValue))
+
+  def stripSingleQuote(maybeQuoted: String): String = {
+    var start = 0
+    var until = maybeQuoted.length
+    if (maybeQuoted.startsWith("'")) start = 1
+    if (maybeQuoted.endsWith("'") && !maybeQuoted.endsWith("\\'")) until = until - 1
+    if (start > until) until = start
+    maybeQuoted.substring(start, until)
+  }
 
   @tailrec
   def retry[R, T <: Throwable: ClassTag](retryTimes: Int, interval: Duration)(f: () => R): Try[R] = {
