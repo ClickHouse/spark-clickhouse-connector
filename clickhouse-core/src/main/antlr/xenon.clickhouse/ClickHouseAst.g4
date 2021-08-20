@@ -144,7 +144,7 @@ primaryKeyClause: PRIMARY KEY columnExpr;
 sampleByClause: SAMPLE BY columnExpr;
 ttlClause: TTL ttlExpr (COMMA ttlExpr)*;
 
-engineExpr: ENGINE EQ_SINGLE? identifierOrNull (LPAREN columnExprList? RPAREN)?;
+engineExpr: ENGINE? EQ_SINGLE? identifierOrNull (LPAREN columnExprList? RPAREN)?;
 tableElementExpr
     : tableColumnDfnt                                                              # TableElementExprColumn
     | CONSTRAINT identifier CHECK columnExpr                                       # TableElementExprConstraint

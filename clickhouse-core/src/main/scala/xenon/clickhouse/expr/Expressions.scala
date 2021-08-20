@@ -14,16 +14,14 @@ case class FieldRef(name: String) extends Expr {
   override def sql: String = name
 }
 
-case class FuncExpr(name: String, args: Array[Expr]) extends Expr {
+case class FuncExpr(name: String, args: List[Expr]) extends Expr {
   override def sql: String = s"$name(${args.map(_.desc).mkString(",")})"
 }
 
-case class OrderExpr(expr: Expr, asc: Boolean, nullFirst: Boolean) extends Expr {
+case class OrderExpr(expr: Expr, asc: Boolean = true, nullFirst: Boolean = true) extends Expr {
   override def sql: String = s"$expr ${if (asc) "ASC" else "DESC"} NULLS ${if (nullFirst) "FIRST" else "LAST"}"
 }
 
-case class TupleExpr(exprList: Array[Expr]) extends Expr {
+case class TupleExpr(exprList: List[Expr]) extends Expr {
   override def sql: String = exprList.mkString("(", ",", ")")
 }
-
-object ZeroTupleExpr extends TupleExpr(Array.empty)

@@ -14,6 +14,11 @@
 
 package xenon.clickhouse
 
+import java.time.ZoneId
+import java.util
+
+import scala.collection.JavaConverters._
+
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.clickhouse.util.TransformUtil._
 import org.apache.spark.sql.connector.catalog._
@@ -21,16 +26,10 @@ import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
-import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
+import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
-import java.time.ZoneId
-import java.util
-
-import scala.collection.JavaConverters._
-
-import xenon.clickhouse.parse.LegacyTableEngineParser
 
 class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
     with ClickHouseHelper with SQLHelper with Logging {
@@ -115,10 +114,10 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
     }
     implicit val _tz: ZoneId = tz.merge
     val tableSpec = queryTableSpec(database, table)
-    val tableEngineSpec = LegacyTableEngineParser.resolveTableEngine(tableSpec)
+    val tableEngineSpec = TableEngineUtils.resolveTableEngine(tableSpec)
     val tableClusterSpec = tableEngineSpec match {
-      case distributeSpec: DistributedEngineSpec =>
-        Some(LegacyTableEngineParser.resolveTableCluster(distributeSpec, clusterSpecs))
+      case distributeSpec: DistributedEngineSpecV2 =>
+        Some(TableEngineUtils.resolveTableCluster(distributeSpec, clusterSpecs))
       case _ => None
     }
     new ClickHouseTable(

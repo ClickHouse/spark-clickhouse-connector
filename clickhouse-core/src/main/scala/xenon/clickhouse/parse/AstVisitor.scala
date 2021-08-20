@@ -32,24 +32,14 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
     val ttlOpt = listToOption(ctx.ttlClause).map(source)
     val settings = listToOption(ctx.settingsClause).map(visitSettingsClause).getOrElse(Map.empty)
 
-    log.debug(s"engine expr: $engineExpr")
-    log.debug(s"engine: $engine")
-    log.debug(s"engine args: ${engineArgs.mkString(",")}")
-    log.debug(s"order by: ${orderByOpt.map(_.mkString(","))}")
-    log.debug(s"partition by: $partOpt")
-    log.debug(s"primary key: $pkOpt")
-    log.debug(s"sample by: $sampleByOpt")
-    log.debug(s"ttl: $ttlOpt")
-    log.debug(s"settings: $settings")
-
     engine match {
       case eg: String if "MergeTree" equalsIgnoreCase eg =>
         MergeTreeEngineSpecV2(
           engine_expr = engineExpr,
-          _sorting_key = orderByOpt.getOrElse(Array.empty),
-          _primary_key = TupleExpr(pkOpt.toArray),
-          _partition_key = TupleExpr(partOpt.toArray),
-          _sampling_key = TupleExpr(sampleByOpt.toArray),
+          _sorting_key = orderByOpt.getOrElse(List.empty),
+          _primary_key = TupleExpr(pkOpt.toList),
+          _partition_key = TupleExpr(partOpt.toList),
+          _sampling_key = TupleExpr(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )
@@ -57,10 +47,10 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
         ReplacingMergeTreeEngineSpecV2(
           engine_expr = engineExpr,
           version_column = seqToOption(engineArgs).map(_.asInstanceOf[FieldRef]),
-          _sorting_key = orderByOpt.getOrElse(Array.empty),
-          _primary_key = TupleExpr(pkOpt.toArray),
-          _partition_key = TupleExpr(partOpt.toArray),
-          _sampling_key = TupleExpr(sampleByOpt.toArray),
+          _sorting_key = orderByOpt.getOrElse(List.empty),
+          _primary_key = TupleExpr(pkOpt.toList),
+          _partition_key = TupleExpr(partOpt.toList),
+          _sampling_key = TupleExpr(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )
@@ -69,10 +59,10 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
           engine_expr = engineExpr,
           zk_path = engineArgs.head.sql,
           replica_name = engineArgs(1).sql,
-          _sorting_key = orderByOpt.getOrElse(Array.empty),
-          _primary_key = TupleExpr(pkOpt.toArray),
-          _partition_key = TupleExpr(partOpt.toArray),
-          _sampling_key = TupleExpr(sampleByOpt.toArray),
+          _sorting_key = orderByOpt.getOrElse(List.empty),
+          _primary_key = TupleExpr(pkOpt.toList),
+          _partition_key = TupleExpr(partOpt.toList),
+          _sampling_key = TupleExpr(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )
@@ -82,10 +72,10 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
           zk_path = engineArgs.head.sql,
           replica_name = engineArgs(1).sql,
           version_column = seqToOption(engineArgs.drop(2)).map(_.asInstanceOf[FieldRef]),
-          _sorting_key = orderByOpt.getOrElse(Array.empty),
-          _primary_key = TupleExpr(pkOpt.toArray),
-          _partition_key = TupleExpr(partOpt.toArray),
-          _sampling_key = TupleExpr(sampleByOpt.toArray),
+          _sorting_key = orderByOpt.getOrElse(List.empty),
+          _primary_key = TupleExpr(pkOpt.toList),
+          _partition_key = TupleExpr(partOpt.toList),
+          _sampling_key = TupleExpr(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )
@@ -95,7 +85,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
           cluster = engineArgs.head.sql,
           local_db = engineArgs(1).sql,
           local_table = engineArgs(2).sql,
-          sharding_key = Option(engineArgs.drop(2).head),
+          sharding_key = engineArgs.drop(3).headOption,
           _settings = settings
         )
       case _ => UnknownTableEngineSpecV2(engineExpr)
@@ -129,7 +119,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
     )
 
     val funcName = ctx.identifier.getText
-    val funArgs = ctx.columnArgList.columnArgExpr.asScala.toArray.map { columnArgExprCtx =>
+    val funArgs = ctx.columnArgList.columnArgExpr.asScala.toList.map { columnArgExprCtx =>
       if (columnArgExprCtx.columnLambdaExpr != null) throw new IllegalArgumentException(
         s"Unsupported ColumnLambdaExpr: ${source(columnArgExprCtx)}"
       )
@@ -143,8 +133,8 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
   //////////////// visit order by ////////////////
   ////////////////////////////////////////////////
 
-  override def visitOrderByClause(ctx: OrderByClauseContext): Array[OrderExpr] =
-    ctx.orderExprList.orderExpr.asScala.toArray.map(visitOrderExpr)
+  override def visitOrderByClause(ctx: OrderByClauseContext): List[OrderExpr] =
+    ctx.orderExprList.orderExpr.asScala.toList.map(visitOrderExpr)
 
   override def visitOrderExpr(ctx: OrderExprContext): OrderExpr = {
     val desc = Seq(ctx.DESC, ctx.DESCENDING).exists(_ != null)
