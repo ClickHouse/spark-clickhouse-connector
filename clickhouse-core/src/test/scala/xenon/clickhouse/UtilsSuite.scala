@@ -16,4 +16,11 @@ class UtilsSuite extends AnyFunSuite {
     assert(stripSingleQuote("\\'abc") === "\\'abc")
   }
 
+  test("wrapBackQuote") {
+    assert(wrapBackQuote("`") === "``")
+    assert(wrapBackQuote("``") === "``")
+    assert(wrapBackQuote("abc") === "`abc`")
+    assert(wrapBackQuote("`abc") === "`abc`")
+    assert(wrapBackQuote("abc`") === "`abc`")
+  }
 }

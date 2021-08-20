@@ -33,6 +33,7 @@ import xenon.clickhouse.spec._
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDesc}
 import xenon.clickhouse.parse.LegacyTableEngineParser._
 import xenon.clickhouse.grpc.GrpcNodeClient
+import xenon.clickhouse.Utils._
 
 class ClickHouseTable(
   node: NodeSpec,
@@ -80,7 +81,7 @@ class ClickHouseTable(
     case _: TableEngineSpec => None
   }
 
-  override def name: String = s"ClickHouse [${spec.database}.${spec.name}] engine=${spec.engine}"
+  override def name: String = s"${wrapBackQuote(spec.database)}.${wrapBackQuote(spec.name)}"
 
   override def capabilities(): util.Set[TableCapability] =
     Set(

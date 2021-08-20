@@ -60,6 +60,14 @@ object Utils extends Logging {
     maybeQuoted.substring(start, until)
   }
 
+  def wrapBackQuote(identifier: String): String = {
+    val sb = new StringBuilder(identifier.length + 2)
+    if (!identifier.startsWith("`")) sb.append('`')
+    sb.append(identifier)
+    if (identifier == "`" || !identifier.endsWith("`") || identifier.endsWith("\\`")) sb.append('`')
+    sb.mkString
+  }
+
   @tailrec
   def retry[R, T <: Throwable: ClassTag](retryTimes: Int, interval: Duration)(f: () => R): Try[R] = {
     assert(retryTimes >= 0)
