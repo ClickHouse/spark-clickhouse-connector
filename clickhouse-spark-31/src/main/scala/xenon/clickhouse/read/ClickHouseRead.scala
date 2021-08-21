@@ -29,7 +29,7 @@ import org.apache.spark.sql.vectorized.ColumnarBatch
 import xenon.clickhouse.{ClickHouseHelper, Logging, SQLHelper}
 import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.grpc.GrpcNodeClient
-import xenon.clickhouse.spec.{DistributedEngineSpec, NoPartitionSpec, TableEngineSpec}
+import xenon.clickhouse.spec._
 
 class ClickHouseScanBuilder(
   jobDesc: ScanJobDesc,
@@ -84,17 +84,17 @@ class ClickHouseBatchScan(jobDesc: ScanJobDesc) extends Scan with Batch
   val readDistributedConvertLocal: Boolean = conf.getConf(READ_DISTRIBUTED_CONVERT_LOCAL)
 
   val database: String = jobDesc.tableEngineSpec match {
-    case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_db
+    case dist: DistributedEngineSpecV2 if readDistributedConvertLocal => dist.local_db
     case _ => jobDesc.tableSpec.database
   }
 
   val table: String = jobDesc.tableEngineSpec match {
-    case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_table
+    case dist: DistributedEngineSpecV2 if readDistributedConvertLocal => dist.local_table
     case _ => jobDesc.tableSpec.name
   }
 
   lazy val inputPartitions: Array[ClickHouseInputPartition] = jobDesc.tableEngineSpec match {
-    case DistributedEngineSpec(_, _, local_db, local_table, _, _, _) if readDistributedConvertLocal =>
+    case DistributedEngineSpecV2(_, _, local_db, local_table, _, _) if readDistributedConvertLocal =>
       jobDesc.cluster.get.shards.flatMap { shardSpec =>
         Using.resource(GrpcNodeClient(shardSpec.nodes.head)) { implicit grpcNodeClient: GrpcNodeClient =>
           queryPartitionSpec(local_db, local_table).map(partitionSpec =>
@@ -102,14 +102,14 @@ class ClickHouseBatchScan(jobDesc: ScanJobDesc) extends Scan with Batch
           )
         }
       }
-    case _: DistributedEngineSpec if readDistributedUseClusterNodes =>
+    case _: DistributedEngineSpecV2 if readDistributedUseClusterNodes =>
       throw ClickHouseClientException(
         s"${READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
       )
-    case _: DistributedEngineSpec =>
+    case _: DistributedEngineSpecV2 =>
       // we can not collect all partitions from single node, thus should treat table as no partitioned table
       Array(ClickHouseInputPartition(jobDesc.tableSpec, NoPartitionSpec, jobDesc.node))
-    case _: TableEngineSpec =>
+    case _: TableEngineSpecV2 =>
       Using.resource(GrpcNodeClient(jobDesc.node)) { implicit grpcNodeClient: GrpcNodeClient =>
         queryPartitionSpec(database, table).map(partitionSpec =>
           ClickHouseInputPartition(jobDesc.tableSpec, partitionSpec, jobDesc.node) // TODO pickup preferred

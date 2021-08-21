@@ -9,10 +9,10 @@ case class ScanJobDesc(
   node: NodeSpec,
   tz: ZoneId,
   tableSpec: TableSpec,
-  tableEngineSpec: TableEngineSpec,
+  tableEngineSpec: TableEngineSpecV2,
   cluster: Option[ClusterSpec],
   localTableSpec: Option[TableSpec],
-  localTableEngineSpec: Option[TableEngineSpec],
+  localTableEngineSpec: Option[TableEngineSpecV2],
   // below fields will be constructed in ScanBuilder
   readSchema: StructType = new StructType,
   filterExpr: String = "1=1"

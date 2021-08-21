@@ -28,19 +28,19 @@ import org.apache.spark.sql.connector.read.ScanBuilder
 import org.apache.spark.sql.connector.write.LogicalWriteInfo
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
+import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.read.{ClickHouseScanBuilder, ScanJobDesc}
 import xenon.clickhouse.spec._
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDesc}
-import xenon.clickhouse.parse.LegacyTableEngineParser._
-import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.Utils._
+import xenon.clickhouse.expr.{Expr, OrderExpr}
 
 class ClickHouseTable(
   node: NodeSpec,
   cluster: Option[ClusterSpec],
   implicit val tz: ZoneId,
   spec: TableSpec,
-  engineSpec: TableEngineSpec
+  engineSpec: TableEngineSpecV2
 ) extends Table
     with SupportsRead
     with SupportsWrite
@@ -54,31 +54,32 @@ class ClickHouseTable(
 
   def isDistributed: Boolean = engineSpec.is_distributed
 
-  lazy val (localTableSpec, localTableEngineSpec): (Option[TableSpec], Option[MergeTreeFamilyEngineSpec]) =
+  lazy val (localTableSpec, localTableEngineSpec): (Option[TableSpec], Option[MergeTreeFamilyEngineSpecV2]) =
     engineSpec match {
-      case distSpec: DistributedEngineSpec => Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+      case distSpec: DistributedEngineSpecV2 => Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
           val _localTableSpec = queryTableSpec(distSpec.local_db, distSpec.local_table)
-          val _localTableEngineSpec = resolveTableEngine(_localTableSpec).asInstanceOf[MergeTreeFamilyEngineSpec]
+          val _localTableEngineSpec =
+            TableEngineUtils.resolveTableEngine(_localTableSpec).asInstanceOf[MergeTreeFamilyEngineSpecV2]
           (Some(_localTableSpec), Some(_localTableEngineSpec))
         }
       case _ => (None, None)
     }
 
-  def shardingKey: Option[String] = engineSpec match {
-    case _spec: DistributedEngineSpec => _spec.sharding_key
+  def shardingKey: Option[Expr] = engineSpec match {
+    case _spec: DistributedEngineSpecV2 => _spec.sharding_key
     case _ => None
   }
 
-  def sortingKey: Option[String] = engineSpec match {
-    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => Some(mergeTreeFamilySpec.sorting_key).filter(_.nonEmpty)
-    case _: DistributedEngineSpec => localTableEngineSpec.map(_.sorting_key).filter(_.nonEmpty)
-    case _: TableEngineSpec => None
+  def partitionKey: Option[List[Expr]] = engineSpec match {
+    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpecV2 => Some(mergeTreeFamilySpec.partition_key.exprList)
+    case _: DistributedEngineSpecV2 => localTableEngineSpec.map(_.partition_key.exprList)
+    case _: TableEngineSpecV2 => None
   }
 
-  def partitionKey: Option[String] = engineSpec match {
-    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => mergeTreeFamilySpec.partition_key.filter(_.nonEmpty)
-    case _: DistributedEngineSpec => localTableEngineSpec.flatMap(_.partition_key).filter(_.nonEmpty)
-    case _: TableEngineSpec => None
+  def sortingKey: Option[List[OrderExpr]] = engineSpec match {
+    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpecV2 => Some(mergeTreeFamilySpec.sorting_key).filter(_.nonEmpty)
+    case _: DistributedEngineSpecV2 => localTableEngineSpec.map(_.sorting_key).filter(_.nonEmpty)
+    case _: TableEngineSpecV2 => None
   }
 
   override def name: String = s"${wrapBackQuote(spec.database)}.${wrapBackQuote(spec.name)}"
@@ -97,9 +98,8 @@ class ClickHouseTable(
     queryTableSchema(database, table)
   }
 
-  override lazy val partitioning: Array[Transform] = (
-    shardingKey.map(fromClickHouse).map(wrapShard).seq ++: partitionKey.map(fromClickHouse).map(wrapPartition).seq
-  ).toArray
+  override lazy val partitioning: Array[Transform] =
+    (shardingKey.seq ++ partitionKey.seq.flatten).map(fromClickHouse).toArray
 
   override def metadataColumns(): Array[MetadataColumn] = Array()
 
