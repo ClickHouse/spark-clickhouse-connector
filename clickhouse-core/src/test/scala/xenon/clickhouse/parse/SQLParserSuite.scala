@@ -2,7 +2,7 @@ package xenon.clickhouse.parse
 
 import org.scalatest.funsuite.AnyFunSuite
 import xenon.clickhouse.expr.{FieldRef, FuncExpr, OrderExpr, TupleExpr}
-import xenon.clickhouse.spec.MergeTreeEngineSpecV2
+import xenon.clickhouse.spec.MergeTreeEngineSpec
 
 class SQLParserSuite extends AnyFunSuite {
 
@@ -11,7 +11,7 @@ class SQLParserSuite extends AnyFunSuite {
   test("parse MergeTree - 1") {
     val ddl = "MergeTree PARTITION BY toYYYYMM(create_time) ORDER BY id"
     val actual = parser.parseEngineClause(ddl)
-    val expected = MergeTreeEngineSpecV2(
+    val expected = MergeTreeEngineSpec(
       engine_expr = "MergeTree",
       _sorting_key = List(OrderExpr(FieldRef("id"))),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("create_time")))))
