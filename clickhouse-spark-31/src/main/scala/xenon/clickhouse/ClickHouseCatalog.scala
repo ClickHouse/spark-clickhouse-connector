@@ -116,7 +116,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
     val tableSpec = queryTableSpec(database, table)
     val tableEngineSpec = TableEngineUtils.resolveTableEngine(tableSpec)
     val tableClusterSpec = tableEngineSpec match {
-      case distributeSpec: DistributedEngineSpecV2 =>
+      case distributeSpec: DistributedEngineSpec =>
         Some(TableEngineUtils.resolveTableCluster(distributeSpec, clusterSpecs))
       case _ => None
     }

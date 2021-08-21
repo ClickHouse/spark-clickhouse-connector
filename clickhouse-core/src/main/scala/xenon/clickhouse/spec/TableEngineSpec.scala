@@ -2,7 +2,7 @@ package xenon.clickhouse.spec
 
 import xenon.clickhouse.expr._
 
-sealed trait TableEngineSpecV2 extends Serializable {
+sealed trait TableEngineSpec extends Serializable {
   def engine_expr: String
   def engine: String
   def args: List[Expr] = List.empty
@@ -16,22 +16,22 @@ sealed trait TableEngineSpecV2 extends Serializable {
   def is_replicated: Boolean = false
 }
 
-trait MergeTreeFamilyEngineSpecV2 extends TableEngineSpecV2
+trait MergeTreeFamilyEngineSpec extends TableEngineSpec
 
-trait ReplicatedEngineSpecV2 extends MergeTreeFamilyEngineSpecV2 {
+trait ReplicatedEngineSpec extends MergeTreeFamilyEngineSpec {
   def zk_path: String
   def replica_name: String
   override def is_replicated: Boolean = true
 }
 
-case class UnknownTableEngineSpecV2(
+case class UnknownTableEngineSpec(
   engine_expr: String
-) extends TableEngineSpecV2 {
+) extends TableEngineSpec {
   def engine: String = "Unknown"
   def settings: Map[String, String] = Map.empty
 }
 
-case class MergeTreeEngineSpecV2(
+case class MergeTreeEngineSpec(
   engine_expr: String,
   var _sorting_key: List[OrderExpr] = List.empty,
   var _primary_key: TupleExpr = TupleExpr(List.empty),
@@ -39,7 +39,7 @@ case class MergeTreeEngineSpecV2(
   var _sampling_key: TupleExpr = TupleExpr(List.empty),
   var _ttl: Option[String] = None,
   var _settings: Map[String, String] = Map.empty
-) extends MergeTreeFamilyEngineSpecV2 {
+) extends MergeTreeFamilyEngineSpec {
   override def engine: String = "MergeTree"
   override def sorting_key: List[OrderExpr] = _sorting_key
   override def primary_key: TupleExpr = _primary_key
@@ -49,7 +49,7 @@ case class MergeTreeEngineSpecV2(
   override def settings: Map[String, String] = _settings
 }
 
-case class ReplicatedMergeTreeEngineSpecV2(
+case class ReplicatedMergeTreeEngineSpec(
   engine_expr: String,
   zk_path: String,
   replica_name: String,
@@ -59,7 +59,7 @@ case class ReplicatedMergeTreeEngineSpecV2(
   var _sampling_key: TupleExpr = TupleExpr(List.empty),
   var _ttl: Option[String] = None,
   var _settings: Map[String, String] = Map.empty
-) extends MergeTreeFamilyEngineSpecV2 with ReplicatedEngineSpecV2 {
+) extends MergeTreeFamilyEngineSpec with ReplicatedEngineSpec {
   def engine: String = "ReplicatedMergeTree"
   override def sorting_key: List[OrderExpr] = _sorting_key
   override def primary_key: TupleExpr = _primary_key
@@ -69,7 +69,7 @@ case class ReplicatedMergeTreeEngineSpecV2(
   override def settings: Map[String, String] = _settings
 }
 
-case class ReplacingMergeTreeEngineSpecV2(
+case class ReplacingMergeTreeEngineSpec(
   engine_expr: String,
   version_column: Option[FieldRef] = None,
   var _sorting_key: List[OrderExpr] = List.empty,
@@ -78,7 +78,7 @@ case class ReplacingMergeTreeEngineSpecV2(
   var _sampling_key: TupleExpr = TupleExpr(List.empty),
   var _ttl: Option[String] = None,
   var _settings: Map[String, String] = Map.empty
-) extends MergeTreeFamilyEngineSpecV2 {
+) extends MergeTreeFamilyEngineSpec {
   override def engine: String = "ReplacingMergeTree"
   override def sorting_key: List[OrderExpr] = _sorting_key
   override def primary_key: TupleExpr = _primary_key
@@ -88,7 +88,7 @@ case class ReplacingMergeTreeEngineSpecV2(
   override def settings: Map[String, String] = _settings
 }
 
-case class ReplicatedReplacingMergeTreeEngineSpecV2(
+case class ReplicatedReplacingMergeTreeEngineSpec(
   engine_expr: String,
   zk_path: String,
   replica_name: String,
@@ -99,7 +99,7 @@ case class ReplicatedReplacingMergeTreeEngineSpecV2(
   var _sampling_key: TupleExpr = TupleExpr(List.empty),
   var _ttl: Option[String] = None,
   var _settings: Map[String, String] = Map.empty
-) extends MergeTreeFamilyEngineSpecV2 with ReplicatedEngineSpecV2 {
+) extends MergeTreeFamilyEngineSpec with ReplicatedEngineSpec {
   override def engine: String = "ReplicatedReplacingMergeTree"
   override def sorting_key: List[OrderExpr] = _sorting_key
   override def primary_key: TupleExpr = _primary_key
@@ -109,14 +109,14 @@ case class ReplicatedReplacingMergeTreeEngineSpecV2(
   override def settings: Map[String, String] = _settings
 }
 
-case class DistributedEngineSpecV2(
+case class DistributedEngineSpec(
   engine_expr: String,
   cluster: String,
   local_db: String,
   local_table: String,
   sharding_key: Option[Expr] = None,
   var _settings: Map[String, String] = Map.empty
-) extends TableEngineSpecV2 {
+) extends TableEngineSpec {
   override def engine: String = "Distributed"
   override def settings: Map[String, String] = _settings
   override def is_distributed: Boolean = false

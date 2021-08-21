@@ -22,7 +22,7 @@ import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import xenon.clickhouse._
 import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException, RetryableClickHouseException}
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
-import xenon.clickhouse.spec.DistributedEngineSpecV2
+import xenon.clickhouse.spec.DistributedEngineSpec
 
 import java.time.Duration
 import scala.collection.mutable.ArrayBuffer
@@ -36,12 +36,12 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
   val writeDistributedConvertLocal: Boolean = conf.getConf(WRITE_DISTRIBUTED_CONVERT_LOCAL)
 
   val database: String = jobDesc.tableEngineSpec match {
-    case dist: DistributedEngineSpecV2 if writeDistributedConvertLocal => dist.local_db
+    case dist: DistributedEngineSpec if writeDistributedConvertLocal => dist.local_db
     case _ => jobDesc.tableSpec.database
   }
 
   val table: String = jobDesc.tableEngineSpec match {
-    case dist: DistributedEngineSpecV2 if writeDistributedConvertLocal => dist.local_table
+    case dist: DistributedEngineSpec if writeDistributedConvertLocal => dist.local_table
     case _ => jobDesc.tableSpec.name
   }
 
@@ -49,13 +49,13 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
   // util DataWriter#write(InternalRow) invoked.
   private lazy val grpcClient: Either[GrpcClusterClient, GrpcNodeClient] =
     (jobDesc.tableEngineSpec, writeDistributedUseClusterNodes, writeDistributedConvertLocal) match {
-      case (_: DistributedEngineSpecV2, _, true) =>
+      case (_: DistributedEngineSpec, _, true) =>
         // FIXME: Since we don't know the corresponding ClickHouse shard and partition of the RDD partition now,
         //        we can't pick the right nodes from cluster here
         throw ClickHouseClientException(
           s"${WRITE_DISTRIBUTED_CONVERT_LOCAL.key} is not support yet."
         )
-      case (_: DistributedEngineSpecV2, true, _) =>
+      case (_: DistributedEngineSpec, true, _) =>
         val clusterSpec = jobDesc.cluster.get
         log.info(s"Connect to ClickHouse cluster ${clusterSpec.name}, which has ${clusterSpec.nodes.length} nodes.")
         Left(GrpcClusterClient(clusterSpec))
@@ -113,12 +113,12 @@ class ClickHouseTruncateWriter(jobDesc: WriteJobDesc)
   val truncateDistributedConvertToLocal: Boolean = conf.getConf(TRUNCATE_DISTRIBUTED_CONVERT_LOCAL)
 
   val database: String = jobDesc.tableEngineSpec match {
-    case dist: DistributedEngineSpecV2 if truncateDistributedConvertToLocal => dist.local_db
+    case dist: DistributedEngineSpec if truncateDistributedConvertToLocal => dist.local_db
     case _ => jobDesc.tableSpec.database
   }
 
   val table: String = jobDesc.tableEngineSpec match {
-    case dist: DistributedEngineSpecV2 if truncateDistributedConvertToLocal => dist.local_table
+    case dist: DistributedEngineSpec if truncateDistributedConvertToLocal => dist.local_table
     case _ => jobDesc.tableSpec.name
   }
 

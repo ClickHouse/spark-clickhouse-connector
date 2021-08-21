@@ -14,7 +14,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
   protected def typedVisit[T](ctx: ParseTree): T =
     ctx.accept(this).asInstanceOf[T]
 
-  override def visitEngineClause(ctx: EngineClauseContext): TableEngineSpecV2 = {
+  override def visitEngineClause(ctx: EngineClauseContext): TableEngineSpec = {
     val engineExpr = source(ctx.engineExpr)
     val engine = source(ctx.engineExpr.identifierOrNull)
 
@@ -34,7 +34,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
 
     engine match {
       case eg: String if "MergeTree" equalsIgnoreCase eg =>
-        MergeTreeEngineSpecV2(
+        MergeTreeEngineSpec(
           engine_expr = engineExpr,
           _sorting_key = orderByOpt.getOrElse(List.empty),
           _primary_key = TupleExpr(pkOpt.toList),
@@ -44,7 +44,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
           _settings = settings
         )
       case eg: String if "ReplacingMergeTree" equalsIgnoreCase eg =>
-        ReplacingMergeTreeEngineSpecV2(
+        ReplacingMergeTreeEngineSpec(
           engine_expr = engineExpr,
           version_column = seqToOption(engineArgs).map(_.asInstanceOf[FieldRef]),
           _sorting_key = orderByOpt.getOrElse(List.empty),
@@ -55,7 +55,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
           _settings = settings
         )
       case eg: String if "ReplicatedMergeTree" equalsIgnoreCase eg =>
-        ReplicatedMergeTreeEngineSpecV2(
+        ReplicatedMergeTreeEngineSpec(
           engine_expr = engineExpr,
           zk_path = engineArgs.head.sql,
           replica_name = engineArgs(1).sql,
@@ -67,7 +67,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
           _settings = settings
         )
       case eg: String if "ReplicatedReplacingMergeTree" equalsIgnoreCase eg =>
-        ReplicatedReplacingMergeTreeEngineSpecV2(
+        ReplicatedReplacingMergeTreeEngineSpec(
           engine_expr = engineExpr,
           zk_path = engineArgs.head.sql,
           replica_name = engineArgs(1).sql,
@@ -80,7 +80,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
           _settings = settings
         )
       case eg: String if "Distributed" equalsIgnoreCase eg =>
-        DistributedEngineSpecV2(
+        DistributedEngineSpec(
           engine_expr = engineExpr,
           cluster = engineArgs.head.sql,
           local_db = engineArgs(1).sql,
@@ -88,7 +88,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
           sharding_key = engineArgs.drop(3).headOption,
           _settings = settings
         )
-      case _ => UnknownTableEngineSpecV2(engineExpr)
+      case _ => UnknownTableEngineSpec(engineExpr)
     }
   }
 

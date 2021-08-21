@@ -40,7 +40,7 @@ class ClickHouseTable(
   cluster: Option[ClusterSpec],
   implicit val tz: ZoneId,
   spec: TableSpec,
-  engineSpec: TableEngineSpecV2
+  engineSpec: TableEngineSpec
 ) extends Table
     with SupportsRead
     with SupportsWrite
@@ -54,32 +54,32 @@ class ClickHouseTable(
 
   def isDistributed: Boolean = engineSpec.is_distributed
 
-  lazy val (localTableSpec, localTableEngineSpec): (Option[TableSpec], Option[MergeTreeFamilyEngineSpecV2]) =
+  lazy val (localTableSpec, localTableEngineSpec): (Option[TableSpec], Option[MergeTreeFamilyEngineSpec]) =
     engineSpec match {
-      case distSpec: DistributedEngineSpecV2 => Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+      case distSpec: DistributedEngineSpec => Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
           val _localTableSpec = queryTableSpec(distSpec.local_db, distSpec.local_table)
           val _localTableEngineSpec =
-            TableEngineUtils.resolveTableEngine(_localTableSpec).asInstanceOf[MergeTreeFamilyEngineSpecV2]
+            TableEngineUtils.resolveTableEngine(_localTableSpec).asInstanceOf[MergeTreeFamilyEngineSpec]
           (Some(_localTableSpec), Some(_localTableEngineSpec))
         }
       case _ => (None, None)
     }
 
   def shardingKey: Option[Expr] = engineSpec match {
-    case _spec: DistributedEngineSpecV2 => _spec.sharding_key
+    case _spec: DistributedEngineSpec => _spec.sharding_key
     case _ => None
   }
 
   def partitionKey: Option[List[Expr]] = engineSpec match {
-    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpecV2 => Some(mergeTreeFamilySpec.partition_key.exprList)
-    case _: DistributedEngineSpecV2 => localTableEngineSpec.map(_.partition_key.exprList)
-    case _: TableEngineSpecV2 => None
+    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => Some(mergeTreeFamilySpec.partition_key.exprList)
+    case _: DistributedEngineSpec => localTableEngineSpec.map(_.partition_key.exprList)
+    case _: TableEngineSpec => None
   }
 
   def sortingKey: Option[List[OrderExpr]] = engineSpec match {
-    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpecV2 => Some(mergeTreeFamilySpec.sorting_key).filter(_.nonEmpty)
-    case _: DistributedEngineSpecV2 => localTableEngineSpec.map(_.sorting_key).filter(_.nonEmpty)
-    case _: TableEngineSpecV2 => None
+    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => Some(mergeTreeFamilySpec.sorting_key).filter(_.nonEmpty)
+    case _: DistributedEngineSpec => localTableEngineSpec.map(_.sorting_key).filter(_.nonEmpty)
+    case _: TableEngineSpec => None
   }
 
   override def name: String = s"${wrapBackQuote(spec.database)}.${wrapBackQuote(spec.name)}"
