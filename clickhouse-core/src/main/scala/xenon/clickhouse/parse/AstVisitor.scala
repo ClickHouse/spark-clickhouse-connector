@@ -28,8 +28,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
     val pkOpt = listToOption(ctx.primaryKeyClause).map(_.columnExpr).map(visitColumnExpr)
     val partOpt = listToOption(ctx.partitionByClause).map(_.columnExpr).map(visitColumnExpr)
     val sampleByOpt = listToOption(ctx.sampleByClause).map(_.columnExpr).map(visitColumnExpr)
-    // we don't care about ttl now
-    val ttlOpt = listToOption(ctx.ttlClause).map(source)
+    val ttlOpt = listToOption(ctx.ttlClause).map(source) // we don't care about ttl now
     val settings = listToOption(ctx.settingsClause).map(visitSettingsClause).getOrElse(Map.empty)
 
     engine match {

@@ -1,8 +1,8 @@
 package xenon.clickhouse.parse
 
 import org.scalatest.funsuite.AnyFunSuite
-import xenon.clickhouse.expr.{FieldRef, FuncExpr, OrderExpr, TupleExpr}
-import xenon.clickhouse.spec.MergeTreeEngineSpec
+import xenon.clickhouse.expr._
+import xenon.clickhouse.spec._
 
 class SQLParserSuite extends AnyFunSuite {
 
@@ -22,45 +22,113 @@ class SQLParserSuite extends AnyFunSuite {
   test("parse ReplicatedMergeTree - 1") {
     val ddl = "ReplicatedMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}') " +
       "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
-    parser.parseEngineClause(ddl)
+    val actual = parser.parseEngineClause(ddl)
+    val expected = ReplicatedMergeTreeEngineSpec(
+      engine_expr = "ReplicatedMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}')",
+      zk_path = "/clickhouse/tables/{shard}/wj_report/wj_respondent",
+      replica_name = "{replica}",
+      _sorting_key = List(OrderExpr(FieldRef("id"))),
+      _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
+      _settings = Map("index_granularity" -> "8192")
+    )
+    assert(actual === expected)
   }
 
   test("parse ReplacingMergeTree - 1") {
     val ddl = "ReplacingMergeTree() " +
       "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
-    parser.parseEngineClause(ddl)
+    val actual = parser.parseEngineClause(ddl)
+    val expected = ReplacingMergeTreeEngineSpec(
+      engine_expr = "ReplacingMergeTree()",
+      _sorting_key = List(OrderExpr(FieldRef("id"))),
+      _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
+      _settings = Map("index_granularity" -> "8192")
+    )
+    assert(actual === expected)
   }
 
   test("parse ReplacingMergeTree - 2") {
     val ddl = "ReplacingMergeTree(ts) " +
       "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
-    parser.parseEngineClause(ddl)
+    val actual = parser.parseEngineClause(ddl)
+    val expected = ReplacingMergeTreeEngineSpec(
+      engine_expr = "ReplacingMergeTree(ts)",
+      version_column = Some(FieldRef("ts")),
+      _sorting_key = List(OrderExpr(FieldRef("id"))),
+      _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
+      _settings = Map("index_granularity" -> "8192")
+    )
+    assert(actual === expected)
   }
 
   test("parse ReplicatedReplacingMergeTree - 1") {
     val ddl = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}') " +
       "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
-    parser.parseEngineClause(ddl)
+    val actual = parser.parseEngineClause(ddl)
+    val expected = ReplicatedReplacingMergeTreeEngineSpec(
+      engine_expr = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}')",
+      zk_path = "/clickhouse/tables/{shard}/wj_report/wj_respondent",
+      replica_name = "{replica}",
+      _sorting_key = List(OrderExpr(FieldRef("id"))),
+      _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
+      _settings = Map("index_granularity" -> "8192")
+    )
+    assert(actual === expected)
   }
 
   test("parse ReplicatedReplacingMergeTree - 2") {
     val ddl = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}', ts) " +
       "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
-    parser.parseEngineClause(ddl)
+    val actual = parser.parseEngineClause(ddl)
+    val expected = ReplicatedReplacingMergeTreeEngineSpec(
+      engine_expr =
+        "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}', ts)",
+      zk_path = "/clickhouse/tables/{shard}/wj_report/wj_respondent",
+      replica_name = "{replica}",
+      version_column = Some(FieldRef("ts")),
+      _sorting_key = List(OrderExpr(FieldRef("id"))),
+      _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
+      _settings = Map("index_granularity" -> "8192")
+    )
+    assert(actual === expected)
   }
 
   test("parse Distributed - 1") {
     val ddl = "Distributed('default', 'wj_report', 'wj_respondent_local')"
-    parser.parseEngineClause(ddl)
+    val actual = parser.parseEngineClause(ddl)
+    val expected = DistributedEngineSpec(
+      engine_expr = "Distributed('default', 'wj_report', 'wj_respondent_local')",
+      cluster = "default",
+      local_db = "wj_report",
+      local_table = "wj_respondent_local",
+      sharding_key = None
+    )
+    assert(actual === expected)
   }
 
   test("parse Distributed - 2") {
     val ddl = "Distributed('default', 'wj_report', 'wj_respondent_local', xxHash64(id))"
-    parser.parseEngineClause(ddl)
+    val actual = parser.parseEngineClause(ddl)
+    val expected = DistributedEngineSpec(
+      engine_expr = "Distributed('default', 'wj_report', 'wj_respondent_local', xxHash64(id))",
+      cluster = "default",
+      local_db = "wj_report",
+      local_table = "wj_respondent_local",
+      sharding_key = Some(FuncExpr("xxHash64", List(FieldRef("id"))))
+    )
+    assert(actual === expected)
   }
 
   test("parse Distributed - 3") {
     val ddl = "Distributed('default', 'wj_report', 'wj_respondent_local', xxHash64(toString(id, ver)))"
-    parser.parseEngineClause(ddl)
+    val actual = parser.parseEngineClause(ddl)
+    val expected = DistributedEngineSpec(
+      engine_expr = "Distributed('default', 'wj_report', 'wj_respondent_local', xxHash64(toString(id, ver)))",
+      cluster = "default",
+      local_db = "wj_report",
+      local_table = "wj_respondent_local",
+      sharding_key = Some(FuncExpr("xxHash64", List(FuncExpr("toString", List(FieldRef("id"), FieldRef("ver"))))))
+    )
+    assert(actual === expected)
   }
 }
