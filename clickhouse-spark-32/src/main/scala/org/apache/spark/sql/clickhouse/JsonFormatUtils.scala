@@ -1,4 +1,4 @@
-package org.apache.spark.sql.clickhouse.util
+package org.apache.spark.sql.clickhouse
 
 import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.InternalRow
@@ -9,7 +9,7 @@ import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
 import java.time.ZoneId
 
-object JsonFormatUtil {
+object JsonFormatUtils {
 
   private val option = Map(
     "timestampFormat" -> "yyyy-MM-dd HH:mm:ss"

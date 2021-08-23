@@ -1,8 +1,8 @@
 package xenon.clickhouse
 
 import org.apache.spark.sql.functions._
-import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
-import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseSingleSuiteMixIn, SparkClickHouseSingleSuiteMixin}
+import org.apache.spark.sql.types._
+import xenon.clickhouse.base._
 
 class ClickHouseSingleSuite extends BaseSparkSuite
     with ClickHouseSingleSuiteMixIn
@@ -39,14 +39,16 @@ class ClickHouseSingleSuite extends BaseSparkSuite
 
     import spark.implicits._
 
+    // V2ExpressionUtils.toCatalyst only support col parts now
     spark.sql(
       """
         | CREATE TABLE default.spark_tbl (
         |   create_time TIMESTAMP NOT NULL,
+        |   m           INT       NOT NULL,
         |   id          BIGINT    NOT NULL,
         |   value       STRING
         | ) USING ClickHouse
-        | PARTITIONED BY (months(create_time))
+        | PARTITIONED BY (m)
         | TBLPROPERTIES (
         |   engine = 'MergeTree()',
         |   order_by = '(id)',
@@ -56,21 +58,23 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     )
 
     spark.sql("DESC default.spark_tbl").show(false)
-    // +--------------+-------------------+-------+
-    // |col_name      |data_type          |comment|
-    // +--------------+-------------------+-------+
-    // |create_time   |timestamp          |       |
-    // |id            |bigint             |       |
-    // |value         |string             |       |
-    // |              |                   |       |
-    // |# Partitioning|                   |       |
-    // |Part 0        |months(create_time)|       |
-    // +--------------+-------------------+-------+
+    // +--------------+---------+-------+
+    // |col_name      |data_type|comment|
+    // +--------------+---------+-------+
+    // |create_time   |timestamp|       |
+    // |m             |int      |       |
+    // |id            |bigint   |       |
+    // |value         |string   |       |
+    // |              |         |       |
+    // |# Partitioning|         |       |
+    // |Part 0        |m        |       |
+    // +--------------+---------+-------+
 
     val tblSchema = spark.table("default.spark_tbl").schema
 
     assert(tblSchema == StructType(
       StructField("create_time", DataTypes.TimestampType, false) ::
+        StructField("m", DataTypes.IntegerType, false) ::
         StructField("id", DataTypes.LongType, false) ::
         StructField("value", DataTypes.StringType, true) :: Nil
     ))
@@ -80,6 +84,8 @@ class ClickHouseSingleSuite extends BaseSparkSuite
       ("2021-02-02 10:10:10", 2L, "2")
     )).toDF("create_time", "id", "value")
       .withColumn("create_time", to_timestamp($"create_time"))
+      .withColumn("m", month($"create_time"))
+      .select($"create_time", $"m", $"id", $"value")
 
     val dataDFWithExactlySchema = spark.createDataFrame(dataDF.rdd, tblSchema)
 
@@ -88,26 +94,26 @@ class ClickHouseSingleSuite extends BaseSparkSuite
       .append
 
     spark.table("default.spark_tbl").show(false)
-    // +-------------------+---+-----+
-    // |create_time        |id |value|
-    // +-------------------+---+-----+
-    // |2021-01-01 10:10:10|1  |1    |
-    // |2021-02-02 10:10:10|2  |2    |
-    // +-------------------+---+-----+
+    // +-------------------+---+---+-----+
+    // |create_time        |m  |id |value|
+    // +-------------------+---+---+-----+
+    // |2021-01-01 10:10:10|1  |1  |1    |
+    // |2021-02-02 10:10:10|2  |2  |2    |
+    // +-------------------+---+---+-----+
 
     spark.table("default.spark_tbl")
       .filter($"id" > 1)
       .show(false)
-    // +-------------------+---+-----+
-    // |create_time        |id |value|
-    // +-------------------+---+-----+
-    // |2021-02-02 10:10:10|2  |2    |
-    // +-------------------+---+-----+
+    // +-------------------+---+---+-----+
+    // |create_time        |m  |id |value|
+    // +-------------------+---+---+-----+
+    // |2021-02-02 10:10:10|2  |2  |2    |
+    // +-------------------+---+---+-----+
 
-    spark.table("default.spark_tbl")
-      .filter($"id" > 1)
-      .count
-    // 1
+    assert(1 ===
+      spark.table("default.spark_tbl")
+        .filter($"id" > 1)
+        .count)
 
     // infiniteLoop()
   }

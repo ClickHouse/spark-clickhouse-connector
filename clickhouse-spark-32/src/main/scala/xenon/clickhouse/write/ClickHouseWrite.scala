@@ -15,7 +15,10 @@
 package xenon.clickhouse.write
 
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.connector.distributions.{Distribution, Distributions}
+import org.apache.spark.sql.connector.expressions.SortOrder
 import org.apache.spark.sql.connector.write._
+import xenon.clickhouse.ExprUtils
 import xenon.clickhouse.write.WriteAction._
 
 class ClickHouseWriteBuilder(jobDesc: WriteJobDesc)
@@ -23,13 +26,28 @@ class ClickHouseWriteBuilder(jobDesc: WriteJobDesc)
 
   private var action: WriteAction = APPEND
 
-  override def buildForBatch(): ClickHouseBatchWrite =
-    new ClickHouseBatchWrite(jobDesc, action)
-
   override def truncate(): WriteBuilder = {
     this.action = TRUNCATE
     this
   }
+
+  override def build(): Write = new ClickHouseWrite(jobDesc, action)
+}
+
+class ClickHouseWrite(
+  jobDesc: WriteJobDesc,
+  action: WriteAction
+) extends Write
+    with RequiresDistributionAndOrdering {
+
+  override def requiredDistribution(): Distribution =
+    Distributions.clustered(ExprUtils.toSparkParts(jobDesc.shardingKey, jobDesc.partitionKey).toArray)
+
+  override def requiredNumPartitions(): Int = super.requiredNumPartitions()
+
+  override def requiredOrdering(): Array[SortOrder] = ExprUtils.toSparkSortOrder(jobDesc.sortingKey)
+
+  override def toBatch: BatchWrite = new ClickHouseBatchWrite(jobDesc, action)
 }
 
 class ClickHouseBatchWrite(jobDesc: WriteJobDesc, action: WriteAction)

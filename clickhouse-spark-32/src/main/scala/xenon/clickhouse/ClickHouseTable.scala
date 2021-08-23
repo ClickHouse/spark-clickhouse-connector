@@ -20,7 +20,7 @@ import java.util
 import scala.collection.JavaConverters._
 import scala.util.Using
 
-import org.apache.spark.sql.clickhouse.util.TransformUtil._
+import org.apache.spark.sql.clickhouse.TransformUtils._
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -98,8 +98,7 @@ class ClickHouseTable(
     queryTableSchema(database, table)
   }
 
-  override lazy val partitioning: Array[Transform] =
-    (shardingKey.seq ++ partitionKey.seq.flatten).map(fromClickHouse).toArray
+  override lazy val partitioning: Array[Transform] = ExprUtils.toSparkParts(shardingKey, partitionKey)
 
   override def metadataColumns(): Array[MetadataColumn] = Array()
 
@@ -135,7 +134,10 @@ class ClickHouseTable(
       tableEngineSpec = engineSpec,
       cluster = cluster,
       localTableSpec = localTableSpec,
-      localTableEngineSpec = localTableEngineSpec
+      localTableEngineSpec = localTableEngineSpec,
+      shardingKey = shardingKey,
+      partitionKey = partitionKey,
+      sortingKey = sortingKey
     )
 
     new ClickHouseWriteBuilder(jobDesc)

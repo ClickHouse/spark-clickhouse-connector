@@ -17,7 +17,7 @@ package xenon.clickhouse.write
 import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
-import org.apache.spark.sql.clickhouse.util.JsonFormatUtil
+import org.apache.spark.sql.clickhouse.JsonFormatUtils
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import xenon.clickhouse._
 import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException, RetryableClickHouseException}
@@ -74,7 +74,7 @@ class ClickHouseAppendWriter(jobDesc: WriteJobDesc)
 
   override def write(record: InternalRow): Unit = {
     // TODO evaluate shard, flush if shard change or reach batchSize
-    buf += JsonFormatUtil.row2Json(record, jobDesc.dataSetSchema, jobDesc.tz)
+    buf += JsonFormatUtils.row2Json(record, jobDesc.dataSetSchema, jobDesc.tz)
     if (buf.size == batchSize) flush()
   }
 

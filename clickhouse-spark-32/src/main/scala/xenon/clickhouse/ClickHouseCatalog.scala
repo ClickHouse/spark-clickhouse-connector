@@ -20,7 +20,7 @@ import java.util
 import scala.collection.JavaConverters._
 
 import org.apache.spark.sql.catalyst.analysis._
-import org.apache.spark.sql.clickhouse.util.TransformUtil._
+import org.apache.spark.sql.clickhouse.TransformUtils._
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.StructType
@@ -203,7 +203,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
       case _ => ""
     }
 
-    val fieldsDefinition = SchemaUtil
+    val fieldsDefinition = SchemaUtils
       .toClickHouseSchema(schema)
       .map { case (fieldName, ckType) => s"${quoted(fieldName)} $ckType" }
       .mkString(",\n ")

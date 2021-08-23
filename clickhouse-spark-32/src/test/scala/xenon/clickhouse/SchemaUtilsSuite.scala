@@ -1,9 +1,9 @@
 package xenon.clickhouse
 
 import org.scalatest.funsuite.AnyFunSuite
-import xenon.clickhouse.SchemaUtil._
+import xenon.clickhouse.SchemaUtils._
 
-class SchemaUtilSuite extends AnyFunSuite {
+class SchemaUtilsSuite extends AnyFunSuite {
   test("regex ArrayType") {
     "Array(String)" match {
       case arrayTypePattern(nestType) => assert("String" == nestType)
@@ -22,30 +22,30 @@ class SchemaUtilSuite extends AnyFunSuite {
 
     "array(String)" match {
       case arrayTypePattern(_) => fail()
-      case _ => assert(true)
+      case _ =>
     }
 
     "Array(String" match {
       case arrayTypePattern(_) => fail()
-      case _ => assert(true)
+      case _ =>
     }
   }
 
   test("regex DateType") {
     "Date" match {
-      case dateTypePattern() => assert(true)
+      case dateTypePattern() =>
       case _ => fail()
     }
 
     "DT" match {
       case dateTypePattern(_) => fail()
-      case _ => assert(true)
+      case _ =>
     }
   }
 
   test("regex DateTimeType") {
     "DateTime" match {
-      case dateTimeTypePattern(_, _, _) => assert(true)
+      case dateTimeTypePattern(_, _, _) =>
       case _ => fail()
     }
 
@@ -68,7 +68,7 @@ class SchemaUtilSuite extends AnyFunSuite {
 
     "DT" match {
       case dateTimeTypePattern(_) => fail()
-      case _ => assert(true)
+      case _ =>
     }
   }
 
@@ -82,12 +82,12 @@ class SchemaUtilSuite extends AnyFunSuite {
 
     "Decimal" match {
       case decimalTypePattern(_, _) => fail()
-      case _ => assert(true)
+      case _ =>
     }
 
     "Decimal(String" match {
       case decimalTypePattern(_, _) => fail()
-      case _ => assert(true)
+      case _ =>
     }
   }
 
@@ -114,7 +114,7 @@ class SchemaUtilSuite extends AnyFunSuite {
 
     "Decimal32(5" match {
       case decimalTypePattern2(a, s) => fail()
-      case _ => assert(true)
+      case _ =>
     }
   }
 
@@ -126,12 +126,12 @@ class SchemaUtilSuite extends AnyFunSuite {
 
     "fixedString(5)" match {
       case fixedStringTypePattern(_) => fail()
-      case _ => assert(true)
+      case _ =>
     }
 
     "String" match {
       case decimalTypePattern2(a, s) => fail()
-      case _ => assert(true)
+      case _ =>
     }
   }
 
