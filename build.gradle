@@ -179,7 +179,10 @@ class NettyResourceTransformer implements Transformer {
         resources.size() > 0
     }
 
-    @Override
+    // workaround for IDEA inspection bug
+    void modifyOutputStream(org.apache.tools.zip.ZipOutputStream os, boolean preserveFileTimestamps) {
+    }
+
     void modifyOutputStream(ZipOutputStream outputStream, boolean preserveFileTimestamps) {
         for (resourceEntry in resources) {
             ZipEntry entry = new ZipEntry(resourceEntry.key)
