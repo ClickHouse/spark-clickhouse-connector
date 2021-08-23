@@ -11,10 +11,10 @@ import xenon.clickhouse.expr._
 object TransformUtil {
   // Some functions of ClickHouse which match Spark pre-defined Transforms
   //
-  // toYear     - Converts a date or date with time to a UInt16 (AD)                       Alias: YEAR
-  // toYYYYMM   - Converts a date or date with time to a UInt32 (YYYY*100 + MM)
-  // toYYYYMMDD - Converts a date or date with time to a UInt32 (YYYY*10000 + MM*100 + DD)
-  // toHour     - Converts a date with time to a         UInt8  (0-23)                     Alias: HOUR
+  // toYear, YEAR - Converts a date or date with time to a UInt16 (AD)
+  // toYYYYMM     - Converts a date or date with time to a UInt32 (YYYY*100 + MM)
+  // toYYYYMMDD   - Converts a date or date with time to a UInt32 (YYYY*10000 + MM*100 + DD)
+  // toHour, HOUR - Converts a         date with time to a UInt8  (0-23)
 
   def fromClickHouse(expr: Expr): Transform = {
     expr match {
