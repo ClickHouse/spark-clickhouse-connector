@@ -154,10 +154,7 @@ String getProjectVersion() {
     return project.hasProperty("release") ? baseVersion : "$baseVersion-SNAPSHOT"
 }
 
-/**
- * A Transformer which updates the Netty JAR META-INF/ resources to accurately
- * reference shaded class names.
- */
+// https://github.com/grpc/grpc-java/pull/8258
 class NettyResourceTransformer implements Transformer {
 
     // A map of resource file paths to be modified
@@ -170,7 +167,8 @@ class NettyResourceTransformer implements Transformer {
 
     @Override
     void transform(TransformerContext context) {
-        String updatedContent = context.is.getText().replace("io.grpc.netty.shaded.io.netty", "xenon.relocated.io.grpc.netty.shaded.io.netty")
+        String updatedContent = context.is.getText()
+                .replace("io.grpc.netty.shaded.io.netty", "xenon.relocated.io.grpc.netty.shaded.io.netty")
         resources.put(context.path, updatedContent)
     }
 
