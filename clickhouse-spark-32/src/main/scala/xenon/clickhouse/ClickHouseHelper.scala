@@ -67,7 +67,8 @@ trait ClickHouseHelper {
               val clickhouseNode = nodeSpec.copy(
                 // host_address is not works for testcontainers
                 _host = row.get("host_name").asText,
-                _tcp_port = Some(row.get("port").asInt)
+                _tcp_port = Some(row.get("port").asInt),
+                _grpc_port = if (Utils.isTesting) Some(9100) else nodeSpec.grpc_port
               )
               ReplicaSpec(replicaNum, clickhouseNode)
             }.toArray
