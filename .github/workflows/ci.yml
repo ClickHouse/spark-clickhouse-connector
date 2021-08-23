@@ -3,11 +3,9 @@ on:
   push:
     branches:
       - "master"
-      - "spark-32"
   pull_request:
     branches:
       - "master"
-      - "spark-32"
 
 jobs:
   run-tests:
