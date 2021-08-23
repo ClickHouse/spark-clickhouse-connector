@@ -1,3 +1,8 @@
+import com.github.jengelman.gradle.plugins.shadow.transformers.Transformer
+import com.github.jengelman.gradle.plugins.shadow.transformers.TransformerContext
+import shadow.org.apache.tools.zip.ZipOutputStream
+import shadow.org.apache.tools.zip.ZipEntry
+
 plugins {
     id "idea"
     id "org.scoverage" version "6.1.0" apply false
@@ -87,6 +92,9 @@ project(":clickhouse-core-runtime") {
         relocate "com.thoughtworks.paranamer", "xenon.relocated.com.thoughtworks.paranamer"
         relocate "io.grpc", "xenon.relocated.io.grpc"
         relocate "io.perfmark", "xenon.relocated.io.perfmark"
+
+        transform(NettyResourceTransformer.class)
+        mergeServiceFiles()
     }
 
     jar {
@@ -120,6 +128,9 @@ project(":clickhouse-spark-32-runtime") {
         relocate "com.google", "xenon.relocated.com.google"
         relocate "io.grpc", "xenon.relocated.io.grpc"
         relocate "io.perfmark", "xenon.relocated.io.perfmark"
+
+        transform(NettyResourceTransformer.class)
+        mergeServiceFiles()
     }
 
     jar {
@@ -141,6 +152,44 @@ String getProjectVersion() {
 
     String baseVersion = new Date().format("yyyy.MM.dd")
     return project.hasProperty("release") ? baseVersion : "$baseVersion-SNAPSHOT"
+}
+
+/**
+ * A Transformer which updates the Netty JAR META-INF/ resources to accurately
+ * reference shaded class names.
+ */
+class NettyResourceTransformer implements Transformer {
+
+    // A map of resource file paths to be modified
+    private Map<String, String> resources = [:]
+
+    @Override
+    boolean canTransformResource(FileTreeElement fileTreeElement) {
+        fileTreeElement.name.startsWith("META-INF/native-image/io.netty")
+    }
+
+    @Override
+    void transform(TransformerContext context) {
+        String updatedContent = context.is.getText().replace("io.grpc.netty.shaded.io.netty", "xenon.relocated.io.grpc.netty.shaded.io.netty")
+        resources.put(context.path, updatedContent)
+    }
+
+    @Override
+    boolean hasTransformedResource() {
+        resources.size() > 0
+    }
+
+    @Override
+    void modifyOutputStream(ZipOutputStream outputStream, boolean preserveFileTimestamps) {
+        for (resourceEntry in resources) {
+            ZipEntry entry = new ZipEntry(resourceEntry.key)
+            entry.time = TransformerContext.getEntryTimestamp(preserveFileTimestamps, entry.time)
+
+            outputStream.putNextEntry(entry)
+            outputStream.write(resourceEntry.value.getBytes())
+            outputStream.closeEntry()
+        }
+    }
 }
 
 apply from: "deploy.gradle"
