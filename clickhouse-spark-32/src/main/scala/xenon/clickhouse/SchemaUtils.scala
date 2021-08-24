@@ -19,7 +19,7 @@ import scala.util.matching.Regex
 import org.apache.spark.sql.types._
 import xenon.clickhouse.exception.ClickHouseClientException
 
-object SchemaUtil {
+object SchemaUtils {
 
   // format: off
   private[clickhouse] val arrayTypePattern:       Regex = """^Array\((.*)\)$""".r

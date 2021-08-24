@@ -217,7 +217,7 @@ trait ClickHouseHelper {
     if (columnOutput.isEmpty) {
       actionIfNoSuchTable(database, table)
     }
-    SchemaUtil.fromClickHouseSchema(columnOutput.records.map { row =>
+    SchemaUtils.fromClickHouseSchema(columnOutput.records.map { row =>
       val fieldName = row.get("name").asText
       val ckType = row.get("type").asText
       (fieldName, ckType)

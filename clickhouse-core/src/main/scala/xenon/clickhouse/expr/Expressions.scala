@@ -1,6 +1,6 @@
 package xenon.clickhouse.expr
 
-trait Expr {
+trait Expr extends Serializable {
   def sql: String
   def desc: String = s"${this.getClass.getSimpleName.stripSuffix("$")}[$sql]"
   override def toString: String = desc

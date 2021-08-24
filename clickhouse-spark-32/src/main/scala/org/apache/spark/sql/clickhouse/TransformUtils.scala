@@ -1,14 +1,11 @@
-package org.apache.spark.sql.clickhouse.util
+package org.apache.spark.sql.clickhouse
 
-import scala.language.postfixOps
-
-import org.apache.spark.sql.connector.expressions._
 import org.apache.spark.sql.connector.expressions.Expressions._
+import org.apache.spark.sql.connector.expressions._
 import xenon.clickhouse.exception.ClickHouseClientException
+import xenon.clickhouse.expr.{Expr, FieldRef, FuncExpr}
 
-import xenon.clickhouse.expr._
-
-object TransformUtil {
+object TransformUtils {
   // Some functions of ClickHouse which match Spark pre-defined Transforms
   //
   // toYear, YEAR - Converts a date or date with time to a UInt16 (AD)
@@ -16,7 +13,7 @@ object TransformUtil {
   // toYYYYMMDD   - Converts a date or date with time to a UInt32 (YYYY*10000 + MM*100 + DD)
   // toHour, HOUR - Converts a         date with time to a UInt8  (0-23)
 
-  def fromClickHouse(expr: Expr): Transform = {
+  def toSparkTransform(expr: Expr): Transform =
     expr match {
       case FieldRef(col) => identity(col)
       case FuncExpr("toYear", List(FieldRef(col))) => years(col)
@@ -29,8 +26,8 @@ object TransformUtil {
       case FuncExpr("xxHash64", List(FieldRef(col))) => apply("ck_xx_hash64", column(col))
       case unsupported => throw ClickHouseClientException(s"Unsupported transform expression: $unsupported")
     }
-  }
 
+  // TODO toClickHouseExpr
   def toClickHouse(transform: Transform): String = transform match {
     case YearsTransform(FieldReference(Seq(col))) => s"toYear($col)"
     case MonthsTransform(FieldReference(Seq(col))) => s"toYYYYMM($col)"
