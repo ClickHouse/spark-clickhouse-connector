@@ -24,7 +24,7 @@ object GrpcNodeClient {
   def apply(node: NodeSpec): GrpcNodeClient = new GrpcNodeClient(node)
 }
 
-class GrpcNodeClient(node: NodeSpec) extends AutoCloseable with Logging {
+class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
 
   private lazy val channel: ManagedChannel = ManagedChannelBuilder
     .forAddress(node.host, node.grpc_port.get)
