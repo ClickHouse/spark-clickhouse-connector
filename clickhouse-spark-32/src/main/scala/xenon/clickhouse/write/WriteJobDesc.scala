@@ -18,4 +18,15 @@ case class WriteJobDesc(
   shardingKey: Option[Expr],
   partitionKey: Option[List[Expr]],
   sortingKey: Option[List[OrderExpr]]
-)
+) {
+
+  def targetDatabase(convert2Local: Boolean): String = tableEngineSpec match {
+    case dist: DistributedEngineSpec if convert2Local => dist.local_db
+    case _ => tableSpec.database
+  }
+
+  def targetTable(convert2Local: Boolean): String = tableEngineSpec match {
+    case dist: DistributedEngineSpec if convert2Local => dist.local_table
+    case _ => tableSpec.name
+  }
+}
