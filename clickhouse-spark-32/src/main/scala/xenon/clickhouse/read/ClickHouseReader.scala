@@ -17,7 +17,7 @@ import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
 import scala.math.BigDecimal.RoundingMode
 
 class ClickHouseReader(
-  jobDesc: ScanJobDesc,
+  scanJob: ScanJobDescription,
   part: ClickHouseInputPartition
 ) extends PartitionReader[InternalRow]
     with ClickHouseHelper
@@ -30,7 +30,7 @@ class ClickHouseReader(
   val database: String = part.table.database
   val table: String = part.table.name
 
-  def readSchema: StructType = jobDesc.readSchema
+  def readSchema: StructType = scanJob.readSchema
 
   private lazy val grpcClient: GrpcNodesClient = GrpcNodesClient(part.candidateNodes)
 
@@ -41,7 +41,7 @@ class ClickHouseReader(
        | SELECT
        |  ${if (readSchema.isEmpty) 1 else readSchema.map(field => s"`${field.name}`").mkString(", ")}
        | FROM `$database`.`$table`
-       | WHERE (${jobDesc.filterExpr})
+       | WHERE (${scanJob.filterExpr})
        | AND ( ${part.partFilterExpr} )
        |""".stripMargin
   )
@@ -68,7 +68,7 @@ class ClickHouseReader(
           case DoubleType => jsonNode.asDouble
           case d: DecimalType => jsonNode.decimalValue.setScale(d.scale, RoundingMode.HALF_UP)
           case TimestampType =>
-            ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(jobDesc.tz))
+            ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(scanJob.tz))
               .withZoneSameInstant(ZoneOffset.UTC)
               .toEpochSecond * 1000 * 1000
           case StringType => UTF8String.fromString(jsonNode.asText)

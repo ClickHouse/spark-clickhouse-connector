@@ -18,10 +18,9 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.connector.distributions.{Distribution, Distributions}
 import org.apache.spark.sql.connector.expressions.SortOrder
 import org.apache.spark.sql.connector.write._
-import xenon.clickhouse.ExprUtils
 import xenon.clickhouse.write.WriteAction._
 
-class ClickHouseWriteBuilder(jobDesc: WriteJobDesc)
+class ClickHouseWriteBuilder(writeJob: WriteJobDescription)
     extends WriteBuilder with SupportsTruncate {
 
   private var action: WriteAction = APPEND
@@ -31,27 +30,28 @@ class ClickHouseWriteBuilder(jobDesc: WriteJobDesc)
     this
   }
 
-  override def build(): Write = new ClickHouseWrite(jobDesc, action)
+  override def build(): Write = new ClickHouseWrite(writeJob, action)
 }
 
 class ClickHouseWrite(
-  jobDesc: WriteJobDesc,
+  writeJob: WriteJobDescription,
   action: WriteAction
 ) extends Write
     with RequiresDistributionAndOrdering {
 
-  override def requiredDistribution(): Distribution =
-    Distributions.clustered(ExprUtils.toSparkParts(jobDesc.shardingKey, jobDesc.partitionKey).toArray)
+  override def requiredDistribution(): Distribution = Distributions.clustered(writeJob.sparkParts.toArray)
 
   override def requiredNumPartitions(): Int = super.requiredNumPartitions()
 
-  override def requiredOrdering(): Array[SortOrder] = ExprUtils.toSparkSortOrder(jobDesc.sortingKey)
+  override def requiredOrdering(): Array[SortOrder] = writeJob.sparkSortOrders
 
-  override def toBatch: BatchWrite = new ClickHouseBatchWrite(jobDesc, action)
+  override def toBatch: BatchWrite = new ClickHouseBatchWrite(writeJob, action)
 }
 
-class ClickHouseBatchWrite(jobDesc: WriteJobDesc, action: WriteAction)
-    extends BatchWrite with DataWriterFactory {
+class ClickHouseBatchWrite(
+  writeJob: WriteJobDescription,
+  action: WriteAction
+) extends BatchWrite with DataWriterFactory {
 
   override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory = this
 
@@ -61,8 +61,8 @@ class ClickHouseBatchWrite(jobDesc: WriteJobDesc, action: WriteAction)
 
   override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] = action match {
     case APPEND =>
-      new ClickHouseAppendWriter(jobDesc)
+      new ClickHouseAppendWriter(writeJob)
     case TRUNCATE =>
-      new ClickHouseTruncateWriter(jobDesc)
+      new ClickHouseTruncateWriter(writeJob)
   }
 }

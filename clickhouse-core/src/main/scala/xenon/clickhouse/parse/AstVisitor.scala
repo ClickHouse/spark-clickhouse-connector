@@ -56,8 +56,8 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
       case eg: String if "ReplicatedMergeTree" equalsIgnoreCase eg =>
         ReplicatedMergeTreeEngineSpec(
           engine_expr = engineExpr,
-          zk_path = engineArgs.head.sql,
-          replica_name = engineArgs(1).sql,
+          zk_path = engineArgs.head.asInstanceOf[StringLiteral].value,
+          replica_name = engineArgs(1).asInstanceOf[StringLiteral].value,
           _sorting_key = orderByOpt.getOrElse(List.empty),
           _primary_key = TupleExpr(pkOpt.toList),
           _partition_key = TupleExpr(partOpt.toList),
@@ -68,8 +68,8 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
       case eg: String if "ReplicatedReplacingMergeTree" equalsIgnoreCase eg =>
         ReplicatedReplacingMergeTreeEngineSpec(
           engine_expr = engineExpr,
-          zk_path = engineArgs.head.sql,
-          replica_name = engineArgs(1).sql,
+          zk_path = engineArgs.head.asInstanceOf[StringLiteral].value,
+          replica_name = engineArgs(1).asInstanceOf[StringLiteral].value,
           version_column = seqToOption(engineArgs.drop(2)).map(_.asInstanceOf[FieldRef]),
           _sorting_key = orderByOpt.getOrElse(List.empty),
           _primary_key = TupleExpr(pkOpt.toList),
@@ -81,9 +81,9 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
       case eg: String if "Distributed" equalsIgnoreCase eg =>
         DistributedEngineSpec(
           engine_expr = engineExpr,
-          cluster = engineArgs.head.sql,
-          local_db = engineArgs(1).sql,
-          local_table = engineArgs(2).sql,
+          cluster = engineArgs.head.asInstanceOf[StringLiteral].value,
+          local_db = engineArgs(1).asInstanceOf[StringLiteral].value,
+          local_table = engineArgs(2).asInstanceOf[StringLiteral].value,
           sharding_key = engineArgs.drop(3).headOption,
           _settings = settings
         )

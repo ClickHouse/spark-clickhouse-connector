@@ -24,7 +24,7 @@ object TransformUtils {
       case FuncExpr("HOUR", List(FieldRef(col))) => hours(col)
       // TODO support arbitrary functions
       case FuncExpr("xxHash64", List(FieldRef(col))) => apply("ck_xx_hash64", column(col))
-      case unsupported => throw ClickHouseClientException(s"Unsupported transform expression: $unsupported")
+      case unsupported => throw ClickHouseClientException(s"Unsupported ClickHouse expression: $unsupported")
     }
 
   // TODO toClickHouseExpr

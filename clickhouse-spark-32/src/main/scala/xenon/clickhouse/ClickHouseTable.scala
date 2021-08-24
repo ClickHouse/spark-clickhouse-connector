@@ -28,9 +28,9 @@ import org.apache.spark.sql.connector.write.LogicalWriteInfo
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.grpc.GrpcNodeClient
-import xenon.clickhouse.read.{ClickHouseScanBuilder, ScanJobDesc}
+import xenon.clickhouse.read.{ClickHouseScanBuilder, ScanJobDescription}
 import xenon.clickhouse.spec._
-import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDesc}
+import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDescription}
 import xenon.clickhouse.Utils._
 import xenon.clickhouse.expr.{Expr, OrderExpr}
 
@@ -105,7 +105,7 @@ class ClickHouseTable(
     log.info(s"read options ${options.asScala}")
     // TODO handle read options
 
-    val jobDesc = ScanJobDesc(
+    val scanJob = ScanJobDescription(
       node = node,
       tz = tz,
       tableSpec = spec,
@@ -115,14 +115,14 @@ class ClickHouseTable(
       localTableEngineSpec = localTableEngineSpec
     )
     // TODO schema of meta columns, partitions
-    new ClickHouseScanBuilder(jobDesc, schema, new StructType(), Array())
+    new ClickHouseScanBuilder(scanJob, schema, new StructType(), Array())
   }
 
   override def newWriteBuilder(info: LogicalWriteInfo): ClickHouseWriteBuilder = {
     log.info(s"write options ${info.options.asScala}")
     // TODO handle write options info.options()
 
-    val jobDesc = WriteJobDesc(
+    val writeJob = WriteJobDescription(
       queryId = info.queryId,
       dataSetSchema = info.schema,
       node = node,
@@ -137,6 +137,6 @@ class ClickHouseTable(
       sortingKey = sortingKey
     )
 
-    new ClickHouseWriteBuilder(jobDesc)
+    new ClickHouseWriteBuilder(writeJob)
   }
 }

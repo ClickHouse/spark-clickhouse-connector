@@ -1,13 +1,14 @@
 package xenon.clickhouse.expr
 
 trait Expr extends Serializable {
-  def sql: String
+  def sql: String // ClickHouse dialect
+  def sparkSql: String = sql
   def desc: String = s"${this.getClass.getSimpleName.stripSuffix("$")}[$sql]"
   override def toString: String = desc
 }
 
 case class StringLiteral(value: String) extends Expr {
-  override def sql: String = value
+  override def sql: String = s"'$value'"
 }
 
 case class FieldRef(name: String) extends Expr {

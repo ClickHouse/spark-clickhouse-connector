@@ -1,11 +1,16 @@
 package xenon.clickhouse.write
 
+import org.apache.spark.sql.clickhouse.TransformUtils.toSparkTransform
+
 import java.time.ZoneId
+import org.apache.spark.sql.connector.expressions.{Expression, SortOrder, Transform}
 import org.apache.spark.sql.types.StructType
 import xenon.clickhouse.expr.{Expr, OrderExpr}
 import xenon.clickhouse.spec._
+import xenon.clickhouse.ExprUtils
+import xenon.clickhouse.exception.ClickHouseClientException
 
-case class WriteJobDesc(
+case class WriteJobDescription(
   queryId: String,
   dataSetSchema: StructType,
   node: NodeSpec,
@@ -29,4 +34,15 @@ case class WriteJobDesc(
     case dist: DistributedEngineSpec if convert2Local => dist.local_table
     case _ => tableSpec.name
   }
+
+  def sparkShardExpr: Option[Expression] = (tableEngineSpec, shardingKey) match {
+    case (_: DistributedEngineSpec, Some(expr)) => Some(toSparkTransform(expr))
+    case (_: DistributedEngineSpec, None) =>
+      throw ClickHouseClientException("Can not write data to a Distributed table that lacks sharding keys")
+    case _ => None
+  }
+
+  def sparkParts: Array[Transform] = ExprUtils.toSparkParts(shardingKey, partitionKey)
+
+  def sparkSortOrders: Array[SortOrder] = ExprUtils.toSparkSortOrders(sortingKey)
 }

@@ -32,7 +32,7 @@ import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
 
 class ClickHouseScanBuilder(
-  jobDesc: ScanJobDesc,
+  scanJob: ScanJobDescription,
   // some thoughts on schema.
   // we can divide the columns into 2 kinks:
   // 1. materialized columns, which store the values on local/remote storage
@@ -48,7 +48,7 @@ class ClickHouseScanBuilder(
     with SQLHelper
     with Logging {
 
-  implicit private val tz: ZoneId = jobDesc.tz
+  implicit private val tz: ZoneId = scanJob.tz
 
   // default read not include meta columns, like _shard_num UInt32 of Distributed tables.
   private var readSchema: StructType = physicalSchema.copy()
@@ -68,13 +68,13 @@ class ClickHouseScanBuilder(
     this.readSchema = StructType(physicalSchema.filter(field => requiredCols.contains(field.name)))
   }
 
-  override def build(): Scan = new ClickHouseBatchScan(jobDesc.copy(
+  override def build(): Scan = new ClickHouseBatchScan(scanJob.copy(
     readSchema = readSchema,
     filterExpr = filterWhereClause(AlwaysTrue :: pushedFilters.toList)
   ))
 }
 
-class ClickHouseBatchScan(jobDesc: ScanJobDesc) extends Scan with Batch
+class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     with SupportsReportPartitioning
     with PartitionReaderFactory
     with ClickHouseHelper
@@ -83,22 +83,22 @@ class ClickHouseBatchScan(jobDesc: ScanJobDesc) extends Scan with Batch
   val readDistributedUseClusterNodes: Boolean = conf.getConf(READ_DISTRIBUTED_USE_CLUSTER_NODES)
   val readDistributedConvertLocal: Boolean = conf.getConf(READ_DISTRIBUTED_CONVERT_LOCAL)
 
-  val database: String = jobDesc.tableEngineSpec match {
+  val database: String = scanJob.tableEngineSpec match {
     case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_db
-    case _ => jobDesc.tableSpec.database
+    case _ => scanJob.tableSpec.database
   }
 
-  val table: String = jobDesc.tableEngineSpec match {
+  val table: String = scanJob.tableEngineSpec match {
     case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_table
-    case _ => jobDesc.tableSpec.name
+    case _ => scanJob.tableSpec.name
   }
 
-  lazy val inputPartitions: Array[ClickHouseInputPartition] = jobDesc.tableEngineSpec match {
+  lazy val inputPartitions: Array[ClickHouseInputPartition] = scanJob.tableEngineSpec match {
     case DistributedEngineSpec(_, _, local_db, local_table, _, _) if readDistributedConvertLocal =>
-      jobDesc.cluster.get.shards.flatMap { shardSpec =>
+      scanJob.cluster.get.shards.flatMap { shardSpec =>
         Using.resource(GrpcNodeClient(shardSpec.nodes.head)) { implicit grpcNodeClient: GrpcNodeClient =>
           queryPartitionSpec(local_db, local_table).map(partitionSpec =>
-            ClickHouseInputPartition(jobDesc.localTableSpec.get, partitionSpec, shardSpec) // TODO pickup preferred
+            ClickHouseInputPartition(scanJob.localTableSpec.get, partitionSpec, shardSpec) // TODO pickup preferred
           )
         }
       }
@@ -108,11 +108,11 @@ class ClickHouseBatchScan(jobDesc: ScanJobDesc) extends Scan with Batch
       )
     case _: DistributedEngineSpec =>
       // we can not collect all partitions from single node, thus should treat table as no partitioned table
-      Array(ClickHouseInputPartition(jobDesc.tableSpec, NoPartitionSpec, jobDesc.node))
+      Array(ClickHouseInputPartition(scanJob.tableSpec, NoPartitionSpec, scanJob.node))
     case _: TableEngineSpec =>
-      Using.resource(GrpcNodeClient(jobDesc.node)) { implicit grpcNodeClient: GrpcNodeClient =>
+      Using.resource(GrpcNodeClient(scanJob.node)) { implicit grpcNodeClient: GrpcNodeClient =>
         queryPartitionSpec(database, table).map(partitionSpec =>
-          ClickHouseInputPartition(jobDesc.tableSpec, partitionSpec, jobDesc.node) // TODO pickup preferred
+          ClickHouseInputPartition(scanJob.tableSpec, partitionSpec, scanJob.node) // TODO pickup preferred
         )
       }.toArray
   }
@@ -120,7 +120,7 @@ class ClickHouseBatchScan(jobDesc: ScanJobDesc) extends Scan with Batch
   override def toBatch: Batch = this
 
   // may contains meta columns
-  override def readSchema(): StructType = jobDesc.readSchema
+  override def readSchema(): StructType = scanJob.readSchema
 
   override def planInputPartitions: Array[InputPartition] = inputPartitions.toArray
 
@@ -129,7 +129,7 @@ class ClickHouseBatchScan(jobDesc: ScanJobDesc) extends Scan with Batch
   override def createReaderFactory: PartitionReaderFactory = this
 
   override def createReader(partition: InputPartition): PartitionReader[InternalRow] =
-    new ClickHouseReader(jobDesc, partition.asInstanceOf[ClickHouseInputPartition])
+    new ClickHouseReader(scanJob, partition.asInstanceOf[ClickHouseInputPartition])
 
   override def supportColumnarReads(partition: InputPartition): Boolean = false
 
