@@ -20,7 +20,6 @@ import java.util
 import scala.collection.JavaConverters._
 import scala.util.Using
 
-import org.apache.spark.sql.clickhouse.TransformUtils._
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -88,10 +87,8 @@ class ClickHouseTable(
     Set(
       BATCH_READ,
       BATCH_WRITE,
-      TRUNCATE
-      // to support any schema, we need to do schema check before write,
-      // and handle extra column, e.g. throw exception, drop columns, add columns to table
-      // ACCEPT_ANY_SCHEMA
+      TRUNCATE,
+      ACCEPT_ANY_SCHEMA // TODO check schema and handle extra column before write
     ).asJava
 
   override lazy val schema: StructType = Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
