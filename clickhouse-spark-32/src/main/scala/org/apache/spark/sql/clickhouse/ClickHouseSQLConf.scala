@@ -31,6 +31,13 @@ trait ClickHouseSQLConfBase {
       .timeConf(TimeUnit.SECONDS)
       .createWithDefault(10)
 
+  val WRITE_REPARTITION_NUM: ConfigEntry[Int] =
+    buildConf("write.repartitionNum")
+      .doc("Repartition data to meet the distributions of ClickHouse table is required before writing, " +
+        "use this conf to specific the repartition number, value less than 1 mean no requirement.")
+      .intConf
+      .createWithDefault(0)
+
   val WRITE_RETRYABLE_ERROR_CODES: ConfigEntry[Seq[Int]] =
     buildConf("write.retryableErrorCodes")
       .doc("The retryable error codes returned by ClickHouse server when write failing.")
