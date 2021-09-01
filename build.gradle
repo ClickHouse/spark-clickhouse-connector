@@ -22,7 +22,7 @@ subprojects {
         String mavenRepoMirror = project.hasProperty("mavenRepoMirror") ? "$mavenRepoMirror"
                 : "https://maven.aliyun.com/repository/central"
         maven { url = mavenRepoMirror }
-        maven { url = "https://repository.apache.org/content/repositories/orgapachespark-1388" }
+        maven { url = "https://repository.apache.org/content/repositories/orgapachespark-1389" }
     }
 
     version = getProjectVersion()
