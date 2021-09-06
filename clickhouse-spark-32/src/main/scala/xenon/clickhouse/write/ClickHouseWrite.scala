@@ -14,7 +14,8 @@
 
 package xenon.clickhouse.write
 
-import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.distributions.{Distribution, Distributions}
 import org.apache.spark.sql.connector.expressions.SortOrder
 import org.apache.spark.sql.connector.write._
@@ -37,11 +38,12 @@ class ClickHouseWrite(
   writeJob: WriteJobDescription,
   action: WriteAction
 ) extends Write
-    with RequiresDistributionAndOrdering {
+    with RequiresDistributionAndOrdering
+    with SQLConfHelper {
 
   override def requiredDistribution(): Distribution = Distributions.clustered(writeJob.sparkParts.toArray)
 
-  override def requiredNumPartitions(): Int = super.requiredNumPartitions()
+  override def requiredNumPartitions(): Int = conf.getConf(WRITE_REPARTITION_NUM)
 
   override def requiredOrdering(): Array[SortOrder] = writeJob.sparkSortOrders
 
