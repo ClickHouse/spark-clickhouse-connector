@@ -16,6 +16,7 @@ trait ClickHouseSQLConfBase {
     buildConf("write.batchSize")
       .doc("The number of records per batch on writing to ClickHouse.")
       .intConf
+      .checkValue(v => v > 0 && v <= 100000, "Should be positive but less than or equals 100000.")
       .createWithDefault(50000)
 
   val WRITE_MAX_RETRY: ConfigEntry[Int] =
