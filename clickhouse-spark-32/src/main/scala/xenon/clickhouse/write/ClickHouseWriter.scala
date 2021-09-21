@@ -65,12 +65,8 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
   // put the node select strategy in executor side because we need to calculate shard and don't know the records
   // util DataWriter#write(InternalRow) invoked.
   private lazy val grpcClient: Either[GrpcClusterClient, GrpcNodeClient] =
-    (writeJob.tableEngineSpec, writeDistributedUseClusterNodes, writeDistributedConvertLocal) match {
-      case (_: DistributedEngineSpec, _, true) =>
-        // FIXME: Since we don't know the corresponding ClickHouse shard and partition of the RDD partition now,
-        //        we can't pick the right nodes from cluster here
-        throw ClickHouseClientException(s"${WRITE_DISTRIBUTED_CONVERT_LOCAL.key} is not support yet.")
-      case (_: DistributedEngineSpec, true, _) =>
+    writeJob.tableEngineSpec match {
+      case _: DistributedEngineSpec if writeDistributedUseClusterNodes || writeDistributedConvertLocal =>
         val clusterSpec = writeJob.cluster.get
         log.info(s"Connect to ClickHouse cluster ${clusterSpec.name}, which has ${clusterSpec.nodes.length} nodes.")
         Left(GrpcClusterClient(clusterSpec))
