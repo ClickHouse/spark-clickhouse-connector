@@ -65,7 +65,6 @@ trait ClickHouseSQLConfBase {
       .doc("When writing Distributed table, write local table instead of itself. " +
         "If `true`, ignore `write.distributed.useClusterNodes`.")
       .booleanConf
-      .checkValue(_ == false, "`write.distributed.convertLocal` is not support yet.")
       .createWithDefault(false)
 
   val READ_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
