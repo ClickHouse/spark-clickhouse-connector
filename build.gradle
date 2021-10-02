@@ -19,9 +19,9 @@ subprojects {
     apply plugin: "com.github.maiflai.scalatest"
 
     repositories {
-        String mavenRepoMirror = project.hasProperty("mavenRepoMirror") ? "$mavenRepoMirror"
-                : "https://maven.aliyun.com/repository/central"
-        maven { url = mavenRepoMirror }
+        String mavenCentralMirror = project.hasProperty("mavenCentralMirror") ? "$mavenCentralMirror"
+                : "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/"
+        maven { url = mavenCentralMirror }
         maven { url = "https://repository.apache.org/content/repositories/orgapachespark-1393" }
     }
 
