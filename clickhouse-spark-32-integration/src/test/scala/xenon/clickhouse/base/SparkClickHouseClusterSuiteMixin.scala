@@ -32,10 +32,12 @@ trait SparkClickHouseClusterSuiteMixin { self: BaseSparkSuite with ClickHouseClu
     "spark.sql.catalog.clickhouse-s2r2.user" -> "default",
     "spark.sql.catalog.clickhouse-s2r2.password" -> "",
     "spark.sql.catalog.clickhouse-s2r2.database" -> "default",
+    // extended configurations
     "spark.clickhouse.write.batchSize" -> "2",
     "spark.clickhouse.write.maxRetry" -> "2",
     "spark.clickhouse.write.retryInterval" -> "1",
     "spark.clickhouse.write.retryableErrorCodes" -> "241",
+    "spark.clickhouse.write.write.repartitionNum" -> "0",
     "spark.clickhouse.write.distributed.useClusterNodes" -> "true",
     "spark.clickhouse.read.distributed.useClusterNodes" -> "false",
     "spark.clickhouse.write.distributed.convertLocal" -> "false",

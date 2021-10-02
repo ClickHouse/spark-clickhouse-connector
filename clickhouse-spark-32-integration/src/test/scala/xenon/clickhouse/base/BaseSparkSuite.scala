@@ -28,17 +28,17 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Ev
     val builder = SparkSession.builder()
 
     builder
-      .config("spark.master", "local[1]")
+      .config("spark.master", "local[2]")
       .config("spark.ui.enabled", "false")
       .config("spark.app.name", "spark-ut")
       .config("spark.driver.host", "localhost")
       .config("spark.driver.memory", "500M")
       .config("spark.executor.memory", "500M")
-      .config("spark.sql.shuffle.partitions", "1")
+      .config("spark.sql.shuffle.partitions", "2")
 
     sparkOptions.foreach { case (k, v) => builder.config(k, v) }
 
-    builder.getOrCreate()
+    builder.getOrCreate
   }
 
   /**
