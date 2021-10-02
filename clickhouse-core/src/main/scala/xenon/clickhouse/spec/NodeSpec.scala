@@ -32,7 +32,7 @@ case class NodeSpec(
       source.map(p => sys.props.get(s"${PREFIX}_HOST_${_host}_PORT_$p").map(_.toInt).getOrElse(p))
     } else source
 
-  override def nodes: Array[NodeSpec] = Array(this)
+  override val nodes: Array[NodeSpec] = Array(this)
 }
 
 case class ReplicaSpec(
@@ -41,7 +41,7 @@ case class ReplicaSpec(
 ) extends Ordered[ReplicaSpec] with Nodes {
   override def compare(that: ReplicaSpec): Int = Ordering[Int].compare(num, that.num)
 
-  override def nodes: Array[NodeSpec] = Array(node)
+  override val nodes: Array[NodeSpec] = Array(node)
 }
 
 case class ShardSpec(
@@ -51,12 +51,12 @@ case class ShardSpec(
 ) extends Ordered[ShardSpec] with Nodes {
   override def compare(that: ShardSpec): Int = Ordering[Int].compare(num, that.num)
 
-  override def nodes: Array[NodeSpec] = replicas.map(_.node)
+  override lazy val nodes: Array[NodeSpec] = replicas.sorted.flatMap(_.nodes)
 }
 
 case class ClusterSpec(
   name: String,
   shards: Array[ShardSpec]
 ) extends Nodes {
-  override def nodes: Array[NodeSpec] = shards.toSeq.flatten(_.replicas.map(_.node)).toArray
+  override lazy val nodes: Array[NodeSpec] = shards.sorted.flatMap(_.nodes)
 }
