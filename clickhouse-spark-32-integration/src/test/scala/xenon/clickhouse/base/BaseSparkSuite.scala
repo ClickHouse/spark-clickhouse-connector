@@ -34,6 +34,7 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Ev
       .config("spark.driver.host", "localhost")
       .config("spark.driver.memory", "500M")
       .config("spark.executor.memory", "500M")
+      .config("spark.sql.catalogImplementation", "in-memory")
       .config("spark.sql.shuffle.partitions", "2")
 
     sparkOptions.foreach { case (k, v) => builder.config(k, v) }
