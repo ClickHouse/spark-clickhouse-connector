@@ -1,4 +1,4 @@
-package xenon.clickhouse
+package org.apache.spark.sql.clickhouse
 
 import org.apache.spark.sql.clickhouse.TransformUtils.toSparkTransform
 import org.apache.spark.sql.connector.expressions._

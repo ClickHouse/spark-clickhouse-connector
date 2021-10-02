@@ -20,6 +20,7 @@ import java.util
 import scala.collection.JavaConverters._
 import scala.util.Using
 
+import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.expressions.Transform

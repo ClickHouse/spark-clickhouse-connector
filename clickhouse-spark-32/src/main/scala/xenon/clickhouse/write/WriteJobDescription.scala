@@ -1,14 +1,14 @@
 package xenon.clickhouse.write
 
-import org.apache.spark.sql.clickhouse.TransformUtils.toSparkTransform
-
 import java.time.ZoneId
+
+import org.apache.spark.sql.clickhouse.ExprUtils
+import org.apache.spark.sql.clickhouse.TransformUtils.toSparkTransform
 import org.apache.spark.sql.connector.expressions.{Expression, SortOrder, Transform}
 import org.apache.spark.sql.types.StructType
+import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.expr.{Expr, OrderExpr}
 import xenon.clickhouse.spec._
-import xenon.clickhouse.ExprUtils
-import xenon.clickhouse.exception.ClickHouseClientException
 
 case class WriteJobDescription(
   queryId: String,
