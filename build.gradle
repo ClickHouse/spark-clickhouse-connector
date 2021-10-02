@@ -60,6 +60,7 @@ subprojects {
     }
 
     scoverage {
+        scoverageVersion = "1.4.9"
         reportDir.set(file("${rootProject.buildDir}/reports/scoverage"))
         highlighting.set(false)
         minimumRate.set(0.0)
