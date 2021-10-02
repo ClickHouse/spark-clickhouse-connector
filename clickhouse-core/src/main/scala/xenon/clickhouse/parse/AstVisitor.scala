@@ -148,7 +148,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
   def visitColumnsExpr(ctx: ColumnsExprContext): Expr = ctx match {
     case field: ColumnsExprColumnContext => visitColumnExpr(field.columnExpr)
     case other: ColumnsExprContext => throw new IllegalArgumentException(
-        s"unsupported ColumnsExprContext: ${source(other)}"
+        s"Unsupported ColumnsExprContext: ${source(other)}"
       )
   }
 

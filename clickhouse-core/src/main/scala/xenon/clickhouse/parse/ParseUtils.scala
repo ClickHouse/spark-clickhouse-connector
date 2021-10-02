@@ -11,7 +11,7 @@ object ParseUtil {
   def seqToOption[T](seq: Seq[T]): Option[T] = seq.size match {
     case 0 => None
     case 1 => Some(seq.head)
-    case illegal => throw new IllegalArgumentException(s"expect list size 0 or 1, but got $illegal")
+    case illegal => throw new IllegalArgumentException(s"Expect list size 0 or 1, but got $illegal")
   }
 
   def listToOption[T](list: util.List[T]): Option[T] = seqToOption(list.asScala)

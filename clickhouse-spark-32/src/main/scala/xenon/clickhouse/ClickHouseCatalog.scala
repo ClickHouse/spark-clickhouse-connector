@@ -67,7 +67,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
         val timezoneOutput = this.grpcNodeClient.syncQueryAndCheck("SELECT timezone() AS tz")
         assert(timezoneOutput.rows == 1)
         val serverTz = ZoneId.of(timezoneOutput.records.head.get("tz").asText)
-        log.info(s"detect clickhouse server timezone: $serverTz")
+        log.info(s"Detect ClickHouse server timezone: $serverTz")
         Left(serverTz)
       case tz if tz.toLowerCase == "client" => Right(ZoneId.systemDefault)
       case tz => Right(ZoneId.of(tz))
@@ -75,8 +75,8 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
 
     this.clusterSpecs = queryClusterSpecs(nodeSpec)
 
-    log.info(s"detect ${clusterSpecs.size} clickhouse clusters: ${clusterSpecs.map(_.name).mkString(",")}")
-    log.info(s"clickhouse clusters details: $clusterSpecs")
+    log.info(s"Detect ${clusterSpecs.size} ClickHouse clusters: ${clusterSpecs.map(_.name).mkString(",")}")
+    log.info(s"ClickHouse clusters details: $clusterSpecs")
   }
 
   override def name(): String = catalogName
@@ -241,7 +241,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
           case Left(exception) => throw new NoSuchTableException(exception.getDisplayText)
           case Right(_) =>
         }
-      case _ => throw ClickHouseClientException("invalid table identifier")
+      case _ => throw ClickHouseClientException("Invalid table identifier")
     }
 
   override def defaultNamespace(): Array[String] = Array(currentDb)

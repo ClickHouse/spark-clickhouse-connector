@@ -103,7 +103,7 @@ class ClickHouseTable(
   override lazy val properties: util.Map[String, String] = spec.toJavaMap
 
   override def newScanBuilder(options: CaseInsensitiveStringMap): ScanBuilder = {
-    log.info(s"read options ${options.asScala}")
+    log.info(s"Read options ${options.asScala}")
     // TODO handle read options
 
     val scanJob = ScanJobDescription(
@@ -120,7 +120,7 @@ class ClickHouseTable(
   }
 
   override def newWriteBuilder(info: LogicalWriteInfo): ClickHouseWriteBuilder = {
-    log.info(s"write options ${info.options.asScala}")
+    log.info(s"Write options ${info.options.asScala}")
     // TODO handle write options info.options()
 
     val writeJob = WriteJobDescription(

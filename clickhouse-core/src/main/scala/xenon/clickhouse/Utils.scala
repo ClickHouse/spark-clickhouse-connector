@@ -76,7 +76,7 @@ object Utils extends Logging {
     Try(f()) match {
       case Success(result) => Success(result)
       case Failure(exception) if clazz.isInstance(exception) && retryTimes > 0 =>
-        log.warn(s"execution failed cause by", exception)
+        log.warn(s"Execution failed cause by", exception)
         log.warn(s"$retryTimes times retry remaining, the next will be in ${interval.toMillis}ms")
         LockSupport.parkNanos(interval.toNanos)
         retry(retryTimes - 1, interval)(f)

@@ -53,7 +53,7 @@ object SchemaUtils {
           case "128" => DecimalType(38, scale.toInt)
           case "256" => DecimalType(76, scale.toInt) // throw exception, spark support precision up to 38
         }
-      case _ => throw ClickHouseClientException(s"unsupported type: $chType")
+      case _ => throw ClickHouseClientException(s"Unsupported type: $chType")
     }
     (catalystType, nullable)
   }

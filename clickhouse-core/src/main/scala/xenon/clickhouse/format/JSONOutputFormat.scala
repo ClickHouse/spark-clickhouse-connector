@@ -23,7 +23,7 @@ class JSONCompactEachRowWithNamesAndTypesSimpleOutput(
 
   private val _namesAndTypes: ListMap[String, String] = namesAndTypesData.take(2).toList match {
     case names :: types :: Nil => ListMap.empty ++ (names.map(_.asText) zip types.map(_.asText))
-    case _ => throw ClickHouseClientException("corrupt data of output format JSONCompactEachRowWithNamesAndTypes")
+    case _ => throw ClickHouseClientException("Corrupt data of output format JSONCompactEachRowWithNamesAndTypes")
   }
 
   private val _records: Seq[Array[JsonNode]] = namesAndTypesData.drop(2)
