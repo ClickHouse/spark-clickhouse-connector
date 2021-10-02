@@ -12,6 +12,11 @@ dependencies {
         exclude group: "log4j", module: "log4j"
     }
 
+    testImplementation("org.apache.spark:spark-sql_$scala_binary_version:$spark_version:tests") {
+        exclude group: "org.slf4j", module: "slf4j-log4j12"         // use logback instead
+        exclude group: "log4j", module: "log4j"
+    }
+
     testRuntimeOnly "org.slf4j:log4j-over-slf4j:$slf4j_version"
     testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
 }

@@ -1,7 +1,11 @@
 package xenon.clickhouse
 
+import java.sql.Timestamp
+
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
+import org.apache.spark.sql.QueryTest._
+import org.apache.spark.sql.Row
 import xenon.clickhouse.base._
 
 class ClickHouseSingleSuite extends BaseSparkSuite
@@ -42,36 +46,22 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     // V2ExpressionUtils.toCatalyst only support col parts now
     spark.sql(
       """
-        | CREATE TABLE default.spark_tbl (
-        |   create_time TIMESTAMP NOT NULL,
-        |   m           INT       NOT NULL,
-        |   id          BIGINT    NOT NULL,
-        |   value       STRING
-        | ) USING ClickHouse
-        | PARTITIONED BY (m)
-        | TBLPROPERTIES (
-        |   engine = 'MergeTree()',
-        |   order_by = '(id)',
-        |   settings.index_granularity = 8192
-        | )
+        |CREATE TABLE default.spark_tbl (
+        |  create_time TIMESTAMP NOT NULL,
+        |  m           INT       NOT NULL,
+        |  id          BIGINT    NOT NULL,
+        |  value       STRING
+        |) USING ClickHouse
+        |PARTITIONED BY (m)
+        |TBLPROPERTIES (
+        |  engine = 'MergeTree()',
+        |  order_by = '(id)',
+        |  settings.index_granularity = 8192
+        |)
         |""".stripMargin
     )
 
-    spark.sql("DESC default.spark_tbl").show(false)
-    // +--------------+---------+-------+
-    // |col_name      |data_type|comment|
-    // +--------------+---------+-------+
-    // |create_time   |timestamp|       |
-    // |m             |int      |       |
-    // |id            |bigint   |       |
-    // |value         |string   |       |
-    // |              |         |       |
-    // |# Partitioning|         |       |
-    // |Part 0        |m        |       |
-    // +--------------+---------+-------+
-
     val tblSchema = spark.table("default.spark_tbl").schema
-
     assert(tblSchema == StructType(
       StructField("create_time", DataTypes.TimestampType, false) ::
         StructField("m", DataTypes.IntegerType, false) ::
@@ -81,7 +71,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite
 
     val dataDF = spark.createDataFrame(Seq(
       ("2021-01-01 10:10:10", 1L, "1"),
-      ("2021-02-02 10:10:10", 2L, "2")
+      ("2022-02-02 10:10:10", 2L, "2")
     )).toDF("create_time", "id", "value")
       .withColumn("create_time", to_timestamp($"create_time"))
       .withColumn("m", month($"create_time"))
@@ -93,27 +83,20 @@ class ClickHouseSingleSuite extends BaseSparkSuite
       .writeTo("clickhouse.default.spark_tbl")
       .append
 
-    spark.table("default.spark_tbl").show(false)
-    // +-------------------+---+---+-----+
-    // |create_time        |m  |id |value|
-    // +-------------------+---+---+-----+
-    // |2021-01-01 10:10:10|1  |1  |1    |
-    // |2021-02-02 10:10:10|2  |2  |2    |
-    // +-------------------+---+---+-----+
+    checkAnswer(
+      spark.table("default.spark_tbl"),
+      Seq(
+        Row(Timestamp.valueOf("2021-01-01 10:10:10"), 1, 1L, "1"),
+        Row(Timestamp.valueOf("2022-02-02 10:10:10"), 2, 2L, "2")
+      )
+    )
 
-    spark.table("default.spark_tbl")
-      .filter($"id" > 1)
-      .show(false)
-    // +-------------------+---+---+-----+
-    // |create_time        |m  |id |value|
-    // +-------------------+---+---+-----+
-    // |2021-02-02 10:10:10|2  |2  |2    |
-    // +-------------------+---+---+-----+
+    checkAnswer(
+      spark.table("default.spark_tbl").filter($"id" > 1),
+      Row(Timestamp.valueOf("2022-02-02 10:10:10"), 2, 2L, "2") :: Nil
+    )
 
-    assert(1 ===
-      spark.table("default.spark_tbl")
-        .filter($"id" > 1)
-        .count)
+    assert(spark.table("default.spark_tbl").filter($"id" > 1).count === 1)
 
     // infiniteLoop()
   }

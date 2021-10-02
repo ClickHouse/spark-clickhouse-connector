@@ -67,15 +67,15 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Ev
       spark.sql(s"CREATE DATABASE IF NOT EXISTS `$database`")
       spark.sql(
         s"""
-           | CREATE TABLE IF NOT EXISTS `$database`.`$table` (
-           |   id Long NOT NULL
-           | ) USING ClickHouse
-           | TBLPROPERTIES (
-           | engine = 'MergeTree()',
-           | order_by = '(id)',
-           | settings.index_granularity = 8192
-           | )
-           | """.stripMargin
+           |CREATE TABLE IF NOT EXISTS `$database`.`$table` (
+           |  id Long NOT NULL
+           |) USING ClickHouse
+           |TBLPROPERTIES (
+           |  engine = 'MergeTree()',
+           |  order_by = '(id)',
+           |  settings.index_granularity = 8192
+           |)
+           |""".stripMargin
       )
       block(database, table)
     } finally if (cleanup) {
