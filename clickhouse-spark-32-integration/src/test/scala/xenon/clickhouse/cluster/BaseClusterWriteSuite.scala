@@ -1,4 +1,4 @@
-package xenon.clickhouse
+package xenon.clickhouse.cluster
 
 import java.sql.Timestamp
 
@@ -7,8 +7,9 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.QueryTest._
 import org.apache.spark.sql.Row
 import xenon.clickhouse.base._
+import xenon.clickhouse.Logging
 
-class ClickHouseClusterSuite extends BaseSparkSuite
+abstract class BaseClusterWriteSuite extends BaseSparkSuite
     with ClickHouseClusterSuiteMixIn
     with SparkClickHouseClusterSuiteMixin
     with Logging {
