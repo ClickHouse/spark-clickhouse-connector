@@ -99,7 +99,6 @@ abstract class BaseClusterWriteSuite extends BaseSparkSuite
       spark.table("`clickhouse-s1r1`.default.t_dist_local"),
       Row(Timestamp.valueOf("2024-04-04 10:10:10"), 2024, 4, 4L, "4") :: Nil
     )
-
     checkAnswer(
       spark.table("`clickhouse-s1r2`.default.t_dist_local"),
       Row(Timestamp.valueOf("2021-01-01 10:10:10"), 2021, 1, 1L, "1") :: Nil
