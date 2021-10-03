@@ -1,3 +1,17 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
 import com.github.jengelman.gradle.plugins.shadow.transformers.Transformer
 import com.github.jengelman.gradle.plugins.shadow.transformers.TransformerContext
 import shadow.org.apache.tools.zip.ZipOutputStream
@@ -7,8 +21,46 @@ plugins {
     id "idea"
     id "org.scoverage" version "7.0.0" apply false
     id "com.google.protobuf" version "0.8.17" apply false
+    id "org.nosphere.apache.rat" version "0.7.0"
     id "com.github.maiflai.scalatest" version "0.31" apply false
     id "com.github.johnrengelman.shadow" version "7.0.0" apply false
+}
+
+String mavenCentralMirror = project.hasProperty("mavenCentralMirror")
+        ? "$mavenCentralMirror"
+        : "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/"
+
+repositories {
+    maven { url = mavenCentralMirror }
+}
+
+rat {
+
+//    // Input directory, defaults to '.'
+//    inputDir.set(file("some/path"))
+//
+//    // List of Gradle exclude directives, defaults to ['**/.gradle/**']
+//    excludes.add("**/build/**")
+//
+//    // Rat excludes file, one directive per line
+    excludeFile.set(file(".rat-excludes"))
+//
+//    // XML, TXT and HTML reports directory, defaults to 'build/reports/rat'
+//    reportDir.set(file("some/other/path"))
+//
+//    // Custom XSL stylesheet for the HTML report
+//    stylesheet.set(file("custom/rat-html-stylesheet.xsl"))
+//
+//    // Fail the build on rat errors, defaults to true
+//    failOnError.set(false)
+//
+//    // Prints the list of files with unapproved licences to the console, defaults to false
+    verbose.set(true)
+    exclude(
+            "README.md", "CODE_OF_CONDUCT.md",
+            "gradle/wrapper/**", "gradlew*", "build/**", // Gradle
+            ".nb-gradle/**", "*.iml", "*.ipr", "*.iws", "*.idea/**", ".editorconfig" // IDEs
+    )
 }
 
 subprojects {
@@ -19,8 +71,6 @@ subprojects {
     apply plugin: "com.github.maiflai.scalatest"
 
     repositories {
-        String mavenCentralMirror = project.hasProperty("mavenCentralMirror") ? "$mavenCentralMirror"
-                : "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/"
         maven { url = mavenCentralMirror }
         maven { url = "https://repository.apache.org/content/repositories/orgapachespark-1393" }
     }
