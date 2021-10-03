@@ -1,23 +1,24 @@
 package xenon.clickhouse.grpc
 
+import java.time.{Instant, ZoneId, ZoneOffset}
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+
+import scala.collection.JavaConverters._
+import scala.util.control.NonFatal
+
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.google.protobuf.ByteString
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
-import xenon.clickhouse.Utils.om
+import xenon.clickhouse.{Logging, Utils}
+import xenon.clickhouse.JsonProtocol.om
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.exception.ClickHouseServerException
 import xenon.clickhouse.format._
 import xenon.clickhouse.spec.NodeSpec
-import xenon.clickhouse.{Logging, Utils}
-import xenon.protocol.grpc.LogsLevel._
 import xenon.protocol.grpc.{ClickHouseGrpc, LogEntry, QueryInfo, Result, Exception => GRPCException}
-
-import java.time.{Instant, ZoneId, ZoneOffset}
-import java.util.UUID
-import java.util.concurrent.TimeUnit
-import scala.collection.JavaConverters._
-import scala.util.control.NonFatal
+import xenon.protocol.grpc.LogsLevel._
 
 object GrpcNodeClient {
   def apply(node: NodeSpec): GrpcNodeClient = new GrpcNodeClient(node)

@@ -2,7 +2,10 @@ package xenon.clickhouse.spec
 
 import java.time.LocalDateTime
 import java.util
+
 import scala.collection.JavaConverters._
+
+import xenon.clickhouse.ToJson
 
 case class TableSpec(
   database: String,
@@ -26,7 +29,7 @@ case class TableSpec(
   total_bytes: Option[Long],
   lifetime_rows: Option[Long],
   lifetime_bytes: Option[Long]
-) {
+) extends ToJson {
   def toMap: Map[String, String] = Map(
     "database" -> database,
     "name" -> name,

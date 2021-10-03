@@ -1,7 +1,10 @@
 package xenon.clickhouse.spec
 
 import java.util
+
 import scala.collection.JavaConverters._
+
+import xenon.clickhouse.ToJson
 
 case class DatabaseSpec(
   name: String,
@@ -9,7 +12,8 @@ case class DatabaseSpec(
   data_path: String,
   metadata_path: String,
   uuid: String
-) {
+) extends ToJson {
+
   def toMap: Map[String, String] = Map(
     "name" -> name,
     "engine" -> engine,

@@ -11,8 +11,6 @@ import scala.annotation.tailrec
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try, Using}
 
-import com.fasterxml.jackson.databind.{DeserializationFeature, ObjectMapper}
-import com.fasterxml.jackson.module.scala.ClassTagExtensions
 import org.apache.commons.lang3.time.FastDateFormat
 
 object Utils extends Logging {
@@ -21,13 +19,6 @@ object Utils extends Logging {
   @transient lazy val dateTimeFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
   @transient lazy val legacyDateFmt: FastDateFormat = FastDateFormat.getInstance("yyyy-MM-dd")
   @transient lazy val legacyDateTimeFmt: FastDateFormat = FastDateFormat.getInstance("yyyy-MM-dd HH:mm:ss")
-
-  @transient lazy val om: ObjectMapper with ClassTagExtensions = {
-    val _om = new ObjectMapper() with ClassTagExtensions
-    _om.findAndRegisterModules()
-    _om.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
-    _om
-  }
 
   def defaultClassLoader: ClassLoader =
     Try(Thread.currentThread.getContextClassLoader) // fail if cannot access thread context ClassLoader

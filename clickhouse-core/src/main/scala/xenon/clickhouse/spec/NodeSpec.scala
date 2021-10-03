@@ -1,5 +1,7 @@
 package xenon.clickhouse.spec
 
+import com.fasterxml.jackson.annotation.{JsonIgnore, JsonProperty}
+import xenon.clickhouse.ToJson
 import xenon.clickhouse.Utils._
 
 trait Nodes {
@@ -7,18 +9,18 @@ trait Nodes {
 }
 
 case class NodeSpec(
-  private val _host: String,
-  private val _http_port: Option[Int] = None,
-  private val _tcp_port: Option[Int] = None,
-  private val _grpc_port: Option[Int] = None,
-  username: String = "default",
-  password: String = "",
-  database: String = "default"
-) extends Nodes {
-  def host: String = findHost(_host)
-  def http_port: Option[Int] = findPort(_http_port)
-  def tcp_port: Option[Int] = findPort(_tcp_port)
-  def grpc_port: Option[Int] = findPort(_grpc_port)
+  @JsonIgnore private val _host: String,
+  @JsonIgnore private val _http_port: Option[Int] = None,
+  @JsonIgnore private val _tcp_port: Option[Int] = None,
+  @JsonIgnore private val _grpc_port: Option[Int] = None,
+  @JsonProperty("username") username: String = "default",
+  @JsonProperty("password") password: String = "",
+  @JsonProperty("database") database: String = "default"
+) extends Nodes with ToJson {
+  @JsonProperty("host") def host: String = findHost(_host)
+  @JsonProperty("http_port") def http_port: Option[Int] = findPort(_http_port)
+  @JsonProperty("tcp_port") def tcp_port: Option[Int] = findPort(_tcp_port)
+  @JsonProperty("grpc_port") def grpc_port: Option[Int] = findPort(_grpc_port)
 
   private def findHost(source: String): String =
     if (isTesting) {
@@ -32,31 +34,34 @@ case class NodeSpec(
       source.map(p => sys.props.get(s"${PREFIX}_HOST_${_host}_PORT_$p").map(_.toInt).getOrElse(p))
     } else source
 
-  override val nodes: Array[NodeSpec] = Array(this)
+  @JsonIgnore override val nodes: Array[NodeSpec] = Array(this)
 }
 
 case class ReplicaSpec(
   num: Int,
   node: NodeSpec
-) extends Ordered[ReplicaSpec] with Nodes {
+) extends Ordered[ReplicaSpec] with Nodes with ToJson {
+
   override def compare(that: ReplicaSpec): Int = Ordering[Int].compare(num, that.num)
 
-  override val nodes: Array[NodeSpec] = Array(node)
+  @JsonIgnore override val nodes: Array[NodeSpec] = Array(node)
 }
 
 case class ShardSpec(
   num: Int,
   weight: Int,
   replicas: Array[ReplicaSpec]
-) extends Ordered[ShardSpec] with Nodes {
+) extends Ordered[ShardSpec] with Nodes with ToJson {
+
   override def compare(that: ShardSpec): Int = Ordering[Int].compare(num, that.num)
 
-  override lazy val nodes: Array[NodeSpec] = replicas.sorted.flatMap(_.nodes)
+  @JsonIgnore override lazy val nodes: Array[NodeSpec] = replicas.sorted.flatMap(_.nodes)
 }
 
 case class ClusterSpec(
   name: String,
   shards: Array[ShardSpec]
-) extends Nodes {
-  override lazy val nodes: Array[NodeSpec] = shards.sorted.flatMap(_.nodes)
+) extends Nodes with ToJson {
+
+  @JsonIgnore override lazy val nodes: Array[NodeSpec] = shards.sorted.flatMap(_.nodes)
 }

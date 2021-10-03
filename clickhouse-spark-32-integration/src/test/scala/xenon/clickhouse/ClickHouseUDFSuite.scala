@@ -2,6 +2,7 @@ package xenon.clickhouse
 
 import java.lang.{Long => JLong}
 
+import xenon.clickhouse.JsonProtocol.om
 import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseClusterSuiteMixIn, SparkClickHouseClusterSuiteMixin}
 
 class ClickHouseUDFSuite extends BaseSparkSuite
@@ -33,7 +34,7 @@ class ClickHouseUDFSuite extends BaseSparkSuite
          |  xxHash64('$stringVal') % 4 AS shard_num
          |""".stripMargin
     ).head.getString(0)
-    val clickhouseResultJson = Utils.om.readTree(clickhouseResultJsonStr)
+    val clickhouseResultJson = om.readTree(clickhouseResultJsonStr)
     val clickhouseHashVal = JLong.parseUnsignedLong(clickhouseResultJson.get("hash_value").asText)
     val clickhouseShardNum = JLong.parseUnsignedLong(clickhouseResultJson.get("shard_num").asText)
 
