@@ -31,13 +31,13 @@ dependencies {
 - Java 8
 - Scala 2.12
 - Apache Spark 3.2.x (not released yet)
-- ClickHouse 21.3.x
+- ClickHouse 21.1.2.15 or newer
 
 Notes:
 1. Java 11 should work, but not tested.
 2. Currently, only support gRPC protocol, and ClickHouse support gRPC since 
    [v21.1.2.15-stable](https://github.com/ClickHouse/ClickHouse/blob/master/CHANGELOG.md#clickhouse-release-v211215-stable-2021-01-18),
-   but we only do test on 21.3.x-lts.
+   but we only do test on v21.8.8.29-lts.
 
 ## Build
 
