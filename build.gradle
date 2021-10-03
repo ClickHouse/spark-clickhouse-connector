@@ -39,6 +39,7 @@ rat {
     exclude(
             "README.md",
             "CODE_OF_CONDUCT.md",
+            "clickhouse-core/src/main/scala-2.12/scala/util/Using.scala",
             // Gradle
             "gradle/wrapper/**",
             "gradlew*",
