@@ -51,6 +51,10 @@ documents if you'd like to run test with remote Docker daemon.
 
 `./gradlew clean test`
 
+Run single test.
+
+`./gradlew test --tests=ConvertDistToLocalWriteSuite`
+
 ## Publish to Private Repository
 
 Config gradle in `~/.gradle/gradle.properties`
