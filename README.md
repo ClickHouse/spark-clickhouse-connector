@@ -30,7 +30,7 @@ dependencies {
 
 - Java 8
 - Scala 2.12
-- Apache Spark 3.2.x (not released yet)
+- Apache Spark 3.2.x
 - ClickHouse 21.1.2.15 or newer
 
 Notes:
