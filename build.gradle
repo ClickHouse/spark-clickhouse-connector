@@ -43,7 +43,7 @@ rat {
             // Gradle
             "gradle/wrapper/**",
             "gradlew*",
-            "build/**",
+            "**/build/**",
             // IDEs
             "*.iml",
             "*.ipr",
