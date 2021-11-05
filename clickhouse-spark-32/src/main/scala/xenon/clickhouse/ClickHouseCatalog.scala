@@ -209,14 +209,14 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
       .mkString(",\n ")
 
     grpcNodeClient.syncQueryAndCheck(
-      s""" CREATE TABLE `$db`.`$tbl` $clusterExpr (
-         | $fieldsDefinition
-         | ) $engineExpr
-         | $partitionsExpr
-         | $orderExpr
-         | $primaryKeyExpr
-         | $sampleExpr
-         | $settingsExpr
+      s"""CREATE TABLE `$db`.`$tbl` $clusterExpr (
+         |$fieldsDefinition
+         |) $engineExpr
+         |$partitionsExpr
+         |$orderExpr
+         |$primaryKeyExpr
+         |$sampleExpr
+         |$settingsExpr
          |""".stripMargin
         .replaceAll("""\n\s+\n""", "\n") // remove empty lines
     )

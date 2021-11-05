@@ -78,8 +78,7 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Ev
     try {
       spark.sql(s"CREATE DATABASE IF NOT EXISTS `$database`")
       spark.sql(
-        s"""
-           |CREATE TABLE IF NOT EXISTS `$database`.`$table` (
+        s"""CREATE TABLE IF NOT EXISTS `$database`.`$table` (
            |  id Long NOT NULL
            |) USING ClickHouse
            |TBLPROPERTIES (

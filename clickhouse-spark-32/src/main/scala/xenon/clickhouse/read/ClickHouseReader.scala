@@ -51,12 +51,11 @@ class ClickHouseReader(
   def grpcNodeClient: GrpcNodeClient = grpcClient.node
 
   lazy val streamOutput: StreamOutput[Array[JsonNode]] = grpcNodeClient.syncStreamQuery(
-    s"""
-       | SELECT
-       |  ${if (readSchema.isEmpty) 1 else readSchema.map(field => s"`${field.name}`").mkString(", ")}
-       | FROM `$database`.`$table`
-       | WHERE (${scanJob.filterExpr})
-       | AND ( ${part.partFilterExpr} )
+    s"""SELECT
+       | ${if (readSchema.isEmpty) 1 else readSchema.map(field => s"`${field.name}`").mkString(", ")}
+       |FROM `$database`.`$table`
+       |WHERE (${scanJob.filterExpr})
+       |AND ( ${part.partFilterExpr} )
        |""".stripMargin
   )
 

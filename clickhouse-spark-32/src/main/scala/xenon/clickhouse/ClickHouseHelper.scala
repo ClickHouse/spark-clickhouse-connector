@@ -97,16 +97,15 @@ trait ClickHouseHelper {
     actionIfNoSuchDatabase: String => Unit = DEFAULT_ACTION_IF_NO_SUCH_DATABASE
   )(implicit grpcNodeClient: GrpcNodeClient): DatabaseSpec = {
     val output = grpcNodeClient.syncQueryAndCheck(
-      s"""
-         | SELECT
-         |   `name`,          -- String
-         |   `engine`,        -- String
-         |   `data_path`,     -- String
-         |   `metadata_path`, -- String
-         |   `uuid`           -- String
-         | FROM `system`.`databases`
-         | WHERE `name`='$database'
-         | """.stripMargin
+      s"""SELECT
+         |  `name`,          -- String
+         |  `engine`,        -- String
+         |  `data_path`,     -- String
+         |  `metadata_path`, -- String
+         |  `uuid`           -- String
+         |FROM `system`.`databases`
+         |WHERE `name`='$database'
+         |""".stripMargin
     )
     if (output.rows == 0) {
       actionIfNoSuchDatabase(database)
@@ -130,31 +129,31 @@ trait ClickHouseHelper {
     tz: ZoneId
   ): TableSpec = {
     val tableOutput = grpcNodeClient.syncQueryAndCheck(
-      s""" SELECT
-         |   `database`,                   -- String
-         |   `name`,                       -- String
-         |   `uuid`,                       -- UUID
-         |   `engine`,                     -- String
-         |   `is_temporary`,               -- UInt8
-         |   `data_paths`,                 -- Array(String)
-         |   `metadata_path`,              -- String
-         |   `metadata_modification_time`, -- DateTime
-         |   `dependencies_database`,      -- Array(String)
-         |   `dependencies_table`,         -- Array(String)
-         |   `create_table_query`,         -- String
-         |   `engine_full`,                -- String
-         |   `partition_key`,              -- String
-         |   `sorting_key`,                -- String
-         |   `primary_key`,                -- String
-         |   `sampling_key`,               -- String
-         |   `storage_policy`,             -- String
-         |   `total_rows`,                 -- Nullable(UInt64)
-         |   `total_bytes`,                -- Nullable(UInt64)
-         |   `lifetime_rows`,              -- Nullable(UInt64)
-         |   `lifetime_bytes`              -- Nullable(UInt64)
-         | FROM `system`.`tables`
-         | WHERE `database`='$database' AND `name`='$table'
-         | """.stripMargin
+      s"""SELECT
+         |  `database`,                   -- String
+         |  `name`,                       -- String
+         |  `uuid`,                       -- UUID
+         |  `engine`,                     -- String
+         |  `is_temporary`,               -- UInt8
+         |  `data_paths`,                 -- Array(String)
+         |  `metadata_path`,              -- String
+         |  `metadata_modification_time`, -- DateTime
+         |  `dependencies_database`,      -- Array(String)
+         |  `dependencies_table`,         -- Array(String)
+         |  `create_table_query`,         -- String
+         |  `engine_full`,                -- String
+         |  `partition_key`,              -- String
+         |  `sorting_key`,                -- String
+         |  `primary_key`,                -- String
+         |  `sampling_key`,               -- String
+         |  `storage_policy`,             -- String
+         |  `total_rows`,                 -- Nullable(UInt64)
+         |  `total_bytes`,                -- Nullable(UInt64)
+         |  `lifetime_rows`,              -- Nullable(UInt64)
+         |  `lifetime_bytes`              -- Nullable(UInt64)
+         |FROM `system`.`tables`
+         |WHERE `database`='$database' AND `name`='$table'
+         |""".stripMargin
     )
     if (tableOutput.isEmpty) {
       actionIfNoSuchTable(database, table)
@@ -206,27 +205,27 @@ trait ClickHouseHelper {
     actionIfNoSuchTable: (String, String) => Unit = DEFAULT_ACTION_IF_NO_SUCH_TABLE
   )(implicit grpcNodeClient: GrpcNodeClient): StructType = {
     val columnOutput = grpcNodeClient.syncQueryAndCheck(
-      s""" SELECT
-         |   `database`,                -- String
-         |   `table`,                   -- String
-         |   `name`,                    -- String
-         |   `type`,                    -- String
-         |   `position`,                -- UInt64
-         |   `default_kind`,            -- String
-         |   `default_expression`,      -- String
-         |   `data_compressed_bytes`,   -- UInt64
-         |   `data_uncompressed_bytes`, -- UInt64
-         |   `marks_bytes`,             -- UInt64
-         |   `comment`,                 -- String
-         |   `is_in_partition_key`,     -- UInt8
-         |   `is_in_sorting_key`,       -- UInt8
-         |   `is_in_primary_key`,       -- UInt8
-         |   `is_in_sampling_key`,      -- UInt8
-         |   `compression_codec`        -- String
-         | FROM `system`.`columns`
-         | WHERE `database`='$database' AND `table`='$table'
-         | ORDER BY `position` ASC
-         | """.stripMargin
+      s"""SELECT
+         |  `database`,                -- String
+         |  `table`,                   -- String
+         |  `name`,                    -- String
+         |  `type`,                    -- String
+         |  `position`,                -- UInt64
+         |  `default_kind`,            -- String
+         |  `default_expression`,      -- String
+         |  `data_compressed_bytes`,   -- UInt64
+         |  `data_uncompressed_bytes`, -- UInt64
+         |  `marks_bytes`,             -- UInt64
+         |  `comment`,                 -- String
+         |  `is_in_partition_key`,     -- UInt8
+         |  `is_in_sorting_key`,       -- UInt8
+         |  `is_in_primary_key`,       -- UInt8
+         |  `is_in_sampling_key`,      -- UInt8
+         |  `compression_codec`        -- String
+         |FROM `system`.`columns`
+         |WHERE `database`='$database' AND `table`='$table'
+         |ORDER BY `position` ASC
+         |""".stripMargin
     )
     if (columnOutput.isEmpty) {
       actionIfNoSuchTable(database, table)
@@ -243,15 +242,15 @@ trait ClickHouseHelper {
     table: String
   )(implicit grpcNodeClient: GrpcNodeClient): Seq[PartitionSpec] = {
     val partOutput = grpcNodeClient.syncQueryAndCheck(
-      s""" SELECT
-         |   partition,                           -- String
-         |   sum(rows)          AS row_count,     -- UInt64
-         |   sum(bytes_on_disk) AS size_in_bytes  -- UInt64
-         | FROM `system`.`parts`
-         | WHERE `database`='$database' AND `table`='$table'
-         | GROUP BY `partition`
-         | ORDER BY `partition` ASC
-         | """.stripMargin
+      s"""SELECT
+         |  partition,                           -- String
+         |  sum(rows)          AS row_count,     -- UInt64
+         |  sum(bytes_on_disk) AS size_in_bytes  -- UInt64
+         |FROM `system`.`parts`
+         |WHERE `database`='$database' AND `table`='$table'
+         |GROUP BY `partition`
+         |ORDER BY `partition` ASC
+         |""".stripMargin
     )
     if (partOutput.isEmpty || partOutput.rows == 1 && partOutput.records.head.get("partition").asText == "tuple()") {
       return Array(NoPartitionSpec)
