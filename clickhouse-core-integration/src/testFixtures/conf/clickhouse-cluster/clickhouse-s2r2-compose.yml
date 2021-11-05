@@ -20,7 +20,7 @@ services:
     hostname: zookeeper
 
   clickhouse-s1r1:
-    image: yandex/clickhouse-server:21.8.8.29
+    image: yandex/clickhouse-server:21.8.10.19
     hostname: clickhouse-s1r1
     ports:
       - 8123
@@ -37,7 +37,7 @@ services:
       - zookeeper
 
   clickhouse-s1r2:
-    image: yandex/clickhouse-server:21.8.8.29
+    image: yandex/clickhouse-server:21.8.10.19
     hostname: clickhouse-s1r2
     ports:
       - 8123
@@ -54,7 +54,7 @@ services:
       - zookeeper
 
   clickhouse-s2r1:
-    image: yandex/clickhouse-server:21.8.8.29
+    image: yandex/clickhouse-server:21.8.10.19
     hostname: clickhouse-s2r1
     ports:
       - 8123
@@ -71,7 +71,7 @@ services:
       - zookeeper
 
   clickhouse-s2r2:
-    image: yandex/clickhouse-server:21.8.8.29
+    image: yandex/clickhouse-server:21.8.10.19
     hostname: clickhouse-s2r2
     ports:
       - 8123
