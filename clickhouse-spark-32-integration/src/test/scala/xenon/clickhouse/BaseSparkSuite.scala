@@ -12,16 +12,14 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.base
+package xenon.clickhouse
 
 import org.apache.hadoop.fs.FileSystem
 import org.apache.spark.SparkContext
-import org.apache.spark.sql.clickhouse.SparkUtils
-import org.apache.spark.sql.{Row, SparkSession}
+import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.concurrent.Eventually
 import org.scalatest.funsuite.AnyFunSuite
-import xenon.clickhouse.{ClickHouseCommandRunner, Utils}
 
 abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Eventually {
 
@@ -69,8 +67,8 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Ev
     FileSystem.get(hadoopConf)
   }
 
-  def runClickHouseSQL(sql: String, options: Map[String, String] = cmdRunnerOptions): Array[Row] =
-    spark.executeCommand(classOf[ClickHouseCommandRunner].getName, sql, options).collect
+  def runClickHouseSQL(sql: String, options: Map[String, String] = cmdRunnerOptions): DataFrame =
+    spark.executeCommand(classOf[ClickHouseCommandRunner].getName, sql, options)
 
   def withClickHouseSingleIdTable(
     database: String,
@@ -106,16 +104,5 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Ev
   override def afterAll(): Unit = {
     spark.stop
     super.afterAll()
-  }
-
-  def spark_32_only(testFun: => Any): Unit = {
-    assume(
-      SparkUtils.MAJOR_MINOR_VERSION match {
-        case (3, 2) => true
-        case _ => false
-      },
-      "The test only for Spark 3.2"
-    )
-    testFun
   }
 }

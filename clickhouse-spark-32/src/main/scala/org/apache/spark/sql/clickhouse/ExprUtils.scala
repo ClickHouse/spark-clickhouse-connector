@@ -45,6 +45,8 @@ object ExprUtils {
           .find { case (field, _) => field.name == ref.fieldNames().last } // TODO rich strategy
           .getOrElse(throw ClickHouseClientException(s"Invalid field ref: $ref"))
         BoundReference(ordinal, field.dataType, field.nullable)
-      case _ => throw ClickHouseClientException(s"Unsupported V2 expression: $v2Expr")
+      case _ => throw ClickHouseClientException(
+          s"Unsupported V2 expression: $v2Expr, SPARK-33779: Spark 3.2 only support IdentityTransform"
+        )
     }
 }

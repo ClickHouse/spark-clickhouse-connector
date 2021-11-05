@@ -12,36 +12,25 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse
+package xenon.clickhouse.single
 
-import xenon.clickhouse.base.{BaseSparkSuite, ClickHouseClusterSuiteMixIn, SparkClickHouseClusterSuiteMixin}
+import xenon.clickhouse.{BaseSparkSuite, Logging}
+import xenon.clickhouse.base.ClickHouseSingleSuiteMixIn
 
 class ClickHouseDataTypeSuite extends BaseSparkSuite
-    with ClickHouseClusterSuiteMixIn
-    with SparkClickHouseClusterSuiteMixin
+    with ClickHouseSingleSuiteMixIn
+    with SparkClickHouseSingleSuiteMixin
     with Logging {
 
-  test("write supported data types") {
+  test("write supported data types") {}
 
-  }
+  test("write unsupported data types") {}
 
-  test("write unsupported data types") {
+  test("read supported data types") {}
 
-  }
+  test("read unsupported data types") {}
 
-  test("read supported data types") {
+  test("spark to clickhouse data type mappings") {}
 
-  }
-
-  test("read unsupported data types") {
-
-  }
-
-  test("spark to clickhouse data type mappings") {
-
-  }
-
-  test("clickhouse to spark data type mappings") {
-
-  }
+  test("clickhouse to spark data type mappings") {}
 }
