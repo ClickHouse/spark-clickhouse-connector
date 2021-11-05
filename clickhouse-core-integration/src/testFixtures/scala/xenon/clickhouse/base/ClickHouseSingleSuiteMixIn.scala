@@ -37,7 +37,7 @@ trait ClickHouseSingleSuiteMixIn extends AnyFunSuite with ForAllTestContainer {
         .withEnv("CLICKHOUSE_USER", CLICKHOUSE_USER)
         .withEnv("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
         .withEnv("CLICKHOUSE_DB", CLICKHOUSE_DB)
-        .withExposedPorts(CLICKHOUSE_GRPC_PORT)
+        .withExposedPorts(CLICKHOUSE_HTTP_PORT, CLICKHOUSE_GRPC_PORT, CLICKHOUSE_TPC_PORT)
         .withCopyFileToContainer(
           MountableFile.forClasspathResource("clickhouse-single/grpc_config.xml"),
           "/etc/clickhouse-server/config.d/grpc_config.xml"
