@@ -33,12 +33,6 @@ import xenon.clickhouse.spec._
 
 class ClickHouseScanBuilder(
   scanJob: ScanJobDescription,
-  // some thoughts on schema.
-  // we can divide the columns into 2 kinks:
-  // 1. materialized columns, which store the values on local/remote storage
-  // 2. calculated columns, which calculate the values on-the-fly when reading
-  // but consider that usually CPU would not be bottleneck of clickhouse but IO does, it's not properly suppose that
-  // reading calculated columns is expensive than materialized columns
   physicalSchema: StructType,
   metadataSchema: StructType,
   partitionTransforms: Array[Transform]
