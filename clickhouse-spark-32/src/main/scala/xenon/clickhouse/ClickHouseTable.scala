@@ -102,7 +102,7 @@ class ClickHouseTable(
    * Only support `MergeTree` and `Distributed` table engine, for reference
    * {{{NamesAndTypesList MergeTreeData::getVirtuals()}}}, {{{NamesAndTypesList StorageDistributed::getVirtuals()}}}
    */
-  override def metadataColumns(): Array[ClickHouseMetadataColumn] = engineSpec match {
+  override def metadataColumns(): Array[MetadataColumn] = engineSpec match {
     case _: MergeTreeFamilyEngineSpec =>
       Array(
         ClickHouseMetadataColumn("_part", StringType, false),
@@ -141,7 +141,7 @@ class ClickHouseTable(
       localTableSpec = localTableSpec,
       localTableEngineSpec = localTableEngineSpec
     )
-    val metadataSchema = StructType(metadataColumns().map(_.toStructField))
+    val metadataSchema = StructType(metadataColumns().map(_.asInstanceOf[ClickHouseMetadataColumn].toStructField))
     // TODO schema of partitions
     val partTransforms = Array[Transform]()
     new ClickHouseScanBuilder(scanJob, schema, metadataSchema, partTransforms)
