@@ -20,6 +20,7 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.QueryTest._
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import xenon.clickhouse.{BaseSparkSuite, Logging}
 import xenon.clickhouse.base.ClickHouseClusterSuiteMixIn
 
@@ -90,15 +91,20 @@ abstract class BaseClusterWriteSuite extends BaseSparkSuite
         .writeTo(s"$db.$tbl_dist")
         .append
 
+      // `_shard_num` is dedicated for Distributed table
+      spark.sql(s"SET ${READ_DISTRIBUTED_CONVERT_LOCAL.key}=false")
       checkAnswer(
-        spark.table(s"$db.$tbl_dist"),
+        spark
+          .table(s"$db.$tbl_dist")
+          .select("create_time", "y", "m", "id", "value", "_shard_num"),
         Seq(
-          Row(Timestamp.valueOf("2021-01-01 10:10:10"), 2021, 1, 1L, "1"),
-          Row(Timestamp.valueOf("2022-02-02 10:10:10"), 2022, 2, 2L, "2"),
-          Row(Timestamp.valueOf("2023-03-03 10:10:10"), 2023, 3, 3L, "3"),
-          Row(Timestamp.valueOf("2024-04-04 10:10:10"), 2024, 4, 4L, "4")
+          Row(Timestamp.valueOf("2021-01-01 10:10:10"), 2021, 1, 1L, "1", 2),
+          Row(Timestamp.valueOf("2022-02-02 10:10:10"), 2022, 2, 2L, "2", 3),
+          Row(Timestamp.valueOf("2023-03-03 10:10:10"), 2023, 3, 3L, "3", 4),
+          Row(Timestamp.valueOf("2024-04-04 10:10:10"), 2024, 4, 4L, "4", 1)
         )
       )
+      spark.sql(s"SET ${READ_DISTRIBUTED_CONVERT_LOCAL.key}=true")
 
       checkAnswer(
         spark.table(s"`clickhouse-s1r1`.$db.$tbl_local"),

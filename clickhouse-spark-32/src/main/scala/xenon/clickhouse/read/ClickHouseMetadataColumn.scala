@@ -15,7 +15,28 @@
 package xenon.clickhouse.read
 
 import org.apache.spark.sql.connector.catalog.MetadataColumn
-import org.apache.spark.sql.types.{DataType, StructField}
+import org.apache.spark.sql.types.{DataType, DoubleType, IntegerType, LongType, StringType, StructField}
+
+object ClickHouseMetadataColumn {
+  val mergeTreeMetadataCols: Array[MetadataColumn] = Array(
+    ClickHouseMetadataColumn("_part", StringType, false),
+    ClickHouseMetadataColumn("_part_index", LongType, false),
+    ClickHouseMetadataColumn("_part_uuid", StringType, false),
+    ClickHouseMetadataColumn("_partition_id", StringType, false),
+    // ClickHouseMetadataColumn("_partition_value", StringType, false),
+    ClickHouseMetadataColumn("_sample_factor", DoubleType, false)
+  )
+
+  val distributeMetadataCols: Array[MetadataColumn] = Array(
+    ClickHouseMetadataColumn("_table", StringType, false),
+    ClickHouseMetadataColumn("_part", StringType, false),
+    ClickHouseMetadataColumn("_part_index", LongType, false),
+    ClickHouseMetadataColumn("_part_uuid", StringType, false),
+    ClickHouseMetadataColumn("_partition_id", StringType, false),
+    ClickHouseMetadataColumn("_sample_factor", DoubleType, false),
+    ClickHouseMetadataColumn("_shard_num", IntegerType, false)
+  )
+}
 
 case class ClickHouseMetadataColumn(
   override val name: String,

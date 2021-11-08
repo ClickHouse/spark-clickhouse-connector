@@ -44,8 +44,13 @@ class ClickHouseScanBuilder(
 
   implicit private val tz: ZoneId = scanJob.tz
 
-  // default read not include meta columns, like _shard_num UInt32 of Distributed tables.
-  private var readSchema: StructType = physicalSchema.copy()
+  private val reservedMetadataSchema: StructType = StructType(
+    metadataSchema.dropWhile(field => physicalSchema.fields.map(_.name).contains(field.name))
+  )
+
+  private var _readSchema: StructType = StructType(
+    physicalSchema.fields ++ reservedMetadataSchema.fields
+  )
 
   private var _pushedFilters = Array.empty[Filter]
 
@@ -59,11 +64,11 @@ class ClickHouseScanBuilder(
 
   override def pruneColumns(requiredSchema: StructType): Unit = {
     val requiredCols = requiredSchema.map(_.name)
-    this.readSchema = StructType(physicalSchema.filter(field => requiredCols.contains(field.name)))
+    this._readSchema = StructType(_readSchema.filter(field => requiredCols.contains(field.name)))
   }
 
   override def build(): Scan = new ClickHouseBatchScan(scanJob.copy(
-    readSchema = readSchema,
+    readSchema = _readSchema,
     filterExpr = filterWhereClause(AlwaysTrue :: pushedFilters.toList)
   ))
 }

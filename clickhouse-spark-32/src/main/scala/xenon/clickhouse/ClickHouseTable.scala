@@ -20,6 +20,8 @@ import java.util
 import scala.collection.JavaConverters._
 import scala.util.Using
 
+import org.apache.spark.sql.catalyst.SQLConfHelper
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.TableCapability._
@@ -46,6 +48,7 @@ class ClickHouseTable(
     with SupportsWrite
     with SupportsMetadataColumns
     with ClickHouseHelper
+    with SQLConfHelper
     with Logging {
 
   def database: String = spec.database
@@ -53,6 +56,8 @@ class ClickHouseTable(
   def table: String = spec.name
 
   def isDistributed: Boolean = engineSpec.is_distributed
+
+  val readDistributedConvertLocal: Boolean = conf.getConf(READ_DISTRIBUTED_CONVERT_LOCAL)
 
   lazy val (localTableSpec, localTableEngineSpec): (Option[TableSpec], Option[MergeTreeFamilyEngineSpec]) =
     engineSpec match {
@@ -100,28 +105,13 @@ class ClickHouseTable(
 
   /**
    * Only support `MergeTree` and `Distributed` table engine, for reference
-   * {{{NamesAndTypesList MergeTreeData::getVirtuals()}}}, {{{NamesAndTypesList StorageDistributed::getVirtuals()}}}
+   * {{{NamesAndTypesList MergeTreeData::getVirtuals()}}} {{{NamesAndTypesList StorageDistributed::getVirtuals()}}}
    */
   override def metadataColumns(): Array[MetadataColumn] = engineSpec match {
     case _: MergeTreeFamilyEngineSpec =>
-      Array(
-        ClickHouseMetadataColumn("_part", StringType, false),
-        ClickHouseMetadataColumn("_part_index", LongType, false),
-        ClickHouseMetadataColumn("_part_uuid", StringType, false),
-        ClickHouseMetadataColumn("_partition_id", StringType, false),
-        // ClickHouseMetadataColumn("_partition_value", StringType, false),
-        ClickHouseMetadataColumn("_sample_factor", DoubleType, false)
-      )
-    case _: DistributedEngineSpec =>
-      Array(
-        ClickHouseMetadataColumn("_table", StringType, false),
-        ClickHouseMetadataColumn("_part", StringType, false),
-        ClickHouseMetadataColumn("_part_index", LongType, false),
-        ClickHouseMetadataColumn("_part_uuid", StringType, false),
-        ClickHouseMetadataColumn("_partition_id", StringType, false),
-        ClickHouseMetadataColumn("_sample_factor", DoubleType, false),
-        ClickHouseMetadataColumn("_shard_num", IntegerType, false)
-      )
+      ClickHouseMetadataColumn.mergeTreeMetadataCols
+    case _: DistributedEngineSpec if !readDistributedConvertLocal =>
+      ClickHouseMetadataColumn.distributeMetadataCols
   }
 
   override lazy val properties: util.Map[String, String] = spec.toJavaMap
