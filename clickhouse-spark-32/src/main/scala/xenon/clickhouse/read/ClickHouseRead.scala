@@ -79,6 +79,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     with ClickHouseHelper
     with SQLConfHelper {
 
+  // TODO assemble in ScanBuilder
   val readDistributedUseClusterNodes: Boolean = conf.getConf(READ_DISTRIBUTED_USE_CLUSTER_NODES)
   val readDistributedConvertLocal: Boolean = conf.getConf(READ_DISTRIBUTED_CONVERT_LOCAL)
 

@@ -19,29 +19,29 @@ import org.apache.spark.sql.types.{DataType, DoubleType, IntegerType, LongType, 
 
 object ClickHouseMetadataColumn {
   val mergeTreeMetadataCols: Array[MetadataColumn] = Array(
-    ClickHouseMetadataColumn("_part", StringType, false),
-    ClickHouseMetadataColumn("_part_index", LongType, false),
-    ClickHouseMetadataColumn("_part_uuid", StringType, false),
-    ClickHouseMetadataColumn("_partition_id", StringType, false),
-    // ClickHouseMetadataColumn("_partition_value", StringType, false),
-    ClickHouseMetadataColumn("_sample_factor", DoubleType, false)
+    ClickHouseMetadataColumn("_part", StringType),
+    ClickHouseMetadataColumn("_part_index", LongType),
+    ClickHouseMetadataColumn("_part_uuid", StringType),
+    ClickHouseMetadataColumn("_partition_id", StringType),
+    // ClickHouseMetadataColumn("_partition_value", StringType),
+    ClickHouseMetadataColumn("_sample_factor", DoubleType)
   )
 
   val distributeMetadataCols: Array[MetadataColumn] = Array(
-    ClickHouseMetadataColumn("_table", StringType, false),
-    ClickHouseMetadataColumn("_part", StringType, false),
-    ClickHouseMetadataColumn("_part_index", LongType, false),
-    ClickHouseMetadataColumn("_part_uuid", StringType, false),
-    ClickHouseMetadataColumn("_partition_id", StringType, false),
-    ClickHouseMetadataColumn("_sample_factor", DoubleType, false),
-    ClickHouseMetadataColumn("_shard_num", IntegerType, false)
+    ClickHouseMetadataColumn("_table", StringType),
+    ClickHouseMetadataColumn("_part", StringType),
+    ClickHouseMetadataColumn("_part_index", LongType),
+    ClickHouseMetadataColumn("_part_uuid", StringType),
+    ClickHouseMetadataColumn("_partition_id", StringType),
+    ClickHouseMetadataColumn("_sample_factor", DoubleType),
+    ClickHouseMetadataColumn("_shard_num", IntegerType)
   )
 }
 
 case class ClickHouseMetadataColumn(
   override val name: String,
   override val dataType: DataType,
-  override val isNullable: Boolean
+  override val isNullable: Boolean = false
 ) extends MetadataColumn {
   def toStructField: StructField = StructField(name, dataType, isNullable)
 }

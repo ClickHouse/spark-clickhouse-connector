@@ -31,12 +31,8 @@ abstract class BaseClusterWriteSuite extends BaseSparkSuite
 
   import spark.implicits._
 
-  test("clickhouse write cluster") {
-    val cluster = "single_replica"
-    val db = "db_w"
-    val tbl_dist = "t_dist"
+  def withDistTable(cluster: String, db: String, tbl_dist: String)(f: => Unit): Unit = {
     val tbl_local = s"${tbl_dist}_local"
-
     try {
       runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db ON CLUSTER $cluster")
 
@@ -64,7 +60,20 @@ abstract class BaseClusterWriteSuite extends BaseSparkSuite
            |ENGINE = Distributed($cluster, '$db', '$tbl_local', y)
            |""".stripMargin
       )
+    } finally {
+      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl_dist ON CLUSTER $cluster")
+      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl_local ON CLUSTER $cluster")
+      runClickHouseSQL(s"DROP DATABASE IF EXISTS $db ON CLUSTER $cluster")
+    }
+  }
 
+  test("clickhouse write cluster") {
+    val cluster = "single_replica"
+    val db = "db_w"
+    val tbl_dist = "t_dist"
+    val tbl_local = s"${tbl_dist}_local"
+
+    withDistTable(cluster, db, tbl_dist) {
       val tblSchema = spark.table(s"$db.$tbl_dist").schema
       assert(tblSchema == StructType(
         StructField("create_time", DataTypes.TimestampType, nullable = false) ::
@@ -124,11 +133,6 @@ abstract class BaseClusterWriteSuite extends BaseSparkSuite
       )
 
       // infiniteLoop()
-
-    } finally {
-      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl_dist ON CLUSTER $cluster")
-      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl_local ON CLUSTER $cluster")
-      runClickHouseSQL(s"DROP DATABASE IF EXISTS $db ON CLUSTER $cluster")
     }
   }
 }

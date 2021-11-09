@@ -107,11 +107,18 @@ class ClickHouseTable(
    * Only support `MergeTree` and `Distributed` table engine, for reference
    * {{{NamesAndTypesList MergeTreeData::getVirtuals()}}} {{{NamesAndTypesList StorageDistributed::getVirtuals()}}}
    */
-  override def metadataColumns(): Array[MetadataColumn] = engineSpec match {
-    case _: MergeTreeFamilyEngineSpec =>
-      ClickHouseMetadataColumn.mergeTreeMetadataCols
-    case _: DistributedEngineSpec if !readDistributedConvertLocal =>
-      ClickHouseMetadataColumn.distributeMetadataCols
+  override lazy val metadataColumns: Array[MetadataColumn] = {
+
+    def metadataCols(tableEngine: TableEngineSpec): Array[MetadataColumn] = tableEngine match {
+      case _: MergeTreeFamilyEngineSpec => ClickHouseMetadataColumn.mergeTreeMetadataCols
+      case _: DistributedEngineSpec => ClickHouseMetadataColumn.distributeMetadataCols
+      case _ => Array.empty
+    }
+
+    engineSpec match {
+      case _: DistributedEngineSpec if readDistributedConvertLocal => metadataCols(localTableEngineSpec.get)
+      case other: TableEngineSpec => metadataCols(other)
+    }
   }
 
   override lazy val properties: util.Map[String, String] = spec.toJavaMap
@@ -131,7 +138,7 @@ class ClickHouseTable(
       localTableSpec = localTableSpec,
       localTableEngineSpec = localTableEngineSpec
     )
-    val metadataSchema = StructType(metadataColumns().map(_.asInstanceOf[ClickHouseMetadataColumn].toStructField))
+    val metadataSchema = StructType(metadataColumns.map(_.asInstanceOf[ClickHouseMetadataColumn].toStructField))
     // TODO schema of partitions
     val partTransforms = Array[Transform]()
     new ClickHouseScanBuilder(scanJob, schema, metadataSchema, partTransforms)
