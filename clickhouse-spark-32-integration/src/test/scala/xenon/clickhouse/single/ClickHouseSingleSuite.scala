@@ -16,16 +16,16 @@ package xenon.clickhouse.single
 
 import java.sql.Timestamp
 
-import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.QueryTest._
 import org.apache.spark.sql.Row
 import xenon.clickhouse.{BaseSparkSuite, Logging}
-import xenon.clickhouse.base.ClickHouseSingleSuiteMixIn
+import xenon.clickhouse.base.ClickHouseSingleMixIn
 
 class ClickHouseSingleSuite extends BaseSparkSuite
-    with ClickHouseSingleSuiteMixIn
-    with SparkClickHouseSingleSuiteMixin
+    with ClickHouseSingleMixIn
+    with SparkClickHouseSingleMixin
+    with SparkClickHouseSingleTestHelper
     with Logging {
 
   import spark.implicits._
@@ -51,7 +51,10 @@ class ClickHouseSingleSuite extends BaseSparkSuite
         Row("system") :: Nil
       )
       assert(spark.sql("SHOW tables").where($"tableName" === "contributors").count === 1)
-    } finally runClickHouseSQL(s"DROP DATABASE IF EXISTS db_t1")
+    } finally {
+      runClickHouseSQL(s"DROP DATABASE IF EXISTS db_t1")
+      runClickHouseSQL(s"DROP DATABASE IF EXISTS db_t2")
+    }
   }
 
   ignore("clickhouse truncate table") {
@@ -68,26 +71,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     val db = "db_rw"
     val tbl = "tbl_rw"
 
-    try {
-      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
-
-      // SPARK-33779: Spark 3.2 only support IdentityTransform
-      spark.sql(
-        s"""CREATE TABLE $db.$tbl (
-           |  create_time TIMESTAMP NOT NULL,
-           |  m           INT       NOT NULL COMMENT 'part key',
-           |  id          BIGINT    NOT NULL COMMENT 'sort key',
-           |  value       STRING
-           |) USING ClickHouse
-           |PARTITIONED BY (m)
-           |TBLPROPERTIES (
-           |  engine = 'MergeTree()',
-           |  order_by = '(id)',
-           |  settings.index_granularity = 8192
-           |)
-           |""".stripMargin
-      )
-
+    withTable(db, tbl, true) {
       val tblSchema = spark.table(s"$db.$tbl").schema
       assert(tblSchema == StructType(
         StructField("create_time", DataTypes.TimestampType, false) ::
@@ -96,22 +80,8 @@ class ClickHouseSingleSuite extends BaseSparkSuite
           StructField("value", DataTypes.StringType, true) :: Nil
       ))
 
-      val dataDF = spark.createDataFrame(Seq(
-        ("2021-01-01 10:10:10", 1L, "1"),
-        ("2022-02-02 10:10:10", 2L, "2")
-      )).toDF("create_time", "id", "value")
-        .withColumn("create_time", to_timestamp($"create_time"))
-        .withColumn("m", month($"create_time"))
-        .select($"create_time", $"m", $"id", $"value")
-
-      val dataDFWithExactlySchema = spark.createDataFrame(dataDF.rdd, tblSchema)
-
-      dataDFWithExactlySchema
-        .writeTo(s"$db.$tbl")
-        .append
-
       checkAnswer(
-        spark.table(s"$db.$tbl"),
+        spark.table(s"$db.$tbl").sort("m"),
         Seq(
           Row(Timestamp.valueOf("2021-01-01 10:10:10"), 1, 1L, "1"),
           Row(Timestamp.valueOf("2022-02-02 10:10:10"), 2, 2L, "2")
@@ -126,9 +96,21 @@ class ClickHouseSingleSuite extends BaseSparkSuite
       assert(spark.table(s"$db.$tbl").filter($"id" > 1).count === 1)
 
       // infiniteLoop()
-    } finally {
-      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
-      runClickHouseSQL(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
+  test("clickhouse metadata column") {
+    val db = "db_metadata_col"
+    val tbl = "tbl_metadata_col"
+
+    withTable(db, tbl, true) {
+      checkAnswer(
+        spark.sql(s"SELECT m, _partition_id FROM $db.$tbl ORDER BY m"),
+        Seq(
+          Row(1, "1"),
+          Row(2, "2")
+        )
+      )
     }
   }
 }

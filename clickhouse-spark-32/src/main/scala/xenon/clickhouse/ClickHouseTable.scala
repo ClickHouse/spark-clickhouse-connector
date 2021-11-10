@@ -20,16 +20,18 @@ import java.util
 import scala.collection.JavaConverters._
 import scala.util.Using
 
+import org.apache.spark.sql.catalyst.SQLConfHelper
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read.ScanBuilder
 import org.apache.spark.sql.connector.write.LogicalWriteInfo
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.grpc.GrpcNodeClient
-import xenon.clickhouse.read.{ClickHouseScanBuilder, ScanJobDescription}
+import xenon.clickhouse.read.{ClickHouseMetadataColumn, ClickHouseScanBuilder, ScanJobDescription}
 import xenon.clickhouse.spec._
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDescription}
 import xenon.clickhouse.Utils._
@@ -46,6 +48,7 @@ class ClickHouseTable(
     with SupportsWrite
     with SupportsMetadataColumns
     with ClickHouseHelper
+    with SQLConfHelper
     with Logging {
 
   def database: String = spec.database
@@ -53,6 +56,8 @@ class ClickHouseTable(
   def table: String = spec.name
 
   def isDistributed: Boolean = engineSpec.is_distributed
+
+  val readDistributedConvertLocal: Boolean = conf.getConf(READ_DISTRIBUTED_CONVERT_LOCAL)
 
   lazy val (localTableSpec, localTableEngineSpec): (Option[TableSpec], Option[MergeTreeFamilyEngineSpec]) =
     engineSpec match {
@@ -98,13 +103,31 @@ class ClickHouseTable(
 
   override lazy val partitioning: Array[Transform] = ExprUtils.toSparkParts(shardingKey, partitionKey)
 
-  override def metadataColumns(): Array[MetadataColumn] = Array()
+  /**
+   * Only support `MergeTree` and `Distributed` table engine, for reference
+   * {{{NamesAndTypesList MergeTreeData::getVirtuals()}}} {{{NamesAndTypesList StorageDistributed::getVirtuals()}}}
+   */
+  override lazy val metadataColumns: Array[MetadataColumn] = {
+
+    def metadataCols(tableEngine: TableEngineSpec): Array[MetadataColumn] = tableEngine match {
+      case _: MergeTreeFamilyEngineSpec => ClickHouseMetadataColumn.mergeTreeMetadataCols
+      case _: DistributedEngineSpec => ClickHouseMetadataColumn.distributeMetadataCols
+      case _ => Array.empty
+    }
+
+    engineSpec match {
+      case _: DistributedEngineSpec if readDistributedConvertLocal => metadataCols(localTableEngineSpec.get)
+      case other: TableEngineSpec => metadataCols(other)
+    }
+  }
 
   override lazy val properties: util.Map[String, String] = spec.toJavaMap
 
   override def newScanBuilder(options: CaseInsensitiveStringMap): ScanBuilder = {
-    log.info(s"Read options ${options.asScala}")
-    // TODO handle read options
+    if (options.asScala.nonEmpty) {
+      // TODO handle read options
+      log.warn(s"Ignored read options ${options.asScala}")
+    }
 
     val scanJob = ScanJobDescription(
       node = node,
@@ -115,13 +138,17 @@ class ClickHouseTable(
       localTableSpec = localTableSpec,
       localTableEngineSpec = localTableEngineSpec
     )
-    // TODO schema of meta columns, partitions
-    new ClickHouseScanBuilder(scanJob, schema, new StructType(), Array())
+    val metadataSchema = StructType(metadataColumns.map(_.asInstanceOf[ClickHouseMetadataColumn].toStructField))
+    // TODO schema of partitions
+    val partTransforms = Array[Transform]()
+    new ClickHouseScanBuilder(scanJob, schema, metadataSchema, partTransforms)
   }
 
   override def newWriteBuilder(info: LogicalWriteInfo): ClickHouseWriteBuilder = {
-    log.info(s"Write options ${info.options.asScala}")
-    // TODO handle write options info.options()
+    if (info.options.asScala.nonEmpty) {
+      // TODO handle write options info.options()
+      log.warn(s"Ignored write options ${info.options.asScala}")
+    }
 
     val writeJob = WriteJobDescription(
       queryId = info.queryId,

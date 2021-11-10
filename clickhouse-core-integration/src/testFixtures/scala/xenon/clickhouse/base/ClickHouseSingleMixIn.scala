@@ -20,7 +20,7 @@ import org.testcontainers.containers.ClickHouseContainer
 import org.testcontainers.utility.MountableFile
 import xenon.clickhouse.Utils
 
-trait ClickHouseSingleSuiteMixIn extends AnyFunSuite with ForAllTestContainer {
+trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   // format: off
   val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "yandex/clickhouse-server:21.8.10.19")
   val CLICKHOUSE_USER:     String = Utils.load("CLICKHOUSE_USER", "default")

@@ -33,12 +33,6 @@ import xenon.clickhouse.spec._
 
 class ClickHouseScanBuilder(
   scanJob: ScanJobDescription,
-  // some thoughts on schema.
-  // we can divide the columns into 2 kinks:
-  // 1. materialized columns, which store the values on local/remote storage
-  // 2. calculated columns, which calculate the values on-the-fly when reading
-  // but consider that usually CPU would not be bottleneck of clickhouse but IO does, it's not properly suppose that
-  // reading calculated columns is expensive than materialized columns
   physicalSchema: StructType,
   metadataSchema: StructType,
   partitionTransforms: Array[Transform]
@@ -50,8 +44,13 @@ class ClickHouseScanBuilder(
 
   implicit private val tz: ZoneId = scanJob.tz
 
-  // default read not include meta columns, like _shard_num UInt32 of Distributed tables.
-  private var readSchema: StructType = physicalSchema.copy()
+  private val reservedMetadataSchema: StructType = StructType(
+    metadataSchema.dropWhile(field => physicalSchema.fields.map(_.name).contains(field.name))
+  )
+
+  private var _readSchema: StructType = StructType(
+    physicalSchema.fields ++ reservedMetadataSchema.fields
+  )
 
   private var _pushedFilters = Array.empty[Filter]
 
@@ -65,11 +64,11 @@ class ClickHouseScanBuilder(
 
   override def pruneColumns(requiredSchema: StructType): Unit = {
     val requiredCols = requiredSchema.map(_.name)
-    this.readSchema = StructType(physicalSchema.filter(field => requiredCols.contains(field.name)))
+    this._readSchema = StructType(_readSchema.filter(field => requiredCols.contains(field.name)))
   }
 
   override def build(): Scan = new ClickHouseBatchScan(scanJob.copy(
-    readSchema = readSchema,
+    readSchema = _readSchema,
     filterExpr = filterWhereClause(AlwaysTrue :: pushedFilters.toList)
   ))
 }
@@ -80,6 +79,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     with ClickHouseHelper
     with SQLConfHelper {
 
+  // TODO assemble in ScanBuilder
   val readDistributedUseClusterNodes: Boolean = conf.getConf(READ_DISTRIBUTED_USE_CLUSTER_NODES)
   val readDistributedConvertLocal: Boolean = conf.getConf(READ_DISTRIBUTED_CONVERT_LOCAL)
 
