@@ -21,7 +21,7 @@ import xenon.clickhouse.Utils.PREFIX
 import com.dimafeng.testcontainers.{DockerComposeContainer, ExposedService, ForAllTestContainer}
 import org.scalatest.funsuite.AnyFunSuite
 
-trait ClickHouseClusterSuiteMixIn extends AnyFunSuite with ForAllTestContainer {
+trait ClickHouseClusterMixIn extends AnyFunSuite with ForAllTestContainer {
 
   protected val ZOOKEEPER_CLIENT_PORT = 2181
   protected val CLICKHOUSE_HTTP_PORT = 8123

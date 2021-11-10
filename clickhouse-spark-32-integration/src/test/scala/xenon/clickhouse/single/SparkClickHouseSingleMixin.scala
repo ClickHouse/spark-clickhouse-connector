@@ -15,10 +15,10 @@
 package xenon.clickhouse.single
 
 import xenon.clickhouse.BaseSparkSuite
-import xenon.clickhouse.base.ClickHouseSingleSuiteMixIn
+import xenon.clickhouse.base.ClickHouseSingleMixIn
 
-trait SparkClickHouseSingleSuiteMixin {
-  self: BaseSparkSuite with ClickHouseSingleSuiteMixIn =>
+trait SparkClickHouseSingleMixin {
+  self: BaseSparkSuite with ClickHouseSingleMixIn =>
 
   override def sparkOptions: Map[String, String] = Map(
     "spark.master" -> "local[2]",

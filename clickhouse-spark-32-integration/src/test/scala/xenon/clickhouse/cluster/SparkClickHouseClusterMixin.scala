@@ -15,10 +15,10 @@
 package xenon.clickhouse.cluster
 
 import xenon.clickhouse.BaseSparkSuite
-import xenon.clickhouse.base.ClickHouseClusterSuiteMixIn
+import xenon.clickhouse.base.ClickHouseClusterMixIn
 
-trait SparkClickHouseClusterSuiteMixin {
-  self: BaseSparkSuite with ClickHouseClusterSuiteMixIn =>
+trait SparkClickHouseClusterMixin {
+  self: BaseSparkSuite with ClickHouseClusterMixIn =>
 
   override def sparkOptions: Map[String, String] = Map(
     "spark.master" -> "local[4]",

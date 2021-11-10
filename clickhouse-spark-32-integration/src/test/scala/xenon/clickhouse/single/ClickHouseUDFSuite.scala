@@ -18,11 +18,11 @@ import java.lang.{Long => JLong}
 
 import xenon.clickhouse.{BaseSparkSuite, ClickHouseUDF, Logging}
 import xenon.clickhouse.JsonProtocol.om
-import xenon.clickhouse.base.ClickHouseSingleSuiteMixIn
+import xenon.clickhouse.base.ClickHouseSingleMixIn
 
 class ClickHouseUDFSuite extends BaseSparkSuite
-    with ClickHouseSingleSuiteMixIn
-    with SparkClickHouseSingleSuiteMixin
+    with ClickHouseSingleMixIn
+    with SparkClickHouseSingleMixin
     with Logging {
 
   override def beforeAll: Unit =

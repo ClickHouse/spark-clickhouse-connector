@@ -15,11 +15,11 @@
 package xenon.clickhouse.single
 
 import xenon.clickhouse.{BaseSparkSuite, Logging}
-import xenon.clickhouse.base.ClickHouseSingleSuiteMixIn
+import xenon.clickhouse.base.ClickHouseSingleMixIn
 
 class ClickHouseDataTypeSuite extends BaseSparkSuite
-    with ClickHouseSingleSuiteMixIn
-    with SparkClickHouseSingleSuiteMixin
+    with ClickHouseSingleMixIn
+    with SparkClickHouseSingleMixin
     with Logging {
 
   test("write supported data types") {}

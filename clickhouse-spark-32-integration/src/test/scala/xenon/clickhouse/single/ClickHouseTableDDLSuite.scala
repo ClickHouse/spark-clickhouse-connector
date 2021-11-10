@@ -16,12 +16,12 @@ package xenon.clickhouse.single
 
 import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.Row
-import xenon.clickhouse.base.ClickHouseSingleSuiteMixIn
+import xenon.clickhouse.base.ClickHouseSingleMixIn
 import xenon.clickhouse.{BaseSparkSuite, Logging}
 
 class ClickHouseTableDDLSuite extends BaseSparkSuite
-    with ClickHouseSingleSuiteMixIn
-    with SparkClickHouseSingleSuiteMixin
+    with ClickHouseSingleMixIn
+    with SparkClickHouseSingleMixin
     with Logging {
 
   import spark.implicits._
