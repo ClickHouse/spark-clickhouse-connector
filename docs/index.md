@@ -13,20 +13,22 @@ license: |
   limitations under the License.
 ---
 
-# Welcome to MkDocs
+Overview
+===
 
-For full documentation visit [mkdocs.org](https://www.mkdocs.org).
+Spark ClickHouse Connector is a high performance connector build on top of Spark DataSource V2 and
+ClickHouse gRPC protocol.
 
-## Commands
+## Requirement
 
-* `mkdocs new [dir-name]` - Create a new project.
-* `mkdocs serve` - Start the live-reloading docs server.
-* `mkdocs build` - Build the documentation site.
-* `mkdocs -h` - Print help message and exit.
+1. Basic knowledge of [Apache Spark](https://spark.apache.org/docs/latest/).
+2. Basic knowledge of [ClickHouse](https://clickhouse.com/docs/en/).
+3. An available ClickHouse single node or cluster, and ClickHouse version should at least [v21.1.2.15-stable](https://github.com/ClickHouse/ClickHouse/blob/master/CHANGELOG.md#clickhouse-release-v211215-stable-2021-01-18),
+   because Spark communicate with ClickHouse through the gRPC protocol.
+4. An available Spark cluster, and Spark version should be 3.2.x, because we need the interfaces of Spark DataSource V2
+   added in 3.2.0.
+5. Check your network strategy, both driver and executor of Spark need to communicate with ClickHouse nodes.
 
-## Project layout
+## Notes
 
-    mkdocs.yml    # The configuration file.
-    docs/
-        index.md  # The documentation homepage.
-        ...       # Other markdown pages, images and other files.
+1. Integration tests based on Spark v3.2.0 and ClickHouse v21.8.10.19-lts, cover both single mode and cluster mode.

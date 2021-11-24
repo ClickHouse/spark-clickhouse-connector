@@ -11,5 +11,34 @@
 # limitations under the License.
 
 site_name: Spark ClickHouse Connector
+site_author: Cheng Pan
+repo_name: housepower/spark-clickhouse-connector
+repo_url: https://github.com/housepower/spark-clickhouse-connector
+
 theme:
   name: material
+  language: en
+  features:
+    - navigation.indexes
+    - navigation.tabs
+    - navigation.tabs.sticky
+    - navigation.top
+    - navigation.tracking
+
+extra:
+  social:
+    - icon: fontawesome/brands/github
+      link: https://github.com/pan3793
+
+nav:
+  - Home: index.md
+  - Quick Start:
+    - Preparation: quick_start/preparation.md
+    - Play with Spark SQL: quick_start/play_with_spark_sql.md
+    - Play with Spark Shell: quick_start/play_with_spark_shell.md
+  - Configuration:
+    - configuration/index.md
+  - Developers:
+    - developers/index.md
+  - Internals:
+    - internals/index.md
