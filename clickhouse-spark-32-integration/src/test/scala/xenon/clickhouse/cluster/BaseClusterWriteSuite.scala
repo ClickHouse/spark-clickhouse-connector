@@ -34,7 +34,7 @@ abstract class BaseClusterWriteSuite extends BaseSparkSuite
     val tbl_dist = "t_dist"
     val tbl_local = s"${tbl_dist}_local"
 
-    withDistTable(cluster, db, tbl_dist, true) {
+    withSimpleDistTable(cluster, db, tbl_dist, true) {
       val tblSchema = spark.table(s"$db.$tbl_dist").schema
       assert(tblSchema == StructType(
         StructField("create_time", DataTypes.TimestampType, nullable = false) ::
