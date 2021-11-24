@@ -41,6 +41,7 @@ rat {
             "CODE_OF_CONDUCT.md",
             "clickhouse-core/src/main/scala-2.12/scala/util/Using.scala",
             "**/.gitkeep",
+            "site/**",
             // Gradle
             "gradle/wrapper/**",
             "gradlew*",

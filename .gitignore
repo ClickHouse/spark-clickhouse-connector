@@ -37,6 +37,7 @@ sdist/
 .coverage
 coverage.xml
 .pytest_cache/
+.python-version
 
 # vscode/eclipse files
 .classpath
