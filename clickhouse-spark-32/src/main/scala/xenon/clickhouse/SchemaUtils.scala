@@ -45,7 +45,7 @@ object SchemaUtils {
       case "Float32" => FloatType
       case "Float64" => DoubleType
       case dateTypePattern() => DateType
-      case dateTimeTypePattern(_, _, _)  => TimestampType
+      case dateTimeTypePattern(_, _, _) => TimestampType
       case decimalTypePattern(precision, scale) => DecimalType(precision.toInt, scale.toInt)
       case decimalTypePattern2(w, scale) => w match {
           case "32" => DecimalType(9, scale.toInt)
@@ -53,6 +53,9 @@ object SchemaUtils {
           case "128" => DecimalType(38, scale.toInt)
           case "256" => DecimalType(76, scale.toInt) // throw exception, spark support precision up to 38
         }
+      case arrayTypePattern(nestedChType) =>
+        val (_chType, _nullable) = fromClickHouseType(nestedChType)
+        ArrayType(_chType, _nullable)
       case _ => throw ClickHouseClientException(s"Unsupported type: $chType")
     }
     (catalystType, nullable)
@@ -68,6 +71,7 @@ object SchemaUtils {
       case StringType => "String"
       case DateType => "Date"
       case TimestampType => "DateTime"
+      case ArrayType(elemType, nullable) => maybeNullable(toClickHouseType(elemType), nullable)
       case _ => throw ClickHouseClientException(s"Unsupported type: $catalystType")
     }
 
@@ -84,8 +88,11 @@ object SchemaUtils {
     catalystSchema.fields
       .map { field =>
         val chType = toClickHouseType(field.dataType)
-        (field.name, if (field.nullable) wrapNullable(chType) else chType)
+        (field.name, maybeNullable(chType, field.nullable))
       }
+
+  private[clickhouse] def maybeNullable(chType: String, nullable: Boolean): String =
+    if (nullable) wrapNullable(chType) else chType
 
   private[clickhouse] def wrapNullable(chType: String): String = s"Nullable($chType)"
 
