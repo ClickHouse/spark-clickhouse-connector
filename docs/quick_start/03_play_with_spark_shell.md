@@ -17,7 +17,7 @@ Play with Spark Shell
 ===
 
 ```shell
-${SPARK_HOME}/bin/spark-shell \
+$SPARK_HOME/bin/spark-shell \
   --conf spark.sql.catalog.clickhouse=xenon.clickhouse.ClickHouseCatalog \
   --conf spark.sql.catalog.clickhouse.host=${CLICKHOUSE_HOST:-127.0.0.1} \
   --conf spark.sql.catalog.clickhouse.grpc_port=${CLICKHOUSE_GRPC_PORT:-9100} \

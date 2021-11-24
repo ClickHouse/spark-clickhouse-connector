@@ -33,9 +33,11 @@ extra:
 nav:
   - Home: index.md
   - Quick Start:
-    - Preparation: quick_start/1_preparation.md
-    - Play with Spark SQL: quick_start/2_play_with_spark_sql.md
-    - Play with Spark Shell: quick_start/3_play_with_spark_shell.md
+    - Preparation: quick_start/01_preparation.md
+    - Play with Spark SQL: quick_start/02_play_with_spark_sql.md
+    - Play with Spark Shell: quick_start/03_play_with_spark_shell.md
+  - Best Practices:
+    - Deployment: best_practices/01_deployment.md
   - Configuration:
     - configuration/index.md
   - Developers:

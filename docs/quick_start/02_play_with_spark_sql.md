@@ -19,7 +19,7 @@ Play with Spark SQL
 Note: [Apache Kyuubi(Incubating)](https://github.com/apache/incubator-kyuubi) is recommended for Production.
 
 ```shell
-${SPARK_HOME}/bin/spark-sql \
+$SPARK_HOME/bin/spark-sql \
   --conf spark.sql.catalog.clickhouse=xenon.clickhouse.ClickHouseCatalog \
   --conf spark.sql.catalog.clickhouse.host=${CLICKHOUSE_HOST:-127.0.0.1} \
   --conf spark.sql.catalog.clickhouse.grpc_port=${CLICKHOUSE_GRPC_PORT:-9100} \
