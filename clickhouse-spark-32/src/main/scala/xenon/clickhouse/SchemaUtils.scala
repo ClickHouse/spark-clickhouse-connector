@@ -71,7 +71,7 @@ object SchemaUtils {
       case StringType => "String"
       case DateType => "Date"
       case TimestampType => "DateTime"
-      case ArrayType(elemType, nullable) => maybeNullable(toClickHouseType(elemType), nullable)
+      case ArrayType(elemType, nullable) => s"Array(${maybeNullable(toClickHouseType(elemType), nullable)})"
       case _ => throw ClickHouseClientException(s"Unsupported type: $catalystType")
     }
 
