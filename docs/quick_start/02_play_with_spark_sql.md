@@ -66,7 +66,7 @@ Time taken: 0.276 seconds
 spark-sql> select * from test_db.tbl_sql;
 2021-01-01 10:10:10	1	1	1
 2022-02-02 10:10:10	2	2	2
-Time taken: 0.116 seconds, Fetched 7 row(s)
+Time taken: 0.116 seconds, Fetched 2 row(s)
 
 spark-sql> insert into test_db.tbl_sql select * from test_db.tbl_sql;
 Time taken: 1.028 seconds
@@ -85,5 +85,5 @@ spark-sql> select * from test_db.tbl_sql;
 2022-02-02 10:10:10	2	2	2
 2022-02-02 10:10:10	2	2	2
 2022-02-02 10:10:10	2	2	2
-Time taken: 0.123 seconds, Fetched 4 row(s)
+Time taken: 0.123 seconds, Fetched 6 row(s)
 ```

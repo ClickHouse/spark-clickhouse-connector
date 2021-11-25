@@ -19,15 +19,18 @@ Overview
 Spark ClickHouse Connector is a high performance connector build on top of Spark DataSource V2 and
 ClickHouse gRPC protocol.
 
-## Requirement
+## Requirements
 
 1. Basic knowledge of [Apache Spark](https://spark.apache.org/docs/latest/) and [ClickHouse](https://clickhouse.com/docs/en/).
 2. An available ClickHouse single node or cluster, and ClickHouse version should at least [v21.1.2.15-stable](https://github.com/ClickHouse/ClickHouse/blob/master/CHANGELOG.md#clickhouse-release-v211215-stable-2021-01-18),
    because Spark communicate with ClickHouse through the gRPC protocol.
 3. An available Spark cluster, and Spark version should be 3.2.x, because we need the interfaces of Spark DataSource V2
    added in 3.2.0.
-4. Check your network strategy, both driver and executor of Spark need to communicate with ClickHouse nodes.
+4. Make sure your network policy satisfy the requirements, both driver and executor of Spark need to access ClickHouse
+   gRPC port. If you are using it to access ClickHouse cluster, ensure the connectivity between driver and executor of
+   Spark and each node of ClickHouse cluster.
 
 ## Notes
 
-1. Integration tests based on Spark v3.2.0 and ClickHouse v21.8.10.19-lts, cover both single mode and cluster mode.
+1. Integration tests based on Java 8, Scala 2.12, Spark v3.2.0 and ClickHouse v21.8.10.19-lts, with both single
+   ClickHouse instance and cluster mode.
