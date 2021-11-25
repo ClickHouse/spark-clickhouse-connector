@@ -27,14 +27,17 @@ class ClickHouseDataTypeSuite extends BaseSparkSuite
     with Logging {
 
   test("write supported data types") {
-    val cols =
+    val structFields =
       StructField("id", DataTypes.LongType, false, Metadata.fromJson("""{"comment": "sort key"}""")) ::
         StructField("col_string", DataTypes.StringType, false) ::
         StructField("col_array_string", DataTypes.createArrayType(DataTypes.StringType, false), false) :: Nil
     val db = "t_w_s_db"
     val tbl = "t_w_s_tbl"
-    withTable(db, tbl, cols) {
+    withTable(db, tbl, structFields) {
       val tblSchema = spark.table(s"$db.$tbl").schema
+      // TODO v2 create table should respect element nullable of array field
+      // assert(StructType(structFields) === tblSchema)
+
       val dataDF = spark.createDataFrame(Seq(
         (1L, "a", Seq("a", "b", "c")),
         (2L, "A", Seq("A", "B", "C"))

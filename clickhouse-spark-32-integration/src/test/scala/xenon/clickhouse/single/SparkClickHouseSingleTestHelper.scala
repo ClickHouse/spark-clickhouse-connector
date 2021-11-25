@@ -24,7 +24,7 @@ trait SparkClickHouseSingleTestHelper { self: BaseSparkSuite with SparkClickHous
   def withTable(
     db: String,
     tbl: String,
-    cols: Seq[StructField],
+    structFields: Seq[StructField],
     engine: String = "MergeTree()",
     sortKey: String = "id",
     partKey: Option[String] = None
@@ -34,7 +34,7 @@ trait SparkClickHouseSingleTestHelper { self: BaseSparkSuite with SparkClickHous
 
       spark.sql(
         s"""CREATE TABLE $db.$tbl (
-           |  ${cols.map(_.toDDL).mkString(",\n  ")}
+           |  ${structFields.map(_.toDDL).mkString(",\n  ")}
            |) USING ClickHouse
            |${partKey.map(k => s"PARTITIONED BY ($k)").getOrElse("")}
            |TBLPROPERTIES (

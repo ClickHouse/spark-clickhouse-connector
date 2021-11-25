@@ -14,21 +14,23 @@
 
 package xenon.clickhouse.read
 
+import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
+
+import scala.collection.JavaConverters._
+import scala.math.BigDecimal.RoundingMode
+
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
+import org.apache.spark.sql.catalyst.util.GenericArrayData
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
+import xenon.clickhouse.{ClickHouseHelper, Logging}
 import xenon.clickhouse.Utils._
 import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.format.StreamOutput
 import xenon.clickhouse.grpc.{GrpcNodeClient, GrpcNodesClient}
-import xenon.clickhouse.{ClickHouseHelper, Logging}
-
-import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
-import scala.math.BigDecimal.RoundingMode
 
 class ClickHouseReader(
   scanJob: ScanJobDescription,
@@ -67,29 +69,39 @@ class ClickHouseReader(
     hasNext
   }
 
-  override def get(): InternalRow =
-    InternalRow.fromSeq((currentRow zip readSchema).map {
-      case (null, StructField(_, _, true, _)) => null
-      case (_: NullNode, StructField(_, _, true, _)) => null
-      case (jsonNode: JsonNode, StructField(name, dataType, _, _)) => dataType match {
-          case BooleanType => jsonNode.asBoolean
-          case ByteType => jsonNode.asInt.byteValue
-          case ShortType => jsonNode.asInt.shortValue
-          case IntegerType => jsonNode.asInt
-          case LongType => jsonNode.asLong
-          case FloatType => jsonNode.asDouble.floatValue
-          case DoubleType => jsonNode.asDouble
-          case d: DecimalType => jsonNode.decimalValue.setScale(d.scale, RoundingMode.HALF_UP)
-          case TimestampType =>
-            ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(scanJob.tz))
-              .withZoneSameInstant(ZoneOffset.UTC)
-              .toEpochSecond * 1000 * 1000
-          case StringType => UTF8String.fromString(jsonNode.asText)
-          case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay
-          case BinaryType => jsonNode.binaryValue
-          case _ => throw ClickHouseClientException(s"Unsupported catalyst type $name[$dataType]")
-        }
-    })
+  override def get(): InternalRow = InternalRow.fromSeq(
+    (currentRow zip readSchema).map { case (jsonNode, structField) => decode(jsonNode, structField) }
+  )
+
+  private def decode(jsonNode: JsonNode, structField: StructField): Any = {
+    if (jsonNode == null || jsonNode.isNull) {
+      // should we check `structField.nullable`?
+      return null
+    }
+
+    structField.dataType match {
+      case BooleanType => jsonNode.asBoolean
+      case ByteType => jsonNode.asInt.byteValue
+      case ShortType => jsonNode.asInt.shortValue
+      case IntegerType => jsonNode.asInt
+      case LongType => jsonNode.asLong
+      case FloatType => jsonNode.asDouble.floatValue
+      case DoubleType => jsonNode.asDouble
+      case d: DecimalType => jsonNode.decimalValue.setScale(d.scale, RoundingMode.HALF_UP)
+      case TimestampType =>
+        ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(scanJob.tz))
+          .withZoneSameInstant(ZoneOffset.UTC)
+          .toEpochSecond * 1000 * 1000
+      case StringType => UTF8String.fromString(jsonNode.asText)
+      case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay
+      case BinaryType => jsonNode.binaryValue
+      case ArrayType(_dataType, _nullable) =>
+        val _structField = StructField(s"${structField.name}__array_element__", _dataType, _nullable)
+        new GenericArrayData(jsonNode.asScala.map(decode(_, _structField)))
+      case _ =>
+        throw ClickHouseClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
+    }
+  }
 
   override def close(): Unit = grpcClient.close()
 }
