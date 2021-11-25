@@ -20,7 +20,12 @@ import xenon.clickhouse.BaseSparkSuite
 trait SparkClickHouseClusterTestHelper { self: BaseSparkSuite with SparkClickHouseClusterMixin =>
   import spark.implicits._
 
-  def withDistTable(cluster: String, db: String, tbl_dist: String, writeData: Boolean = false)(f: => Unit): Unit = {
+  def withSimpleDistTable(
+    cluster: String,
+    db: String,
+    tbl_dist: String,
+    writeData: Boolean = false
+  )(f: => Unit): Unit = {
     val tbl_local = s"${tbl_dist}_local"
     try {
       runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db ON CLUSTER $cluster")

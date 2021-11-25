@@ -71,26 +71,26 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     val db = "db_rw"
     val tbl = "tbl_rw"
 
-    withTable(db, tbl, true) {
+    withSimpleTable(db, tbl, true) {
       val tblSchema = spark.table(s"$db.$tbl").schema
       assert(tblSchema == StructType(
-        StructField("create_time", DataTypes.TimestampType, false) ::
-          StructField("m", DataTypes.IntegerType, false) ::
-          StructField("id", DataTypes.LongType, false) ::
-          StructField("value", DataTypes.StringType, true) :: Nil
+        StructField("id", DataTypes.LongType, false) ::
+          StructField("value", DataTypes.StringType, true) ::
+          StructField("create_time", DataTypes.TimestampType, false) ::
+          StructField("m", DataTypes.IntegerType, false) :: Nil
       ))
 
       checkAnswer(
         spark.table(s"$db.$tbl").sort("m"),
         Seq(
-          Row(Timestamp.valueOf("2021-01-01 10:10:10"), 1, 1L, "1"),
-          Row(Timestamp.valueOf("2022-02-02 10:10:10"), 2, 2L, "2")
+          Row(1L, "1", Timestamp.valueOf("2021-01-01 10:10:10"), 1),
+          Row(2L, "2", Timestamp.valueOf("2022-02-02 10:10:10"), 2)
         )
       )
 
       checkAnswer(
         spark.table(s"$db.$tbl").filter($"id" > 1),
-        Row(Timestamp.valueOf("2022-02-02 10:10:10"), 2, 2L, "2") :: Nil
+        Row(2L, "2", Timestamp.valueOf("2022-02-02 10:10:10"), 2) :: Nil
       )
 
       assert(spark.table(s"$db.$tbl").filter($"id" > 1).count === 1)
@@ -103,7 +103,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     val db = "db_metadata_col"
     val tbl = "tbl_metadata_col"
 
-    withTable(db, tbl, true) {
+    withSimpleTable(db, tbl, true) {
       checkAnswer(
         spark.sql(s"SELECT m, _partition_id FROM $db.$tbl ORDER BY m"),
         Seq(

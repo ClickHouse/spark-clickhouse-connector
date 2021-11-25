@@ -21,23 +21,55 @@ import xenon.clickhouse.BaseSparkSuite
 trait SparkClickHouseSingleTestHelper { self: BaseSparkSuite with SparkClickHouseSingleMixin =>
   import spark.implicits._
 
-  def withTable(db: String, tbl: String, writeData: Boolean = false)(f: => Unit): Unit = {
+  def withTable(
+    db: String,
+    tbl: String,
+    structFields: Seq[StructField],
+    engine: String = "MergeTree()",
+    sortKey: String = "id",
+    partKey: Option[String] = None
+  )(f: => Unit): Unit =
+    try {
+      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
+
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  ${structFields.map(_.toDDL).mkString(",\n  ")}
+           |) USING ClickHouse
+           |${partKey.map(k => s"PARTITIONED BY ($k)").getOrElse("")}
+           |TBLPROPERTIES (
+           |  engine = '$engine',
+           |  order_by = '($sortKey)'
+           |)
+           |""".stripMargin
+      )
+
+      f
+    } finally {
+      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
+      runClickHouseSQL(s"DROP DATABASE IF EXISTS $db")
+    }
+
+  def withSimpleTable(
+    db: String,
+    tbl: String,
+    writeData: Boolean = false
+  )(f: => Unit): Unit =
     try {
       runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
 
       // SPARK-33779: Spark 3.2 only support IdentityTransform
       spark.sql(
         s"""CREATE TABLE $db.$tbl (
-           |  create_time TIMESTAMP NOT NULL,
-           |  m           INT       NOT NULL COMMENT 'part key',
            |  id          BIGINT    NOT NULL COMMENT 'sort key',
-           |  value       STRING
+           |  value       STRING,
+           |  create_time TIMESTAMP NOT NULL,
+           |  m           INT       NOT NULL COMMENT 'part key'
            |) USING ClickHouse
            |PARTITIONED BY (m)
            |TBLPROPERTIES (
            |  engine = 'MergeTree()',
-           |  order_by = '(id)',
-           |  settings.index_granularity = 8192
+           |  order_by = '(id)'
            |)
            |""".stripMargin
       )
@@ -45,12 +77,12 @@ trait SparkClickHouseSingleTestHelper { self: BaseSparkSuite with SparkClickHous
       if (writeData) {
         val tblSchema = spark.table(s"$db.$tbl").schema
         val dataDF = spark.createDataFrame(Seq(
-          ("2021-01-01 10:10:10", 1L, "1"),
-          ("2022-02-02 10:10:10", 2L, "2")
-        )).toDF("create_time", "id", "value")
+          (1L, "1", "2021-01-01 10:10:10"),
+          (2L, "2", "2022-02-02 10:10:10")
+        )).toDF("id", "value", "create_time")
           .withColumn("create_time", to_timestamp($"create_time"))
           .withColumn("m", month($"create_time"))
-          .select($"create_time", $"m", $"id", $"value")
+          .select($"id", $"value", $"create_time", $"m")
 
         spark.createDataFrame(dataDF.rdd, tblSchema)
           .writeTo(s"$db.$tbl")
@@ -62,5 +94,4 @@ trait SparkClickHouseSingleTestHelper { self: BaseSparkSuite with SparkClickHous
       runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
       runClickHouseSQL(s"DROP DATABASE IF EXISTS $db")
     }
-  }
 }

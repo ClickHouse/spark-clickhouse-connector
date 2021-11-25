@@ -31,7 +31,7 @@ class ClickHouseClusterReadSuite extends BaseSparkSuite
     val db = "db_w"
     val tbl_dist = "t_dist"
 
-    withDistTable(cluster, db, tbl_dist, true) {
+    withSimpleDistTable(cluster, db, tbl_dist, true) {
       assert(READ_DISTRIBUTED_CONVERT_LOCAL.defaultValueString == "true")
 
       // `_shard_num` is dedicated for Distributed table
