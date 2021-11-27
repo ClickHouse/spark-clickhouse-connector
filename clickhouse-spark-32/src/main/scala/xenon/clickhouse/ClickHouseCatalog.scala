@@ -76,7 +76,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
     this.clusterSpecs = queryClusterSpecs(nodeSpec)
 
     log.info(s"Detect ${clusterSpecs.size} ClickHouse clusters: ${clusterSpecs.map(_.name).mkString(",")}")
-    log.info(s"ClickHouse clusters details: $clusterSpecs")
+    log.info(s"ClickHouse clusters' detail: $clusterSpecs")
   }
 
   override def name(): String = catalogName
