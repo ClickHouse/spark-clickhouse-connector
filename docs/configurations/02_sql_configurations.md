@@ -16,7 +16,7 @@ license: |
 SQL Configurations
 ===
 
-!!! tip "Since 1.0.0 - spark.clickhouse.write.batchSize "
+!!! tip "Since 1.0.0 - spark.clickhouse.write.batchSize"
 
     Default Value: 50000
 

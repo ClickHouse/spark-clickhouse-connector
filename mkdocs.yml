@@ -42,7 +42,9 @@ nav:
   - Best Practices:
     - Deployment: best_practices/01_deployment.md
   - Configurations:
-    - SQL Configurations: configurations/sql_configurations.md
+    - configurations/index.md
+    - Catalog Configurations: configurations/01_catalog_configurations.md
+    - SQL Configurations: configurations/02_sql_configurations.md
   - Developers:
     - developers/index.md
   - Internals:
