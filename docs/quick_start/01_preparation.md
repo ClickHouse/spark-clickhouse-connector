@@ -16,8 +16,12 @@ license: |
 Preparation
 ===
 
-The project has no available binary release now, you must build from source code before using, and Java 8 is required
-for building. 
+The project has no available binary release now, you must build from source code before using.
+
+Also, it has not been published to Maven Central, you need to build and publish to private repository if you want
+import it by using Gradle or Maven to your project.
+
+## Build Jar from Source Code
 
 Check out source code from GitHub.
 
@@ -31,4 +35,47 @@ Build.
 ./gradlew clean build -x test
 ```
 
-Go to `clickhouse-spark-32-runtime/build/libs/` to find the output jar `clickhouse-spark-32-runtime_2.12-{version}.jar`.
+Go to `clickhouse-spark-32-runtime/build/libs/` to find the output jar `clickhouse-spark-32-runtime_2.12-${version}.jar`.
+
+## Publish to Private Repository
+
+Configure Gradle in `~/.gradle/gradle.properties`.
+
+```
+mavenUser=xxx
+mavenPassword=xxx
+mavenReleasesRepo=xxx
+mavenSnapshotsRepo=xxx
+```
+
+Versions.
+
+Use content of `./version.txt` if the file exists, otherwise fallback to `{year}.{month}.{date}[-SNAPSHOT]`.
+
+Publish Snapshots.
+
+`./gradlew publish`
+
+Publish Release.
+
+`./gradlew -Prelease publish`
+
+## Import as Dependency
+
+For Gradle.
+
+```
+dependencies {
+  implementation("com.github.housepower:clickhouse-spark-32-runtime_2.12:${version}")
+}
+```
+
+For Maven.
+
+```
+<dependency>
+  <groupId>com.github.housepower</groupId>
+  <artifactId>clickhouse-spark-32-runtime_2.12</artifactId>
+  <version>${version}</version>
+</dependency>
+```

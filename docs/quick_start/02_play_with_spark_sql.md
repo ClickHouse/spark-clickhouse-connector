@@ -16,7 +16,10 @@ license: |
 Play with Spark SQL
 ===
 
-Note: [Apache Kyuubi(Incubating)](https://github.com/apache/incubator-kyuubi) is recommended for Production.
+Note: For SQL-only use cases, [Apache Kyuubi(Incubating)](https://github.com/apache/incubator-kyuubi) is recommended
+for Production.
+
+## Launch Spark SQL CLI
 
 ```shell
 $SPARK_HOME/bin/spark-sql \
@@ -28,6 +31,19 @@ $SPARK_HOME/bin/spark-sql \
   --conf spark.sql.catalog.clickhouse.database=default \
   --jars /path/clickhouse-spark-32-runtime_2.12-{version}.jar
 ```
+
+If you published the jar to private Nexus, the following argument
+```
+  --jars /path/clickhouse-spark-32-runtime_2.12-{version}.jar
+```
+can be replaced by
+```
+  --repositories https://{private-nexus-repo} \
+  --packages com.github.housepower:clickhouse-spark-32-runtime_2.12:{version}
+```
+to avoid copying jar to your Spark client node.
+
+## Operations
 
 Basic operations, e.g. create database, create table, write table, read table, etc.
 ```

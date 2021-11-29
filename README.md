@@ -3,28 +3,9 @@ Spark ClickHouse Connector
 
 Build on Apache Spark DataSourceV2 API.
 
-The project is currently on very early stage, and see unit tests to learn the usages and functionalities.
-
 ## Usage
 
-The projects haven't published to Maven Central, you need to build and publish to private repository before using.
-
-### Gradle
-
-```
-dependencies {
-    implementation("com.github.housepower:clickhouse-spark-32-runtime_2.12:$version")
-}
-```
-
-### Maven
-```
-<dependency>
-  <groupId>com.github.housepower</groupId>
-  <artifactId>clickhouse-spark-32-runtime_2.12</artifactId>
-  <version>${version}</version>
-</dependency>
-```
+Goto [Home Page](https://housepower.github.io/spark-clickhouse-connector/) to learn how to use this connector.
 
 ## Requirements
 
@@ -54,26 +35,3 @@ documents if you'd like to run test with remote Docker daemon.
 Run single test.
 
 `./gradlew test --tests=ConvertDistToLocalWriteSuite`
-
-## Publish to Private Repository
-
-Config gradle in `~/.gradle/gradle.properties`
-
-```
-mavenUser=xxx
-mavenPassword=xxx
-mavenReleasesRepo=xxx
-mavenSnapshotsRepo=xxx
-```
-
-Versions
-
-Use content of `./version.txt` if the file exists, otherwise fallback to `{year}.{month}.{date}[-SNAPSHOT]`.
-
-Publish Snapshots
-
-`./gradlew publish`
-
-Publish Release
-
-`./gradlew -Prelease publish`
