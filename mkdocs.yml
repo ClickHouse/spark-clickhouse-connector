@@ -25,6 +25,9 @@ theme:
     - navigation.top
     - navigation.tracking
 
+markdown_extensions:
+  - admonition
+
 extra:
   social:
     - icon: fontawesome/brands/github
@@ -38,8 +41,8 @@ nav:
     - Play with Spark Shell: quick_start/03_play_with_spark_shell.md
   - Best Practices:
     - Deployment: best_practices/01_deployment.md
-  - Configuration:
-    - configuration/index.md
+  - Configurations:
+    - SQL Configurations: configurations/sql_configurations.md
   - Developers:
     - developers/index.md
   - Internals:
