@@ -16,6 +16,7 @@ package xenon.clickhouse.read
 
 import java.time.ZoneId
 
+import org.apache.spark.sql.clickhouse.ReadOptions
 import org.apache.spark.sql.types.StructType
 import xenon.clickhouse.spec._
 
@@ -27,6 +28,7 @@ case class ScanJobDescription(
   cluster: Option[ClusterSpec],
   localTableSpec: Option[TableSpec],
   localTableEngineSpec: Option[TableEngineSpec],
+  readOptions: ReadOptions,
   // below fields will be constructed in ScanBuilder
   readSchema: StructType = new StructType,
   filterExpr: String = "1=1"

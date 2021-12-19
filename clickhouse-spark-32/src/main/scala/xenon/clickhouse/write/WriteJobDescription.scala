@@ -16,7 +16,7 @@ package xenon.clickhouse.write
 
 import java.time.ZoneId
 
-import org.apache.spark.sql.clickhouse.ExprUtils
+import org.apache.spark.sql.clickhouse.{ExprUtils, WriteOptions}
 import org.apache.spark.sql.clickhouse.TransformUtils.toSparkTransform
 import org.apache.spark.sql.connector.expressions.{Expression, SortOrder, Transform}
 import org.apache.spark.sql.types.StructType
@@ -35,7 +35,8 @@ case class WriteJobDescription(
   localTableEngineSpec: Option[TableEngineSpec],
   shardingKey: Option[Expr],
   partitionKey: Option[List[Expr]],
-  sortingKey: Option[List[OrderExpr]]
+  sortingKey: Option[List[OrderExpr]],
+  writeOptions: WriteOptions
 ) {
 
   def targetDatabase(convert2Local: Boolean): String = tableEngineSpec match {

@@ -18,7 +18,7 @@ import java.time.ZoneId
 
 import scala.util.Using
 
-import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
+import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read._
@@ -76,25 +76,20 @@ class ClickHouseScanBuilder(
 class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     with SupportsReportPartitioning
     with PartitionReaderFactory
-    with ClickHouseHelper
-    with SQLConfHelper {
-
-  // TODO assemble in ScanBuilder
-  val readDistributedUseClusterNodes: Boolean = conf.getConf(READ_DISTRIBUTED_USE_CLUSTER_NODES)
-  val readDistributedConvertLocal: Boolean = conf.getConf(READ_DISTRIBUTED_CONVERT_LOCAL)
+    with ClickHouseHelper {
 
   val database: String = scanJob.tableEngineSpec match {
-    case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_db
+    case dist: DistributedEngineSpec if scanJob.readOptions.convertDistributedToLocal => dist.local_db
     case _ => scanJob.tableSpec.database
   }
 
   val table: String = scanJob.tableEngineSpec match {
-    case dist: DistributedEngineSpec if readDistributedConvertLocal => dist.local_table
+    case dist: DistributedEngineSpec if scanJob.readOptions.convertDistributedToLocal => dist.local_table
     case _ => scanJob.tableSpec.name
   }
 
   lazy val inputPartitions: Array[ClickHouseInputPartition] = scanJob.tableEngineSpec match {
-    case DistributedEngineSpec(_, _, local_db, local_table, _, _) if readDistributedConvertLocal =>
+    case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
       scanJob.cluster.get.shards.flatMap { shardSpec =>
         Using.resource(GrpcNodeClient(shardSpec.nodes.head)) { implicit grpcNodeClient: GrpcNodeClient =>
           queryPartitionSpec(local_db, local_table).map(partitionSpec =>
@@ -102,7 +97,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
           )
         }
       }
-    case _: DistributedEngineSpec if readDistributedUseClusterNodes =>
+    case _: DistributedEngineSpec if scanJob.readOptions.useClusterNodesForDistributed =>
       throw ClickHouseClientException(
         s"${READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
       )
