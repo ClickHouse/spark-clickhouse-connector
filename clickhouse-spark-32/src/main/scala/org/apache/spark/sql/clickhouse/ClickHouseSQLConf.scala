@@ -20,9 +20,7 @@ import org.apache.spark.internal.config.{ConfigBuilder, ConfigEntry}
 import org.apache.spark.sql.internal.SQLConf
 import xenon.clickhouse.exception.ClickHouseErrCode._
 
-object ClickHouseSQLConf extends ClickHouseSQLConfBase
-
-trait ClickHouseSQLConfBase {
+object ClickHouseSQLConf {
   def buildConf(key: String): ConfigBuilder = SQLConf.buildConf(s"spark.clickhouse.$key")
   def buildStaticConf(key: String): ConfigBuilder = SQLConf.buildStaticConf(s"spark.clickhouse.$key")
 
