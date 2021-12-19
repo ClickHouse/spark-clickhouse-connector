@@ -28,12 +28,17 @@ object ExprUtils {
   def toSparkParts(shardingKey: Option[Expr], partitionKey: Option[List[Expr]]): Array[Transform] =
     (shardingKey.seq ++ partitionKey.seq.flatten).map(toSparkTransform).toArray
 
-  def toSparkSortOrders(sortingKey: Option[List[OrderExpr]]): Array[SortOrder] =
-    sortingKey.seq.flatten.map { case OrderExpr(expr, asc, nullFirst) =>
-      val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
-      val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
-      Expressions.sort(toSparkTransform(expr), direction, nullOrder)
-    }.toArray
+  def toSparkSortOrders(
+    shardingKey: Option[Expr],
+    partitionKey: Option[List[Expr]],
+    sortingKey: Option[List[OrderExpr]]
+  ): Array[SortOrder] =
+    toSparkParts(shardingKey, partitionKey).map(Expressions.sort(_, SortDirection.ASCENDING)) ++
+      sortingKey.seq.flatten.map { case OrderExpr(expr, asc, nullFirst) =>
+        val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
+        val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
+        Expressions.sort(toSparkTransform(expr), direction, nullOrder)
+      }.toArray
 
   @tailrec
   def toCatalyst(v2Expr: V2Expression, fields: Array[StructField]): Expression =
