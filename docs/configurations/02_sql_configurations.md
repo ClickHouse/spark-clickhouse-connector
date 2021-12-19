@@ -18,7 +18,7 @@ SQL Configurations
 
 !!! tip "Since 1.0.0 - spark.clickhouse.write.batchSize"
 
-    Default Value: 50000
+    Default Value: 10000
 
     Description: The number of records per batch on writing to ClickHouse.
 
