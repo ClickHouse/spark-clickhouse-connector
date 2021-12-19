@@ -19,13 +19,14 @@ import java.util.concurrent.TimeUnit
 import org.apache.spark.internal.config.{ConfigBuilder, ConfigEntry}
 import org.apache.spark.sql.internal.SQLConf
 import xenon.clickhouse.exception.ClickHouseErrCode._
+import org.apache.spark.sql.clickhouse.WriteOptions._
 
 object ClickHouseSQLConf {
   def buildConf(key: String): ConfigBuilder = SQLConf.buildConf(s"spark.clickhouse.$key")
   def buildStaticConf(key: String): ConfigBuilder = SQLConf.buildStaticConf(s"spark.clickhouse.$key")
 
   val WRITE_BATCH_SIZE: ConfigEntry[Int] =
-    buildConf("write.batchSize")
+    buildConf(WRITE_BATCH_SIZE_KEY)
       .doc("The number of records per batch on writing to ClickHouse.")
       .version("1.0.0")
       .intConf
@@ -33,7 +34,7 @@ object ClickHouseSQLConf {
       .createWithDefault(10000)
 
   val WRITE_MAX_RETRY: ConfigEntry[Int] =
-    buildConf("write.maxRetry")
+    buildConf(WRITE_MAX_RETRY_KEY)
       .doc("The maximum number of write we will retry for a single batch write failed with retryable codes.")
       .version("1.0.0")
       .intConf
@@ -41,14 +42,14 @@ object ClickHouseSQLConf {
       .createWithDefault(3)
 
   val WRITE_RETRY_INTERVAL: ConfigEntry[Long] =
-    buildConf("write.retryInterval")
+    buildConf(WRITE_RETRY_INTERVAL_KEY)
       .doc("The interval in seconds between write retry.")
       .version("1.0.0")
       .timeConf(TimeUnit.SECONDS)
       .createWithDefault(10)
 
   val WRITE_RETRYABLE_ERROR_CODES: ConfigEntry[Seq[Int]] =
-    buildConf("write.retryableErrorCodes")
+    buildConf(WRITE_RETRYABLE_ERROR_CODES_KEY)
       .doc("The retryable error codes returned by ClickHouse server when write failing.")
       .version("1.0.0")
       .intConf
@@ -57,7 +58,7 @@ object ClickHouseSQLConf {
       .createWithDefault(MEMORY_LIMIT_EXCEEDED.code :: Nil)
 
   val WRITE_REPARTITION_NUM: ConfigEntry[Int] =
-    buildConf("write.repartitionNum")
+    buildConf(WRITE_REPARTITION_NUM_KEY)
       .doc("Repartition data to meet the distributions of ClickHouse table is required before writing, " +
         "use this conf to specific the repartition number, value less than 1 mean no requirement.")
       .version("1.0.0")
@@ -65,7 +66,7 @@ object ClickHouseSQLConf {
       .createWithDefault(0)
 
   val WRITE_DISTRIBUTED_USE_CLUSTER_NODES: ConfigEntry[Boolean] =
-    buildConf("write.distributed.useClusterNodes")
+    buildConf(WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY)
       .doc("Write to all nodes of cluster when writing Distributed table.")
       .version("1.0.0")
       .booleanConf
@@ -80,7 +81,7 @@ object ClickHouseSQLConf {
       .createWithDefault(false)
 
   val WRITE_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
-    buildConf("write.distributed.convertLocal")
+    buildConf(WRITE_DISTRIBUTED_CONVERT_LOCAL_KEY)
       .doc("When writing Distributed table, write local table instead of itself. " +
         "If `true`, ignore `write.distributed.useClusterNodes`.")
       .version("1.0.0")

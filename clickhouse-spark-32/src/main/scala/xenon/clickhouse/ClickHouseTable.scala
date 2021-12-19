@@ -22,7 +22,7 @@ import scala.util.Using
 
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
-import org.apache.spark.sql.clickhouse.ExprUtils
+import org.apache.spark.sql.clickhouse.{ExprUtils, WriteOptions}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -145,11 +145,6 @@ class ClickHouseTable(
   }
 
   override def newWriteBuilder(info: LogicalWriteInfo): ClickHouseWriteBuilder = {
-    if (info.options.asScala.nonEmpty) {
-      // TODO handle write options info.options()
-      log.warn(s"Ignored write options ${info.options.asScala}")
-    }
-
     val writeJob = WriteJobDescription(
       queryId = info.queryId,
       dataSetSchema = info.schema,
@@ -162,7 +157,8 @@ class ClickHouseTable(
       localTableEngineSpec = localTableEngineSpec,
       shardingKey = shardingKey,
       partitionKey = partitionKey,
-      sortingKey = sortingKey
+      sortingKey = sortingKey,
+      writeOptions = new WriteOptions(info.options)
     )
 
     new ClickHouseWriteBuilder(writeJob)

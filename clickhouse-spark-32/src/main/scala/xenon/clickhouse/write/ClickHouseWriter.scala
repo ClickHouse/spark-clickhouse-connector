@@ -14,8 +14,6 @@
 
 package xenon.clickhouse.write
 
-import java.time.Duration
-
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
 
@@ -32,14 +30,10 @@ import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
 import xenon.clickhouse.spec.{DistributedEngineSpec, ShardUtils}
 
 class ClickHouseAppendWriter(writeJob: WriteJobDescription)
-    extends DataWriter[InternalRow] with SQLConfHelper with Logging {
+    extends DataWriter[InternalRow] with Logging {
 
-  val batchSize: Int = conf.getConf(WRITE_BATCH_SIZE)
-  val writeDistributedUseClusterNodes: Boolean = conf.getConf(WRITE_DISTRIBUTED_USE_CLUSTER_NODES)
-  val writeDistributedConvertLocal: Boolean = conf.getConf(WRITE_DISTRIBUTED_CONVERT_LOCAL)
-
-  val database: String = writeJob.targetDatabase(writeDistributedConvertLocal)
-  val table: String = writeJob.targetTable(writeDistributedConvertLocal)
+  val database: String = writeJob.targetDatabase(writeJob.writeOptions.convertDistributedToLocal)
+  val table: String = writeJob.targetTable(writeJob.writeOptions.convertDistributedToLocal)
 
   private lazy val shardExpr: Option[Expression] = writeJob.sparkShardExpr match {
     case None if writeJob.tableEngineSpec.is_distributed =>
@@ -66,7 +60,8 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
   // util DataWriter#write(InternalRow) invoked.
   private lazy val grpcClient: Either[GrpcClusterClient, GrpcNodeClient] =
     writeJob.tableEngineSpec match {
-      case _: DistributedEngineSpec if writeDistributedUseClusterNodes || writeDistributedConvertLocal =>
+      case _: DistributedEngineSpec
+          if writeJob.writeOptions.useClusterNodesForDistributed || writeJob.writeOptions.convertDistributedToLocal =>
         val clusterSpec = writeJob.cluster.get
         log.info(s"Connect to ClickHouse cluster ${clusterSpec.name}, which has ${clusterSpec.nodes.length} nodes.")
         Left(GrpcClusterClient(clusterSpec))
@@ -82,14 +77,14 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
   }
 
   var lastShardNum: Option[Int] = None
-  val buf: ArrayBuffer[ByteString] = new ArrayBuffer[ByteString](batchSize)
+  val buf: ArrayBuffer[ByteString] = new ArrayBuffer[ByteString](writeJob.writeOptions.batchSize)
 
   override def write(record: InternalRow): Unit = {
     val shardNum = calcShard(record)
     if (shardNum != lastShardNum && buf.nonEmpty) flush(lastShardNum)
     lastShardNum = shardNum
     buf += JsonFormatUtils.row2Json(record, writeJob.dataSetSchema, writeJob.tz)
-    if (buf.size == batchSize) flush(lastShardNum)
+    if (buf.size == writeJob.writeOptions.batchSize) flush(lastShardNum)
   }
 
   override def commit(): WriterCommitMessage = {
@@ -105,7 +100,7 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
   }
 
   def calcShard(record: InternalRow): Option[Int] =
-    if (!writeDistributedConvertLocal) None
+    if (!writeJob.writeOptions.convertDistributedToLocal) None
     else shardExpr match {
       case Some(expr @ BoundReference(_, dataType, _)) =>
         val shardProj = SafeProjection.create(Seq(expr))
@@ -123,8 +118,8 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
 
   def flush(shardNum: Option[Int]): Unit =
     Utils.retry[Unit, RetryableClickHouseException](
-      conf.getConf(WRITE_MAX_RETRY),
-      Duration.ofSeconds(conf.getConf(WRITE_RETRY_INTERVAL))
+      writeJob.writeOptions.maxRetry,
+      writeJob.writeOptions.retryInterval
     ) {
       val client = grpcNodeClient(shardNum)
       log.info(s"""Job[${writeJob.queryId}]: prepare to flush batch
@@ -140,7 +135,7 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
         buf.reduce((l, r) => l concat r)
       ) match {
         case Right(_) => buf.clear
-        case Left(retryable) if conf.getConf(WRITE_RETRYABLE_ERROR_CODES).contains(retryable.getCode) =>
+        case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.getCode) =>
           throw new RetryableClickHouseException(retryable)
         case Left(rethrow) => throw new ClickHouseServerException(rethrow)
       }
