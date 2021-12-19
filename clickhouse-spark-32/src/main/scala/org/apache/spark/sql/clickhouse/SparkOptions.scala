@@ -46,8 +46,8 @@ trait SparkOptions extends SQLConfHelper with Serializable {
 }
 
 class ReadOptions(_options: JMap[String, String]) extends SparkOptions {
-  @volatile
-  override protected lazy val options: CaseInsensitiveStringMap = new CaseInsensitiveStringMap(_options)
+
+  override protected def options: CaseInsensitiveStringMap = new CaseInsensitiveStringMap(_options)
 
   def useClusterNodesForDistributed: Boolean =
     eval(READ_DISTRIBUTED_USE_CLUSTER_NODES_KEY, READ_DISTRIBUTED_USE_CLUSTER_NODES)
@@ -57,8 +57,8 @@ class ReadOptions(_options: JMap[String, String]) extends SparkOptions {
 }
 
 class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
-  @volatile
-  override protected lazy val options: CaseInsensitiveStringMap = new CaseInsensitiveStringMap(_options)
+
+  override protected def options: CaseInsensitiveStringMap = new CaseInsensitiveStringMap(_options)
 
   def batchSize: Int = eval(WRITE_BATCH_SIZE_KEY, WRITE_BATCH_SIZE)
 
