@@ -17,9 +17,9 @@ package org.apache.spark.sql.clickhouse
 import java.util.concurrent.TimeUnit
 
 import org.apache.spark.internal.config.{ConfigBuilder, ConfigEntry}
+import org.apache.spark.sql.clickhouse.SparkOptions._
 import org.apache.spark.sql.internal.SQLConf
 import xenon.clickhouse.exception.ClickHouseErrCode._
-import org.apache.spark.sql.clickhouse.WriteOptions._
 
 object ClickHouseSQLConf {
   def buildConf(key: String): ConfigBuilder = SQLConf.buildConf(s"spark.clickhouse.$key")
@@ -73,31 +73,31 @@ object ClickHouseSQLConf {
       .createWithDefault(true)
 
   val READ_DISTRIBUTED_USE_CLUSTER_NODES: ConfigEntry[Boolean] =
-    buildConf("read.distributed.useClusterNodes")
+    buildConf(READ_DISTRIBUTED_USE_CLUSTER_NODES_KEY)
       .doc("Read from all nodes of cluster when reading Distributed table.")
       .version("1.0.0")
       .booleanConf
-      .checkValue(_ == false, "`read.distributed.useClusterNodes` is not support yet.")
+      .checkValue(_ == false, s"`$READ_DISTRIBUTED_USE_CLUSTER_NODES_KEY` is not support yet.")
       .createWithDefault(false)
 
   val WRITE_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
     buildConf(WRITE_DISTRIBUTED_CONVERT_LOCAL_KEY)
       .doc("When writing Distributed table, write local table instead of itself. " +
-        "If `true`, ignore `write.distributed.useClusterNodes`.")
+        s"If `true`, ignore `$WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY`.")
       .version("1.0.0")
       .booleanConf
       .createWithDefault(false)
 
   val READ_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
-    buildConf("read.distributed.convertLocal")
+    buildConf(READ_DISTRIBUTED_CONVERT_LOCAL_KEY)
       .doc("When reading Distributed table, read local table instead of itself. " +
-        "If `true`, ignore `read.distributed.useClusterNodes`.")
+        s"If `true`, ignore `$READ_DISTRIBUTED_USE_CLUSTER_NODES_KEY`.")
       .version("1.0.0")
       .booleanConf
       .createWithDefault(true)
 
   val TRUNCATE_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
-    buildConf("truncate.distributed.convertLocal")
+    buildConf(TRUNCATE_DISTRIBUTED_CONVERT_LOCAL_KEY)
       .doc("When truncate Distributed table, truncate local table instead of itself.")
       .version("1.0.0")
       .booleanConf

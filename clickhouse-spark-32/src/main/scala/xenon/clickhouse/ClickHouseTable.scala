@@ -22,7 +22,7 @@ import scala.util.Using
 
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
-import org.apache.spark.sql.clickhouse.{ExprUtils, WriteOptions}
+import org.apache.spark.sql.clickhouse.{ExprUtils, ReadOptions, WriteOptions}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -124,11 +124,6 @@ class ClickHouseTable(
   override lazy val properties: util.Map[String, String] = spec.toJavaMap
 
   override def newScanBuilder(options: CaseInsensitiveStringMap): ScanBuilder = {
-    if (options.asScala.nonEmpty) {
-      // TODO handle read options
-      log.warn(s"Ignored read options ${options.asScala}")
-    }
-
     val scanJob = ScanJobDescription(
       node = node,
       tz = tz,
@@ -136,7 +131,8 @@ class ClickHouseTable(
       tableEngineSpec = engineSpec,
       cluster = cluster,
       localTableSpec = localTableSpec,
-      localTableEngineSpec = localTableEngineSpec
+      localTableEngineSpec = localTableEngineSpec,
+      readOptions = new ReadOptions(options)
     )
     val metadataSchema = StructType(metadataColumns.map(_.asInstanceOf[ClickHouseMetadataColumn].toStructField))
     // TODO schema of partitions
