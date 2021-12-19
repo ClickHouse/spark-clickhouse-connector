@@ -64,8 +64,8 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
 
   def maxRetry: Int = eval(WRITE_MAX_RETRY_KEY, WRITE_MAX_RETRY)
 
-  def retryIntervalInSecond: Long =
-    eval(WRITE_RETRY_INTERVAL_KEY, WRITE_RETRY_INTERVAL)
+  def retryInterval: Duration =
+    Duration.ofSeconds(eval(WRITE_RETRY_INTERVAL_KEY, WRITE_RETRY_INTERVAL))
 
   def retryableErrorCodes: Seq[Int] = eval(WRITE_RETRYABLE_ERROR_CODES_KEY, WRITE_RETRYABLE_ERROR_CODES)
 

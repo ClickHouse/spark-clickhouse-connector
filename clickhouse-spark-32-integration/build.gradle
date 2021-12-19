@@ -31,6 +31,8 @@ dependencies {
         exclude group: "log4j", module: "log4j"
     }
 
+    testImplementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version")
+
     testRuntimeOnly "org.slf4j:log4j-over-slf4j:$slf4j_version"
     testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
 }
