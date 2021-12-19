@@ -38,7 +38,7 @@ object SparkOptions {
   val TRUNCATE_DISTRIBUTED_CONVERT_LOCAL_KEY: String = "truncate.distributed.convertLocal"
 }
 
-trait SparkOptions extends SQLConfHelper {
+trait SparkOptions extends SQLConfHelper with Serializable {
   protected def options: CaseInsensitiveStringMap
 
   protected def eval[T](key: String, entry: ConfigEntry[T]): T =
