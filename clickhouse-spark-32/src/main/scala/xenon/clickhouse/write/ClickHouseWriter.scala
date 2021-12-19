@@ -14,6 +14,8 @@
 
 package xenon.clickhouse.write
 
+import java.time.Duration
+
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
 
@@ -119,7 +121,7 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
   def flush(shardNum: Option[Int]): Unit =
     Utils.retry[Unit, RetryableClickHouseException](
       writeJob.writeOptions.maxRetry,
-      writeJob.writeOptions.retryInterval
+      Duration.ofSeconds(writeJob.writeOptions.retryIntervalInSecond)
     ) {
       val client = grpcNodeClient(shardNum)
       log.info(s"""Job[${writeJob.queryId}]: prepare to flush batch
