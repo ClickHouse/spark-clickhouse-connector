@@ -33,7 +33,7 @@ object ExprUtils {
     partitionKey: Option[List[Expr]],
     sortingKey: Option[List[OrderExpr]]
   ): Array[SortOrder] =
-    toSparkParts(shardingKey, partitionKey).map(Expressions.sort(_, SortDirection.ASCENDING)) ++
+    toSparkParts(shardingKey, partitionKey).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
       sortingKey.seq.flatten.map { case OrderExpr(expr, asc, nullFirst) =>
         val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
         val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
