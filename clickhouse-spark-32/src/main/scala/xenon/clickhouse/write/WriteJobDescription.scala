@@ -55,5 +55,5 @@ case class WriteJobDescription(
 
   def sparkParts: Array[Transform] = ExprUtils.toSparkParts(shardingKey, partitionKey)
 
-  def sparkSortOrders: Array[SortOrder] = ExprUtils.toSparkSortOrders(sortingKey)
+  def sparkSortOrders: Array[SortOrder] = ExprUtils.toSparkSortOrders(shardingKey, partitionKey, sortingKey)
 }
