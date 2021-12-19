@@ -15,6 +15,7 @@
 package org.apache.spark.sql.clickhouse
 
 import java.time.Duration
+import java.util.{Map => JMap}
 
 import org.apache.spark.internal.config.ConfigEntry
 import org.apache.spark.sql.catalyst.SQLConfHelper
@@ -44,7 +45,10 @@ trait SparkOptions extends SQLConfHelper {
     Option(options.get(key)).map(entry.valueConverter).getOrElse(conf.getConf(entry))
 }
 
-class ReadOptions(val options: CaseInsensitiveStringMap) extends SparkOptions {
+class ReadOptions(_options: JMap[String, String]) extends SparkOptions {
+  @volatile
+  override protected lazy val options: CaseInsensitiveStringMap = new CaseInsensitiveStringMap(_options)
+
   def useClusterNodesForDistributed: Boolean =
     eval(READ_DISTRIBUTED_USE_CLUSTER_NODES_KEY, READ_DISTRIBUTED_USE_CLUSTER_NODES)
 
@@ -52,7 +56,9 @@ class ReadOptions(val options: CaseInsensitiveStringMap) extends SparkOptions {
     eval(READ_DISTRIBUTED_CONVERT_LOCAL_KEY, READ_DISTRIBUTED_CONVERT_LOCAL)
 }
 
-class WriteOptions(val options: CaseInsensitiveStringMap) extends SparkOptions {
+class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
+  @volatile
+  override protected lazy val options: CaseInsensitiveStringMap = new CaseInsensitiveStringMap(_options)
 
   def batchSize: Int = eval(WRITE_BATCH_SIZE_KEY, WRITE_BATCH_SIZE)
 

@@ -132,7 +132,7 @@ class ClickHouseTable(
       cluster = cluster,
       localTableSpec = localTableSpec,
       localTableEngineSpec = localTableEngineSpec,
-      readOptions = new ReadOptions(options)
+      readOptions = new ReadOptions(options.asCaseSensitiveMap())
     )
     val metadataSchema = StructType(metadataColumns.map(_.asInstanceOf[ClickHouseMetadataColumn].toStructField))
     // TODO schema of partitions
@@ -154,7 +154,7 @@ class ClickHouseTable(
       shardingKey = shardingKey,
       partitionKey = partitionKey,
       sortingKey = sortingKey,
-      writeOptions = new WriteOptions(info.options)
+      writeOptions = new WriteOptions(info.options.asCaseSensitiveMap())
     )
 
     new ClickHouseWriteBuilder(writeJob)
