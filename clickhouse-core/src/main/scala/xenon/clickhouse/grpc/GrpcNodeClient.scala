@@ -31,7 +31,7 @@ import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.exception.ClickHouseServerException
 import xenon.clickhouse.format._
 import xenon.clickhouse.spec.NodeSpec
-import xenon.protocol.grpc.{ClickHouseGrpc, LogEntry, QueryInfo, Result, Exception => GRPCException}
+import xenon.protocol.grpc.{ClickHouseGrpc, Exception => GRPCException, LogEntry, QueryInfo, Result}
 import xenon.protocol.grpc.LogsLevel._
 
 object GrpcNodeClient {
@@ -109,7 +109,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
       .setQueryId(UUID.randomUUID.toString)
-      .setInputDataBytes(data)
+      .setInputData(data)
       .setOutputFormat("JSONEachRow")
       .build
     executeQuery(queryInfo)
@@ -120,11 +120,9 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       .map { result => onReceiveResult(result, false); result }
       .get match {
       case result: Result if result.getException.getCode == OK.code =>
-        val records = result.getOutput
-          .lines
-          .filter(_.nonEmpty)
-          .map(line => om.readValue[ObjectNode](line))
-          .toSeq
+        val records = om.readerFor[ObjectNode]
+          .readValues(result.getOutput.newInput())
+          .asScala.toSeq
         Right(new JSONEachRowSimpleOutput(records))
       case result: Result => Left(result.getException)
     }
@@ -143,10 +141,10 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     val stream = blockingStub.executeQueryWithStreamOutput(queryInfo)
       .asScala
       .map { result => onReceiveResult(result); result }
-      .flatMap(_.getOutput.linesIterator)
-      .filter(_.nonEmpty)
-      .map(line => om.readValue[Array[JsonNode]](line))
-
+      .flatMap { result =>
+        val jsonParser = om.getFactory.createParser(result.getOutput.newInput())
+        om.readValues[Array[JsonNode]](jsonParser).asScala
+      }
     new JSONCompactEachRowWithNamesAndTypesStreamOutput(stream)
   }
 
