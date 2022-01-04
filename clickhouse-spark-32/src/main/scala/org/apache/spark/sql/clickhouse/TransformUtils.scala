@@ -17,7 +17,7 @@ package org.apache.spark.sql.clickhouse
 import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions._
 import xenon.clickhouse.exception.ClickHouseClientException
-import xenon.clickhouse.expr.{Expr, FieldRef, FuncExpr}
+import xenon.clickhouse.expr.{Expr, FieldRef, FuncExpr, SQLExpr}
 
 object TransformUtils {
   // Some functions of ClickHouse which match Spark pre-defined Transforms
@@ -41,14 +41,13 @@ object TransformUtils {
       case unsupported => throw ClickHouseClientException(s"Unsupported ClickHouse expression: $unsupported")
     }
 
-  // TODO toClickHouseExpr
-  def toClickHouse(transform: Transform): String = transform match {
-    case YearsTransform(FieldReference(Seq(col))) => s"toYear($col)"
-    case MonthsTransform(FieldReference(Seq(col))) => s"toYYYYMM($col)"
-    case DaysTransform(FieldReference(Seq(col))) => s"toYYYYMMDD($col)"
-    case HoursTransform(FieldReference(Seq(col))) => s"toHour($col)"
-    case IdentityTransform(FieldReference(parts)) => parts.mkString(", ")
-    case function: ApplyTransform => function.describe()
+  def toClickHouse(transform: Transform): Expr = transform match {
+    case YearsTransform(FieldReference(Seq(col))) => FuncExpr("toYear", List(FieldRef(col)))
+    case MonthsTransform(FieldReference(Seq(col))) => FuncExpr("toYYYYMM", List(FieldRef(col)))
+    case DaysTransform(FieldReference(Seq(col))) => FuncExpr("toYYYYMMDD", List(FieldRef(col)))
+    case HoursTransform(FieldReference(Seq(col))) => FuncExpr("toHour", List(FieldRef(col)))
+    case IdentityTransform(fieldRefs) => FieldRef(fieldRefs.describe)
+    case ApplyTransform(name, args) => FuncExpr(name, args.map(arg => SQLExpr(arg.describe())).toList)
     case bucket: BucketTransform => throw ClickHouseClientException(s"Bucket transform not support yet: $bucket")
     case other: Transform => throw ClickHouseClientException(s"Unsupported transform: $other")
   }

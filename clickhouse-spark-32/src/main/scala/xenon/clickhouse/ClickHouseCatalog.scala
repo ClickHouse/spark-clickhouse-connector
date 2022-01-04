@@ -188,7 +188,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
       .getOrElse(throw ClickHouseClientException("Missing property 'engine'"))
     val partitionsExpr = partitions match {
       case transforms if transforms.nonEmpty =>
-        transforms.map(toClickHouse).mkString("PARTITION BY (", ", ", ")")
+        transforms.map(toClickHouse(_).sql).mkString("PARTITION BY (", ", ", ")")
       case _ => ""
     }
     // TODO we need consider to support other DML, like alter table, drop table, truncate table ...
