@@ -29,6 +29,10 @@ case class FieldRef(name: String) extends Expr {
   override def sql: String = name
 }
 
+case class SQLExpr(sqlText: String) extends Expr {
+  override def sql: String = sqlText
+}
+
 case class FuncExpr(name: String, args: List[Expr]) extends Expr {
   override def sql: String = s"$name(${args.map(_.desc).mkString(",")})"
 }
