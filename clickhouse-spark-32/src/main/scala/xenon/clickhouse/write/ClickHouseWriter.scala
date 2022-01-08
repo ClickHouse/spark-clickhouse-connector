@@ -14,20 +14,20 @@
 
 package xenon.clickhouse.write
 
-import scala.collection.mutable.ArrayBuffer
-import scala.util.{Failure, Success}
-
 import com.google.protobuf.ByteString
-import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
-import org.apache.spark.sql.clickhouse.{ExprUtils, JsonFormatUtils}
+import org.apache.spark.sql.catalyst.{expressions, InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
+import org.apache.spark.sql.clickhouse.{ExprUtils, JsonFormatUtils}
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types.{ByteType, IntegerType, LongType, ShortType}
 import xenon.clickhouse._
 import xenon.clickhouse.exception._
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
 import xenon.clickhouse.spec.{DistributedEngineSpec, ShardUtils}
+
+import scala.collection.mutable.ArrayBuffer
+import scala.util.{Failure, Success}
 
 class ClickHouseAppendWriter(writeJob: WriteJobDescription)
     extends DataWriter[InternalRow] with Logging {
@@ -55,6 +55,10 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
           None
       }
   }
+
+  private lazy val shardProjection: Option[expressions.Projection] = shardExpr
+    .filter(_ => writeJob.writeOptions.convertDistributedToLocal)
+    .map(expr => SafeProjection.create(Seq(expr)))
 
   // put the node select strategy in executor side because we need to calculate shard and don't know the records
   // util DataWriter#write(InternalRow) invoked.
@@ -99,22 +103,18 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
     case Right(nodeClient) => nodeClient.close()
   }
 
-  def calcShard(record: InternalRow): Option[Int] =
-    if (!writeJob.writeOptions.convertDistributedToLocal) None
-    else shardExpr match {
-      case Some(expr @ BoundReference(_, dataType, _)) =>
-        val shardProj = SafeProjection.create(Seq(expr))
-        val resultRow = shardProj(record)
-        val shardValue = dataType match {
-          case ByteType => resultRow.getByte(0).toLong
-          case ShortType => resultRow.getShort(0).toLong
-          case IntegerType => resultRow.getInt(0).toLong
-          case LongType => resultRow.getLong(0)
-        }
-        val shardSpec = ShardUtils.calcShard(writeJob.cluster.get, shardValue)
-        Some(shardSpec.num)
-      case _ => None
-    }
+  def calcShard(record: InternalRow): Option[Int] = (shardExpr, shardProjection) match {
+    case (Some(BoundReference(_, dataType, _)), Some(projection)) =>
+      val shardValue = dataType match {
+        case ByteType => Some(projection(record).getByte(0).toLong)
+        case ShortType => Some(projection(record).getShort(0).toLong)
+        case IntegerType => Some(projection(record).getInt(0).toLong)
+        case LongType => Some(projection(record).getLong(0))
+        case _ => None
+      }
+      shardValue.map(value => ShardUtils.calcShard(writeJob.cluster.get, value).num)
+    case _ => None
+  }
 
   def flush(shardNum: Option[Int]): Unit =
     Utils.retry[Unit, RetryableClickHouseException](
