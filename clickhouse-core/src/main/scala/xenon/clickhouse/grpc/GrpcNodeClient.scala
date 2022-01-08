@@ -79,15 +79,18 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     }
   }
 
+  private def nextQueryId(): String = UUID.randomUUID.toString
+
   ////////////////////////////////////////////////////////////////////////////////
   /////////////////////////// Synchronized Normal API ////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////
 
   def syncQuery(sql: String): Either[GRPCException, SimpleOutput[ObjectNode]] = {
-    onExecuteQuery(sql)
+    val queryId = nextQueryId()
+    onExecuteQuery(queryId, sql)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
-      .setQueryId(UUID.randomUUID.toString)
+      .setQueryId(queryId)
       .setOutputFormat("JSONEachRow")
       .build
     executeQuery(queryInfo)
@@ -104,11 +107,12 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     inputFormat: String,
     data: ByteString
   ): Either[GRPCException, SimpleOutput[ObjectNode]] = {
+    val queryId = nextQueryId()
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
-    onExecuteQuery(sql)
+    onExecuteQuery(queryId, sql)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
-      .setQueryId(UUID.randomUUID.toString)
+      .setQueryId(queryId)
       .setInputData(data)
       .setOutputFormat("JSONEachRow")
       .build
@@ -132,10 +136,11 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   ////////////////////////////////////////////////////////////////////////////////
 
   def syncStreamQuery(sql: String): StreamOutput[Array[JsonNode]] = {
-    onExecuteQuery(sql)
+    val queryId = nextQueryId()
+    onExecuteQuery(queryId, sql)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
-      .setQueryId(UUID.randomUUID.toString)
+      .setQueryId(queryId)
       .setOutputFormat("JSONCompactEachRowWithNamesAndTypes")
       .build
     val stream = blockingStub.executeQueryWithStreamOutput(queryInfo)
@@ -152,7 +157,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   ///////////////////////////////////// Hook /////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////
 
-  def onExecuteQuery(sql: String): Unit = log.debug("Execute ClickHouse SQL:\n{}", sql)
+  def onExecuteQuery(queryId: String, sql: String): Unit = log.debug("Execute ClickHouse SQL [{}]:\n{}", queryId, sql)
 
   def onReceiveResult(result: Result, throwException: Boolean = true): Unit = {
     result.getLogsList.asScala.foreach { le: LogEntry =>
