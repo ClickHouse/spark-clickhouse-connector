@@ -51,7 +51,7 @@ trait ClickHouseHelper {
   }
 
   def queryClusterSpecs(nodeSpec: NodeSpec)(implicit grpcNodeClient: GrpcNodeClient): Seq[ClusterSpec] = {
-    val clustersOutput = grpcNodeClient.syncQueryAndCheck(
+    val clustersOutput = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
       """ SELECT
         |   `cluster`,                 -- String
         |   `shard_num`,               -- UInt32
@@ -96,7 +96,7 @@ trait ClickHouseHelper {
     database: String,
     actionIfNoSuchDatabase: String => Unit = DEFAULT_ACTION_IF_NO_SUCH_DATABASE
   )(implicit grpcNodeClient: GrpcNodeClient): DatabaseSpec = {
-    val output = grpcNodeClient.syncQueryAndCheck(
+    val output = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  `name`,          -- String
          |  `engine`,        -- String
@@ -128,7 +128,7 @@ trait ClickHouseHelper {
     grpcNodeClient: GrpcNodeClient,
     tz: ZoneId
   ): TableSpec = {
-    val tableOutput = grpcNodeClient.syncQueryAndCheck(
+    val tableOutput = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  `database`,                   -- String
          |  `name`,                       -- String
@@ -204,7 +204,7 @@ trait ClickHouseHelper {
     table: String,
     actionIfNoSuchTable: (String, String) => Unit = DEFAULT_ACTION_IF_NO_SUCH_TABLE
   )(implicit grpcNodeClient: GrpcNodeClient): StructType = {
-    val columnOutput = grpcNodeClient.syncQueryAndCheck(
+    val columnOutput = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  `database`,                -- String
          |  `table`,                   -- String
@@ -241,7 +241,7 @@ trait ClickHouseHelper {
     database: String,
     table: String
   )(implicit grpcNodeClient: GrpcNodeClient): Seq[PartitionSpec] = {
-    val partOutput = grpcNodeClient.syncQueryAndCheck(
+    val partOutput = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  partition,                           -- String
          |  sum(rows)          AS row_count,     -- UInt64

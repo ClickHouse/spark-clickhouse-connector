@@ -128,7 +128,7 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
                   |cluster: ${writeJob.cluster.map(_.name)}
                   |shard: $shardNum
                   |""".stripMargin)
-      client.syncInsert(
+      client.syncInsertOutputJSONEachRow(
         database,
         table,
         "JSONEachRow",
@@ -160,7 +160,7 @@ class ClickHouseTruncateWriter(writeJob: WriteJobDescription)
   override def write(record: InternalRow): Unit = {}
 
   override def commit(): WriterCommitMessage = {
-    grpcNodeClient.syncQueryAndCheck(s"TRUNCATE TABLE `$database`.`$table` $clusterExpr")
+    grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(s"TRUNCATE TABLE `$database`.`$table` $clusterExpr")
     CommitMessage(s"Job[${writeJob.queryId}]: commit truncate")
   }
 

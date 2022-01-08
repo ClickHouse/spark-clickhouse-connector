@@ -14,25 +14,23 @@
 
 package xenon.clickhouse.grpc
 
-import java.time.{Instant, ZoneId, ZoneOffset}
-import java.util.UUID
-import java.util.concurrent.TimeUnit
-
-import scala.collection.JavaConverters._
-import scala.util.control.NonFatal
-
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.google.protobuf.ByteString
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
-import xenon.clickhouse.{Logging, Utils}
-import xenon.clickhouse.JsonProtocol.om
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.exception.ClickHouseServerException
 import xenon.clickhouse.format._
 import xenon.clickhouse.spec.NodeSpec
-import xenon.protocol.grpc.{ClickHouseGrpc, Exception => GRPCException, LogEntry, QueryInfo, Result}
+import xenon.clickhouse.{Logging, Utils}
 import xenon.protocol.grpc.LogsLevel._
+import xenon.protocol.grpc.{ClickHouseGrpc, Exception => GRPCException, LogEntry, QueryInfo, Result}
+
+import java.time.{Instant, ZoneId, ZoneOffset}
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+import scala.collection.JavaConverters._
+import scala.util.control.NonFatal
 
 object GrpcNodeClient {
   def apply(node: NodeSpec): GrpcNodeClient = new GrpcNodeClient(node)
@@ -81,32 +79,32 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
 
   private def nextQueryId(): String = UUID.randomUUID.toString
 
-  ////////////////////////////////////////////////////////////////////////////////
-  /////////////////////////// Synchronized Normal API ////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////
+  // //////////////////////////////////////////////////////////////////////////////
+  // ///////////////////////// Synchronized Normal API ////////////////////////////
+  // //////////////////////////////////////////////////////////////////////////////
 
-  def syncQuery(sql: String): Either[GRPCException, SimpleOutput[ObjectNode]] = {
-    val queryId = nextQueryId()
-    onExecuteQuery(queryId, sql)
-    val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
-      .setQuery(sql)
-      .setQueryId(queryId)
-      .setOutputFormat("JSONEachRow")
-      .build
-    executeQuery(queryInfo)
-  }
+  def syncQueryOutputJSONEachRow(sql: String): Either[GRPCException, SimpleOutput[ObjectNode]] =
+    syncQuery(sql, "JSONEachRow", JSONEachRowSimpleOutput.deserialize)
 
-  def syncQueryAndCheck(sql: String): SimpleOutput[ObjectNode] = syncQuery(sql) match {
-    case Left(exception) => throw new ClickHouseServerException(exception)
-    case Right(output) => output
-  }
+  def syncQueryAndCheckOutputJSONEachRow(sql: String): SimpleOutput[ObjectNode] =
+    syncQueryAndCheck(sql, "JSONEachRow", JSONEachRowSimpleOutput.deserialize)
 
-  def syncInsert(
+  def syncInsertOutputJSONEachRow(
     database: String,
     table: String,
     inputFormat: String,
     data: ByteString
-  ): Either[GRPCException, SimpleOutput[ObjectNode]] = {
+  ): Either[GRPCException, SimpleOutput[ObjectNode]] =
+    syncInsert(database, table, inputFormat, data, "JSONEachRow", JSONEachRowSimpleOutput.deserialize)
+
+  def syncInsert[OUT](
+    database: String,
+    table: String,
+    inputFormat: String,
+    data: ByteString,
+    outputFormat: String,
+    deserializer: ByteString => SimpleOutput[OUT]
+  ): Either[GRPCException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecuteQuery(queryId, sql)
@@ -114,53 +112,91 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       .setQuery(sql)
       .setQueryId(queryId)
       .setInputData(data)
-      .setOutputFormat("JSONEachRow")
+      .setOutputFormat(outputFormat)
       .build
-    executeQuery(queryInfo)
+    executeQuery(queryInfo, deserializer)
   }
 
-  private def executeQuery(request: QueryInfo): Either[GRPCException, SimpleOutput[ObjectNode]] =
-    Some(blockingStub.executeQuery(request))
-      .map { result => onReceiveResult(result, false); result }
-      .get match {
-      case result: Result if result.getException.getCode == OK.code =>
-        val records = om.readerFor[ObjectNode]
-          .readValues(result.getOutput.newInput())
-          .asScala.toSeq
-        Right(new JSONEachRowSimpleOutput(records))
-      case result: Result => Left(result.getException)
-    }
-
-  ////////////////////////////////////////////////////////////////////////////////
-  /////////////////////////// Synchronized Stream API ////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////
-
-  def syncStreamQuery(sql: String): StreamOutput[Array[JsonNode]] = {
+  def syncQuery[OUT](
+    sql: String,
+    outputFormat: String,
+    deserializer: ByteString => SimpleOutput[OUT]
+  ): Either[GRPCException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
       .setQueryId(queryId)
-      .setOutputFormat("JSONCompactEachRowWithNamesAndTypes")
+      .setOutputFormat(outputFormat)
       .build
-    val stream = blockingStub.executeQueryWithStreamOutput(queryInfo)
-      .asScala
-      .map { result => onReceiveResult(result); result }
-      .flatMap { result =>
-        val jsonParser = om.getFactory.createParser(result.getOutput.newInput())
-        om.readValues[Array[JsonNode]](jsonParser).asScala
-      }
-    new JSONCompactEachRowWithNamesAndTypesStreamOutput(stream)
+    executeQuery(queryInfo, deserializer)
   }
 
-  ////////////////////////////////////////////////////////////////////////////////
-  ///////////////////////////////////// Hook /////////////////////////////////////
-  ////////////////////////////////////////////////////////////////////////////////
+  def syncQueryAndCheck[OUT](
+    sql: String,
+    outputFormat: String,
+    deserializer: ByteString => SimpleOutput[OUT]
+  ): SimpleOutput[OUT] = syncQuery[OUT](sql, outputFormat, deserializer) match {
+    case Left(exception) => throw new ClickHouseServerException(exception)
+    case Right(output) => output
+  }
+
+  private def executeQuery[OUT](
+    request: QueryInfo,
+    deserializer: ByteString => SimpleOutput[OUT]
+  ): Either[GRPCException, SimpleOutput[OUT]] =
+    Some(blockingStub.executeQuery(request))
+      .map { result => onReceiveResult(result, false); result }
+      .get match {
+      case result: Result if result.getException.getCode == OK.code => Right(deserializer(result.getOutput))
+      case result: Result => Left(result.getException)
+    }
+
+  // //////////////////////////////////////////////////////////////////////////////
+  // ///////////////////////// Synchronized Stream API ////////////////////////////
+  // //////////////////////////////////////////////////////////////////////////////
+
+  def syncStreamQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql: String): StreamOutput[Array[JsonNode]] =
+    syncStreamQueryAndCheck(
+      sql,
+      "JSONCompactEachRowWithNamesAndTypes",
+      JSONCompactEachRowWithNamesAndTypesStreamOutput.deserializeStream
+    )
+
+  def syncStreamQueryAndCheck[OUT](
+    sql: String,
+    outputFormat: String,
+    outputStreamDeserializer: Iterator[ByteString] => StreamOutput[OUT]
+  ): StreamOutput[OUT] = {
+    val queryId = nextQueryId()
+    onExecuteQuery(queryId, sql)
+    val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
+      .setQuery(sql)
+      .setQueryId(queryId)
+      .setOutputFormat(outputFormat)
+      .build
+    val outputIterator = blockingStub.executeQueryWithStreamOutput(queryInfo)
+      .asScala
+      .map { result => onReceiveResult(result, false); result }
+      .map { result =>
+        if (result.getException.getCode == OK.code) Right(result.getOutput) else Left(result.getException)
+      }
+      .map {
+        case Left(gRPCException) => throw new ClickHouseServerException(gRPCException)
+        case Right(output) => output
+      }
+    outputStreamDeserializer(outputIterator)
+  }
+
+  // //////////////////////////////////////////////////////////////////////////////
+  // /////////////////////////////////// Hook /////////////////////////////////////
+  // //////////////////////////////////////////////////////////////////////////////
 
   def onExecuteQuery(queryId: String, sql: String): Unit = log.debug(
-      s"""Execute ClickHouse SQL [$queryId]:
-         |$sql
-         |""".stripMargin)
+    s"""Execute ClickHouse SQL [$queryId]:
+       |$sql
+       |""".stripMargin
+  )
 
   def onReceiveResult(result: Result, throwException: Boolean = true): Unit = {
     result.getLogsList.asScala.foreach { le: LogEntry =>
@@ -172,8 +208,8 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       val message = s"$logTime [${le.getQueryId}] ${le.getText}"
       le.getLevel match {
         case UNRECOGNIZED | LOG_NONE | LOG_FATAL | LOG_CRITICAL | LOG_ERROR => log.error(message)
-        case LOG_WARNING => log.warn(message)
-        case LOG_NOTICE | LOG_INFORMATION => log.info(message)
+        case LOG_WARNING | LOG_NOTICE => log.warn(message)
+        case LOG_INFORMATION => log.info(message)
         case LOG_DEBUG => log.debug(message)
         case LOG_TRACE => log.trace(message)
       }

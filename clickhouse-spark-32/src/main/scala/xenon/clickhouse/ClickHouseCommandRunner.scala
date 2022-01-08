@@ -24,6 +24,6 @@ class ClickHouseCommandRunner extends ExternalCommandRunner with ClickHouseHelpe
 
   override def executeCommand(sql: String, options: CaseInsensitiveStringMap): Array[String] =
     Using.resource(GrpcNodeClient(buildNodeSpec(options))) { grpcNodeClient =>
-      grpcNodeClient.syncQueryAndCheck(sql).records.map(_.toString).toArray
+      grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(sql).records.map(_.toString).toArray
     }
 }

@@ -36,9 +36,9 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
 
   private var catalogName: String = _
 
-  /////////////////////////////////////////////////////
-  //////////////////// SINGLE NODE ////////////////////
-  /////////////////////////////////////////////////////
+  // ///////////////////////////////////////////////////
+  // ////////////////// SINGLE NODE ////////////////////
+  // ///////////////////////////////////////////////////
   private var nodeSpec: NodeSpec = _
 
   implicit private var grpcNodeClient: GrpcNodeClient = _
@@ -49,9 +49,9 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
 
   private var currentDb: String = _
 
-  /////////////////////////////////////////////////////
-  ///////////////////// CLUSTERS //////////////////////
-  /////////////////////////////////////////////////////
+  // ///////////////////////////////////////////////////
+  // /////////////////// CLUSTERS //////////////////////
+  // ///////////////////////////////////////////////////
   private var clusterSpecs: Seq[ClusterSpec] = Nil
 
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
@@ -60,11 +60,11 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
     this.currentDb = nodeSpec.database
     this.grpcNodeClient = GrpcNodeClient(nodeSpec)
 
-    this.grpcNodeClient.syncQueryAndCheck("SELECT 1")
+    this.grpcNodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT 1")
 
     this.tz = options.get(CATALOG_PROP_TZ) match {
       case tz if tz == null || tz.isEmpty || tz.toLowerCase == "server" =>
-        val timezoneOutput = this.grpcNodeClient.syncQueryAndCheck("SELECT timezone() AS tz")
+        val timezoneOutput = this.grpcNodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT timezone() AS tz")
         assert(timezoneOutput.rows == 1)
         val serverTz = ZoneId.of(timezoneOutput.records.head.get("tz").asText)
         log.info(s"Detect ClickHouse server timezone: $serverTz")
@@ -83,7 +83,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
 
   @throws[NoSuchNamespaceException]
   override def listTables(namespace: Array[String]): Array[Identifier] = namespace match {
-    case Array(database) => grpcNodeClient.syncQuery(s"SHOW TABLES IN ${quoted(database)}") match {
+    case Array(database) => grpcNodeClient.syncQueryOutputJSONEachRow(s"SHOW TABLES IN ${quoted(database)}") match {
         case Left(exception) if exception.getCode == UNKNOWN_DATABASE.code =>
           throw new NoSuchDatabaseException(namespace.mkString("."))
         case Left(exception) =>
@@ -101,7 +101,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
   override def loadTable(ident: Identifier): ClickHouseTable = {
     val (database, table) = unwrap(ident) match {
       case None => throw ClickHouseClientException(s"Invalid table identifier: $ident")
-      case Some((db, tbl)) => grpcNodeClient.syncQuery(s"SELECT * FROM `$db`.`$tbl` WHERE 1=0") match {
+      case Some((db, tbl)) => grpcNodeClient.syncQueryOutputJSONEachRow(s"SELECT * FROM `$db`.`$tbl` WHERE 1=0") match {
           case Left(exception) if exception.getCode == UNKNOWN_TABLE.code =>
             throw new NoSuchTableException(ident.toString)
           // not sure if this check is necessary
@@ -208,7 +208,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
       .map { case (fieldName, ckType) => s"${quoted(fieldName)} $ckType" }
       .mkString(",\n ")
 
-    grpcNodeClient.syncQueryAndCheck(
+    grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""CREATE TABLE `$db`.`$tbl` $clusterExpr (
          |$fieldsDefinition
          |) $engineExpr
@@ -229,7 +229,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
     throw new UnsupportedOperationException
 
   override def dropTable(ident: Identifier): Boolean = unwrap(ident).exists { case (db, tbl) =>
-    grpcNodeClient.syncQuery(s"DROP TABLE `$db`.`$tbl`").isRight
+    grpcNodeClient.syncQueryOutputJSONEachRow(s"DROP TABLE `$db`.`$tbl`").isRight
   }
 
   @throws[NoSuchTableException]
@@ -237,7 +237,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit =
     (unwrap(oldIdent), unwrap(newIdent)) match {
       case (Some((oldDb, oldTbl)), Some((newDb, newTbl))) =>
-        grpcNodeClient.syncQuery(s"RENAME TABLE `$oldDb`.`$oldTbl` to `$newDb`.`$newTbl`") match {
+        grpcNodeClient.syncQueryOutputJSONEachRow(s"RENAME TABLE `$oldDb`.`$oldTbl` to `$newDb`.`$newTbl`") match {
           case Left(exception) => throw new NoSuchTableException(exception.getDisplayText)
           case Right(_) =>
         }
@@ -248,7 +248,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
 
   @throws[NoSuchNamespaceException]
   override def listNamespaces(): Array[Array[String]] = {
-    val output = grpcNodeClient.syncQueryAndCheck("SHOW DATABASES")
+    val output = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow("SHOW DATABASES")
     output.records.map(row => Array(row.get("name").asText)).toArray
   }
 
@@ -269,7 +269,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
 
   @throws[NamespaceAlreadyExistsException]
   override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = namespace match {
-    case Array(database) => grpcNodeClient.syncQuery(s"CREATE DATABASE ${quoted(database)}")
+    case Array(database) => grpcNodeClient.syncQueryOutputJSONEachRow(s"CREATE DATABASE ${quoted(database)}")
   }
 
   @throws[NoSuchNamespaceException]
@@ -277,7 +277,7 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
 
   @throws[NoSuchNamespaceException]
   override def dropNamespace(namespace: Array[String]): Boolean = namespace match {
-    case Array(database) => grpcNodeClient.syncQuery(s"DROP DATABASE ${quoted(database)}").isRight
+    case Array(database) => grpcNodeClient.syncQueryOutputJSONEachRow(s"DROP DATABASE ${quoted(database)}").isRight
     case _ => false
   }
 }

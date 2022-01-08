@@ -16,13 +16,25 @@ package xenon.clickhouse.format
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
+import com.google.protobuf.ByteString
+import xenon.clickhouse.JsonProtocol.om
 import xenon.clickhouse.exception.ClickHouseClientException
 
 import scala.collection.immutable.ListMap
+import scala.collection.JavaConverters._
 
 ///////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////// Simple ////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
+
+object JSONEachRowSimpleOutput {
+  def deserialize(output: ByteString): SimpleOutput[ObjectNode] = {
+    val records = om.readerFor[ObjectNode]
+      .readValues(output.newInput())
+      .asScala.toSeq
+    new JSONEachRowSimpleOutput(records)
+  }
+}
 
 class JSONEachRowSimpleOutput(
   override val records: Seq[ObjectNode]
@@ -50,6 +62,16 @@ class JSONCompactEachRowWithNamesAndTypesSimpleOutput(
 ///////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////// Stream ////////////////////////////////////
 ///////////////////////////////////////////////////////////////////////////////
+
+object JSONCompactEachRowWithNamesAndTypesStreamOutput {
+  def deserializeStream(outputIterator: Iterator[ByteString]): StreamOutput[Array[JsonNode]] = {
+    val stream = outputIterator.flatMap { output =>
+      val jsonParser = om.getFactory.createParser(output.newInput())
+      om.readValues[Array[JsonNode]](jsonParser).asScala
+    }
+    new JSONCompactEachRowWithNamesAndTypesStreamOutput(stream)
+  }
+}
 
 class JSONCompactEachRowWithNamesAndTypesStreamOutput(
   //     first row: names
