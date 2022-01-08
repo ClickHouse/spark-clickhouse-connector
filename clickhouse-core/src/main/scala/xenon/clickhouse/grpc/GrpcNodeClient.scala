@@ -157,7 +157,10 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   ///////////////////////////////////// Hook /////////////////////////////////////
   ////////////////////////////////////////////////////////////////////////////////
 
-  def onExecuteQuery(queryId: String, sql: String): Unit = log.debug("Execute ClickHouse SQL [{}]:\n{}", queryId, sql)
+  def onExecuteQuery(queryId: String, sql: String): Unit = log.debug(
+      s"""Execute ClickHouse SQL [$queryId]:
+         |$sql
+         |""".stripMargin)
 
   def onReceiveResult(result: Result, throwException: Boolean = true): Unit = {
     result.getLogsList.asScala.foreach { le: LogEntry =>
