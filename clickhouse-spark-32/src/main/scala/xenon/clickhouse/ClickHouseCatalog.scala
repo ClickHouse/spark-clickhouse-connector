@@ -83,7 +83,8 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
 
   @throws[NoSuchNamespaceException]
   override def listTables(namespace: Array[String]): Array[Identifier] = namespace match {
-    case Array(database) => grpcNodeClient.syncQueryOutputJSONEachRow(s"SHOW TABLES IN ${quoted(database)}") match {
+    case Array(database) =>
+      grpcNodeClient.syncQueryOutputJSONEachRow(s"SHOW TABLES IN ${quoted(database)}") match {
         case Left(exception) if exception.getCode == UNKNOWN_DATABASE.code =>
           throw new NoSuchDatabaseException(namespace.mkString("."))
         case Left(exception) =>
@@ -101,7 +102,8 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
   override def loadTable(ident: Identifier): ClickHouseTable = {
     val (database, table) = unwrap(ident) match {
       case None => throw ClickHouseClientException(s"Invalid table identifier: $ident")
-      case Some((db, tbl)) => grpcNodeClient.syncQueryOutputJSONEachRow(s"SELECT * FROM `$db`.`$tbl` WHERE 1=0") match {
+      case Some((db, tbl)) =>
+        grpcNodeClient.syncQueryOutputJSONEachRow(s"SELECT * FROM `$db`.`$tbl` WHERE 1=0") match {
           case Left(exception) if exception.getCode == UNKNOWN_TABLE.code =>
             throw new NoSuchTableException(ident.toString)
           // not sure if this check is necessary
@@ -273,7 +275,8 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
   }
 
   @throws[NoSuchNamespaceException]
-  override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit = ???
+  override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit =
+    throw new UnsupportedOperationException("ALTER NAMESPACE OPERATION is unsupported yet")
 
   @throws[NoSuchNamespaceException]
   override def dropNamespace(namespace: Array[String]): Boolean = namespace match {
