@@ -17,6 +17,7 @@ package xenon.clickhouse
 import org.apache.commons.lang3.StringUtils
 import org.apache.spark.sql.connector.expressions.aggregate._
 import org.apache.spark.sql.sources._
+import org.apache.spark.unsafe.types.UTF8String
 import xenon.clickhouse.Utils._
 
 import java.sql.{Date, Timestamp}
@@ -31,6 +32,7 @@ trait SQLHelper {
 
   def compileValue(value: Any)(implicit tz: ZoneId): Any = value match {
     case stringValue: String => s"'${escapeSql(stringValue)}'"
+    case utf8: UTF8String => s"'${escapeSql(utf8.toString)}'"
     case timestampValue: Timestamp => "'" + timestampValue + "'"
     case timestampValue: Instant => s"'${dateTimeFmt.withZone(tz).format(timestampValue)}'"
     case dateValue: Date => "'" + dateValue + "'"
