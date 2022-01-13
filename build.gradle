@@ -13,7 +13,6 @@
  */
 
 plugins {
-    id "idea"
     id "org.scoverage" version "7.0.0" apply false
     id "com.google.protobuf" version "0.8.18" apply false
     id "org.nosphere.apache.rat" version "0.7.0"
@@ -52,7 +51,6 @@ rat {
 }
 
 subprojects {
-    apply plugin: "idea"
     apply plugin: "scala"
     apply plugin: "java-library"
     apply plugin: "org.scoverage"
