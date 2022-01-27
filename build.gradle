@@ -20,8 +20,12 @@ plugins {
     id "com.github.johnrengelman.shadow" version "7.1.2" apply false
 }
 
+String mavenCentralMirror = project.hasProperty("mavenCentralMirror")
+        ? "$mavenCentralMirror"
+        : "https://mirrors.cloud.tencent.com/nexus/repository/maven-public/"
+
 repositories {
-    mavenCentral()
+    maven { url = mavenCentralMirror }
 }
 
 rat {
@@ -53,7 +57,7 @@ subprojects {
     apply plugin: "com.github.maiflai.scalatest"
 
     repositories {
-        mavenCentral()
+        maven { url = mavenCentralMirror }
     }
 
     version = getProjectVersion()
