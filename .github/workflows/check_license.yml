@@ -29,5 +29,5 @@ jobs:
           distribution: zulu
           java-version: 8
       - run: >-
-          ./gradlew rat
+          ./gradlew rat --no-daemon
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/

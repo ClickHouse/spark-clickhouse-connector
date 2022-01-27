@@ -34,5 +34,5 @@ jobs:
           key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
           restore-keys: ${{ runner.os }}-gradle
       - run: >-
-          ./gradlew clean test --refresh-dependencies
+          ./gradlew clean test --no-daemon --refresh-dependencies
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
