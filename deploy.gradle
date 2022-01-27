@@ -27,7 +27,14 @@ subprojects {
                     artifactId = archivesBaseName
                     pom {
                         name = "Spark ClickHouse Connector"
-                        url = "https://github.com/pan3793/spark-clickhouse-connector"
+                        url = "https://github.com/housepower/spark-clickhouse-connector"
+                        developers {
+                            developer {
+                                id = 'pan3793'
+                                name = 'Cheng Pan'
+                                email = 'chengpan@apache.org'
+                            }
+                        }
                         licenses {
                             license {
                                 name = "The Apache License, Version 2.0"
