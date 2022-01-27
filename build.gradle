@@ -16,7 +16,7 @@ plugins {
     id "org.scoverage" version "7.0.0" apply false
     id "com.google.protobuf" version "0.8.18" apply false
     id "org.nosphere.apache.rat" version "0.7.0"
-    id "com.github.maiflai.scalatest" version "0.31" apply false
+    id "com.github.maiflai.scalatest" version "0.32" apply false
     id "com.github.johnrengelman.shadow" version "7.1.2" apply false
 }
 
@@ -95,7 +95,7 @@ subprojects {
     }
 
     scoverage {
-        scoverageVersion = "1.4.9"
+        scoverageVersion = "1.4.11"
         reportDir.set(file("${rootProject.buildDir}/reports/scoverage"))
         highlighting.set(false)
         minimumRate.set(0.0)
