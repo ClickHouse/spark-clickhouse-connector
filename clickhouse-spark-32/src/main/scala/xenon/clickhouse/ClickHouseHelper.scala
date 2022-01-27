@@ -263,4 +263,13 @@ trait ClickHouseHelper {
       )
     }
   }
+
+  /**
+   * This method is considered as lightweight. Typically `sql` should contains `where 1=0` to avoid running the query on
+   * ClickHouse.
+   */
+  def getQueryOutputSchema(sql: String)(implicit grpcNodeClient: GrpcNodeClient): StructType = {
+    val namesAndTypes = grpcNodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql).namesAndTypes
+    SchemaUtils.fromClickHouseSchema(namesAndTypes.toSeq)
+  }
 }

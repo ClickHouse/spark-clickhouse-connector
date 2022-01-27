@@ -14,22 +14,23 @@
 
 package xenon.clickhouse.read
 
-import java.time.ZoneId
-
-import scala.util.Using
-
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.expressions.Transform
+import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
 import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.connector.read.partitioning.Partitioning
 import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.vectorized.ColumnarBatch
-import xenon.clickhouse.{ClickHouseHelper, Logging, SQLHelper}
 import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
+import xenon.clickhouse.{ClickHouseHelper, Logging, SQLHelper}
+
+import java.time.ZoneId
+import scala.util.Using
+import scala.util.control.NonFatal
 
 class ClickHouseScanBuilder(
   scanJob: ScanJobDescription,
@@ -38,7 +39,9 @@ class ClickHouseScanBuilder(
   partitionTransforms: Array[Transform]
 ) extends ScanBuilder
     with SupportsPushDownFilters
+    with SupportsPushDownAggregates
     with SupportsPushDownRequiredColumns
+    with ClickHouseHelper
     with SQLHelper
     with Logging {
 
@@ -62,6 +65,45 @@ class ClickHouseScanBuilder(
     unSupported
   }
 
+  private var _pushedGroupByCols: Option[Array[String]] = None
+  private var _groupByClause: Option[String] = None
+
+  override def pushAggregation(aggregation: Aggregation): Boolean = {
+    val compiledAggs = aggregation.aggregateExpressions.flatMap(compileAggregate)
+    if (compiledAggs.length != aggregation.aggregateExpressions.length) return false
+
+    val compiledGroupByCols = aggregation.groupByColumns.map(_.fieldNames.map(quoted).mkString("."))
+
+    // The column names here are already quoted and can be used to build sql string directly.
+    // e.g. [`DEPT`, `NAME`, MAX(`SALARY`), MIN(`BONUS`)] =>
+    //        SELECT `DEPT`, `NAME`, MAX(`SALARY`), MIN(`BONUS`)
+    //        FROM `test`.`employee`
+    //        WHERE 1=0
+    //        GROUP BY `DEPT`, `NAME`
+    val compiledSelectItems = compiledGroupByCols ++ compiledAggs
+    val groupByClause = if (compiledGroupByCols.nonEmpty) "GROUP BY " + compiledGroupByCols.mkString(", ") else ""
+    val aggQuery =
+      s"""SELECT ${compiledSelectItems.mkString(", ")}
+         |FROM ${quoted(scanJob.tableSpec.database)}.${quoted(scanJob.tableSpec.name)}
+         |WHERE 1=0
+         |$groupByClause
+         |""".stripMargin
+    try {
+      _readSchema = Using.resource(GrpcNodeClient(scanJob.node)) { implicit grpcNodeClient: GrpcNodeClient =>
+        val fields = (getQueryOutputSchema(aggQuery) zip compiledSelectItems)
+          .map { case (structField, colExpr) => structField.copy(name = colExpr) }
+        StructType(fields)
+      }
+      _pushedGroupByCols = Some(compiledGroupByCols)
+      _groupByClause = Some(groupByClause)
+      true
+    } catch {
+      case NonFatal(e) =>
+        log.error("Failed to push down aggregation to ClickHouse", e)
+        false
+    }
+  }
+
   override def pruneColumns(requiredSchema: StructType): Unit = {
     val requiredCols = requiredSchema.map(_.name)
     this._readSchema = StructType(_readSchema.filter(field => requiredCols.contains(field.name)))
@@ -69,7 +111,8 @@ class ClickHouseScanBuilder(
 
   override def build(): Scan = new ClickHouseBatchScan(scanJob.copy(
     readSchema = _readSchema,
-    filterExpr = filterWhereClause(AlwaysTrue :: pushedFilters.toList)
+    filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
+    groupByClause = _groupByClause
   ))
 }
 

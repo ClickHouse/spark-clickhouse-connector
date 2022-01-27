@@ -14,12 +14,13 @@
 
 package xenon.clickhouse
 
-import java.sql.{Date, Timestamp}
-import java.time.{Instant, LocalDate, ZoneId}
-
 import org.apache.commons.lang3.StringUtils
+import org.apache.spark.sql.connector.expressions.aggregate._
 import org.apache.spark.sql.sources._
 import xenon.clickhouse.Utils._
+
+import java.sql.{Date, Timestamp}
+import java.time.{Instant, LocalDate, ZoneId}
 
 trait SQLHelper {
 
@@ -66,7 +67,30 @@ trait SQLHelper {
     case _ => null
   })
 
-  def filterWhereClause(filters: Seq[Filter])(implicit tz: ZoneId): String =
+  def compileAggregate(aggFunction: AggregateFunc): Option[String] =
+    aggFunction match {
+      case min: Min =>
+        if (min.column.fieldNames.length != 1) return None
+        Some(s"MIN(${quoted(min.column.fieldNames.head)})")
+      case max: Max =>
+        if (max.column.fieldNames.length != 1) return None
+        Some(s"MAX(${quoted(max.column.fieldNames.head)})")
+      case count: Count =>
+        if (count.column.fieldNames.length != 1) return None
+        val distinct = if (count.isDistinct) "DISTINCT " else ""
+        val column = quoted(count.column.fieldNames.head)
+        Some(s"COUNT($distinct$column)")
+      case sum: Sum =>
+        if (sum.column.fieldNames.length != 1) return None
+        val distinct = if (sum.isDistinct) "DISTINCT " else ""
+        val column = quoted(sum.column.fieldNames.head)
+        Some(s"SUM($distinct$column)")
+      case _: CountStar =>
+        Some("COUNT(*)")
+      case _ => None
+    }
+
+  def compileFilters(filters: Seq[Filter])(implicit tz: ZoneId): String =
     filters
       .flatMap(_f => compileFilter(_f)(tz))
       .map(p => s"($p)").mkString(" AND ")
