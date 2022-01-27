@@ -52,15 +52,20 @@ class ClickHouseReader(
 
   def grpcNodeClient: GrpcNodeClient = grpcClient.node
 
-  lazy val streamOutput: StreamOutput[Array[JsonNode]] =
+  lazy val streamOutput: StreamOutput[Array[JsonNode]] = {
+    val selectItems =
+      if (readSchema.isEmpty) "1" // for case like COUNT(*) which prunes all columns
+      else readSchema.map {
+        field => if (scanJob.groupByClause.isDefined) field.name else s"`${field.name}`"
+      }.mkString(", ")
     grpcNodeClient.syncStreamQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(
-      s"""SELECT
-         | ${if (readSchema.isEmpty) 1 else readSchema.map(field => s"`${field.name}`").mkString(", ")}
+      s"""SELECT $selectItems
          |FROM `$database`.`$table`
-         |WHERE (${scanJob.filterExpr})
-         |AND ( ${part.partFilterExpr} )
+         |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
+         |${scanJob.groupByClause.getOrElse("")}
          |""".stripMargin
     )
+  }
 
   private var currentRow: Array[JsonNode] = _
 

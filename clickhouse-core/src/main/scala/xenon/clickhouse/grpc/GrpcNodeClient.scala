@@ -97,6 +97,14 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   ): Either[GRPCException, SimpleOutput[ObjectNode]] =
     syncInsert(database, table, inputFormat, data, "JSONEachRow", JSONEachRowSimpleOutput.deserialize)
 
+  def syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql: String)
+    : SimpleOutput[Array[JsonNode]] with NamesAndTypes =
+    syncQueryAndCheck(
+      sql,
+      "JSONCompactEachRowWithNamesAndTypes",
+      JSONCompactEachRowWithNamesAndTypesSimpleOutput.deserialize
+    ).asInstanceOf[SimpleOutput[Array[JsonNode]] with NamesAndTypes]
+
   def syncInsert[OUT](
     database: String,
     table: String,

@@ -29,7 +29,10 @@ case class ScanJobDescription(
   localTableSpec: Option[TableSpec],
   localTableEngineSpec: Option[TableEngineSpec],
   readOptions: ReadOptions,
-  // below fields will be constructed in ScanBuilder
+  // Below fields will be constructed in ScanBuilder.
   readSchema: StructType = new StructType,
-  filterExpr: String = "1=1"
+  // We should pass compiled ClickHouse SQL snippets(or ClickHouse SQL AST data structure) instead of Spark Expression
+  // into Scan tasks because the check happens in planing phase on driver side.
+  filtersExpr: String = "1=1",
+  groupByClause: Option[String] = None
 )

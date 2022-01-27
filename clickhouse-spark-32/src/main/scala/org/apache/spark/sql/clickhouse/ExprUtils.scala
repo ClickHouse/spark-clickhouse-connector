@@ -44,11 +44,11 @@ object ExprUtils {
   def toCatalyst(v2Expr: V2Expression, fields: Array[StructField]): Expression =
     v2Expr match {
       case IdentityTransform(ref) => toCatalyst(ref, fields)
-      case ref: FieldReference if ref.fieldNames.length == 1 =>
+      case ref: NamedReference if ref.fieldNames.length == 1 =>
         val (field, ordinal) = fields
           .zipWithIndex
           .find { case (field, _) => field.name == ref.fieldNames.head }
-          .getOrElse(throw ClickHouseClientException(s"Invalid FieldReference: $ref"))
+          .getOrElse(throw ClickHouseClientException(s"Invalid field reference: $ref"))
         BoundReference(ordinal, field.dataType, field.nullable)
       case _ => throw ClickHouseClientException(
           s"Unsupported V2 expression: $v2Expr, SPARK-33779: Spark 3.2 only support IdentityTransform"

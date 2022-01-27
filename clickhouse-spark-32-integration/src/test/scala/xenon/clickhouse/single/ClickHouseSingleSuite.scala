@@ -113,4 +113,42 @@ class ClickHouseSingleSuite extends BaseSparkSuite
       )
     }
   }
+
+  test("push down aggregation") {
+    val db = "db_agg_col"
+    val tbl = "tbl_agg_col"
+
+    withSimpleTable(db, tbl, true) {
+      checkAnswer(
+        spark.sql(s"SELECT COUNT(id) FROM $db.$tbl"),
+        Seq(Row(2))
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT MIN(id) FROM $db.$tbl"),
+        Seq(Row(1))
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT MAX(id) FROM $db.$tbl"),
+        Seq(Row(2))
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT m, COUNT(DISTINCT id) FROM $db.$tbl GROUP BY m"),
+        Seq(
+          Row(1, 1),
+          Row(2, 1)
+        )
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT m, SUM(DISTINCT id) FROM $db.$tbl GROUP BY m"),
+        Seq(
+          Row(1, 1),
+          Row(2, 2)
+        )
+      )
+    }
+  }
 }

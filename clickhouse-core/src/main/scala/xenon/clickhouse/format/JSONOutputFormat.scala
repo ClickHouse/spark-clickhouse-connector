@@ -40,10 +40,18 @@ class JSONEachRowSimpleOutput(
   override val records: Seq[ObjectNode]
 ) extends SimpleOutput[ObjectNode]
 
+object JSONCompactEachRowWithNamesAndTypesSimpleOutput {
+  def deserialize(output: ByteString): SimpleOutput[Array[JsonNode]] with NamesAndTypes = {
+    val jsonParser = om.getFactory.createParser(output.newInput())
+    val records = om.readValues[Array[JsonNode]](jsonParser).asScala.toSeq
+    new JSONCompactEachRowWithNamesAndTypesSimpleOutput(records)
+  }
+}
+
 class JSONCompactEachRowWithNamesAndTypesSimpleOutput(
-  //     first row: names
-  //    second row: types
-  // following row: records
+  //     first row : names
+  //    second row : types
+  // following rows: records
   namesAndTypesData: Seq[Array[JsonNode]]
 ) extends SimpleOutput[Array[JsonNode]] with NamesAndTypes {
 

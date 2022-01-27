@@ -57,4 +57,47 @@ class ClickHouseClusterReadSuite extends BaseSparkSuite
       // infiniteLoop()
     }
   }
+
+  test("push down aggregation - distributed table") {
+    val cluster = "single_replica"
+    val db = "db_agg_col"
+    val tbl_dist = "t_dist"
+
+    withSimpleDistTable(cluster, db, tbl_dist, true) {
+      checkAnswer(
+        spark.sql(s"SELECT COUNT(id) FROM $db.$tbl_dist"),
+        Seq(Row(4))
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT MIN(id) FROM $db.$tbl_dist"),
+        Seq(Row(1))
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT MAX(id) FROM $db.$tbl_dist"),
+        Seq(Row(4))
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT m, COUNT(DISTINCT id) FROM $db.$tbl_dist GROUP BY m"),
+        Seq(
+          Row(1, 1),
+          Row(2, 1),
+          Row(3, 1),
+          Row(4, 1)
+        )
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT m, SUM(DISTINCT id) FROM $db.$tbl_dist GROUP BY m"),
+        Seq(
+          Row(1, 1),
+          Row(2, 2),
+          Row(3, 3),
+          Row(4, 4),
+        )
+      )
+    }
+  }
 }
