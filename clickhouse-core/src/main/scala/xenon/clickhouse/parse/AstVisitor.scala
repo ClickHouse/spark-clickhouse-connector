@@ -48,7 +48,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
     engine match {
       case eg: String if "MergeTree" equalsIgnoreCase eg =>
         MergeTreeEngineSpec(
-          engine_expr = engineExpr,
+          engine_clause = engineExpr,
           _sorting_key = orderByOpt.getOrElse(List.empty),
           _primary_key = TupleExpr(pkOpt.toList),
           _partition_key = TupleExpr(partOpt.toList),
@@ -58,7 +58,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
         )
       case eg: String if "ReplacingMergeTree" equalsIgnoreCase eg =>
         ReplacingMergeTreeEngineSpec(
-          engine_expr = engineExpr,
+          engine_clause = engineExpr,
           version_column = seqToOption(engineArgs).map(_.asInstanceOf[FieldRef]),
           _sorting_key = orderByOpt.getOrElse(List.empty),
           _primary_key = TupleExpr(pkOpt.toList),
@@ -69,7 +69,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
         )
       case eg: String if "ReplicatedMergeTree" equalsIgnoreCase eg =>
         ReplicatedMergeTreeEngineSpec(
-          engine_expr = engineExpr,
+          engine_clause = engineExpr,
           zk_path = engineArgs.head.asInstanceOf[StringLiteral].value,
           replica_name = engineArgs(1).asInstanceOf[StringLiteral].value,
           _sorting_key = orderByOpt.getOrElse(List.empty),
@@ -81,7 +81,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
         )
       case eg: String if "ReplicatedReplacingMergeTree" equalsIgnoreCase eg =>
         ReplicatedReplacingMergeTreeEngineSpec(
-          engine_expr = engineExpr,
+          engine_clause = engineExpr,
           zk_path = engineArgs.head.asInstanceOf[StringLiteral].value,
           replica_name = engineArgs(1).asInstanceOf[StringLiteral].value,
           version_column = seqToOption(engineArgs.drop(2)).map(_.asInstanceOf[FieldRef]),
@@ -94,7 +94,7 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
         )
       case eg: String if "Distributed" equalsIgnoreCase eg =>
         DistributedEngineSpec(
-          engine_expr = engineExpr,
+          engine_clause = engineExpr,
           cluster = engineArgs.head.asInstanceOf[StringLiteral].value,
           local_db = engineArgs(1).asInstanceOf[StringLiteral].value,
           local_table = engineArgs(2).asInstanceOf[StringLiteral].value,

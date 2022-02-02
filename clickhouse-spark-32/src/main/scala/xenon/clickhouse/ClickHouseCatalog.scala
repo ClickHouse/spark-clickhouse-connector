@@ -186,39 +186,39 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
       case None => throw ClickHouseClientException(s"Invalid table identifier: $ident")
     }
     val props = properties.asScala
-    val engineExpr = props.get("engine").map(e => s"ENGINE = $e")
+    val engineClause = props.get("engine").map(e => s"ENGINE = $e")
       .getOrElse(throw ClickHouseClientException("Missing property 'engine'"))
-    val partitionsExpr = partitions match {
+    val partitionsClause = partitions match {
       case transforms if transforms.nonEmpty =>
         transforms.map(toClickHouse(_).sql).mkString("PARTITION BY (", ", ", ")")
       case _ => ""
     }
     // TODO we need consider to support other DML, like alter table, drop table, truncate table ...
-    val clusterExpr = props.get("cluster").map(c => s"ON CLUSTER $c").getOrElse("")
-    val orderExpr = props.get("order_by").map(o => s"ORDER BY $o").getOrElse("")
-    val primaryKeyExpr = props.get("primary_key").map(p => s"PRIMARY KEY $p").getOrElse("")
-    val sampleExpr = props.get("sample_by").map(p => s"SAMPLE BY $p").getOrElse("")
+    val clusterClause = props.get("cluster").map(c => s"ON CLUSTER $c").getOrElse("")
+    val orderClause = props.get("order_by").map(o => s"ORDER BY $o").getOrElse("")
+    val primaryKeyClause = props.get("primary_key").map(p => s"PRIMARY KEY $p").getOrElse("")
+    val sampleClause = props.get("sample_by").map(p => s"SAMPLE BY $p").getOrElse("")
 
-    val settingsExpr = props.filterKeys(_.startsWith("settings.")) match {
+    val settingsClause = props.filterKeys(_.startsWith("settings.")) match {
       case settings if settings.nonEmpty =>
         settings.map { case (k, v) => s"${k.substring("settings.".length)}=$v" }.mkString("SETTINGS ", ", ", "")
       case _ => ""
     }
 
-    val fieldsDefinition = SchemaUtils
+    val fieldsClause = SchemaUtils
       .toClickHouseSchema(schema)
       .map { case (fieldName, ckType) => s"${quoted(fieldName)} $ckType" }
       .mkString(",\n ")
 
     grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
-      s"""CREATE TABLE `$db`.`$tbl` $clusterExpr (
-         |$fieldsDefinition
-         |) $engineExpr
-         |$partitionsExpr
-         |$orderExpr
-         |$primaryKeyExpr
-         |$sampleExpr
-         |$settingsExpr
+      s"""CREATE TABLE `$db`.`$tbl` $clusterClause (
+         |$fieldsClause
+         |) $engineClause
+         |$partitionsClause
+         |$orderClause
+         |$primaryKeyClause
+         |$sampleClause
+         |$settingsClause
          |""".stripMargin
         .replaceAll("""\n\s+\n""", "\n") // remove empty lines
     )

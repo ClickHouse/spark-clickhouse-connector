@@ -155,12 +155,12 @@ class ClickHouseTruncateWriter(writeJob: WriteJobDescription)
 
   lazy val grpcNodeClient: GrpcNodeClient = GrpcNodeClient(writeJob.node)
 
-  def clusterExpr: String = if (truncateDistributedConvertToLocal) s"ON CLUSTER ${writeJob.cluster.get.name}" else ""
+  def clusterClause: String = if (truncateDistributedConvertToLocal) s"ON CLUSTER ${writeJob.cluster.get.name}" else ""
 
   override def write(record: InternalRow): Unit = {}
 
   override def commit(): WriterCommitMessage = {
-    grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(s"TRUNCATE TABLE `$database`.`$table` $clusterExpr")
+    grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(s"TRUNCATE TABLE `$database`.`$table` $clusterClause")
     CommitMessage(s"Job[${writeJob.queryId}]: commit truncate")
   }
 

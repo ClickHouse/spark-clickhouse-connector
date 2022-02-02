@@ -17,7 +17,7 @@ package xenon.clickhouse.spec
 import xenon.clickhouse.expr._
 
 sealed trait TableEngineSpec extends Serializable {
-  def engine_expr: String
+  def engine_clause: String
   def engine: String
   def args: List[Expr] = List.empty
   def sorting_key: List[OrderExpr] = List.empty
@@ -39,14 +39,14 @@ trait ReplicatedEngineSpec extends MergeTreeFamilyEngineSpec {
 }
 
 case class UnknownTableEngineSpec(
-  engine_expr: String
+  engine_clause: String
 ) extends TableEngineSpec {
   def engine: String = "Unknown"
   def settings: Map[String, String] = Map.empty
 }
 
 case class MergeTreeEngineSpec(
-  engine_expr: String,
+  engine_clause: String,
   var _sorting_key: List[OrderExpr] = List.empty,
   var _primary_key: TupleExpr = TupleExpr(List.empty),
   var _partition_key: TupleExpr = TupleExpr(List.empty),
@@ -64,7 +64,7 @@ case class MergeTreeEngineSpec(
 }
 
 case class ReplicatedMergeTreeEngineSpec(
-  engine_expr: String,
+  engine_clause: String,
   zk_path: String,
   replica_name: String,
   var _sorting_key: List[OrderExpr] = List.empty,
@@ -84,7 +84,7 @@ case class ReplicatedMergeTreeEngineSpec(
 }
 
 case class ReplacingMergeTreeEngineSpec(
-  engine_expr: String,
+  engine_clause: String,
   version_column: Option[FieldRef] = None,
   var _sorting_key: List[OrderExpr] = List.empty,
   var _primary_key: TupleExpr = TupleExpr(List.empty),
@@ -103,7 +103,7 @@ case class ReplacingMergeTreeEngineSpec(
 }
 
 case class ReplicatedReplacingMergeTreeEngineSpec(
-  engine_expr: String,
+  engine_clause: String,
   zk_path: String,
   replica_name: String,
   version_column: Option[FieldRef] = None,
@@ -124,7 +124,7 @@ case class ReplicatedReplacingMergeTreeEngineSpec(
 }
 
 case class DistributedEngineSpec(
-  engine_expr: String,
+  engine_clause: String,
   cluster: String,
   local_db: String,
   local_table: String,

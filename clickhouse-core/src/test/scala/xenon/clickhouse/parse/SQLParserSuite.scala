@@ -26,7 +26,7 @@ class SQLParserSuite extends AnyFunSuite {
     val ddl = "MergeTree PARTITION BY toYYYYMM(create_time) ORDER BY id"
     val actual = parser.parseEngineClause(ddl)
     val expected = MergeTreeEngineSpec(
-      engine_expr = "MergeTree",
+      engine_clause = "MergeTree",
       _sorting_key = List(OrderExpr(FieldRef("id"))),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("create_time")))))
     )
@@ -38,7 +38,7 @@ class SQLParserSuite extends AnyFunSuite {
       "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
     val actual = parser.parseEngineClause(ddl)
     val expected = ReplicatedMergeTreeEngineSpec(
-      engine_expr = "ReplicatedMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}')",
+      engine_clause = "ReplicatedMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}')",
       zk_path = "/clickhouse/tables/{shard}/wj_report/wj_respondent",
       replica_name = "{replica}",
       _sorting_key = List(OrderExpr(FieldRef("id"))),
@@ -53,7 +53,7 @@ class SQLParserSuite extends AnyFunSuite {
       "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
     val actual = parser.parseEngineClause(ddl)
     val expected = ReplacingMergeTreeEngineSpec(
-      engine_expr = "ReplacingMergeTree()",
+      engine_clause = "ReplacingMergeTree()",
       _sorting_key = List(OrderExpr(FieldRef("id"))),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
       _settings = Map("index_granularity" -> "8192")
@@ -66,7 +66,7 @@ class SQLParserSuite extends AnyFunSuite {
       "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
     val actual = parser.parseEngineClause(ddl)
     val expected = ReplacingMergeTreeEngineSpec(
-      engine_expr = "ReplacingMergeTree(ts)",
+      engine_clause = "ReplacingMergeTree(ts)",
       version_column = Some(FieldRef("ts")),
       _sorting_key = List(OrderExpr(FieldRef("id"))),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
@@ -80,7 +80,7 @@ class SQLParserSuite extends AnyFunSuite {
       "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
     val actual = parser.parseEngineClause(ddl)
     val expected = ReplicatedReplacingMergeTreeEngineSpec(
-      engine_expr = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}')",
+      engine_clause = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}')",
       zk_path = "/clickhouse/tables/{shard}/wj_report/wj_respondent",
       replica_name = "{replica}",
       _sorting_key = List(OrderExpr(FieldRef("id"))),
@@ -95,7 +95,7 @@ class SQLParserSuite extends AnyFunSuite {
       "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
     val actual = parser.parseEngineClause(ddl)
     val expected = ReplicatedReplacingMergeTreeEngineSpec(
-      engine_expr =
+      engine_clause =
         "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}', ts)",
       zk_path = "/clickhouse/tables/{shard}/wj_report/wj_respondent",
       replica_name = "{replica}",
@@ -111,7 +111,7 @@ class SQLParserSuite extends AnyFunSuite {
     val ddl = "Distributed('default', 'wj_report', 'wj_respondent_local')"
     val actual = parser.parseEngineClause(ddl)
     val expected = DistributedEngineSpec(
-      engine_expr = "Distributed('default', 'wj_report', 'wj_respondent_local')",
+      engine_clause = "Distributed('default', 'wj_report', 'wj_respondent_local')",
       cluster = "default",
       local_db = "wj_report",
       local_table = "wj_respondent_local",
@@ -124,7 +124,7 @@ class SQLParserSuite extends AnyFunSuite {
     val ddl = "Distributed('default', 'wj_report', 'wj_respondent_local', xxHash64(id))"
     val actual = parser.parseEngineClause(ddl)
     val expected = DistributedEngineSpec(
-      engine_expr = "Distributed('default', 'wj_report', 'wj_respondent_local', xxHash64(id))",
+      engine_clause = "Distributed('default', 'wj_report', 'wj_respondent_local', xxHash64(id))",
       cluster = "default",
       local_db = "wj_report",
       local_table = "wj_respondent_local",
@@ -137,7 +137,7 @@ class SQLParserSuite extends AnyFunSuite {
     val ddl = "Distributed('default', 'wj_report', 'wj_respondent_local', xxHash64(toString(id, ver)))"
     val actual = parser.parseEngineClause(ddl)
     val expected = DistributedEngineSpec(
-      engine_expr = "Distributed('default', 'wj_report', 'wj_respondent_local', xxHash64(toString(id, ver)))",
+      engine_clause = "Distributed('default', 'wj_report', 'wj_respondent_local', xxHash64(toString(id, ver)))",
       cluster = "default",
       local_db = "wj_report",
       local_table = "wj_respondent_local",
