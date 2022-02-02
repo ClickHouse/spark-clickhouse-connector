@@ -14,15 +14,17 @@
 
 package xenon.clickhouse.spec
 
+import java.lang.{Long => Int64}
+
 object ShardUtils {
 
-  def calcShard(cluster: ClusterSpec, value: Long): ShardSpec = {
+  def calcShard(cluster: ClusterSpec, hashVal: Long): ShardSpec = {
     val shards = cluster.shards.sorted
     val weights = shards.map(_.weight)
     val lowerBounds = weights.indices.map(i => weights.slice(0, i).sum)
     val upperBounds = weights.indices.map(i => weights.slice(0, i + 1).sum)
     val ranges = (lowerBounds zip upperBounds).map { case (l, u) => l until u }
-    val rem = value % weights.sum
+    val rem = Int64.remainderUnsigned(hashVal, weights.sum)
     (shards zip ranges).find(_._2 contains rem).map(_._1).get
   }
 }
