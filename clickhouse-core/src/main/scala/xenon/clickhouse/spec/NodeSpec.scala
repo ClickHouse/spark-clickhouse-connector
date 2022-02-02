@@ -30,7 +30,7 @@ case class NodeSpec(
   @JsonProperty("username") username: String = "default",
   @JsonProperty("password") password: String = "",
   @JsonProperty("database") database: String = "default"
-) extends Nodes with ToJson {
+) extends Nodes with ToJson with Serializable {
   @JsonProperty("host") def host: String = findHost(_host)
   @JsonProperty("http_port") def http_port: Option[Int] = findPort(_http_port)
   @JsonProperty("tcp_port") def tcp_port: Option[Int] = findPort(_tcp_port)
@@ -48,34 +48,34 @@ case class NodeSpec(
       source.map(p => sys.props.get(s"${PREFIX}_HOST_${_host}_PORT_$p").map(_.toInt).getOrElse(p))
     } else source
 
-  @JsonIgnore override val nodes: Array[NodeSpec] = Array(this)
+  @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = Array(this)
 }
 
 case class ReplicaSpec(
   num: Int,
   node: NodeSpec
-) extends Ordered[ReplicaSpec] with Nodes with ToJson {
+) extends Ordered[ReplicaSpec] with Nodes with ToJson with Serializable {
 
   override def compare(that: ReplicaSpec): Int = Ordering[Int].compare(num, that.num)
 
-  @JsonIgnore override val nodes: Array[NodeSpec] = Array(node)
+  @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = Array(node)
 }
 
 case class ShardSpec(
   num: Int,
   weight: Int,
   replicas: Array[ReplicaSpec]
-) extends Ordered[ShardSpec] with Nodes with ToJson {
+) extends Ordered[ShardSpec] with Nodes with ToJson with Serializable {
 
   override def compare(that: ShardSpec): Int = Ordering[Int].compare(num, that.num)
 
-  @JsonIgnore override lazy val nodes: Array[NodeSpec] = replicas.sorted.flatMap(_.nodes)
+  @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = replicas.sorted.flatMap(_.nodes)
 }
 
 case class ClusterSpec(
   name: String,
   shards: Array[ShardSpec]
-) extends Nodes with ToJson {
+) extends Nodes with ToJson with Serializable {
 
-  @JsonIgnore override lazy val nodes: Array[NodeSpec] = shards.sorted.flatMap(_.nodes)
+  @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = shards.sorted.flatMap(_.nodes)
 }

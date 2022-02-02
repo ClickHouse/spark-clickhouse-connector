@@ -16,23 +16,27 @@ package xenon.clickhouse
 
 import java.time.ZoneId
 import java.util
-
 import scala.collection.JavaConverters._
-
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.clickhouse.TransformUtils._
 import org.apache.spark.sql.connector.catalog._
+import org.apache.spark.sql.connector.catalog.functions.UnboundFunction
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
 import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
 import xenon.clickhouse.exception.ClickHouseErrCode._
+import xenon.clickhouse.func.{ClickHouseXxHash64, ClickHouseXxHash64Shard}
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
 
-class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
-    with ClickHouseHelper with SQLHelper with Logging {
+class ClickHouseCatalog extends TableCatalog
+    with SupportsNamespaces
+    with FunctionCatalog
+    with ClickHouseHelper
+    with SQLHelper
+    with Logging {
 
   private var catalogName: String = _
 
@@ -282,5 +286,18 @@ class ClickHouseCatalog extends TableCatalog with SupportsNamespaces
   override def dropNamespace(namespace: Array[String]): Boolean = namespace match {
     case Array(database) => grpcNodeClient.syncQueryOutputJSONEachRow(s"DROP DATABASE ${quoted(database)}").isRight
     case _ => false
+  }
+
+  @throws[NoSuchNamespaceException]
+  override def listFunctions(namespace: Array[String]): Array[Identifier] = Array(
+    Identifier.of(Array.empty, "ck_xx_hash64"),
+    Identifier.of(Array.empty, "ck_xx_hash64_shard")
+  )
+
+  @throws[NoSuchFunctionException]
+  override def loadFunction(ident: Identifier): UnboundFunction = ident.name() match {
+    case "ck_xx_hash64" => ClickHouseXxHash64
+    case "ck_xx_hash64_shard" => new ClickHouseXxHash64Shard(clusterSpecs)
+    case _ => throw new NoSuchFunctionException(ident)
   }
 }
