@@ -49,11 +49,7 @@ subprojects {
 
         repositories {
             maven {
-                String snapshotsRepoUrl = project.hasProperty("mavenSnapshotsRepo") ? "$mavenSnapshotsRepo"
-                        : "https://oss.sonatype.org/content/repositories/snapshots"
-                String releasesRepoUrl = project.hasProperty("mavenReleasesRepo") ? "$mavenReleasesRepo"
-                        : "https://oss.sonatype.org/service/local/staging/deploy/maven2"
-                url = project.version.endsWith("-SNAPSHOT") ? snapshotsRepoUrl : releasesRepoUrl
+                url = project.version.endsWith("-SNAPSHOT") ? "$mavenSnapshotsRepo" : "$mavenReleasesRepo"
 
                 credentials {
                     username = project.hasProperty("mavenUser") ? "$mavenUser" : ""
