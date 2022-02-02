@@ -296,5 +296,6 @@ class ClickHouseCatalog extends TableCatalog
   override def loadFunction(ident: Identifier): UnboundFunction = ident.name() match {
     case "ck_xx_hash64" => ClickHouseXxHash64
     case "ck_xx_hash64_shard" => new ClickHouseXxHash64Shard(clusterSpecs)
+    case _ => throw new NoSuchFunctionException(ident)
   }
 }
