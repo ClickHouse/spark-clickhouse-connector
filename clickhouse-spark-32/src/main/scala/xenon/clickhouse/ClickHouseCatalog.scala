@@ -288,11 +288,13 @@ class ClickHouseCatalog extends TableCatalog
     case _ => false
   }
 
+  @throws[NoSuchNamespaceException]
   override def listFunctions(namespace: Array[String]): Array[Identifier] = Array(
     Identifier.of(Array.empty, "ck_xx_hash64"),
     Identifier.of(Array.empty, "ck_xx_hash64_shard")
   )
 
+  @throws[NoSuchFunctionException]
   override def loadFunction(ident: Identifier): UnboundFunction = ident.name() match {
     case "ck_xx_hash64" => ClickHouseXxHash64
     case "ck_xx_hash64_shard" => new ClickHouseXxHash64Shard(clusterSpecs)
