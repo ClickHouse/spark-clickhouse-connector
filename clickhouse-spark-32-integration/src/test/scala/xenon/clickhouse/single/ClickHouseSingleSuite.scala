@@ -57,6 +57,27 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     }
   }
 
+  test("clickhouse partition") {
+    val db = "db_part"
+    val tbl = "tbl_part"
+
+    withSimpleTable(db, tbl, true) {
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        Seq(Row("m=1"), Row("m=2"))
+      )
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl PARTITION(m = 2)"),
+        Seq(Row("m=2"))
+      )
+      spark.sql(s"ALTER TABLE $db.$tbl DROP PARTITION(m = 2)")
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        Seq(Row("m=1"))
+      )
+    }
+  }
+
   ignore("clickhouse truncate table") {
     withClickHouseSingleIdTable("db_trunc", "tbl_trunc") { (db, tbl) =>
       spark.range(10).toDF("id").writeTo(s"$db.$tbl").append

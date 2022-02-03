@@ -14,28 +14,29 @@
 
 package xenon.clickhouse
 
-import java.time.ZoneId
-import java.util
-
-import scala.collection.JavaConverters._
-import scala.util.Using
-
-import org.apache.spark.sql.catalyst.SQLConfHelper
+import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
+import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.clickhouse.{ExprUtils, ReadOptions, WriteOptions}
-import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.TableCapability._
+import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read.ScanBuilder
 import org.apache.spark.sql.connector.write.LogicalWriteInfo
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
+import xenon.clickhouse.Utils._
+import xenon.clickhouse.expr.{Expr, OrderExpr}
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.read.{ClickHouseMetadataColumn, ClickHouseScanBuilder, ScanJobDescription}
 import xenon.clickhouse.spec._
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDescription}
-import xenon.clickhouse.Utils._
-import xenon.clickhouse.expr.{Expr, OrderExpr}
+
+import java.lang.{Integer => JInt, Long => JLong}
+import java.time.ZoneId
+import java.util
+import scala.collection.JavaConverters._
+import scala.util.Using
 
 class ClickHouseTable(
   node: NodeSpec,
@@ -47,8 +48,10 @@ class ClickHouseTable(
     with SupportsRead
     with SupportsWrite
     with SupportsMetadataColumns
+    with SupportsPartitionManagement
     with ClickHouseHelper
     with SQLConfHelper
+    with SQLHelper
     with Logging {
 
   def database: String = spec.database
@@ -94,14 +97,12 @@ class ClickHouseTable(
       BATCH_READ,
       BATCH_WRITE,
       TRUNCATE,
-      ACCEPT_ANY_SCHEMA // TODO check schema and handle extra column before write
+      ACCEPT_ANY_SCHEMA // TODO check schema and handle extra columns before writing
     ).asJava
 
   override lazy val schema: StructType = Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
     queryTableSchema(database, table)
   }
-
-  override lazy val partitioning: Array[Transform] = ExprUtils.toSparkParts(shardingKey, partitionKey)
 
   /**
    * Only support `MergeTree` and `Distributed` table engine, for reference
@@ -121,6 +122,15 @@ class ClickHouseTable(
     }
   }
 
+  private lazy val metadataSchema: StructType =
+    StructType(metadataColumns.map(_.asInstanceOf[ClickHouseMetadataColumn].toStructField))
+
+  override lazy val partitioning: Array[Transform] = ExprUtils.toSparkParts(shardingKey, partitionKey)
+
+  override lazy val partitionSchema: StructType = StructType(
+    partitioning.map(partTransform => ExprUtils.inferTransformSchema(schema, metadataSchema, partTransform))
+  )
+
   override lazy val properties: util.Map[String, String] = spec.toJavaMap
 
   override def newScanBuilder(options: CaseInsensitiveStringMap): ScanBuilder = {
@@ -134,7 +144,6 @@ class ClickHouseTable(
       localTableEngineSpec = localTableEngineSpec,
       readOptions = new ReadOptions(options.asCaseSensitiveMap())
     )
-    val metadataSchema = StructType(metadataColumns.map(_.asInstanceOf[ClickHouseMetadataColumn].toStructField))
     // TODO schema of partitions
     val partTransforms = Array[Transform]()
     new ClickHouseScanBuilder(scanJob, schema, metadataSchema, partTransforms)
@@ -158,5 +167,77 @@ class ClickHouseTable(
     )
 
     new ClickHouseWriteBuilder(writeJob)
+  }
+
+  override def createPartition(ident: InternalRow, props: util.Map[String, String]): Unit =
+    log.info("Do nothing on ClickHouse for creating partition action")
+
+  override def dropPartition(ident: InternalRow): Boolean = {
+    if (isDistributed)
+      throw new UnsupportedOperationException(s"Unsupported operation: drop partition on Distributed table")
+
+    val partitionExpr = (0 until ident.numFields).map { i =>
+      partitionSchema.fields(i).dataType match {
+        case IntegerType => compileValue(ident.getInt(i))
+        case LongType => compileValue(ident.getLong(i))
+        case StringType => compileValue(ident.getUTF8String(i))
+        case illegal => throw new IllegalArgumentException(s"Illegal partition data type: $illegal")
+      }
+    }.mkString("(", ",", ")")
+
+    Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+      dropPartition(database, table, partitionExpr)
+    }
+  }
+
+  override def replacePartitionMetadata(ident: InternalRow, props: util.Map[String, String]): Unit =
+    throw new UnsupportedOperationException("Unsupported operation: replacePartitionMetadata")
+
+  override def loadPartitionMetadata(ident: InternalRow): util.Map[String, String] =
+    throw new UnsupportedOperationException("Unsupported operation: loadPartitionMetadata")
+
+  override def listPartitionIdentifiers(names: Array[String], ident: InternalRow): Array[InternalRow] = {
+    assert(
+      names.length == ident.numFields,
+      s"Number of partition names (${names.length}) must be equal to " +
+        s"the number of partition values (${ident.numFields})."
+    )
+    assert(
+      names.forall(fieldName => partitionSchema.fieldNames.contains(fieldName)),
+      s"Some partition names ${names.mkString("[", ", ", "]")} don't belong to " +
+        s"the partition schema '${partitionSchema.sql}'."
+    )
+
+    def strToSparkValue(str: String, dataType: DataType): Any = dataType match {
+      case StringType => str
+      case IntegerType => JInt.parseInt(str)
+      case LongType => JLong.parseLong(str)
+      case unsupported => throw new UnsupportedOperationException(s"$unsupported")
+    }
+
+    Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+      queryPartitionSpec(database, table).map(_.partition)
+    }
+      .filterNot(_ == "tuple()") // represent the root partition of un-partitioned table
+      .map {
+        case tuple if tuple.startsWith("(") && tuple.endsWith(")") =>
+          tuple.stripPrefix("(").stripSuffix(")").split(",")
+        case partColStrValue =>
+          Array(partColStrValue)
+      }
+      .map { partColStrValues =>
+        new GenericInternalRow(
+          (partColStrValues zip partitionSchema.fields.map(_.dataType))
+            .map { case (partColStrValue, dataType) => strToSparkValue(partColStrValue, dataType) }
+        )
+      }
+      .filter { partRow =>
+        names.zipWithIndex.forall { case (name, queryIndex) =>
+          val partRowIndex = partitionSchema.fieldIndex(name)
+          val dataType = partitionSchema.fields(partRowIndex).dataType
+          partRow.get(partRowIndex, dataType) == ident.get(queryIndex, dataType)
+        }
+      }
+      .toArray
   }
 }

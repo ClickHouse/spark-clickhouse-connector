@@ -17,7 +17,7 @@ package org.apache.spark.sql.clickhouse
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression}
 import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions.{Expression => V2Expression, _}
-import org.apache.spark.sql.types.StructField
+import org.apache.spark.sql.types.{IntegerType, LongType, StructField, StructType}
 import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.expr._
 
@@ -83,6 +83,23 @@ object ExprUtils {
     case HoursTransform(FieldReference(Seq(col))) => FuncExpr("toHour", List(FieldRef(col)))
     case IdentityTransform(fieldRefs) => FieldRef(fieldRefs.describe)
     case ApplyTransform(name, args) => FuncExpr(name, args.map(arg => SQLExpr(arg.describe())).toList)
+    case bucket: BucketTransform => throw ClickHouseClientException(s"Bucket transform not support yet: $bucket")
+    case other: Transform => throw ClickHouseClientException(s"Unsupported transform: $other")
+  }
+
+  def inferTransformSchema(
+    primarySchema: StructType,
+    secondarySchema: StructType,
+    transform: Transform
+  ): StructField = transform match {
+    case years: YearsTransform => StructField(years.toString, IntegerType)
+    case months: MonthsTransform => StructField(months.toString, IntegerType)
+    case days: DaysTransform => StructField(days.toString, IntegerType)
+    case hours: HoursTransform => StructField(hours.toString, IntegerType)
+    case IdentityTransform(FieldReference(Seq(col))) => primarySchema.find(_.name == col)
+        .orElse(secondarySchema.find(_.name == col))
+        .getOrElse(throw ClickHouseClientException(s"Invalid partition column: $col"))
+    case ckXxhHash64 @ ApplyTransform("ck_xx_hash64", _) => StructField(ckXxhHash64.toString, LongType)
     case bucket: BucketTransform => throw ClickHouseClientException(s"Bucket transform not support yet: $bucket")
     case other: Transform => throw ClickHouseClientException(s"Unsupported transform: $other")
   }

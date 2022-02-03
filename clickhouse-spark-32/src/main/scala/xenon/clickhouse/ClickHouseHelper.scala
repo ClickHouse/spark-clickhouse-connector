@@ -272,4 +272,18 @@ trait ClickHouseHelper {
     val namesAndTypes = grpcNodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql).namesAndTypes
     SchemaUtils.fromClickHouseSchema(namesAndTypes.toSeq)
   }
+
+  def dropPartition(
+    database: String,
+    table: String,
+    partitionExpr: String
+  )(implicit
+    grpcNodeClient: GrpcNodeClient
+  ): Boolean =
+    grpcNodeClient.syncQueryOutputJSONEachRow(
+      s"ALTER TABLE `$database`.`$table` DROP PARTITION $partitionExpr"
+    ) match {
+      case Left(_) => false
+      case Right(_) => true
+    }
 }
