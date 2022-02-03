@@ -34,7 +34,7 @@ case class SQLExpr(sqlText: String) extends Expr {
 }
 
 case class FuncExpr(name: String, args: List[Expr]) extends Expr {
-  override def sql: String = s"$name(${args.map(_.desc).mkString(",")})"
+  override def sql: String = s"$name(${args.map(_.sql).mkString(",")})"
 }
 
 case class OrderExpr(expr: Expr, asc: Boolean = true, nullFirst: Boolean = true) extends Expr {
