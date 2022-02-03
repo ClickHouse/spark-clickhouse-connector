@@ -247,7 +247,7 @@ trait ClickHouseHelper {
          |  sum(rows)          AS row_count,     -- UInt64
          |  sum(bytes_on_disk) AS size_in_bytes  -- UInt64
          |FROM `system`.`parts`
-         |WHERE `database`='$database' AND `table`='$table'
+         |WHERE `database`='$database' AND `table`='$table' AND `active`=1
          |GROUP BY `partition`
          |ORDER BY `partition` ASC
          |""".stripMargin
