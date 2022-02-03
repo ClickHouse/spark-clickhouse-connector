@@ -208,10 +208,6 @@ class ClickHouseTable(
         s"the partition schema '${partitionSchema.sql}'."
     )
 
-    val partitionExprSeq = Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
-      queryPartitionSpec(database, table).map(_.partition)
-    }
-
     def strToSparkValue(str: String, dataType: DataType): Any = dataType match {
       case StringType => str
       case IntegerType => JInt.parseInt(str)
@@ -219,8 +215,10 @@ class ClickHouseTable(
       case unsupported => throw new UnsupportedOperationException(s"$unsupported")
     }
 
-    partitionExprSeq
-      .filterNot(_ == "tuple()")
+    Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+      queryPartitionSpec(database, table).map(_.partition)
+    }
+      .filterNot(_ == "tuple()") // represent the root partition of un-partitioned table
       .map {
         case tuple if tuple.startsWith("(") && tuple.endsWith(")") =>
           tuple.stripPrefix("(").stripSuffix(")").split(",")
