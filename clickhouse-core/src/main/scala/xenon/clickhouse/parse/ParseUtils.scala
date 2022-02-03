@@ -20,7 +20,11 @@ import org.antlr.v4.runtime.misc.Interval
 
 import scala.collection.JavaConverters._
 
-object ParseUtil {
+object ParseUtils {
+
+  private val _parser: ThreadLocal[SQLParser] = ThreadLocal.withInitial(() => new SQLParser(new AstVisitor))
+
+  def parser: SQLParser = _parser.get
 
   def seqToOption[T](seq: Seq[T]): Option[T] = seq.size match {
     case 0 => None

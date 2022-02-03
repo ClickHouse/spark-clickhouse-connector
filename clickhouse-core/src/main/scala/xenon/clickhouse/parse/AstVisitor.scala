@@ -23,7 +23,7 @@ import xenon.clickhouse.ClickHouseAstParser._
 import xenon.clickhouse.expr._
 
 class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
-  import ParseUtil._
+  import ParseUtils._
 
   protected def typedVisit[T](ctx: ParseTree): T =
     ctx.accept(this).asInstanceOf[T]

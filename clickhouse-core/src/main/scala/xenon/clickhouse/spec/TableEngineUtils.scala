@@ -15,13 +15,12 @@
 package xenon.clickhouse.spec
 
 import xenon.clickhouse.exception.ClickHouseClientException
-import xenon.clickhouse.parse.{AstVisitor, SQLParser}
+import xenon.clickhouse.parse.ParseUtils
 
 object TableEngineUtils {
-  private val parser = new SQLParser(new AstVisitor)
 
   def resolveTableEngine(tableSpec: TableSpec): TableEngineSpec = synchronized(
-    parser.parseEngineClause(tableSpec.engine_full)
+    ParseUtils.parser.parseEngineClause(tableSpec.engine_full)
   )
 
   def resolveTableCluster(distributedEngineSpec: DistributedEngineSpec, clusterSpecs: Seq[ClusterSpec]): ClusterSpec =

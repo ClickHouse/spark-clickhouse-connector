@@ -18,9 +18,13 @@ import org.antlr.v4.runtime._
 import org.antlr.v4.runtime.atn.PredictionMode
 import org.antlr.v4.runtime.misc.ParseCancellationException
 import xenon.clickhouse._
+import xenon.clickhouse.expr.Expr
 import xenon.clickhouse.spec.TableEngineSpec
 
 class SQLParser(astVisitor: AstVisitor) extends Logging {
+
+  def parseColumnExpr(sql: String): Expr =
+    parse(sql)(parser => astVisitor.visitColumnExpr(parser.columnExpr))
 
   def parseEngineClause(sql: String): TableEngineSpec =
     parse(sql)(parser => astVisitor.visitEngineClause(parser.engineClause))
@@ -86,11 +90,10 @@ case class ParseException(
   stop: Origin
 ) extends RuntimeException(message) {
 
-  def this(message: String, ctx: ParserRuleContext) = {
+  def this(message: String, ctx: ParserRuleContext) =
     this(
       message,
-      ParseUtil.position(ctx.getStart),
-      ParseUtil.position(ctx.getStop)
+      ParseUtils.position(ctx.getStart),
+      ParseUtils.position(ctx.getStop)
     )
-  }
 }
