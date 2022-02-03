@@ -14,14 +14,13 @@
 
 package xenon.clickhouse.write
 
-import java.time.ZoneId
-
 import org.apache.spark.sql.clickhouse.{ExprUtils, WriteOptions}
-import org.apache.spark.sql.clickhouse.TransformUtils.toSparkTransform
 import org.apache.spark.sql.connector.expressions.{Expression, SortOrder, Transform}
 import org.apache.spark.sql.types.StructType
 import xenon.clickhouse.expr.{Expr, OrderExpr}
 import xenon.clickhouse.spec._
+
+import java.time.ZoneId
 
 case class WriteJobDescription(
   queryId: String,
@@ -50,7 +49,7 @@ case class WriteJobDescription(
   }
 
   def sparkShardExpr: Option[Expression] = (tableEngineSpec, shardingKey) match {
-    case (_: DistributedEngineSpec, Some(expr)) => Some(toSparkTransform(expr))
+    case (_: DistributedEngineSpec, Some(expr)) => Some(ExprUtils.toSparkTransform(expr))
     case _ => None
   }
 

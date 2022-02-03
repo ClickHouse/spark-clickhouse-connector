@@ -14,22 +14,23 @@
 
 package xenon.clickhouse
 
-import java.time.ZoneId
-import java.util
-import scala.collection.JavaConverters._
 import org.apache.spark.sql.catalyst.analysis._
-import org.apache.spark.sql.clickhouse.TransformUtils._
+import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.functions.UnboundFunction
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
-import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
 import xenon.clickhouse.exception.ClickHouseErrCode._
+import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
 import xenon.clickhouse.func.{ClickHouseXxHash64, ClickHouseXxHash64Shard}
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
+
+import java.time.ZoneId
+import java.util
+import scala.collection.JavaConverters._
 
 class ClickHouseCatalog extends TableCatalog
     with SupportsNamespaces
@@ -194,7 +195,7 @@ class ClickHouseCatalog extends TableCatalog
       .getOrElse(throw ClickHouseClientException("Missing property 'engine'"))
     val partitionsClause = partitions match {
       case transforms if transforms.nonEmpty =>
-        transforms.map(toClickHouse(_).sql).mkString("PARTITION BY (", ", ", ")")
+        transforms.map(ExprUtils.toClickHouse(_).sql).mkString("PARTITION BY (", ", ", ")")
       case _ => ""
     }
     // TODO we need consider to support other DML, like alter table, drop table, truncate table ...

@@ -14,14 +14,14 @@
 
 package org.apache.spark.sql.clickhouse
 
-import scala.annotation.tailrec
-
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression}
-import org.apache.spark.sql.clickhouse.TransformUtils.toSparkTransform
+import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions.{Expression => V2Expression, _}
 import org.apache.spark.sql.types.StructField
 import xenon.clickhouse.exception.ClickHouseClientException
-import xenon.clickhouse.expr.{Expr, OrderExpr}
+import xenon.clickhouse.expr._
+
+import scala.annotation.tailrec
 
 object ExprUtils {
 
@@ -54,4 +54,36 @@ object ExprUtils {
           s"Unsupported V2 expression: $v2Expr, SPARK-33779: Spark 3.2 only support IdentityTransform"
         )
     }
+
+  // Some functions of ClickHouse which match Spark pre-defined Transforms
+  //
+  // toYear, YEAR - Converts a date or date with time to a UInt16 (AD)
+  // toYYYYMM     - Converts a date or date with time to a UInt32 (YYYY*100 + MM)
+  // toYYYYMMDD   - Converts a date or date with time to a UInt32 (YYYY*10000 + MM*100 + DD)
+  // toHour, HOUR - Converts a         date with time to a UInt8  (0-23)
+
+  def toSparkTransform(expr: Expr): Transform =
+    expr match {
+      case FieldRef(col) => identity(col)
+      case FuncExpr("toYear", List(FieldRef(col))) => years(col)
+      case FuncExpr("YEAR", List(FieldRef(col))) => years(col)
+      case FuncExpr("toYYYYMM", List(FieldRef(col))) => months(col)
+      case FuncExpr("toYYYYMMDD", List(FieldRef(col))) => days(col)
+      case FuncExpr("toHour", List(FieldRef(col))) => hours(col)
+      case FuncExpr("HOUR", List(FieldRef(col))) => hours(col)
+      // TODO support arbitrary functions
+      case FuncExpr("xxHash64", List(FieldRef(col))) => apply("ck_xx_hash64", column(col))
+      case unsupported => throw ClickHouseClientException(s"Unsupported ClickHouse expression: $unsupported")
+    }
+
+  def toClickHouse(transform: Transform): Expr = transform match {
+    case YearsTransform(FieldReference(Seq(col))) => FuncExpr("toYear", List(FieldRef(col)))
+    case MonthsTransform(FieldReference(Seq(col))) => FuncExpr("toYYYYMM", List(FieldRef(col)))
+    case DaysTransform(FieldReference(Seq(col))) => FuncExpr("toYYYYMMDD", List(FieldRef(col)))
+    case HoursTransform(FieldReference(Seq(col))) => FuncExpr("toHour", List(FieldRef(col)))
+    case IdentityTransform(fieldRefs) => FieldRef(fieldRefs.describe)
+    case ApplyTransform(name, args) => FuncExpr(name, args.map(arg => SQLExpr(arg.describe())).toList)
+    case bucket: BucketTransform => throw ClickHouseClientException(s"Bucket transform not support yet: $bucket")
+    case other: Transform => throw ClickHouseClientException(s"Unsupported transform: $other")
+  }
 }
