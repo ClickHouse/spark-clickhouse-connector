@@ -82,9 +82,9 @@ object JSONCompactEachRowWithNamesAndTypesStreamOutput {
 }
 
 class JSONCompactEachRowWithNamesAndTypesStreamOutput(
-  //     first row: names
-  //    second row: types
-  // following row: records
+  //     first row : names
+  //    second row : types
+  // following rows: records
   namesAndTypesDataStream: Iterator[Array[JsonNode]]
 ) extends StreamOutput[Array[JsonNode]] with NamesAndTypes {
 
