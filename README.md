@@ -18,7 +18,7 @@ Notes:
 1. Java 11 should work, but not tested.
 2. Currently, only support gRPC protocol, and ClickHouse support gRPC since 
    [v21.1.2.15-stable](https://github.com/ClickHouse/ClickHouse/blob/master/CHANGELOG.md#clickhouse-release-v211215-stable-2021-01-18),
-   but we only do test on v21.8.10.19-lts.
+   but we only do test on v21.8.14.5-lts.
 
 ## Build
 
