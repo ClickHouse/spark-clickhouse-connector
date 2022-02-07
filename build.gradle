@@ -199,7 +199,7 @@ project(':clickhouse-core-integration') {
         }
         testFixturesApi "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
-        testFixturesRuntimeOnly "ru.yandex.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
+        testFixturesRuntimeOnly "com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
 
         testRuntimeOnly "org.slf4j:log4j-over-slf4j:$slf4j_version"
         testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
