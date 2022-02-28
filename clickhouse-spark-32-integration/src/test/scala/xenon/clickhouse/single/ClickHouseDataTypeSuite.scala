@@ -17,6 +17,7 @@ package xenon.clickhouse.single
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.types.DataTypes.createArrayType
 import xenon.clickhouse.{BaseSparkSuite, Logging}
 import xenon.clickhouse.base.ClickHouseSingleMixIn
 
@@ -27,13 +28,14 @@ class ClickHouseDataTypeSuite extends BaseSparkSuite
     with Logging {
 
   test("write supported data types") {
-    val structFields =
-      StructField("id", DataTypes.LongType, false, Metadata.fromJson("""{"comment": "sort key"}""")) ::
-        StructField("col_string", DataTypes.StringType, false) ::
-        StructField("col_array_string", DataTypes.createArrayType(DataTypes.StringType, false), false) :: Nil
+    val schema = StructType(
+      StructField("id", LongType, false) ::
+        StructField("col_string", StringType, false) ::
+        StructField("col_array_string", createArrayType(StringType, false), false) :: Nil
+    )
     val db = "t_w_s_db"
     val tbl = "t_w_s_tbl"
-    withTable(db, tbl, structFields) {
+    withTable(db, tbl, schema) {
       val tblSchema = spark.table(s"$db.$tbl").schema
       // TODO v2 create table should respect element nullable of array field
       // assert(StructType(structFields) === tblSchema)

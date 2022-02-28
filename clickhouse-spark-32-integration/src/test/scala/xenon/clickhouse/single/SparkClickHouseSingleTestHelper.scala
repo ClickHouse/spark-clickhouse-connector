@@ -24,22 +24,22 @@ trait SparkClickHouseSingleTestHelper { self: BaseSparkSuite with SparkClickHous
   def withTable(
     db: String,
     tbl: String,
-    structFields: Seq[StructField],
+    schema: StructType,
     engine: String = "MergeTree()",
-    sortKey: String = "id",
-    partKey: Option[String] = None
+    sortKeys: Seq[String] = "id" :: Nil,
+    partKeys: Seq[String] = Seq.empty
   )(f: => Unit): Unit =
     try {
       runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
 
       spark.sql(
         s"""CREATE TABLE $db.$tbl (
-           |  ${structFields.map(_.toDDL).mkString(",\n  ")}
+           |  ${schema.fields.map(_.toDDL).mkString(",\n  ")}
            |) USING ClickHouse
-           |${partKey.map(k => s"PARTITIONED BY ($k)").getOrElse("")}
+           |${if (partKeys.isEmpty) "" else partKeys.mkString("PARTITIONED BY(", ", ", ")")}
            |TBLPROPERTIES (
-           |  engine = '$engine',
-           |  order_by = '($sortKey)'
+           |  ${if (sortKeys.isEmpty) "" else sortKeys.mkString("order_by = '(", ", ", ")',")}
+           |  engine = '$engine'
            |)
            |""".stripMargin
       )
