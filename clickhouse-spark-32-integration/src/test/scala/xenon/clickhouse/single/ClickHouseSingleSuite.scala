@@ -78,6 +78,52 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     }
   }
 
+  test("clickhouse multi part columns") {
+    val db = "db_multi_part_col"
+    val tbl = "tbl_multi_part_col"
+    val schema =
+      StructType(
+        StructField("id", LongType, false) ::
+          StructField("value", StringType, false) ::
+          StructField("part_1", StringType, false) ::
+          StructField("part_2", IntegerType, false) :: Nil
+      )
+    withTable(db, tbl, schema, partKeys = Seq("part_1", "part_2")) {
+      spark.sql(
+        s"""INSERT INTO `$db`.`$tbl`
+           |VALUES
+           |  (11L, 'one_one', '1', 1),
+           |  (12L, 'one_two', '1', 2) AS tab(id, value, part_1, part_2)
+           |""".stripMargin
+      )
+
+      spark.createDataFrame(Seq(
+        (21L, "two_one", "2", 1),
+        (22L, "two_two", "2", 2)
+      ))
+        .toDF("id", "value", "part_1", "part_2")
+        .writeTo(s"$db.$tbl").append
+
+      checkAnswer(
+        spark.table(s"$db.$tbl").orderBy($"id"),
+        Row(11L, "one_one", "1", 1) ::
+          Row(12L, "one_two", "1", 2) ::
+          Row(21L, "two_one", "2", 1) ::
+          Row(22L, "two_two", "2", 2) :: Nil
+      )
+
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        Seq(
+          Row("part_1=1/part_2=1"),
+          Row("part_1=1/part_2=2"),
+          Row("part_1=2/part_2=1"),
+          Row("part_1=2/part_2=2")
+        )
+      )
+    }
+  }
+
   ignore("clickhouse truncate table") {
     withClickHouseSingleIdTable("db_trunc", "tbl_trunc") { (db, tbl) =>
       spark.range(10).toDF("id").writeTo(s"$db.$tbl").append

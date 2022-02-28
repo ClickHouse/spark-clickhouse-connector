@@ -39,6 +39,6 @@ case class ClickHouseInputPartition(
 
   def partFilterExpr: String = partition match {
     case NoPartitionSpec => "1=1"
-    case PartitionSpec(part, _, _) => s"toString(${table.partition_key}) = '$part'"
+    case PartitionSpec(part, _, _) => s"${table.partition_key} = $part"
   }
 }

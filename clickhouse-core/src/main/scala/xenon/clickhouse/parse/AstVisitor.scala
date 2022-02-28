@@ -28,6 +28,11 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
   protected def typedVisit[T](ctx: ParseTree): T =
     ctx.accept(this).asInstanceOf[T]
 
+  protected def tuple(maybeSingleTupleExpr: List[Expr]): TupleExpr = maybeSingleTupleExpr match {
+    case List(tupleExpr: TupleExpr) => tupleExpr
+    case exprList: List[Expr] => TupleExpr(exprList)
+  }
+
   override def visitEngineClause(ctx: EngineClauseContext): TableEngineSpec = {
     val engineExpr = source(ctx.engineExpr)
     val engine = source(ctx.engineExpr.identifierOrNull)
@@ -50,9 +55,9 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
         MergeTreeEngineSpec(
           engine_clause = engineExpr,
           _sorting_key = orderByOpt.getOrElse(List.empty),
-          _primary_key = TupleExpr(pkOpt.toList),
-          _partition_key = TupleExpr(partOpt.toList),
-          _sampling_key = TupleExpr(sampleByOpt.toList),
+          _primary_key = tuple(pkOpt.toList),
+          _partition_key = tuple(partOpt.toList),
+          _sampling_key = tuple(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )
@@ -61,9 +66,9 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
           engine_clause = engineExpr,
           version_column = seqToOption(engineArgs).map(_.asInstanceOf[FieldRef]),
           _sorting_key = orderByOpt.getOrElse(List.empty),
-          _primary_key = TupleExpr(pkOpt.toList),
-          _partition_key = TupleExpr(partOpt.toList),
-          _sampling_key = TupleExpr(sampleByOpt.toList),
+          _primary_key = tuple(pkOpt.toList),
+          _partition_key = tuple(partOpt.toList),
+          _sampling_key = tuple(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )
@@ -73,9 +78,9 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
           zk_path = engineArgs.head.asInstanceOf[StringLiteral].value,
           replica_name = engineArgs(1).asInstanceOf[StringLiteral].value,
           _sorting_key = orderByOpt.getOrElse(List.empty),
-          _primary_key = TupleExpr(pkOpt.toList),
-          _partition_key = TupleExpr(partOpt.toList),
-          _sampling_key = TupleExpr(sampleByOpt.toList),
+          _primary_key = tuple(pkOpt.toList),
+          _partition_key = tuple(partOpt.toList),
+          _sampling_key = tuple(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )
@@ -86,9 +91,9 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
           replica_name = engineArgs(1).asInstanceOf[StringLiteral].value,
           version_column = seqToOption(engineArgs.drop(2)).map(_.asInstanceOf[FieldRef]),
           _sorting_key = orderByOpt.getOrElse(List.empty),
-          _primary_key = TupleExpr(pkOpt.toList),
-          _partition_key = TupleExpr(partOpt.toList),
-          _sampling_key = TupleExpr(sampleByOpt.toList),
+          _primary_key = tuple(pkOpt.toList),
+          _partition_key = tuple(partOpt.toList),
+          _sampling_key = tuple(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )
@@ -105,13 +110,15 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
     }
   }
 
-  ////////////////////////////////////////////////
-  /////////////// visit ColumnExpr ///////////////
-  ////////////////////////////////////////////////
+  // //////////////////////////////////////////////
+  // ///////////// visit ColumnExpr ///////////////
+  // //////////////////////////////////////////////
   def visitColumnExpr(ctx: ColumnExprContext): Expr = ctx match {
     case fieldCtx: ColumnExprIdentifierContext => visitColumnExprIdentifier(fieldCtx)
     case literalCtx: ColumnExprLiteralContext => visitColumnExprLiteral(literalCtx)
     case funcCtx: ColumnExprFunctionContext => visitColumnExprFunction(funcCtx)
+    case singleColCtx: ColumnExprParensContext => visitColumnExpr(singleColCtx.columnExpr)
+    case tupleCtx: ColumnExprTupleContext => visitColumnExprTuple(tupleCtx)
     case other: ColumnExprContext => throw new IllegalArgumentException(
         s"Unsupported ColumnExpr: [${other.getClass.getSimpleName}] ${other.getText}"
       )
@@ -142,9 +149,12 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
     FuncExpr(funcName, funArgs)
   }
 
-  ////////////////////////////////////////////////
-  //////////////// visit order by ////////////////
-  ////////////////////////////////////////////////
+  override def visitColumnExprTuple(ctx: ColumnExprTupleContext): TupleExpr =
+    TupleExpr(visitColumnExprList(ctx.columnExprList))
+
+  // //////////////////////////////////////////////
+  // ////////////// visit order by ////////////////
+  // //////////////////////////////////////////////
 
   override def visitOrderByClause(ctx: OrderByClauseContext): List[OrderExpr] =
     ctx.orderExprList.orderExpr.asScala.toList.map(visitOrderExpr)
@@ -155,9 +165,12 @@ class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
     OrderExpr(visitColumnExpr(ctx.columnExpr()), !desc, !nullLast)
   }
 
-  ////////////////////////////////////////////////
-  ///////////////// visit others /////////////////
-  ////////////////////////////////////////////////
+  // //////////////////////////////////////////////
+  // /////////////// visit others /////////////////
+  // //////////////////////////////////////////////
+
+  override def visitColumnExprList(ctx: ColumnExprListContext): List[Expr] =
+    ctx.columnsExpr.asScala.toList.map(visitColumnsExpr)
 
   def visitColumnsExpr(ctx: ColumnsExprContext): Expr = ctx match {
     case field: ColumnsExprColumnContext => visitColumnExpr(field.columnExpr)
