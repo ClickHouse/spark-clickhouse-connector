@@ -31,12 +31,14 @@ import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.read.{ClickHouseMetadataColumn, ClickHouseScanBuilder, ScanJobDescription}
 import xenon.clickhouse.spec._
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDescription}
-
 import java.lang.{Integer => JInt, Long => JLong}
 import java.time.ZoneId
 import java.util
+
 import scala.collection.JavaConverters._
 import scala.util.Using
+
+import org.apache.spark.unsafe.types.UTF8String
 
 class ClickHouseTable(
   node: NodeSpec,
@@ -209,7 +211,7 @@ class ClickHouseTable(
     )
 
     def strToSparkValue(str: String, dataType: DataType): Any = dataType match {
-      case StringType => str
+      case StringType => UTF8String.fromString(str.stripPrefix("'").stripSuffix("'"))
       case IntegerType => JInt.parseInt(str)
       case LongType => JLong.parseLong(str)
       case unsupported => throw new UnsupportedOperationException(s"$unsupported")
