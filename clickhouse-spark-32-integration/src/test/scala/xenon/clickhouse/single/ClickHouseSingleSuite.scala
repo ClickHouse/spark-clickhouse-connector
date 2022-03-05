@@ -61,6 +61,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     val db = "db_part"
     val tbl = "tbl_part"
 
+    // DROP + PURGE
     withSimpleTable(db, tbl, true) {
       checkAnswer(
         spark.sql(s"SHOW PARTITIONS $db.$tbl"),
@@ -70,10 +71,41 @@ class ClickHouseSingleSuite extends BaseSparkSuite
         spark.sql(s"SHOW PARTITIONS $db.$tbl PARTITION(m = 2)"),
         Seq(Row("m=2"))
       )
+
       spark.sql(s"ALTER TABLE $db.$tbl DROP PARTITION(m = 2)")
       checkAnswer(
         spark.sql(s"SHOW PARTITIONS $db.$tbl"),
         Seq(Row("m=1"))
+      )
+
+      spark.sql(s"ALTER TABLE $db.$tbl DROP PARTITION(m = 1) PURGE")
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        Seq()
+      )
+    }
+
+    // DROP + TRUNCATE
+    withSimpleTable(db, tbl, true) {
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        Seq(Row("m=1"), Row("m=2"))
+      )
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl PARTITION(m = 2)"),
+        Seq(Row("m=2"))
+      )
+
+      spark.sql(s"ALTER TABLE $db.$tbl DROP PARTITION(m = 2)")
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        Seq(Row("m=1"))
+      )
+
+      spark.sql(s"TRUNCATE TABLE $db.$tbl PARTITION(m = 1)")
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        Seq()
       )
     }
   }
