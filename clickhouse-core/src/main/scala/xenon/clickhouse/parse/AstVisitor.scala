@@ -17,12 +17,12 @@ package xenon.clickhouse.parse
 import scala.collection.JavaConverters._
 
 import org.antlr.v4.runtime.tree.ParseTree
-import xenon.clickhouse.{ClickHouseAstBaseVisitor, Logging, Utils}
-import xenon.clickhouse.spec._
-import xenon.clickhouse.ClickHouseAstParser._
+import xenon.clickhouse.{ClickHouseSQLBaseVisitor, Logging, Utils}
 import xenon.clickhouse.expr._
+import xenon.clickhouse.spec._
+import xenon.clickhouse.ClickHouseSQLParser._
 
-class AstVisitor extends ClickHouseAstBaseVisitor[AnyRef] with Logging {
+class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
   import ParseUtils._
 
   protected def typedVisit[T](ctx: ParseTree): T =

@@ -29,16 +29,16 @@ class SQLParser(astVisitor: AstVisitor) extends Logging {
   def parseEngineClause(sql: String): TableEngineSpec =
     parse(sql)(parser => astVisitor.visitEngineClause(parser.engineClause))
 
-  private def parse[T](sql: String)(toResult: ClickHouseAstParser => T): T = {
+  private def parse[T](sql: String)(toResult: ClickHouseSQLParser => T): T = {
 
     log.debug(s"Parsing SQL: $sql")
 
-    val lexer = new ClickHouseAstLexer(CharStreams.fromString(sql))
+    val lexer = new ClickHouseSQLLexer(CharStreams.fromString(sql))
     lexer.removeErrorListeners()
     lexer.addErrorListener(ParseErrorListener)
 
     val tokenStream = new CommonTokenStream(lexer)
-    val parser = new ClickHouseAstParser(tokenStream)
+    val parser = new ClickHouseSQLParser(tokenStream)
     parser.removeErrorListeners()
     parser.addErrorListener(ParseErrorListener)
 

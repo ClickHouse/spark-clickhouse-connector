@@ -10,12 +10,12 @@
 // See the License for the specific language governing permissions and
 // limitations under the License.
 
-// Modified based on
+// Modified based on ClickHouse commit 6930605 on Oct 14, 2021
 //   https://github.com/ClickHouse/ClickHouse/blob/master/utils/antlr/ClickHouseLexer.g4 and
 //   https://github.com/ClickHouse/ClickHouse/blob/master/utils/antlr/ClickHouseParser.g4
 ////
 
-grammar ClickHouseAst;
+grammar ClickHouseSQL;
 
 // Top-level statements
 
@@ -48,31 +48,37 @@ alterStmt
     ;
 
 alterTableClause
-    : ADD COLUMN (IF NOT EXISTS)? tableColumnDfnt (AFTER nestedIdentifier)?        # AlterTableClauseAddColumn
-    | ADD INDEX (IF NOT EXISTS)? tableIndexDfnt (AFTER nestedIdentifier)?          # AlterTableClauseAddIndex
-    | ATTACH partitionClause (FROM tableIdentifier)?                               # AlterTableClauseAttach
-    | CLEAR COLUMN (IF EXISTS)? nestedIdentifier (IN partitionClause)?             # AlterTableClauseClear
-    | COMMENT COLUMN (IF EXISTS)? nestedIdentifier STRING_LITERAL                  # AlterTableClauseComment
-    | DELETE WHERE columnExpr                                                      # AlterTableClauseDelete
-    | DETACH partitionClause                                                       # AlterTableClauseDetach
-    | DROP COLUMN (IF EXISTS)? nestedIdentifier                                    # AlterTableClauseDropColumn
-    | DROP INDEX (IF EXISTS)? nestedIdentifier                                     # AlterTableClauseDropIndex
-    | DROP partitionClause                                                         # AlterTableClauseDropPartition
-    | FREEZE partitionClause?                                                      # AlterTableClauseFreezePartition
-    | MODIFY COLUMN (IF EXISTS)? nestedIdentifier codecExpr                        # AlterTableClauseModifyCodec
-    | MODIFY COLUMN (IF EXISTS)? nestedIdentifier COMMENT STRING_LITERAL           # AlterTableClauseModifyComment
-    | MODIFY COLUMN (IF EXISTS)? nestedIdentifier REMOVE tableColumnPropertyType   # AlterTableClauseModifyRemove
-    | MODIFY COLUMN (IF EXISTS)? tableColumnDfnt                                   # AlterTableClauseModify
-    | MODIFY ORDER BY columnExpr                                                   # AlterTableClauseModifyOrderBy
-    | MODIFY ttlClause                                                             # AlterTableClauseModifyTTL
+    : ADD COLUMN (IF NOT EXISTS)? tableColumnDfnt (AFTER nestedIdentifier)?           # AlterTableClauseAddColumn
+    | ADD INDEX (IF NOT EXISTS)? tableIndexDfnt (AFTER nestedIdentifier)?             # AlterTableClauseAddIndex
+    | ADD PROJECTION (IF NOT EXISTS)? tableProjectionDfnt (AFTER nestedIdentifier)?   # AlterTableClauseAddProjection
+    | ATTACH partitionClause (FROM tableIdentifier)?                                  # AlterTableClauseAttach
+    | CLEAR COLUMN (IF EXISTS)? nestedIdentifier (IN partitionClause)?                # AlterTableClauseClearColumn
+    | CLEAR INDEX (IF EXISTS)? nestedIdentifier (IN partitionClause)?                 # AlterTableClauseClearIndex
+    | CLEAR PROJECTION (IF EXISTS)? nestedIdentifier (IN partitionClause)?            # AlterTableClauseClearProjection
+    | COMMENT COLUMN (IF EXISTS)? nestedIdentifier STRING_LITERAL                     # AlterTableClauseComment
+    | DELETE WHERE columnExpr                                                         # AlterTableClauseDelete
+    | DETACH partitionClause                                                          # AlterTableClauseDetach
+    | DROP COLUMN (IF EXISTS)? nestedIdentifier                                       # AlterTableClauseDropColumn
+    | DROP INDEX (IF EXISTS)? nestedIdentifier                                        # AlterTableClauseDropIndex
+    | DROP PROJECTION (IF EXISTS)? nestedIdentifier                                   # AlterTableClauseDropProjection
+    | DROP partitionClause                                                            # AlterTableClauseDropPartition
+    | FREEZE partitionClause?                                                         # AlterTableClauseFreezePartition
+    | MATERIALIZE INDEX (IF EXISTS)? nestedIdentifier (IN partitionClause)?           # AlterTableClauseMaterializeIndex
+    | MATERIALIZE PROJECTION (IF EXISTS)? nestedIdentifier (IN partitionClause)?      # AlterTableClauseMaterializeProjection
+    | MODIFY COLUMN (IF EXISTS)? nestedIdentifier codecExpr                           # AlterTableClauseModifyCodec
+    | MODIFY COLUMN (IF EXISTS)? nestedIdentifier COMMENT STRING_LITERAL              # AlterTableClauseModifyComment
+    | MODIFY COLUMN (IF EXISTS)? nestedIdentifier REMOVE tableColumnPropertyType      # AlterTableClauseModifyRemove
+    | MODIFY COLUMN (IF EXISTS)? tableColumnDfnt                                      # AlterTableClauseModify
+    | MODIFY ORDER BY columnExpr                                                      # AlterTableClauseModifyOrderBy
+    | MODIFY ttlClause                                                                # AlterTableClauseModifyTTL
     | MOVE partitionClause ( TO DISK STRING_LITERAL
                            | TO VOLUME STRING_LITERAL
                            | TO TABLE tableIdentifier
-                           )                                                       # AlterTableClauseMovePartition
-    | REMOVE TTL                                                                   # AlterTableClauseRemoveTTL
-    | RENAME COLUMN (IF EXISTS)? nestedIdentifier TO nestedIdentifier              # AlterTableClauseRename
-    | REPLACE partitionClause FROM tableIdentifier                                 # AlterTableClauseReplace
-    | UPDATE assignmentExprList whereClause                                        # AlterTableClauseUpdate
+                           )                                                          # AlterTableClauseMovePartition
+    | REMOVE TTL                                                                      # AlterTableClauseRemoveTTL
+    | RENAME COLUMN (IF EXISTS)? nestedIdentifier TO nestedIdentifier                 # AlterTableClauseRename
+    | REPLACE partitionClause FROM tableIdentifier                                    # AlterTableClauseReplace
+    | UPDATE assignmentExprList whereClause                                           # AlterTableClauseUpdate
     ;
 
 assignmentExprList: assignmentExpr (COMMA assignmentExpr)*;
@@ -98,10 +104,10 @@ checkStmt: CHECK TABLE tableIdentifier partitionClause?;
 
 createStmt
     : (ATTACH | CREATE) DATABASE (IF NOT EXISTS)? databaseIdentifier clusterClause? engineExpr?                                                                                       # CreateDatabaseStmt
-    | (ATTACH | CREATE) DICTIONARY (IF NOT EXISTS)? tableIdentifier uuidClause? clusterClause? dictionarySchemaClause dictionaryEngineClause                                          # CreateDictionaryStmt
+    | (ATTACH | CREATE (OR REPLACE)? | REPLACE) DICTIONARY (IF NOT EXISTS)? tableIdentifier uuidClause? clusterClause? dictionarySchemaClause dictionaryEngineClause                                          # CreateDictionaryStmt
     | (ATTACH | CREATE) LIVE VIEW (IF NOT EXISTS)? tableIdentifier uuidClause? clusterClause? (WITH TIMEOUT DECIMAL_LITERAL?)? destinationClause? tableSchemaClause? subqueryClause   # CreateLiveViewStmt
     | (ATTACH | CREATE) MATERIALIZED VIEW (IF NOT EXISTS)? tableIdentifier uuidClause? clusterClause? tableSchemaClause? (destinationClause | engineClause POPULATE?) subqueryClause  # CreateMaterializedViewStmt
-    | (ATTACH | CREATE) TEMPORARY? TABLE (IF NOT EXISTS)? tableIdentifier uuidClause? clusterClause? tableSchemaClause? engineClause? subqueryClause?                                 # CreateTableStmt
+    | (ATTACH | CREATE (OR REPLACE)? | REPLACE) TEMPORARY? TABLE (IF NOT EXISTS)? tableIdentifier uuidClause? clusterClause? tableSchemaClause? engineClause? subqueryClause?                                 # CreateTableStmt
     | (ATTACH | CREATE) (OR REPLACE)? VIEW (IF NOT EXISTS)? tableIdentifier uuidClause? clusterClause? tableSchemaClause? subqueryClause                                              # CreateViewStmt
     ;
 
@@ -156,11 +162,12 @@ primaryKeyClause: PRIMARY KEY columnExpr;
 sampleByClause: SAMPLE BY columnExpr;
 ttlClause: TTL ttlExpr (COMMA ttlExpr)*;
 
-engineExpr: ENGINE? EQ_SINGLE? identifierOrNull (LPAREN columnExprList? RPAREN)?;
+engineExpr: ENGINE EQ_SINGLE? identifierOrNull (LPAREN columnExprList? RPAREN)?;
 tableElementExpr
     : tableColumnDfnt                                                              # TableElementExprColumn
     | CONSTRAINT identifier CHECK columnExpr                                       # TableElementExprConstraint
     | INDEX tableIndexDfnt                                                         # TableElementExprIndex
+    | PROJECTION tableProjectionDfnt                                               # TableElementExprProjection
     ;
 tableColumnDfnt
     : nestedIdentifier columnTypeExpr tableColumnPropertyExpr? (COMMENT STRING_LITERAL)? codecExpr? (TTL columnExpr)?
@@ -168,6 +175,7 @@ tableColumnDfnt
     ;
 tableColumnPropertyExpr: (DEFAULT | MATERIALIZED | ALIAS) columnExpr;
 tableIndexDfnt: nestedIdentifier columnExpr TYPE columnTypeExpr GRANULARITY DECIMAL_LITERAL;
+tableProjectionDfnt: nestedIdentifier projectionSelectStmt;
 codecExpr: CODEC LPAREN codecArgExpr (COMMA codecArgExpr)* RPAREN;
 codecArgExpr: identifier (LPAREN columnExprList? RPAREN)?;
 ttlExpr: columnExpr (DELETE | TO DISK STRING_LITERAL | TO VOLUME STRING_LITERAL)?;
@@ -192,7 +200,10 @@ existsStmt
 
 // EXPLAIN statement
 
-explainStmt: EXPLAIN SYNTAX query;
+explainStmt
+    : EXPLAIN AST query     # ExplainASTStmt
+    | EXPLAIN SYNTAX query  # ExplainSyntaxStmt
+    ;
 
 // INSERT statement
 
@@ -219,6 +230,17 @@ optimizeStmt: OPTIMIZE TABLE tableIdentifier clusterClause? partitionClause? FIN
 
 renameStmt: RENAME TABLE tableIdentifier TO tableIdentifier (COMMA tableIdentifier TO tableIdentifier)* clusterClause?;
 
+// PROJECTION SELECT statement
+
+projectionSelectStmt:
+    LPAREN
+    withClause?
+    SELECT columnExprList
+    groupByClause?
+    projectionOrderByClause?
+    RPAREN
+    ;
+
 // SELECT statement
 
 selectUnionStmt: selectStmtWithParens (UNION ALL selectStmtWithParens)*;
@@ -228,6 +250,7 @@ selectStmt:
     SELECT DISTINCT? topClause? columnExprList
     fromClause?
     arrayJoinClause?
+    windowClause?
     prewhereClause?
     whereClause?
     groupByClause? (WITH (CUBE | ROLLUP))? (WITH TOTALS)?
@@ -242,11 +265,13 @@ withClause: WITH columnExprList;
 topClause: TOP DECIMAL_LITERAL (WITH TIES)?;
 fromClause: FROM joinExpr;
 arrayJoinClause: (LEFT | INNER)? ARRAY JOIN columnExprList;
+windowClause: WINDOW identifier AS LPAREN windowExpr RPAREN;
 prewhereClause: PREWHERE columnExpr;
 whereClause: WHERE columnExpr;
 groupByClause: GROUP BY ((CUBE | ROLLUP) LPAREN columnExprList RPAREN | columnExprList);
 havingClause: HAVING columnExpr;
 orderByClause: ORDER BY orderExprList;
+projectionOrderByClause: ORDER BY columnExprList;
 limitByClause: LIMIT limitExpr BY columnExprList;
 limitClause: LIMIT limitExpr (WITH TIES)?;
 settingsClause: SETTINGS settingExprList;
@@ -281,6 +306,18 @@ orderExpr: columnExpr (ASCENDING | DESCENDING | DESC)? (NULLS (FIRST | LAST))? (
 ratioExpr: numberLiteral (SLASH numberLiteral)?;
 settingExprList: settingExpr (COMMA settingExpr)*;
 settingExpr: identifier EQ_SINGLE literal;
+
+windowExpr: winPartitionByClause? winOrderByClause? winFrameClause?;
+winPartitionByClause: PARTITION BY columnExprList;
+winOrderByClause: ORDER BY orderExprList;
+winFrameClause: (ROWS | RANGE) winFrameExtend;
+winFrameExtend
+    : winFrameBound                             # frameStart
+    | BETWEEN winFrameBound AND winFrameBound   # frameBetween
+    ;
+winFrameBound: (CURRENT ROW | UNBOUNDED PRECEDING | UNBOUNDED FOLLOWING | numberLiteral PRECEDING | numberLiteral FOLLOWING);
+//rangeClause: RANGE LPAREN (MIN identifier MAX identifier | MAX identifier MIN identifier) RPAREN;
+
 
 // SET statement
 
@@ -348,6 +385,8 @@ columnExpr
     | SUBSTRING LPAREN columnExpr FROM columnExpr (FOR columnExpr)? RPAREN                # ColumnExprSubstring
     | TIMESTAMP STRING_LITERAL                                                            # ColumnExprTimestamp
     | TRIM LPAREN (BOTH | LEADING | TRAILING) STRING_LITERAL FROM columnExpr RPAREN       # ColumnExprTrim
+    | identifier (LPAREN columnExprList? RPAREN) OVER LPAREN windowExpr RPAREN            # ColumnExprWinFunction
+    | identifier (LPAREN columnExprList? RPAREN) OVER identifier                          # ColumnExprWinFunctionTarget
     | identifier (LPAREN columnExprList? RPAREN)? LPAREN DISTINCT? columnArgList? RPAREN  # ColumnExprFunction
     | literal                                                                             # ColumnExprLiteral
 
@@ -412,7 +451,7 @@ tableFunctionExpr: identifier LPAREN tableArgList? RPAREN;
 tableIdentifier: (databaseIdentifier DOT)? identifier;
 tableArgList: tableArgExpr (COMMA tableArgExpr)*;
 tableArgExpr
-    : tableIdentifier
+    : nestedIdentifier
     | tableFunctionExpr
     | literal
     ;
@@ -437,18 +476,18 @@ literal
 interval: SECOND | MINUTE | HOUR | DAY | WEEK | MONTH | QUARTER | YEAR;
 keyword
     // except NULL_SQL, INF, NAN_SQL
-    : AFTER | ALIAS | ALL | ALTER | AND | ANTI | ANY | ARRAY | AS | ASCENDING | ASOF | ASYNC | ATTACH | BETWEEN | BOTH | BY | CASE | CAST
-    | CHECK | CLEAR | CLUSTER | CODEC | COLLATE | COLUMN | COMMENT | CONSTRAINT | CREATE | CROSS | CUBE | DATABASE | DATABASES | DATE
-    | DEDUPLICATE | DEFAULT | DELAY | DELETE | DESCRIBE | DESC | DESCENDING | DETACH | DICTIONARIES | DICTIONARY | DISK | DISTINCT
-    | DISTRIBUTED | DROP | ELSE | END | ENGINE | EVENTS | EXISTS | EXPLAIN | EXPRESSION | EXTRACT | FETCHES | FINAL | FIRST | FLUSH | FOR
-    | FORMAT | FREEZE | FROM | FULL | FUNCTION | GLOBAL | GRANULARITY | GROUP | HAVING | HIERARCHICAL | ID | IF | ILIKE | IN | INDEX
-    | INJECTIVE | INNER | INSERT | INTERVAL | INTO | IS | IS_OBJECT_ID | JOIN | JSON_FALSE | JSON_TRUE | KEY | KILL | LAST | LAYOUT
-    | LEADING | LEFT | LIFETIME | LIKE | LIMIT | LIVE | LOCAL | LOGS | MATERIALIZED | MAX | MERGES | MIN | MODIFY | MOVE | MUTATION | NO
-    | NOT | NULLS | OFFSET | ON | OPTIMIZE | OR | ORDER | OUTER | OUTFILE | PARTITION | POPULATE | PREWHERE | PRIMARY | RANGE | RELOAD
-    | REMOVE | RENAME | REPLACE | REPLICA | REPLICATED | RIGHT | ROLLUP | SAMPLE | SELECT | SEMI | SENDS | SET | SETTINGS | SHOW | SOURCE
-    | START | STOP | SUBSTRING | SYNC | SYNTAX | SYSTEM | TABLE | TABLES | TEMPORARY | TEST | THEN | TIES | TIMEOUT | TIMESTAMP | TOTALS
-    | TRAILING | TRIM | TRUNCATE | TO | TOP | TTL | TYPE | UNION | UPDATE | USE | USING | UUID | VALUES | VIEW | VOLUME | WATCH | WHEN
-    | WHERE | WITH
+    : AFTER | ALIAS | ALL | ALTER | AND | ANTI | ANY | ARRAY | AS | ASCENDING | ASOF | AST | ASYNC | ATTACH | BETWEEN | BOTH | BY | CASE
+    | CAST | CHECK | CLEAR | CLUSTER | CODEC | COLLATE | COLUMN | COMMENT | CONSTRAINT | CREATE | CROSS | CUBE | CURRENT | DATABASE
+    | DATABASES | DATE | DEDUPLICATE | DEFAULT | DELAY | DELETE | DESCRIBE | DESC | DESCENDING | DETACH | DICTIONARIES | DICTIONARY | DISK
+    | DISTINCT | DISTRIBUTED | DROP | ELSE | END | ENGINE | EVENTS | EXISTS | EXPLAIN | EXPRESSION | EXTRACT | FETCHES | FINAL | FIRST
+    | FLUSH | FOR | FOLLOWING | FOR | FORMAT | FREEZE | FROM | FULL | FUNCTION | GLOBAL | GRANULARITY | GROUP | HAVING | HIERARCHICAL | ID
+    | IF | ILIKE | IN | INDEX | INJECTIVE | INNER | INSERT | INTERVAL | INTO | IS | IS_OBJECT_ID | JOIN | JSON_FALSE | JSON_TRUE | KEY
+    | KILL | LAST | LAYOUT | LEADING | LEFT | LIFETIME | LIKE | LIMIT | LIVE | LOCAL | LOGS | MATERIALIZE | MATERIALIZED | MAX | MERGES
+    | MIN | MODIFY | MOVE | MUTATION | NO | NOT | NULLS | OFFSET | ON | OPTIMIZE | OR | ORDER | OUTER | OUTFILE | OVER | PARTITION
+    | POPULATE | PRECEDING | PREWHERE | PRIMARY | RANGE | RELOAD | REMOVE | RENAME | REPLACE | REPLICA | REPLICATED | RIGHT | ROLLUP | ROW
+    | ROWS | SAMPLE | SELECT | SEMI | SENDS | SET | SETTINGS | SHOW | SOURCE | START | STOP | SUBSTRING | SYNC | SYNTAX | SYSTEM | TABLE
+    | TABLES | TEMPORARY | TEST | THEN | TIES | TIMEOUT | TIMESTAMP | TOTALS | TRAILING | TRIM | TRUNCATE | TO | TOP | TTL | TYPE
+    | UNBOUNDED | UNION | UPDATE | USE | USING | UUID | VALUES | VIEW | VOLUME | WATCH | WHEN | WHERE | WINDOW | WITH
     ;
 keywordForAlias
     : DATE | FIRST | ID | KEY
@@ -457,6 +496,9 @@ alias: IDENTIFIER | keywordForAlias;  // |interval| can't be an alias, otherwise
 identifier: IDENTIFIER | interval | keyword;
 identifierOrNull: identifier | NULL_SQL;  // NULL_SQL can be only 'Null' here.
 enumValue: STRING_LITERAL EQ_SINGLE numberLiteral;
+
+
+// NOTE: don't forget to add new keywords to the parser rule "keyword"!
 
 // Keywords
 
@@ -472,6 +514,7 @@ ARRAY: A R R A Y;
 AS: A S;
 ASCENDING: A S C | A S C E N D I N G;
 ASOF: A S O F;
+AST: A S T;
 ASYNC: A S Y N C;
 ATTACH: A T T A C H;
 BETWEEN: B E T W E E N;
@@ -490,6 +533,7 @@ CONSTRAINT: C O N S T R A I N T;
 CREATE: C R E A T E;
 CROSS: C R O S S;
 CUBE: C U B E;
+CURRENT: C U R R E N T;
 DATABASE: D A T A B A S E;
 DATABASES: D A T A B A S E S;
 DATE: D A T E;
@@ -520,6 +564,7 @@ FETCHES: F E T C H E S;
 FINAL: F I N A L;
 FIRST: F I R S T;
 FLUSH: F L U S H;
+FOLLOWING: F O L L O W I N G;
 FOR: F O R;
 FORMAT: F O R M A T;
 FREEZE: F R E E Z E;
@@ -558,6 +603,7 @@ LIMIT: L I M I T;
 LIVE: L I V E;
 LOCAL: L O C A L;
 LOGS: L O G S;
+MATERIALIZE: M A T E R I A L I Z E;
 MATERIALIZED: M A T E R I A L I Z E D;
 MAX: M A X;
 MERGES: M E R G E S;
@@ -579,10 +625,13 @@ OR: O R;
 ORDER: O R D E R;
 OUTER: O U T E R;
 OUTFILE: O U T F I L E;
+OVER: O V E R;
 PARTITION: P A R T I T I O N;
 POPULATE: P O P U L A T E;
+PRECEDING: P R E C E D I N G;
 PREWHERE: P R E W H E R E;
 PRIMARY: P R I M A R Y;
+PROJECTION: P R O J E C T I O N;
 QUARTER: Q U A R T E R;
 RANGE: R A N G E;
 RELOAD: R E L O A D;
@@ -593,6 +642,8 @@ REPLICA: R E P L I C A;
 REPLICATED: R E P L I C A T E D;
 RIGHT: R I G H T;
 ROLLUP: R O L L U P;
+ROW: R O W;
+ROWS: R O W S;
 SAMPLE: S A M P L E;
 SECOND: S E C O N D;
 SELECT: S E L E C T;
@@ -624,6 +675,7 @@ TRIM: T R I M;
 TRUNCATE: T R U N C A T E;
 TTL: T T L;
 TYPE: T Y P E;
+UNBOUNDED: U N B O U N D E D;
 UNION: U N I O N;
 UPDATE: U P D A T E;
 USE: U S E;
@@ -636,6 +688,7 @@ WATCH: W A T C H;
 WEEK: W E E K;
 WHEN: W H E N;
 WHERE: W H E R E;
+WINDOW: W I N D O W;
 WITH: W I T H;
 YEAR: Y E A R | Y Y Y Y;
 
