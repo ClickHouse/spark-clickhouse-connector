@@ -20,7 +20,7 @@ sealed trait TableEngineSpec extends Serializable {
   def engine_clause: String
   def engine: String
   def args: List[Expr] = List.empty
-  def sorting_key: List[OrderExpr] = List.empty
+  def sorting_key: TupleExpr = TupleExpr(List.empty)
   def primary_key: TupleExpr = TupleExpr(List.empty)
   def partition_key: TupleExpr = TupleExpr(List.empty)
   def sampling_key: TupleExpr = TupleExpr(List.empty)
@@ -28,6 +28,7 @@ sealed trait TableEngineSpec extends Serializable {
   def settings: Map[String, String]
   def is_distributed: Boolean = false
   def is_replicated: Boolean = false
+  def order_by_expr: List[OrderExpr] = sorting_key.exprList.map(OrderExpr(_))
 }
 
 trait MergeTreeFamilyEngineSpec extends TableEngineSpec
@@ -47,7 +48,7 @@ case class UnknownTableEngineSpec(
 
 case class MergeTreeEngineSpec(
   engine_clause: String,
-  var _sorting_key: List[OrderExpr] = List.empty,
+  var _sorting_key: TupleExpr = TupleExpr(List.empty),
   var _primary_key: TupleExpr = TupleExpr(List.empty),
   var _partition_key: TupleExpr = TupleExpr(List.empty),
   var _sampling_key: TupleExpr = TupleExpr(List.empty),
@@ -55,7 +56,7 @@ case class MergeTreeEngineSpec(
   var _settings: Map[String, String] = Map.empty
 ) extends MergeTreeFamilyEngineSpec {
   override def engine: String = "MergeTree"
-  override def sorting_key: List[OrderExpr] = _sorting_key
+  override def sorting_key: TupleExpr = _sorting_key
   override def primary_key: TupleExpr = _primary_key
   override def partition_key: TupleExpr = _partition_key
   override def sampling_key: TupleExpr = _sampling_key
@@ -67,7 +68,7 @@ case class ReplicatedMergeTreeEngineSpec(
   engine_clause: String,
   zk_path: String,
   replica_name: String,
-  var _sorting_key: List[OrderExpr] = List.empty,
+  var _sorting_key: TupleExpr = TupleExpr(List.empty),
   var _primary_key: TupleExpr = TupleExpr(List.empty),
   var _partition_key: TupleExpr = TupleExpr(List.empty),
   var _sampling_key: TupleExpr = TupleExpr(List.empty),
@@ -75,7 +76,7 @@ case class ReplicatedMergeTreeEngineSpec(
   var _settings: Map[String, String] = Map.empty
 ) extends MergeTreeFamilyEngineSpec with ReplicatedEngineSpec {
   def engine: String = "ReplicatedMergeTree"
-  override def sorting_key: List[OrderExpr] = _sorting_key
+  override def sorting_key: TupleExpr = _sorting_key
   override def primary_key: TupleExpr = _primary_key
   override def partition_key: TupleExpr = _partition_key
   override def sampling_key: TupleExpr = _sampling_key
@@ -86,7 +87,7 @@ case class ReplicatedMergeTreeEngineSpec(
 case class ReplacingMergeTreeEngineSpec(
   engine_clause: String,
   version_column: Option[FieldRef] = None,
-  var _sorting_key: List[OrderExpr] = List.empty,
+  var _sorting_key: TupleExpr = TupleExpr(List.empty),
   var _primary_key: TupleExpr = TupleExpr(List.empty),
   var _partition_key: TupleExpr = TupleExpr(List.empty),
   var _sampling_key: TupleExpr = TupleExpr(List.empty),
@@ -94,7 +95,7 @@ case class ReplacingMergeTreeEngineSpec(
   var _settings: Map[String, String] = Map.empty
 ) extends MergeTreeFamilyEngineSpec {
   override def engine: String = "ReplacingMergeTree"
-  override def sorting_key: List[OrderExpr] = _sorting_key
+  override def sorting_key: TupleExpr = _sorting_key
   override def primary_key: TupleExpr = _primary_key
   override def partition_key: TupleExpr = _partition_key
   override def sampling_key: TupleExpr = _sampling_key
@@ -107,7 +108,7 @@ case class ReplicatedReplacingMergeTreeEngineSpec(
   zk_path: String,
   replica_name: String,
   version_column: Option[FieldRef] = None,
-  var _sorting_key: List[OrderExpr] = List.empty,
+  var _sorting_key: TupleExpr = TupleExpr(List.empty),
   var _primary_key: TupleExpr = TupleExpr(List.empty),
   var _partition_key: TupleExpr = TupleExpr(List.empty),
   var _sampling_key: TupleExpr = TupleExpr(List.empty),
@@ -115,7 +116,7 @@ case class ReplicatedReplacingMergeTreeEngineSpec(
   var _settings: Map[String, String] = Map.empty
 ) extends MergeTreeFamilyEngineSpec with ReplicatedEngineSpec {
   override def engine: String = "ReplicatedReplacingMergeTree"
-  override def sorting_key: List[OrderExpr] = _sorting_key
+  override def sorting_key: TupleExpr = _sorting_key
   override def primary_key: TupleExpr = _primary_key
   override def partition_key: TupleExpr = _partition_key
   override def sampling_key: TupleExpr = _sampling_key

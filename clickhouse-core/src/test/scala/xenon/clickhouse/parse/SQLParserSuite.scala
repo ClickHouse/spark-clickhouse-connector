@@ -27,7 +27,7 @@ class SQLParserSuite extends AnyFunSuite {
     val actual = parser.parseEngineClause(ddl)
     val expected = MergeTreeEngineSpec(
       engine_clause = "MergeTree",
-      _sorting_key = List(OrderExpr(FieldRef("id"))),
+      _sorting_key = TupleExpr(FieldRef("id") :: Nil),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("create_time")))))
     )
     assert(actual === expected)
@@ -41,7 +41,7 @@ class SQLParserSuite extends AnyFunSuite {
       engine_clause = "ReplicatedMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}')",
       zk_path = "/clickhouse/tables/{shard}/wj_report/wj_respondent",
       replica_name = "{replica}",
-      _sorting_key = List(OrderExpr(FieldRef("id"))),
+      _sorting_key = TupleExpr(FieldRef("id") :: Nil),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
       _settings = Map("index_granularity" -> "8192")
     )
@@ -54,7 +54,7 @@ class SQLParserSuite extends AnyFunSuite {
     val actual = parser.parseEngineClause(ddl)
     val expected = ReplacingMergeTreeEngineSpec(
       engine_clause = "ReplacingMergeTree()",
-      _sorting_key = List(OrderExpr(FieldRef("id"))),
+      _sorting_key = TupleExpr(FieldRef("id") :: Nil),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
       _settings = Map("index_granularity" -> "8192")
     )
@@ -68,7 +68,7 @@ class SQLParserSuite extends AnyFunSuite {
     val expected = ReplacingMergeTreeEngineSpec(
       engine_clause = "ReplacingMergeTree(ts)",
       version_column = Some(FieldRef("ts")),
-      _sorting_key = List(OrderExpr(FieldRef("id"))),
+      _sorting_key = TupleExpr(FieldRef("id") :: Nil),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
       _settings = Map("index_granularity" -> "8192")
     )
@@ -83,7 +83,7 @@ class SQLParserSuite extends AnyFunSuite {
       engine_clause = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}')",
       zk_path = "/clickhouse/tables/{shard}/wj_report/wj_respondent",
       replica_name = "{replica}",
-      _sorting_key = List(OrderExpr(FieldRef("id"))),
+      _sorting_key = TupleExpr(FieldRef("id") :: Nil),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
       _settings = Map("index_granularity" -> "8192")
     )
@@ -100,7 +100,7 @@ class SQLParserSuite extends AnyFunSuite {
       zk_path = "/clickhouse/tables/{shard}/wj_report/wj_respondent",
       replica_name = "{replica}",
       version_column = Some(FieldRef("ts")),
-      _sorting_key = List(OrderExpr(FieldRef("id"))),
+      _sorting_key = TupleExpr(FieldRef("id") :: Nil),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
       _settings = Map("index_granularity" -> "8192")
     )
@@ -151,7 +151,7 @@ class SQLParserSuite extends AnyFunSuite {
     val actual = parser.parseEngineClause(ddl)
     val expected = MergeTreeEngineSpec(
       engine_clause = "MergeTree",
-      _sorting_key = OrderExpr(FieldRef("id")) :: Nil,
+      _sorting_key = TupleExpr(FieldRef("id") :: Nil),
       _partition_key = TupleExpr(FieldRef("a") :: Nil)
     )
     assert(actual === expected)
@@ -162,8 +162,29 @@ class SQLParserSuite extends AnyFunSuite {
     val actual = parser.parseEngineClause(ddl)
     val expected = MergeTreeEngineSpec(
       engine_clause = "MergeTree",
-      _sorting_key = OrderExpr(FieldRef("id")) :: Nil,
+      _sorting_key = TupleExpr(FieldRef("id") :: Nil),
       _partition_key = TupleExpr(FieldRef("a") :: FieldRef("b") :: Nil)
+    )
+    assert(actual === expected)
+  }
+
+
+  test("parse MergeTree - order by tuple - 1") {
+    val ddl = "MergeTree ORDER BY (a)"
+    val actual = parser.parseEngineClause(ddl)
+    val expected = MergeTreeEngineSpec(
+      engine_clause = "MergeTree",
+      _sorting_key = TupleExpr(FieldRef("a") :: Nil)
+    )
+    assert(actual === expected)
+  }
+
+  test("parse MergeTree - order by tuple - 2") {
+    val ddl = "MergeTree ORDER BY (a, b)"
+    val actual = parser.parseEngineClause(ddl)
+    val expected = MergeTreeEngineSpec(
+      engine_clause = "MergeTree",
+      _sorting_key = TupleExpr(FieldRef("a") :: FieldRef("b") :: Nil)
     )
     assert(actual === expected)
   }

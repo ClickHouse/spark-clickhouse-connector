@@ -124,6 +124,42 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     }
   }
 
+  test("clickhouse multi sort columns") {
+    val db = "db_multi_sort_col"
+    val tbl = "tbl_multi_sort_col"
+    val schema =
+      StructType(
+        StructField("id", LongType, false) ::
+          StructField("value", StringType, false) ::
+          StructField("sort_2", StringType, false) ::
+          StructField("sort_3", IntegerType, false) :: Nil
+      )
+    withTable(db, tbl, schema, sortKeys = Seq("sort_2", "sort_3")) {
+      spark.sql(
+        s"""INSERT INTO `$db`.`$tbl`
+           |VALUES
+           |  (11L, 'one_one', '1', 1),
+           |  (12L, 'one_two', '1', 2) AS tab(id, value, sort_2, sort_3)
+           |""".stripMargin
+      )
+
+      spark.createDataFrame(Seq(
+        (21L, "two_one", "2", 1),
+        (22L, "two_two", "2", 2)
+      ))
+        .toDF("id", "value", "sort_2", "sort_3")
+        .writeTo(s"$db.$tbl").append
+
+      checkAnswer(
+        spark.table(s"$db.$tbl").orderBy($"id"),
+        Row(11L, "one_one", "1", 1) ::
+          Row(12L, "one_two", "1", 2) ::
+          Row(21L, "two_one", "2", 1) ::
+          Row(22L, "two_two", "2", 2) :: Nil
+      )
+    }
+  }
+
   ignore("clickhouse truncate table") {
     withClickHouseSingleIdTable("db_trunc", "tbl_trunc") { (db, tbl) =>
       spark.range(10).toDF("id").writeTo(s"$db.$tbl").append
