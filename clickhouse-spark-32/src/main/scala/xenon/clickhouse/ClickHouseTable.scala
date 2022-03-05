@@ -194,6 +194,10 @@ class ClickHouseTable(
     }
   }
 
+  override def purgePartition(ident: InternalRow): Boolean = dropPartition(ident)
+
+  override def truncatePartition(ident: InternalRow): Boolean = dropPartition(ident)
+
   override def replacePartitionMetadata(ident: InternalRow, props: util.Map[String, String]): Unit =
     throw new UnsupportedOperationException("Unsupported operation: replacePartitionMetadata")
 
