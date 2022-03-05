@@ -14,13 +14,13 @@
 
 package xenon.clickhouse.write
 
+import java.time.ZoneId
+
 import org.apache.spark.sql.clickhouse.{ExprUtils, WriteOptions}
 import org.apache.spark.sql.connector.expressions.{Expression, SortOrder, Transform}
 import org.apache.spark.sql.types.StructType
-import xenon.clickhouse.expr.{Expr, OrderExpr}
+import xenon.clickhouse.expr.{Expr, FuncExpr, OrderExpr}
 import xenon.clickhouse.spec._
-
-import java.time.ZoneId
 
 case class WriteJobDescription(
   queryId: String,
@@ -48,12 +48,17 @@ case class WriteJobDescription(
     case _ => tableSpec.name
   }
 
-  def sparkShardExpr: Option[Expression] = (tableEngineSpec, shardingKey) match {
-    case (_: DistributedEngineSpec, Some(expr)) => Some(ExprUtils.toSparkTransform(expr))
+  def shardingKeyIgnoreRand: Option[Expr] = shardingKey filter {
+    case FuncExpr("rand", Nil) => false
+    case _ => true
+  }
+
+  def sparkShardExpr: Option[Expression] = shardingKeyIgnoreRand match {
+    case Some(expr) => Some(ExprUtils.toSparkTransform(expr))
     case _ => None
   }
 
-  def sparkParts: Array[Transform] = ExprUtils.toSparkParts(shardingKey, partitionKey)
+  def sparkSplits: Array[Transform] = ExprUtils.toSparkSplits(shardingKeyIgnoreRand, partitionKey)
 
-  def sparkSortOrders: Array[SortOrder] = ExprUtils.toSparkSortOrders(shardingKey, partitionKey, sortingKey)
+  def sparkSortOrders: Array[SortOrder] = ExprUtils.toSparkSortOrders(shardingKeyIgnoreRand, partitionKey, sortingKey)
 }

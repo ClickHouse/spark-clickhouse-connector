@@ -141,21 +141,24 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
     StringLiteral(Utils.stripSingleQuote(source(ctx.literal)))
 
   override def visitColumnExprFunction(ctx: ColumnExprFunctionContext): FuncExpr = {
-    if (ctx.columnExprList != null) throw new IllegalArgumentException(
+    require(
+      ctx.columnExprList == null,
       s"Unsupported ColumnExprFunction with columnExprList: [${ctx.getClass.getSimpleName}] ${ctx.getText}"
     )
-    if (ctx.DISTINCT != null) throw new IllegalArgumentException(
+    require(
+      ctx.DISTINCT == null,
       s"Unsupported ColumnExprFunction with DISTINCT: [${ctx.getClass.getSimpleName}] ${ctx.getText}"
     )
 
     val funcName = ctx.identifier.getText
-    val funArgs = ctx.columnArgList.columnArgExpr.asScala.toList.map { columnArgExprCtx =>
-      if (columnArgExprCtx.columnLambdaExpr != null) throw new IllegalArgumentException(
+    val funArgs = Option(ctx.columnArgList).map(_.columnArgExpr.asScala.toList.map { columnArgExprCtx =>
+      require(
+        columnArgExprCtx.columnLambdaExpr == null,
         s"Unsupported ColumnLambdaExpr: ${source(columnArgExprCtx)}"
       )
       // recursive visit, but not sure if spark support the nested transform
       visitColumnExpr(columnArgExprCtx.columnExpr)
-    }
+    }).getOrElse(Nil)
     FuncExpr(funcName, funArgs)
   }
 
