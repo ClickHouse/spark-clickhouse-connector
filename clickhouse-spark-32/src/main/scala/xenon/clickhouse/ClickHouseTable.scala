@@ -14,23 +14,6 @@
 
 package xenon.clickhouse
 
-import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
-import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
-import org.apache.spark.sql.clickhouse.{ExprUtils, ReadOptions, WriteOptions}
-import org.apache.spark.sql.connector.catalog.TableCapability._
-import org.apache.spark.sql.connector.catalog._
-import org.apache.spark.sql.connector.expressions.Transform
-import org.apache.spark.sql.connector.read.ScanBuilder
-import org.apache.spark.sql.connector.write.LogicalWriteInfo
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.util.CaseInsensitiveStringMap
-import xenon.clickhouse.Utils._
-import xenon.clickhouse.expr.{Expr, OrderExpr}
-import xenon.clickhouse.grpc.GrpcNodeClient
-import xenon.clickhouse.read.{ClickHouseMetadataColumn, ClickHouseScanBuilder, ScanJobDescription}
-import xenon.clickhouse.spec._
-import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDescription}
 import java.lang.{Integer => JInt, Long => JLong}
 import java.time.ZoneId
 import java.util
@@ -38,7 +21,24 @@ import java.util
 import scala.collection.JavaConverters._
 import scala.util.Using
 
+import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
+import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
+import org.apache.spark.sql.clickhouse.{ExprUtils, ReadOptions, WriteOptions}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
+import org.apache.spark.sql.connector.catalog._
+import org.apache.spark.sql.connector.catalog.TableCapability._
+import org.apache.spark.sql.connector.expressions.Transform
+import org.apache.spark.sql.connector.read.ScanBuilder
+import org.apache.spark.sql.connector.write.LogicalWriteInfo
+import org.apache.spark.sql.types._
+import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.apache.spark.unsafe.types.UTF8String
+import xenon.clickhouse.Utils._
+import xenon.clickhouse.expr.{Expr, OrderExpr}
+import xenon.clickhouse.grpc.GrpcNodeClient
+import xenon.clickhouse.read.{ClickHouseMetadataColumn, ClickHouseScanBuilder, ScanJobDescription}
+import xenon.clickhouse.spec._
+import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDescription}
 
 class ClickHouseTable(
   node: NodeSpec,
@@ -175,9 +175,6 @@ class ClickHouseTable(
     log.info("Do nothing on ClickHouse for creating partition action")
 
   override def dropPartition(ident: InternalRow): Boolean = {
-    if (isDistributed)
-      throw new UnsupportedOperationException(s"Unsupported operation: drop partition on Distributed table")
-
     val partitionExpr = (0 until ident.numFields).map { i =>
       partitionSchema.fields(i).dataType match {
         case IntegerType => compileValue(ident.getInt(i))
@@ -188,7 +185,12 @@ class ClickHouseTable(
     }.mkString("(", ",", ")")
 
     Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
-      dropPartition(database, table, partitionExpr)
+      engineSpec match {
+        case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
+          dropPartition(local_db, local_table, partitionExpr, Some(cluster))
+        case _ =>
+          dropPartition(database, table, partitionExpr)
+      }
     }
   }
 
@@ -217,9 +219,21 @@ class ClickHouseTable(
       case unsupported => throw new UnsupportedOperationException(s"$unsupported")
     }
 
-    Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
-      queryPartitionSpec(database, table).map(_.partition)
+    val partitionSpecs: Seq[PartitionSpec] = engineSpec match {
+      case DistributedEngineSpec(_, _, local_db, local_table, _, _) =>
+        cluster.get.shards.flatMap { shardSpec =>
+          Using.resource(GrpcNodeClient(shardSpec.nodes.head)) { implicit grpcNodeClient: GrpcNodeClient =>
+            queryPartitionSpec(local_db, local_table)
+          }
+        }
+      case _ =>
+        Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+          queryPartitionSpec(database, table)
+        }
     }
+    partitionSpecs.map(_.partition)
+      .distinct
+      .filterNot(_.isEmpty) // represent partitioned table w/o records
       .filterNot(_ == "tuple()") // represent the root partition of un-partitioned table
       .map {
         case tuple if tuple.startsWith("(") && tuple.endsWith(")") =>
