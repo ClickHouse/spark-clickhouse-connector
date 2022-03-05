@@ -28,7 +28,7 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
   protected def typedVisit[T](ctx: ParseTree): T =
     ctx.accept(this).asInstanceOf[T]
 
-  protected def tuple(maybeSingleTupleExpr: List[Expr]): TupleExpr = maybeSingleTupleExpr match {
+  protected def tupleIfNeeded(maybeSingleTupleExpr: List[Expr]): TupleExpr = maybeSingleTupleExpr match {
     case List(tupleExpr: TupleExpr) => tupleExpr
     case exprList: List[Expr] => TupleExpr(exprList)
   }
@@ -43,21 +43,31 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
         .getOrElse(List.empty)
         .map(visitColumnsExpr)
 
-    val orderByOpt = listToOption(ctx.orderByClause).map(visitOrderByClause)
-    val pkOpt = listToOption(ctx.primaryKeyClause).map(_.columnExpr).map(visitColumnExpr)
-    val partOpt = listToOption(ctx.partitionByClause).map(_.columnExpr).map(visitColumnExpr)
-    val sampleByOpt = listToOption(ctx.sampleByClause).map(_.columnExpr).map(visitColumnExpr)
+    val orderByOpt = listToOption(ctx.orderByClause)
+      .map(visitOrderByClause)
+      .map(orderByList => tupleIfNeeded(orderByList.map(_.expr)))
+    val pkOpt = listToOption(ctx.primaryKeyClause)
+      .map(_.columnExpr)
+      .map(visitColumnExpr)
+    val partOpt = listToOption(ctx.partitionByClause)
+      .map(_.columnExpr)
+      .map(visitColumnExpr)
+    val sampleByOpt = listToOption(ctx.sampleByClause)
+      .map(_.columnExpr)
+      .map(visitColumnExpr)
     val ttlOpt = listToOption(ctx.ttlClause).map(source) // we don't care about ttl now
-    val settings = listToOption(ctx.settingsClause).map(visitSettingsClause).getOrElse(Map.empty)
+    val settings = listToOption(ctx.settingsClause)
+      .map(visitSettingsClause)
+      .getOrElse(Map.empty)
 
     engine match {
       case eg: String if "MergeTree" equalsIgnoreCase eg =>
         MergeTreeEngineSpec(
           engine_clause = engineExpr,
-          _sorting_key = orderByOpt.getOrElse(List.empty),
-          _primary_key = tuple(pkOpt.toList),
-          _partition_key = tuple(partOpt.toList),
-          _sampling_key = tuple(sampleByOpt.toList),
+          _sorting_key = tupleIfNeeded(orderByOpt.toList),
+          _primary_key = tupleIfNeeded(pkOpt.toList),
+          _partition_key = tupleIfNeeded(partOpt.toList),
+          _sampling_key = tupleIfNeeded(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )
@@ -65,10 +75,10 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
         ReplacingMergeTreeEngineSpec(
           engine_clause = engineExpr,
           version_column = seqToOption(engineArgs).map(_.asInstanceOf[FieldRef]),
-          _sorting_key = orderByOpt.getOrElse(List.empty),
-          _primary_key = tuple(pkOpt.toList),
-          _partition_key = tuple(partOpt.toList),
-          _sampling_key = tuple(sampleByOpt.toList),
+          _sorting_key = tupleIfNeeded(orderByOpt.toList),
+          _primary_key = tupleIfNeeded(pkOpt.toList),
+          _partition_key = tupleIfNeeded(partOpt.toList),
+          _sampling_key = tupleIfNeeded(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )
@@ -77,10 +87,10 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
           engine_clause = engineExpr,
           zk_path = engineArgs.head.asInstanceOf[StringLiteral].value,
           replica_name = engineArgs(1).asInstanceOf[StringLiteral].value,
-          _sorting_key = orderByOpt.getOrElse(List.empty),
-          _primary_key = tuple(pkOpt.toList),
-          _partition_key = tuple(partOpt.toList),
-          _sampling_key = tuple(sampleByOpt.toList),
+          _sorting_key = tupleIfNeeded(orderByOpt.toList),
+          _primary_key = tupleIfNeeded(pkOpt.toList),
+          _partition_key = tupleIfNeeded(partOpt.toList),
+          _sampling_key = tupleIfNeeded(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )
@@ -90,10 +100,10 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
           zk_path = engineArgs.head.asInstanceOf[StringLiteral].value,
           replica_name = engineArgs(1).asInstanceOf[StringLiteral].value,
           version_column = seqToOption(engineArgs.drop(2)).map(_.asInstanceOf[FieldRef]),
-          _sorting_key = orderByOpt.getOrElse(List.empty),
-          _primary_key = tuple(pkOpt.toList),
-          _partition_key = tuple(partOpt.toList),
-          _sampling_key = tuple(sampleByOpt.toList),
+          _sorting_key = tupleIfNeeded(orderByOpt.toList),
+          _primary_key = tupleIfNeeded(pkOpt.toList),
+          _partition_key = tupleIfNeeded(partOpt.toList),
+          _sampling_key = tupleIfNeeded(sampleByOpt.toList),
           _ttl = ttlOpt,
           _settings = settings
         )

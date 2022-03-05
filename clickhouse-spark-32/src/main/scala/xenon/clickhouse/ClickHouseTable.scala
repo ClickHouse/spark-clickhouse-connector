@@ -87,8 +87,8 @@ class ClickHouseTable(
   }
 
   def sortingKey: Option[List[OrderExpr]] = engineSpec match {
-    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => Some(mergeTreeFamilySpec.sorting_key).filter(_.nonEmpty)
-    case _: DistributedEngineSpec => localTableEngineSpec.map(_.sorting_key).filter(_.nonEmpty)
+    case mergeTreeFamilySpec: MergeTreeFamilyEngineSpec => Some(mergeTreeFamilySpec.order_by_expr).filter(_.nonEmpty)
+    case _: DistributedEngineSpec => localTableEngineSpec.map(_.order_by_expr).filter(_.nonEmpty)
     case _: TableEngineSpec => None
   }
 
