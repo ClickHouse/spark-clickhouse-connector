@@ -25,15 +25,18 @@ import scala.annotation.tailrec
 
 object ExprUtils {
 
-  def toSparkParts(shardingKey: Option[Expr], partitionKey: Option[List[Expr]]): Array[Transform] =
+  def toSparkPartitions(partitionKey: Option[List[Expr]]) : Array[Transform] =
+    partitionKey.seq.flatten.map(toSparkTransform).toArray
+
+  def toSparkSplits(shardingKey: Option[Expr], partitionKey: Option[List[Expr]]): Array[Transform] =
     (shardingKey.seq ++ partitionKey.seq.flatten).map(toSparkTransform).toArray
 
   def toSparkSortOrders(
-    shardingKey: Option[Expr],
+    shardingKeyIgnoreRand: Option[Expr],
     partitionKey: Option[List[Expr]],
     sortingKey: Option[List[OrderExpr]]
   ): Array[SortOrder] =
-    toSparkParts(shardingKey, partitionKey).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
+    toSparkSplits(shardingKeyIgnoreRand, partitionKey).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
       sortingKey.seq.flatten.map { case OrderExpr(expr, asc, nullFirst) =>
         val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
         val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
@@ -62,19 +65,19 @@ object ExprUtils {
   // toYYYYMMDD   - Converts a date or date with time to a UInt32 (YYYY*10000 + MM*100 + DD)
   // toHour, HOUR - Converts a         date with time to a UInt8  (0-23)
 
-  def toSparkTransform(expr: Expr): Transform =
-    expr match {
-      case FieldRef(col) => identity(col)
-      case FuncExpr("toYear", List(FieldRef(col))) => years(col)
-      case FuncExpr("YEAR", List(FieldRef(col))) => years(col)
-      case FuncExpr("toYYYYMM", List(FieldRef(col))) => months(col)
-      case FuncExpr("toYYYYMMDD", List(FieldRef(col))) => days(col)
-      case FuncExpr("toHour", List(FieldRef(col))) => hours(col)
-      case FuncExpr("HOUR", List(FieldRef(col))) => hours(col)
-      // TODO support arbitrary functions
-      case FuncExpr("xxHash64", List(FieldRef(col))) => apply("ck_xx_hash64", column(col))
-      case unsupported => throw ClickHouseClientException(s"Unsupported ClickHouse expression: $unsupported")
-    }
+  def toSparkTransform(expr: Expr): Transform = expr match {
+    case FieldRef(col) => identity(col)
+    case FuncExpr("toYear", List(FieldRef(col))) => years(col)
+    case FuncExpr("YEAR", List(FieldRef(col))) => years(col)
+    case FuncExpr("toYYYYMM", List(FieldRef(col))) => months(col)
+    case FuncExpr("toYYYYMMDD", List(FieldRef(col))) => days(col)
+    case FuncExpr("toHour", List(FieldRef(col))) => hours(col)
+    case FuncExpr("HOUR", List(FieldRef(col))) => hours(col)
+    // TODO support arbitrary functions
+    case FuncExpr("xxHash64", List(FieldRef(col))) => apply("ck_xx_hash64", column(col))
+    case FuncExpr("rand", Nil) => apply("rand")
+    case unsupported => throw ClickHouseClientException(s"Unsupported ClickHouse expression: $unsupported")
+  }
 
   def toClickHouse(transform: Transform): Expr = transform match {
     case YearsTransform(FieldReference(Seq(col))) => FuncExpr("toYear", List(FieldRef(col)))
