@@ -14,6 +14,10 @@
 
 package xenon.clickhouse
 
+import java.time.{LocalDateTime, ZoneId}
+
+import scala.collection.JavaConverters._
+
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.analysis.{NoSuchDatabaseException, NoSuchTableException}
@@ -24,11 +28,9 @@ import xenon.clickhouse.Constants._
 import xenon.clickhouse.Utils.dateTimeFmt
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
+import xenon.protocol.grpc.{Exception => GRPCException}
 
-import java.time.{LocalDateTime, ZoneId}
-import scala.collection.JavaConverters._
-
-trait ClickHouseHelper {
+trait ClickHouseHelper extends Logging {
 
   @volatile lazy val DEFAULT_ACTION_IF_NO_SUCH_DATABASE: String => Unit =
     (db: String) => throw new NoSuchDatabaseException(db)
@@ -276,14 +278,17 @@ trait ClickHouseHelper {
   def dropPartition(
     database: String,
     table: String,
-    partitionExpr: String
+    partitionExpr: String,
+    cluster: Option[String] = None
   )(implicit
     grpcNodeClient: GrpcNodeClient
   ): Boolean =
     grpcNodeClient.syncQueryOutputJSONEachRow(
-      s"ALTER TABLE `$database`.`$table` DROP PARTITION $partitionExpr"
+      s"ALTER TABLE `$database`.`$table` ${cluster.map(c => s"ON CLUSTER $c").getOrElse("")} DROP PARTITION $partitionExpr"
     ) match {
-      case Left(_) => false
       case Right(_) => true
+      case Left(ge: GRPCException) =>
+        log.error(s"[${ge.getCode}]: ${ge.getDisplayText}")
+        false
     }
 }
