@@ -177,12 +177,7 @@ project(':clickhouse-core') {
         }
 
         testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
-        testRuntimeOnly("com.vladsch.flexmark:flexmark-all:$flexmark_version") {
-            exclude group: "log4j", module: "log4j"
-        }
-
-        testRuntimeOnly "org.slf4j:log4j-over-slf4j:$slf4j_version"
-        testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
+        testRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
     }
 }
 
@@ -196,15 +191,10 @@ project(':clickhouse-core-integration') {
 
         testFixturesApi "org.slf4j:slf4j-api:$slf4j_version"
         testFixturesApi "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
-        testFixturesRuntimeOnly("com.vladsch.flexmark:flexmark-all:$flexmark_version") {
-            exclude group: "log4j", module: "log4j"
-        }
+        testFixturesRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
         testFixturesRuntimeOnly "com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
-
-        testRuntimeOnly "org.slf4j:log4j-over-slf4j:$slf4j_version"
-        testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
     }
 
     test {
@@ -254,23 +244,11 @@ project(":clickhouse-spark-32") {
     dependencies {
         api project(":clickhouse-core")
 
-        compileOnly("org.apache.spark:spark-sql_$scala_binary_version:$spark_version") {
-            exclude group: "org.slf4j", module: "slf4j-log4j12" // use logback instead
-            exclude group: "log4j", module: "log4j"
-        }
+        compileOnly "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
 
-        testImplementation("org.apache.spark:spark-sql_$scala_binary_version:$spark_version") {
-            exclude group: "org.slf4j", module: "slf4j-log4j12" // use logback instead
-            exclude group: "log4j", module: "log4j"
-        }
-
+        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
         testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
-        testRuntimeOnly("com.vladsch.flexmark:flexmark-all:$flexmark_version") {
-            exclude group: "log4j", module: "log4j"
-        }
-
-        testRuntimeOnly "org.slf4j:log4j-over-slf4j:$slf4j_version"
-        testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
+        testRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
     }
 }
 
@@ -284,20 +262,9 @@ project(":clickhouse-spark-32-integration") {
             exclude module: "clickhouse-core-runtime"
         }
 
-        testImplementation("org.apache.spark:spark-sql_$scala_binary_version:$spark_version") {
-            exclude group: "org.slf4j", module: "slf4j-log4j12" // use logback instead
-            exclude group: "log4j", module: "log4j"
-        }
-
-        testImplementation("org.apache.spark:spark-sql_$scala_binary_version:$spark_version:tests") {
-            exclude group: "org.slf4j", module: "slf4j-log4j12" // use logback instead
-            exclude group: "log4j", module: "log4j"
-        }
-
-        testImplementation("com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version")
-
-        testRuntimeOnly "org.slf4j:log4j-over-slf4j:$slf4j_version"
-        testRuntimeOnly "ch.qos.logback:logback-classic:$logback_version"
+        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
+        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version:tests"
+        testImplementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
     }
 
     test {
