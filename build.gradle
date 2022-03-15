@@ -102,6 +102,7 @@ subprojects {
 project(':clickhouse-core') {
     apply plugin: "idea"
     apply plugin: "antlr"
+    apply plugin: "java-test-fixtures"
     apply plugin: "com.google.protobuf"
 
     sourceSets.main.scala {
@@ -134,6 +135,10 @@ project(':clickhouse-core') {
                 grpc {}
             }
         }
+    }
+
+    test {
+        classpath += files("$projectDir/src/testFixtures/conf")
     }
 
     dependencies {
@@ -176,67 +181,12 @@ project(':clickhouse-core') {
             exclude group: "org.codehaus.mojo", module: "animal-sniffer-annotations"
         }
 
-        testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
-        testRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
-    }
-}
-
-project(':clickhouse-core-integration') {
-    apply plugin: 'java-test-fixtures'
-
-    dependencies {
-        implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
-
-        testFixturesApi project(path: ":clickhouse-core-runtime", configuration: "shadow")
-
         testFixturesApi "org.slf4j:slf4j-api:$slf4j_version"
         testFixturesApi "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
         testFixturesRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
         testFixturesRuntimeOnly "com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
-    }
-
-    test {
-        classpath += files("$projectDir/src/testFixtures/conf")
-    }
-}
-
-project(":clickhouse-core-runtime") {
-    apply plugin: "com.github.johnrengelman.shadow"
-
-    tasks.jar.dependsOn tasks.shadowJar
-
-    dependencies {
-        compileOnly "org.scala-lang:scala-library:$scala_version"
-
-        implementation(project(":clickhouse-core")) {
-            exclude group: "org.scala-lang", module: "scala-library"
-            exclude group: "org.slf4j", module: "slf4j-api"
-        }
-    }
-
-    shadowJar {
-        zip64 true
-        classifier null
-
-        exclude "google/**/*.proto"
-        exclude "META-INF/native/**"
-        exclude "META-INF/native-image/**"
-
-        relocate "org.antlr.v4.runtime", "xenon.relocated.org.antlr.v4.runtime"
-        relocate "org.apache.commons", "xenon.relocated.org.apache.commons"
-        relocate "com.fasterxml.jackson", "xenon.relocated.com.fasterxml.jackson"
-        relocate "com.google", "xenon.relocated.com.google"
-        relocate "com.thoughtworks.paranamer", "xenon.relocated.com.thoughtworks.paranamer"
-        relocate "io.grpc", "xenon.relocated.io.grpc"
-        relocate "io.perfmark", "xenon.relocated.io.perfmark"
-
-        mergeServiceFiles()
-    }
-
-    jar {
-        archiveClassifier.set('empty')
     }
 }
 
@@ -249,26 +199,6 @@ project(":clickhouse-spark-32") {
         testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
         testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
         testRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
-    }
-}
-
-project(":clickhouse-spark-32-integration") {
-    dependencies {
-        implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
-
-        testImplementation project(path: ":clickhouse-spark-32-runtime", configuration: "shadow")
-        testImplementation(testFixtures(project(":clickhouse-core-integration"))) {
-            exclude module: "clickhouse-core-integration"
-            exclude module: "clickhouse-core-runtime"
-        }
-
-        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
-        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version:tests"
-        testImplementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
-    }
-
-    test {
-        classpath += files("${project(':clickhouse-core-integration').projectDir}/src/testFixtures/conf")
     }
 }
 
@@ -307,6 +237,25 @@ project(":clickhouse-spark-32-runtime") {
 
     jar {
         archiveClassifier.set('empty')
+    }
+}
+
+project(":clickhouse-spark-32-integration") {
+    dependencies {
+        implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
+
+        testImplementation project(path: ":clickhouse-spark-32-runtime", configuration: "shadow")
+        testImplementation(testFixtures(project(":clickhouse-core"))) {
+            exclude module: "clickhouse-core"
+        }
+
+        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
+        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version:tests"
+        testImplementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
+    }
+
+    test {
+        classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
     }
 }
 
