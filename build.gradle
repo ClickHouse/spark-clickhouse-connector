@@ -187,6 +187,8 @@ project(':clickhouse-core') {
         testFixturesApi "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
         testFixturesRuntimeOnly "com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
+
+        testImplementation "org.slf4j:slf4j-log4j12:$slf4j_version"
     }
 }
 
