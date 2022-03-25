@@ -68,6 +68,8 @@ object SchemaUtils {
       case ShortType => "Int16"
       case IntegerType => "Int32"
       case LongType => "Int64"
+      case FloatType => "Float32"
+      case DoubleType => "Float64"
       case StringType => "String"
       case DateType => "Date"
       case TimestampType => "DateTime"
