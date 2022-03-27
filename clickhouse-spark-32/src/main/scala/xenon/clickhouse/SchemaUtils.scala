@@ -22,7 +22,8 @@ import xenon.clickhouse.exception.ClickHouseClientException
 object SchemaUtils {
 
   // format: off
-  private[clickhouse] val arrayTypePattern:       Regex = """^Array\((.*)\)$""".r
+  private[clickhouse] val arrayTypePattern:       Regex = """^Array\((.+)\)$""".r
+  private[clickhouse] val mapTypePattern:         Regex = """^Map\((\w+),\s*(.+)\)$""".r
   private[clickhouse] val dateTypePattern:        Regex = """^Date$""".r
   private[clickhouse] val dateTimeTypePattern:    Regex = """^DateTime(64)?(\((.*)\))?$""".r
   private[clickhouse] val decimalTypePattern:     Regex = """^Decimal\((\d+),\s*(\d+)\)$""".r
@@ -54,8 +55,13 @@ object SchemaUtils {
           case "256" => DecimalType(76, scale.toInt) // throw exception, spark support precision up to 38
         }
       case arrayTypePattern(nestedChType) =>
-        val (_chType, _nullable) = fromClickHouseType(nestedChType)
-        ArrayType(_chType, _nullable)
+        val (_type, _nullable) = fromClickHouseType(nestedChType)
+        ArrayType(_type, _nullable)
+      case mapTypePattern(keyChType, valueChType) =>
+        val (_keyType, _keyNullable) = fromClickHouseType(keyChType)
+        require(!_keyNullable, s"Illegal type: $keyChType, the key type of Map should not be nullable")
+        val (_valueType, _valueNullable) = fromClickHouseType(valueChType)
+        MapType(_keyType, _valueType, _valueNullable)
       case _ => throw ClickHouseClientException(s"Unsupported type: $chType")
     }
     (catalystType, nullable)
@@ -74,6 +80,9 @@ object SchemaUtils {
       case DateType => "Date"
       case TimestampType => "DateTime"
       case ArrayType(elemType, nullable) => s"Array(${maybeNullable(toClickHouseType(elemType), nullable)})"
+      // TODO currently only support String as key
+      case MapType(keyType, valueType, nullable) if keyType.isInstanceOf[StringType] =>
+        s"Map(${toClickHouseType(keyType)},${maybeNullable(toClickHouseType(valueType), nullable)})"
       case _ => throw ClickHouseClientException(s"Unsupported type: $catalystType")
     }
 

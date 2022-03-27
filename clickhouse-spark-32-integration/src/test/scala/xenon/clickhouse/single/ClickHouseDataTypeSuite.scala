@@ -14,12 +14,12 @@
 
 package xenon.clickhouse.single
 
-import org.apache.spark.sql.types._
 import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.types.DataTypes.createArrayType
-import xenon.clickhouse.{BaseSparkSuite, Logging}
+import org.apache.spark.sql.types.DataTypes.{createArrayType, createMapType}
+import org.apache.spark.sql.types._
 import xenon.clickhouse.base.ClickHouseSingleMixIn
+import xenon.clickhouse.{BaseSparkSuite, Logging}
 
 class ClickHouseDataTypeSuite extends BaseSparkSuite
     with ClickHouseSingleMixIn
@@ -31,7 +31,9 @@ class ClickHouseDataTypeSuite extends BaseSparkSuite
     val schema = StructType(
       StructField("id", LongType, false) ::
         StructField("col_string", StringType, false) ::
-        StructField("col_array_string", createArrayType(StringType, false), false) :: Nil
+        StructField("col_array_string", createArrayType(StringType, false), false) ::
+        StructField("col_map_string", createMapType(StringType, StringType, false), false) ::
+        Nil
     )
     val db = "t_w_s_db"
     val tbl = "t_w_s_tbl"
@@ -41,9 +43,9 @@ class ClickHouseDataTypeSuite extends BaseSparkSuite
       // assert(StructType(structFields) === tblSchema)
 
       val dataDF = spark.createDataFrame(Seq(
-        (1L, "a", Seq("a", "b", "c")),
-        (2L, "A", Seq("A", "B", "C"))
-      )).toDF("id", "col_string", "col_array_string")
+        (1L, "a", Seq("a", "b", "c"), Map("a" -> "x")),
+        (2L, "A", Seq("A", "B", "C"), Map("A" -> "X"))
+      )).toDF("id", "col_string", "col_array_string", "col_map_string")
 
       spark.createDataFrame(dataDF.rdd, tblSchema)
         .writeTo(s"$db.$tbl")
@@ -51,8 +53,8 @@ class ClickHouseDataTypeSuite extends BaseSparkSuite
 
       checkAnswer(
         spark.table(s"$db.$tbl").sort("id"),
-        Row(1L, "a", Seq("a", "b", "c")) ::
-          Row(2L, "A", Seq("A", "B", "C")) :: Nil
+        Row(1L, "a", Seq("a", "b", "c"), Map("a" -> "x")) ::
+          Row(2L, "A", Seq("A", "B", "C"), Map("A" -> "X")) :: Nil
       )
     }
   }

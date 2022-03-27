@@ -45,6 +45,31 @@ class SchemaUtilsSuite extends AnyFunSuite {
     }
   }
 
+  test("regex MapType") {
+    "Map(String, String)" match {
+      case mapTypePattern(keyType, valueType) =>
+        assert("String" == keyType)
+        assert("String" == valueType)
+      case _ => fail()
+    }
+    "Map(String,Int32)" match {
+      case mapTypePattern(keyType, valueType) =>
+        assert("String" == keyType)
+        assert("Int32" == valueType)
+      case _ => fail()
+    }
+    "Map(String,Nullable(UInt32))" match {
+      case mapTypePattern(keyType, valueType) =>
+        assert("String" == keyType)
+        assert("Nullable(UInt32)" == valueType)
+      case _ => fail()
+    }
+    "Map(String,)" match {
+      case mapTypePattern(_) => fail()
+      case _ =>
+    }
+  }
+
   test("regex DateType") {
     "Date" match {
       case dateTypePattern() =>

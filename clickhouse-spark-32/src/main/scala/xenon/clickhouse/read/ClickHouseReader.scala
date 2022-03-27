@@ -15,13 +15,11 @@
 package xenon.clickhouse.read
 
 import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
-
 import scala.collection.JavaConverters._
 import scala.math.BigDecimal.RoundingMode
-
 import com.fasterxml.jackson.databind.JsonNode
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
-import org.apache.spark.sql.catalyst.util.GenericArrayData
+import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
@@ -104,6 +102,12 @@ class ClickHouseReader(
       case ArrayType(_dataType, _nullable) =>
         val _structField = StructField(s"${structField.name}__array_element__", _dataType, _nullable)
         new GenericArrayData(jsonNode.asScala.map(decode(_, _structField)))
+      case MapType(StringType, _valueType, _valueNullable) =>
+        val mapData = jsonNode.fields.asScala.map { entry =>
+          val _structField = StructField(s"${structField.name}__map_value__", _valueType, _valueNullable)
+          UTF8String.fromString(entry.getKey) -> decode(entry.getValue, _structField)
+        }.toMap
+        ArrayBasedMapData(mapData)
       case _ =>
         throw ClickHouseClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
     }
