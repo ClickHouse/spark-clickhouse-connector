@@ -55,6 +55,7 @@ subprojects {
 
     repositories {
         maven { url = "$mavenCentralMirror" }
+        maven { url = "https://repository.apache.org/snapshots/" }
     }
 
     version = getProjectVersion()
