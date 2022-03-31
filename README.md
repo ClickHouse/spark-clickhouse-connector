@@ -9,14 +9,13 @@ Goto [Home Page](https://housepower.github.io/spark-clickhouse-connector/) to le
 
 ## Requirements
 
-- Java 8
+- Java 8 or 11
 - Scala 2.12
 - Apache Spark 3.2.x
 - ClickHouse 21.1.2.15 or newer
 
 Notes:
-1. Java 11 should work, but not tested.
-2. Currently, only support gRPC protocol, and ClickHouse support gRPC since 
+1. Currently, only support gRPC protocol, and ClickHouse support gRPC since 
    [v21.1.2.15-stable](https://github.com/ClickHouse/ClickHouse/blob/master/CHANGELOG.md#clickhouse-release-v211215-stable-2021-01-18),
    but we only do test on v21.8.14.5-lts.
 
