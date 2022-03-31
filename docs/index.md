@@ -32,5 +32,5 @@ ClickHouse gRPC protocol.
 
 ## Notes
 
-1. Integration tests based on Java 8, Scala 2.12, Spark v3.2.0 and ClickHouse v21.8.14.5-lts, with both single
+1. Integration tests based on Java 8 & 11, Scala 2.12, Spark v3.2.0 and ClickHouse v21.8.14.5-lts, with both single
    ClickHouse instance and cluster mode.
