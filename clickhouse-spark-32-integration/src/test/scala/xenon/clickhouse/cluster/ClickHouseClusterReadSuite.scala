@@ -38,7 +38,8 @@ class ClickHouseClusterReadSuite extends BaseSparkSuite
       val cause = intercept[AnalysisException] {
         spark.sql(s"SELECT y, _shard_num FROM $db.$tbl_dist")
       }
-      assert(cause.message.contains("cannot resolve '_shard_num' given input columns"))
+      assert(cause.message.contains("cannot resolve '_shard_num' given input columns") ||
+        cause.message.contains("Column '_shard_num' does not exist"))
 
       spark.sql(s"SET ${READ_DISTRIBUTED_CONVERT_LOCAL.key}=false")
       checkAnswer(
@@ -95,7 +96,7 @@ class ClickHouseClusterReadSuite extends BaseSparkSuite
           Row(1, 1),
           Row(2, 2),
           Row(3, 3),
-          Row(4, 4),
+          Row(4, 4)
         )
       )
     }

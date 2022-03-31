@@ -20,7 +20,7 @@ import scala.collection.JavaConverters._
 
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
-import org.apache.spark.sql.catalyst.analysis.{NoSuchDatabaseException, NoSuchTableException}
+import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
@@ -33,7 +33,7 @@ import xenon.protocol.grpc.{Exception => GRPCException}
 trait ClickHouseHelper extends Logging {
 
   @volatile lazy val DEFAULT_ACTION_IF_NO_SUCH_DATABASE: String => Unit =
-    (db: String) => throw new NoSuchDatabaseException(db)
+    (db: String) => throw new NoSuchNamespaceException(db)
 
   @volatile lazy val DEFAULT_ACTION_IF_NO_SUCH_TABLE: (String, String) => Unit =
     (database, table) => throw new NoSuchTableException(s"$database.$table")
