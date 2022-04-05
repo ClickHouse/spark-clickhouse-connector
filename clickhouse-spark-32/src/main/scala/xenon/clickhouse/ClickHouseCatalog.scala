@@ -14,6 +14,11 @@
 
 package xenon.clickhouse
 
+import java.time.ZoneId
+import java.util
+
+import scala.collection.JavaConverters._
+
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.catalog._
@@ -22,15 +27,11 @@ import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
-import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
+import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.func.{ClickHouseXxHash64, ClickHouseXxHash64Shard}
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
-
-import java.time.ZoneId
-import java.util
-import scala.collection.JavaConverters._
 
 class ClickHouseCatalog extends TableCatalog
     with SupportsNamespaces
@@ -127,7 +128,7 @@ class ClickHouseCatalog extends TableCatalog
         Some(TableEngineUtils.resolveTableCluster(distributeSpec, clusterSpecs))
       case _ => None
     }
-    new ClickHouseTable(
+    ClickHouseTable(
       nodeSpec,
       tableClusterSpec,
       _tz,
@@ -235,8 +236,22 @@ class ClickHouseCatalog extends TableCatalog
   override def alterTable(ident: Identifier, changes: TableChange*): ClickHouseTable =
     throw new UnsupportedOperationException
 
-  override def dropTable(ident: Identifier): Boolean = unwrap(ident).exists { case (db, tbl) =>
-    grpcNodeClient.syncQueryOutputJSONEachRow(s"DROP TABLE `$db`.`$tbl`").isRight
+  override def dropTable(ident: Identifier): Boolean = {
+    val tableOpt =
+      try Some(loadTable(ident))
+      catch {
+        case _: NoSuchTableException => None
+      }
+    tableOpt match {
+      case None => false
+      case Some(ClickHouseTable(_, cluster, _, tableSpec, _)) =>
+        val (db, tbl) = (tableSpec.database, tableSpec.name)
+        val isAtomic = loadNamespaceMetadata(Array(db)).get("engine").equalsIgnoreCase("atomic")
+        val syncClause = if (isAtomic) "SYNC" else ""
+        // limitation: only support Distribute table, can not handle cases such as drop local table on cluster nodes
+        val clusterClause = cluster.map(c => s"ON CLUSTER ${c.name}").getOrElse("")
+        grpcNodeClient.syncQueryOutputJSONEachRow(s"DROP TABLE `$db`.`$tbl` $clusterClause $syncClause").isRight
+    }
   }
 
   @throws[NoSuchTableException]
