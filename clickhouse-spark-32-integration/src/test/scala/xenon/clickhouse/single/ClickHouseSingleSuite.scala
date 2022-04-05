@@ -286,4 +286,22 @@ class ClickHouseSingleSuite extends BaseSparkSuite
       )
     }
   }
+
+  test("create or replace table") {
+    autoCleanupTable("db_cor", "tbl_cor") { (db, tbl) =>
+      def createOrReplaceTable(): Unit = spark.sql(
+        s"""CREATE TABLE IF NOT EXISTS `$db`.`$tbl` (
+           |  id Long NOT NULL
+           |) USING ClickHouse
+           |TBLPROPERTIES (
+           |  engine = 'MergeTree()',
+           |  order_by = '(id)',
+           |  settings.index_granularity = 8192
+           |)
+           |""".stripMargin
+      )
+      createOrReplaceTable()
+      createOrReplaceTable()
+    }
+  }
 }

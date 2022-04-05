@@ -26,11 +26,7 @@ class ClusterPartitionManagementSuite extends BaseSparkSuite
     with Logging {
 
   test("distribute table partition") {
-    val cluster = "single_replica"
-    val db = "db_part"
-    val tbl_dist = "tbl_part"
-
-    withSimpleDistTable(cluster, db, tbl_dist, true) {
+    withSimpleDistTable("single_replica", "db_part", "tbl_part", true) { (_, db, tbl_dist, _) =>
       checkAnswer(
         spark.sql(s"SHOW PARTITIONS $db.$tbl_dist"),
         Seq(Row("m=1"), Row("m=2"), Row("m=3"), Row("m=4"))

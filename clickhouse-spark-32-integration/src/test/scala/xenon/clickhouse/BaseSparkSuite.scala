@@ -70,29 +70,37 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Ev
   def runClickHouseSQL(sql: String, options: Map[String, String] = cmdRunnerOptions): DataFrame =
     spark.executeCommand(classOf[ClickHouseCommandRunner].getName, sql, options)
 
-  def withClickHouseSingleIdTable(
+  def autoCleanupTable(
     database: String,
     table: String,
     cleanup: Boolean = true
   )(block: (String, String) => Unit): Unit =
     try {
       spark.sql(s"CREATE DATABASE IF NOT EXISTS `$database`")
-      spark.sql(
-        s"""CREATE TABLE IF NOT EXISTS `$database`.`$table` (
-           |  id Long NOT NULL
-           |) USING ClickHouse
-           |TBLPROPERTIES (
-           |  engine = 'MergeTree()',
-           |  order_by = '(id)',
-           |  settings.index_granularity = 8192
-           |)
-           |""".stripMargin
-      )
       block(database, table)
     } finally if (cleanup) {
       spark.sql(s"DROP TABLE IF EXISTS `$database`.`$table`")
       spark.sql(s"DROP DATABASE IF EXISTS `$database`")
     }
+
+  def withClickHouseSingleIdTable(
+    database: String,
+    table: String,
+    cleanup: Boolean = true
+  )(block: (String, String) => Unit): Unit = autoCleanupTable(database, table, cleanup) {
+    spark.sql(
+      s"""CREATE TABLE IF NOT EXISTS `$database`.`$table` (
+         |  id Long NOT NULL
+         |) USING ClickHouse
+         |TBLPROPERTIES (
+         |  engine = 'MergeTree()',
+         |  order_by = '(id)',
+         |  settings.index_granularity = 8192
+         |)
+         |""".stripMargin
+    )
+    block
+  }
 
   // for debugging webui
   protected def infiniteLoop(): Unit = while (true) {

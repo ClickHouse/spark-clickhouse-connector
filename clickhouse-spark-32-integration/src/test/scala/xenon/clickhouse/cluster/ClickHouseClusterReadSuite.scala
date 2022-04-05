@@ -27,11 +27,7 @@ class ClickHouseClusterReadSuite extends BaseSparkSuite
     with Logging {
 
   test("clickhouse metadata column - distributed table") {
-    val cluster = "single_replica"
-    val db = "db_w"
-    val tbl_dist = "t_dist"
-
-    withSimpleDistTable(cluster, db, tbl_dist, true) {
+    withSimpleDistTable("single_replica", "db_w", "t_dist", true) { (_, db, tbl_dist, _) =>
       assert(READ_DISTRIBUTED_CONVERT_LOCAL.defaultValueString == "true")
 
       // `_shard_num` is dedicated for Distributed table
@@ -55,16 +51,12 @@ class ClickHouseClusterReadSuite extends BaseSparkSuite
       // reset
       spark.sql(s"SET ${READ_DISTRIBUTED_CONVERT_LOCAL.key}=true")
 
-      // infiniteLoop()
+    // infiniteLoop()
     }
   }
 
   test("push down aggregation - distributed table") {
-    val cluster = "single_replica"
-    val db = "db_agg_col"
-    val tbl_dist = "t_dist"
-
-    withSimpleDistTable(cluster, db, tbl_dist, true) {
+    withSimpleDistTable("single_replica", "db_agg_col", "t_dist", true) { (_, db, tbl_dist, _) =>
       checkAnswer(
         spark.sql(s"SELECT COUNT(id) FROM $db.$tbl_dist"),
         Seq(Row(4))

@@ -40,7 +40,7 @@ import xenon.clickhouse.read.{ClickHouseMetadataColumn, ClickHouseScanBuilder, S
 import xenon.clickhouse.spec._
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDescription}
 
-class ClickHouseTable(
+case class ClickHouseTable(
   node: NodeSpec,
   cluster: Option[ClusterSpec],
   implicit val tz: ZoneId,

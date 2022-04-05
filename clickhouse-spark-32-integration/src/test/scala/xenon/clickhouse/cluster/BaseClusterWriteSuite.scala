@@ -29,12 +29,7 @@ abstract class BaseClusterWriteSuite extends BaseSparkSuite
     with Logging {
 
   test("clickhouse write cluster") {
-    val cluster = "single_replica"
-    val db = "db_w"
-    val tbl_dist = "t_dist"
-    val tbl_local = s"${tbl_dist}_local"
-
-    withSimpleDistTable(cluster, db, tbl_dist, true) {
+    withSimpleDistTable("single_replica", "db_w", "t_dist", true) { (_, db, tbl_dist, tbl_local) =>
       val tblSchema = spark.table(s"$db.$tbl_dist").schema
       assert(tblSchema == StructType(
         StructField("create_time", DataTypes.TimestampType, nullable = false) ::
@@ -73,7 +68,7 @@ abstract class BaseClusterWriteSuite extends BaseSparkSuite
         Row(Timestamp.valueOf("2023-03-03 10:10:10"), 2023, 3, 3L, "3") :: Nil
       )
 
-      // infiniteLoop()
+    // infiniteLoop()
     }
   }
 }
