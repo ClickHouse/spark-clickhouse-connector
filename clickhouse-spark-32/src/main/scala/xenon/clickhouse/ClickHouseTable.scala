@@ -30,7 +30,6 @@ import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read.ScanBuilder
 import org.apache.spark.sql.connector.write.LogicalWriteInfo
-import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.apache.spark.unsafe.types.UTF8String
@@ -50,7 +49,6 @@ case class ClickHouseTable(
 ) extends Table
     with SupportsRead
     with SupportsWrite
-    with SupportsDelete
     with TruncatableTable
     with SupportsMetadataColumns
     with SupportsPartitionManagement
@@ -262,20 +260,6 @@ case class ClickHouseTable(
         }
       }
       .toArray
-  }
-
-  override def canDeleteWhere(filters: Array[Filter]): Boolean = filters.forall(f => compileFilter(f).isDefined)
-
-  override def deleteWhere(filters: Array[Filter]): Unit = {
-    val deleteExpr = compileFilters(AlwaysTrue :: filters.toList)
-    Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
-      engineSpec match {
-        case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
-          delete(local_db, local_table, deleteExpr, Some(cluster))
-        case _ =>
-          delete(database, table, deleteExpr)
-      }
-    }
   }
 
   override def truncateTable(): Boolean =
