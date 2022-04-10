@@ -95,11 +95,4 @@ object ClickHouseSQLConf {
       .version("1.0.0")
       .booleanConf
       .createWithDefault(true)
-
-  val TRUNCATE_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
-    buildConf(TRUNCATE_DISTRIBUTED_CONVERT_LOCAL_KEY)
-      .doc("When truncate Distributed table, truncate local table instead of itself.")
-      .version("1.0.0")
-      .booleanConf
-      .createWithDefault(true)
 }

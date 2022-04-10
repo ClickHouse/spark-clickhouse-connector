@@ -34,8 +34,6 @@ object SparkOptions {
   val WRITE_REPARTITION_NUM_KEY: String = "write.repartitionNum"
   val WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY: String = "write.distributed.useClusterNodes"
   val WRITE_DISTRIBUTED_CONVERT_LOCAL_KEY: String = "write.distributed.convertLocal"
-
-  val TRUNCATE_DISTRIBUTED_CONVERT_LOCAL_KEY: String = "truncate.distributed.convertLocal"
 }
 
 trait SparkOptions extends SQLConfHelper with Serializable {

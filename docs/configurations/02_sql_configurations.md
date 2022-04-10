@@ -72,9 +72,3 @@ SQL Configurations
 
     Description: When reading Distributed table, read local table instead of itself. If `true`, ignore
                  `read.distributed.useClusterNodes`.
-
-!!! tip "Since 1.0.0 - spark.clickhouse.truncate.distributed.convertLocal"
-
-    Default Value: true
-
-    Description: When truncate Distributed table, truncate local table instead of itself.

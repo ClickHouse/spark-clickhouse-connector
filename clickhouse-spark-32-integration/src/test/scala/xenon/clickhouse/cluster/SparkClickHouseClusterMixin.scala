@@ -59,8 +59,7 @@ trait SparkClickHouseClusterMixin {
     "spark.clickhouse.write.distributed.useClusterNodes" -> "true",
     "spark.clickhouse.read.distributed.useClusterNodes" -> "false",
     "spark.clickhouse.write.distributed.convertLocal" -> "false",
-    "spark.clickhouse.read.distributed.convertLocal" -> "true",
-    "spark.clickhouse.truncate.distributed.convertLocal" -> "true"
+    "spark.clickhouse.read.distributed.convertLocal" -> "true"
   )
 
   override def cmdRunnerOptions: Map[String, String] = Map(

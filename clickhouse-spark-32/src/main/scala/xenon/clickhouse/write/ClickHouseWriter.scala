@@ -14,10 +14,12 @@
 
 package xenon.clickhouse.write
 
+import scala.collection.mutable.ArrayBuffer
+import scala.util.{Failure, Success}
+
 import com.google.protobuf.ByteString
-import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
 import org.apache.spark.sql.catalyst.{expressions, InternalRow, SQLConfHelper}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
+import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
 import org.apache.spark.sql.clickhouse.{ExprUtils, JsonFormatUtils}
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types.{ByteType, IntegerType, LongType, ShortType}
@@ -25,9 +27,6 @@ import xenon.clickhouse._
 import xenon.clickhouse.exception._
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
 import xenon.clickhouse.spec.{DistributedEngineSpec, ShardUtils}
-
-import scala.collection.mutable.ArrayBuffer
-import scala.util.{Failure, Success}
 
 class ClickHouseAppendWriter(writeJob: WriteJobDescription)
     extends DataWriter[InternalRow] with Logging {
@@ -148,14 +147,12 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
 class ClickHouseTruncateWriter(writeJob: WriteJobDescription)
     extends DataWriter[InternalRow] with SQLConfHelper with Logging {
 
-  val truncateDistributedConvertToLocal: Boolean = conf.getConf(TRUNCATE_DISTRIBUTED_CONVERT_LOCAL)
-
-  val database: String = writeJob.targetDatabase(truncateDistributedConvertToLocal)
-  val table: String = writeJob.targetTable(truncateDistributedConvertToLocal)
+  val database: String = writeJob.targetDatabase(true)
+  val table: String = writeJob.targetTable(true)
 
   lazy val grpcNodeClient: GrpcNodeClient = GrpcNodeClient(writeJob.node)
 
-  def clusterClause: String = if (truncateDistributedConvertToLocal) s"ON CLUSTER ${writeJob.cluster.get.name}" else ""
+  def clusterClause: String = s"ON CLUSTER ${writeJob.cluster.get.name}"
 
   override def write(record: InternalRow): Unit = {}
 
