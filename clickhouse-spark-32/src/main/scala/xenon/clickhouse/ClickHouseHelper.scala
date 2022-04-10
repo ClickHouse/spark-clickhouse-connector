@@ -291,4 +291,38 @@ trait ClickHouseHelper extends Logging {
         log.error(s"[${ge.getCode}]: ${ge.getDisplayText}")
         false
     }
+
+  def delete(
+    database: String,
+    table: String,
+    deleteExpr: String,
+    cluster: Option[String] = None
+  )(implicit
+    grpcNodeClient: GrpcNodeClient
+  ): Boolean =
+    grpcNodeClient.syncQueryOutputJSONEachRow(
+      s"ALTER TABLE `$database`.`$table` ${cluster.map(c => s"ON CLUSTER $c").getOrElse("")} DELETE WHERE $deleteExpr",
+      // https://clickhouse.com/docs/en/sql-reference/statements/alter/#synchronicity-of-alter-queries
+      Map("mutations_sync" -> "2")
+    ) match {
+      case Right(_) => true
+      case Left(ge: GRPCException) =>
+        log.error(s"[${ge.getCode}]: ${ge.getDisplayText}")
+        false
+    }
+
+  def truncateTable(
+    database: String,
+    table: String,
+    cluster: Option[String] = None
+  )(implicit
+    grpcNodeClient: GrpcNodeClient
+  ): Boolean = grpcNodeClient.syncQueryOutputJSONEachRow(
+    s"TRUNCATE TABLE `$database`.`$table` ${cluster.map(c => s"ON CLUSTER $c").getOrElse("")}"
+  ) match {
+    case Right(_) => true
+    case Left(ge: GRPCException) =>
+      log.error(s"[${ge.getCode}]: ${ge.getDisplayText}")
+      false
+  }
 }
