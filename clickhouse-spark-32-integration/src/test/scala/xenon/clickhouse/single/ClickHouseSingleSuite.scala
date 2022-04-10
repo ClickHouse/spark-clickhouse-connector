@@ -201,6 +201,15 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     }
   }
 
+  test("clickhouse delete") {
+    withClickHouseSingleIdTable("db_del", "tbl_db_del") { (db, tbl) =>
+      spark.range(10).toDF("id").writeTo(s"$db.$tbl").append
+      assert(spark.table(s"$db.$tbl").count == 10)
+      spark.sql(s"DELETE FROM $db.$tbl WHERE id < 5")
+      assert(spark.table(s"$db.$tbl").count == 5)
+    }
+  }
+
   test("clickhouse write then read") {
     val db = "db_rw"
     val tbl = "tbl_rw"

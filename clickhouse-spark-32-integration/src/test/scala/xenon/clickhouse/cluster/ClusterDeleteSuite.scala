@@ -30,4 +30,12 @@ class ClusterDeleteSuite extends BaseSparkSuite
       assert(spark.table(s"$db.$tbl_dist").count() === 0)
     }
   }
+
+  test("delete from distribute table") {
+    withSimpleDistTable("single_replica", "db_delete", "tbl_delete", true) { (_, db, tbl_dist, _) =>
+      assert(spark.table(s"$db.$tbl_dist").count() === 4)
+      spark.sql(s"DELETE FROM $db.$tbl_dist WHERE m = 1")
+      assert(spark.table(s"$db.$tbl_dist").count() === 3)
+    }
+  }
 }
