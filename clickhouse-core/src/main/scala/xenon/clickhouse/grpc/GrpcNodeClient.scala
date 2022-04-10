@@ -14,23 +14,24 @@
 
 package xenon.clickhouse.grpc
 
+import java.time.{Instant, ZoneId, ZoneOffset}
+import java.util.UUID
+import java.util.concurrent.TimeUnit
+
+import scala.collection.JavaConverters._
+import scala.util.control.NonFatal
+
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.google.protobuf.ByteString
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
+import xenon.clickhouse.{Logging, Utils}
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.exception.ClickHouseServerException
 import xenon.clickhouse.format._
 import xenon.clickhouse.spec.NodeSpec
-import xenon.clickhouse.{Logging, Utils}
-import xenon.protocol.grpc.LogsLevel._
 import xenon.protocol.grpc.{ClickHouseGrpc, Exception => GRPCException, LogEntry, QueryInfo, Result}
-
-import java.time.{Instant, ZoneId, ZoneOffset}
-import java.util.UUID
-import java.util.concurrent.TimeUnit
-import scala.collection.JavaConverters._
-import scala.util.control.NonFatal
+import xenon.protocol.grpc.LogsLevel._
 
 object GrpcNodeClient {
   def apply(node: NodeSpec): GrpcNodeClient = new GrpcNodeClient(node)
@@ -83,26 +84,36 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   // ///////////////////////// Synchronized Normal API ////////////////////////////
   // //////////////////////////////////////////////////////////////////////////////
 
-  def syncQueryOutputJSONEachRow(sql: String): Either[GRPCException, SimpleOutput[ObjectNode]] =
-    syncQuery(sql, "JSONEachRow", JSONEachRowSimpleOutput.deserialize)
+  def syncQueryOutputJSONEachRow(
+    sql: String,
+    settings: Map[String, String] = Map.empty
+  ): Either[GRPCException, SimpleOutput[ObjectNode]] =
+    syncQuery(sql, "JSONEachRow", JSONEachRowSimpleOutput.deserialize, settings)
 
-  def syncQueryAndCheckOutputJSONEachRow(sql: String): SimpleOutput[ObjectNode] =
-    syncQueryAndCheck(sql, "JSONEachRow", JSONEachRowSimpleOutput.deserialize)
+  def syncQueryAndCheckOutputJSONEachRow(
+    sql: String,
+    settings: Map[String, String] = Map.empty
+  ): SimpleOutput[ObjectNode] =
+    syncQueryAndCheck(sql, "JSONEachRow", JSONEachRowSimpleOutput.deserialize, settings)
 
   def syncInsertOutputJSONEachRow(
     database: String,
     table: String,
     inputFormat: String,
-    data: ByteString
+    data: ByteString,
+    settings: Map[String, String] = Map.empty
   ): Either[GRPCException, SimpleOutput[ObjectNode]] =
-    syncInsert(database, table, inputFormat, data, "JSONEachRow", JSONEachRowSimpleOutput.deserialize)
+    syncInsert(database, table, inputFormat, data, "JSONEachRow", JSONEachRowSimpleOutput.deserialize, settings)
 
-  def syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql: String)
-    : SimpleOutput[Array[JsonNode]] with NamesAndTypes =
+  def syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(
+    sql: String,
+    settings: Map[String, String] = Map.empty
+  ): SimpleOutput[Array[JsonNode]] with NamesAndTypes =
     syncQueryAndCheck(
       sql,
       "JSONCompactEachRowWithNamesAndTypes",
-      JSONCompactEachRowWithNamesAndTypesSimpleOutput.deserialize
+      JSONCompactEachRowWithNamesAndTypesSimpleOutput.deserialize,
+      settings
     ).asInstanceOf[SimpleOutput[Array[JsonNode]] with NamesAndTypes]
 
   def syncInsert[OUT](
@@ -111,7 +122,8 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     inputFormat: String,
     data: ByteString,
     outputFormat: String,
-    deserializer: ByteString => SimpleOutput[OUT]
+    deserializer: ByteString => SimpleOutput[OUT],
+    settings: Map[String, String]
   ): Either[GRPCException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
@@ -121,6 +133,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       .setQueryId(queryId)
       .setInputData(data)
       .setOutputFormat(outputFormat)
+      .putAllSettings(settings.asJava)
       .build
     executeQuery(queryInfo, deserializer)
   }
@@ -128,7 +141,8 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   def syncQuery[OUT](
     sql: String,
     outputFormat: String,
-    deserializer: ByteString => SimpleOutput[OUT]
+    deserializer: ByteString => SimpleOutput[OUT],
+    settings: Map[String, String]
   ): Either[GRPCException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
@@ -136,6 +150,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       .setQuery(sql)
       .setQueryId(queryId)
       .setOutputFormat(outputFormat)
+      .putAllSettings(settings.asJava)
       .build
     executeQuery(queryInfo, deserializer)
   }
@@ -143,8 +158,9 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   def syncQueryAndCheck[OUT](
     sql: String,
     outputFormat: String,
-    deserializer: ByteString => SimpleOutput[OUT]
-  ): SimpleOutput[OUT] = syncQuery[OUT](sql, outputFormat, deserializer) match {
+    deserializer: ByteString => SimpleOutput[OUT],
+    settings: Map[String, String]
+  ): SimpleOutput[OUT] = syncQuery[OUT](sql, outputFormat, deserializer, settings) match {
     case Left(exception) => throw new ClickHouseServerException(exception)
     case Right(output) => output
   }
@@ -164,17 +180,22 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   // ///////////////////////// Synchronized Stream API ////////////////////////////
   // //////////////////////////////////////////////////////////////////////////////
 
-  def syncStreamQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql: String): StreamOutput[Array[JsonNode]] =
+  def syncStreamQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(
+    sql: String,
+    settings: Map[String, String] = Map.empty
+  ): StreamOutput[Array[JsonNode]] =
     syncStreamQueryAndCheck(
       sql,
       "JSONCompactEachRowWithNamesAndTypes",
-      JSONCompactEachRowWithNamesAndTypesStreamOutput.deserializeStream
+      JSONCompactEachRowWithNamesAndTypesStreamOutput.deserializeStream,
+      settings
     )
 
   def syncStreamQueryAndCheck[OUT](
     sql: String,
     outputFormat: String,
-    outputStreamDeserializer: Iterator[ByteString] => StreamOutput[OUT]
+    outputStreamDeserializer: Iterator[ByteString] => StreamOutput[OUT],
+    settings: Map[String, String]
   ): StreamOutput[OUT] = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
@@ -182,6 +203,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       .setQuery(sql)
       .setQueryId(queryId)
       .setOutputFormat(outputFormat)
+      .putAllSettings(settings.asJava)
       .build
     val outputIterator = blockingStub.executeQueryWithStreamOutput(queryInfo)
       .asScala
