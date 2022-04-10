@@ -291,4 +291,19 @@ trait ClickHouseHelper extends Logging {
         log.error(s"[${ge.getCode}]: ${ge.getDisplayText}")
         false
     }
+
+  def truncateTable(
+    database: String,
+    table: String,
+    cluster: Option[String] = None
+  )(implicit
+    grpcNodeClient: GrpcNodeClient
+  ): Boolean = grpcNodeClient.syncQueryOutputJSONEachRow(
+    s"TRUNCATE TABLE `$database`.`$table` ${cluster.map(c => s"ON CLUSTER $c").getOrElse("")}"
+  ) match {
+    case Right(_) => true
+    case Left(ge: GRPCException) =>
+      log.error(s"[${ge.getCode}]: ${ge.getDisplayText}")
+      false
+  }
 }

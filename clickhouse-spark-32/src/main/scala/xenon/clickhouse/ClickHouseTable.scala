@@ -49,6 +49,7 @@ case class ClickHouseTable(
 ) extends Table
     with SupportsRead
     with SupportsWrite
+    with TruncatableTable
     with SupportsMetadataColumns
     with SupportsPartitionManagement
     with ClickHouseHelper
@@ -260,4 +261,14 @@ case class ClickHouseTable(
       }
       .toArray
   }
+
+  override def truncateTable(): Boolean =
+    Using.resource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+      engineSpec match {
+        case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
+          truncateTable(local_db, local_table, Some(cluster))
+        case _ =>
+          truncateTable(database, table)
+      }
+    }
 }

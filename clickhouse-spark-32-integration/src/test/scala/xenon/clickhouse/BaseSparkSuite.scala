@@ -87,7 +87,7 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Ev
     database: String,
     table: String,
     cleanup: Boolean = true
-  )(block: (String, String) => Unit): Unit = autoCleanupTable(database, table, cleanup) {
+  )(block: (String, String) => Unit): Unit = autoCleanupTable(database, table, cleanup) { (database, table) =>
     spark.sql(
       s"""CREATE TABLE IF NOT EXISTS `$database`.`$table` (
          |  id Long NOT NULL
@@ -99,7 +99,7 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Ev
          |)
          |""".stripMargin
     )
-    block
+    block(database, table)
   }
 
   // for debugging webui
