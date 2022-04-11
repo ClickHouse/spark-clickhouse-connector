@@ -24,7 +24,6 @@ plugins {
 project.ext {
     scala_binary_version = System.getProperty("scala_binary_version")
     scala_version = scala_binary_version == "2.12" ? project.getProperty("scala_212_version") : project.getProperty("scala_213_version")
-    spark_binary_versions = System.getProperty("spark_binary_versions").split(",")
 }
 
 repositories {
@@ -74,9 +73,6 @@ subprojects {
             force "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
 
             force "org.scala-lang.modules:scala-xml_$scala_binary_version:$scala_xml_version"
-            force "org.scala-lang:scala-compiler:$scala_version"
-            force "org.scala-lang:scala-library:$scala_version"
-            force "org.scala-lang:scala-reflect:$scala_version"
         }
     }
 
@@ -214,7 +210,7 @@ String getProjectVersion() {
     return project.hasProperty("release") ? baseVersion : "$baseVersion-SNAPSHOT"
 }
 
-if (spark_binary_versions.contains("3.2")) {
+if (System.getProperty("spark_binary_versions").split(",").contains("3.2")) {
     apply from: file("spark-3.2/build.gradle")
 }
 
