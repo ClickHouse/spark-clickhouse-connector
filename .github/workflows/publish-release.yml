@@ -35,6 +35,10 @@ jobs:
         distribution: zulu
         java-version: 8
         cache: gradle
+    - name: Import GPG key
+      uses: crazy-max/ghaction-import-gpg@v4
+      with:
+        gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
     - name: Publish Release
       run: >-
         ./gradlew clean publish --no-daemon
@@ -42,6 +46,9 @@ jobs:
         -Dspark_binary_versions=${{ matrix.spark }}
         -PmavenUser='${{ secrets.NEXUS_USER }}'
         -PmavenPassword='${{ secrets.NEXUS_PW }}'
+        -Prelease
+        -Psigning.gnupg.keyName='Cheng Pan'
+        -Psigning.gnupg.executable=gpg
         -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
     - name: Create Draft Release
       uses: softprops/action-gh-release@v1
