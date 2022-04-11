@@ -16,14 +16,10 @@ subprojects {
     apply plugin: "maven-publish"
     afterEvaluate {
         publishing {
-            if (!project.name.contains("-it")) {
+            if (project.name.contains("-runtime")) {
                 publications {
                     shadow(MavenPublication) { publication ->
-                        if (project.name.contains("-runtime")) {
-                            project.shadow.component(publication)
-                        } else {
-                            from components.java
-                        }
+                        project.shadow.component(publication)
                         pom {
                             name = "Spark ClickHouse Connector"
                             url = "https://github.com/housepower/spark-clickhouse-connector"
@@ -48,6 +44,7 @@ subprojects {
 
             repositories {
                 maven {
+                    allowInsecureProtocol = true
                     url = project.version.endsWith("-SNAPSHOT") ? "$mavenSnapshotsRepo" : "$mavenReleasesRepo"
 
                     credentials {

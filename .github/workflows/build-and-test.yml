@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: "Build and test"
+name: "Build and Test"
 on:
   push:
     branches:
@@ -34,11 +34,7 @@ jobs:
         with:
           distribution: zulu
           java-version: ${{ matrix.java }}
-      - uses: actions/cache@v2
-        with:
-          path: ~/.gradle/caches
-          key: ${{ runner.os }}-gradle-${{ hashFiles('**/*.gradle') }}
-          restore-keys: ${{ runner.os }}-gradle
+          cache: gradle
       - run: >-
           ./gradlew clean test --no-daemon --refresh-dependencies
           -Dscala_binary_version=${{ matrix.scala }}
