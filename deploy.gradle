@@ -14,46 +14,46 @@
 
 subprojects {
     apply plugin: "maven-publish"
-
-    publishing {
-        if (!project.name.endsWith("-integration")) {
-            publications {
-                shadow(MavenPublication) { publication ->
-                    if (project.name.endsWith("-runtime")) {
-                        project.shadow.component(publication)
-                    } else {
-                        from components.java
-                    }
-                    artifactId = archivesBaseName
-                    pom {
-                        name = "Spark ClickHouse Connector"
-                        url = "https://github.com/housepower/spark-clickhouse-connector"
-                        developers {
-                            developer {
-                                id = 'pan3793'
-                                name = 'Cheng Pan'
-                                email = 'chengpan@apache.org'
-                            }
+    afterEvaluate {
+        publishing {
+            if (!project.name.contains("-it")) {
+                publications {
+                    shadow(MavenPublication) { publication ->
+                        if (project.name.contains("-runtime")) {
+                            project.shadow.component(publication)
+                        } else {
+                            from components.java
                         }
-                        licenses {
-                            license {
-                                name = "The Apache License, Version 2.0"
-                                url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
-                                distribution = "repo"
+                        pom {
+                            name = "Spark ClickHouse Connector"
+                            url = "https://github.com/housepower/spark-clickhouse-connector"
+                            developers {
+                                developer {
+                                    id = 'pan3793'
+                                    name = 'Cheng Pan'
+                                    email = 'chengpan@apache.org'
+                                }
+                            }
+                            licenses {
+                                license {
+                                    name = "The Apache License, Version 2.0"
+                                    url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
+                                    distribution = "repo"
+                                }
                             }
                         }
                     }
                 }
             }
-        }
 
-        repositories {
-            maven {
-                url = project.version.endsWith("-SNAPSHOT") ? "$mavenSnapshotsRepo" : "$mavenReleasesRepo"
+            repositories {
+                maven {
+                    url = project.version.endsWith("-SNAPSHOT") ? "$mavenSnapshotsRepo" : "$mavenReleasesRepo"
 
-                credentials {
-                    username = project.hasProperty("mavenUser") ? "$mavenUser" : ""
-                    password = project.hasProperty("mavenPassword") ? "$mavenPassword" : ""
+                    credentials {
+                        username = project.hasProperty("mavenUser") ? "$mavenUser" : ""
+                        password = project.hasProperty("mavenPassword") ? "$mavenPassword" : ""
+                    }
                 }
             }
         }

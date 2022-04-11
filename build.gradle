@@ -21,6 +21,12 @@ plugins {
     id "com.github.johnrengelman.shadow" version "7.1.2" apply false
 }
 
+project.ext {
+    scala_binary_version = System.getProperty("scala_binary_version")
+    scala_version = scala_binary_version == "2.12" ? project.getProperty("scala_212_version") : project.getProperty("scala_213_version")
+    spark_binary_versions = System.getProperty("spark_binary_versions").split(",")
+}
+
 repositories {
     maven { url = "$mavenCentralMirror" }
 }
@@ -58,8 +64,6 @@ subprojects {
     }
 
     version = getProjectVersion()
-
-    archivesBaseName = "${project.name}_${scala_binary_version}"
 
     configurations.all {
         resolutionStrategy {
@@ -194,75 +198,6 @@ project(':clickhouse-core') {
     }
 }
 
-project(":clickhouse-spark-32") {
-    dependencies {
-        api project(":clickhouse-core")
-
-        compileOnly "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
-
-        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
-        testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
-        testRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
-    }
-}
-
-project(":clickhouse-spark-32-runtime") {
-    apply plugin: "com.github.johnrengelman.shadow"
-
-    tasks.jar.dependsOn tasks.shadowJar
-
-    dependencies {
-        compileOnly "org.scala-lang:scala-library:$scala_version"
-
-        implementation(project(":clickhouse-spark-32")) {
-            exclude group: "org.antlr", module: "antlr4-runtime"
-            exclude group: "org.scala-lang", module: "scala-library"
-            exclude group: "org.slf4j", module: "slf4j-api"
-            exclude group: "org.apache.commons", module: "commons-lang3"
-            exclude group: "com.fasterxml.jackson.core", module: "jackson-databind"
-            exclude group: "com.fasterxml.jackson.module", module: "jackson-module-scala_$scala_binary_version"
-        }
-    }
-
-    shadowJar {
-        zip64 true
-        classifier null
-
-        exclude "google/**/*.proto"
-        exclude "META-INF/native/**"
-        exclude "META-INF/native-image/**"
-
-        relocate "com.google", "xenon.relocated.com.google"
-        relocate "io.grpc", "xenon.relocated.io.grpc"
-        relocate "io.perfmark", "xenon.relocated.io.perfmark"
-
-        mergeServiceFiles()
-    }
-
-    jar {
-        archiveClassifier.set('empty')
-    }
-}
-
-project(":clickhouse-spark-32-integration") {
-    dependencies {
-        implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
-
-        testImplementation project(path: ":clickhouse-spark-32-runtime", configuration: "shadow")
-        testImplementation(testFixtures(project(":clickhouse-core"))) {
-            exclude module: "clickhouse-core"
-        }
-
-        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
-        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version:tests"
-        testImplementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
-    }
-
-    test {
-        classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
-    }
-}
-
 boolean isVersionFileExists() {
     return file("version.txt").exists()
 }
@@ -277,6 +212,10 @@ String getProjectVersion() {
 
     String baseVersion = new Date().format("yyyy.MM.dd")
     return project.hasProperty("release") ? baseVersion : "$baseVersion-SNAPSHOT"
+}
+
+if (spark_binary_versions.contains("3.2")) {
+    apply from: file("spark-3.2/build.gradle")
 }
 
 apply from: "deploy.gradle"
