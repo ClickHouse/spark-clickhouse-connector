@@ -39,7 +39,7 @@ jobs:
         java-version: 8
         cache: gradle
     - name: Publish Snapshot - ${{ matrix.branch }}
-    - run: >-
+      run: >-
         ./gradlew clean deploy --no-daemon --refresh-dependencies
         -Dscala_binary_version=${{ matrix.scala }}
         -Dspark_binary_versions=${{ matrix.spark }}
