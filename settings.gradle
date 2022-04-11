@@ -15,6 +15,32 @@
 rootProject.name = 'spark-clickhouse-connector'
 
 include ":clickhouse-core"
-include ":clickhouse-spark-32"
-include ":clickhouse-spark-32-integration"
-include ":clickhouse-spark-32-runtime"
+
+List<String> knownScalaBinaryVersions = System.getProperty("known_scala_binary_versions").split(",")
+String scala_binary_version = System.getProperty("scala_binary_version")
+
+if (!knownScalaBinaryVersions.contains(scala_binary_version)) {
+    throw new GradleException("Found unsupported Scala version: " + scala_binary_version)
+}
+
+List<String> knownSparkBinaryVersions = System.getProperty("known_spark_binary_versions").split(",")
+String sparkBinaryVersionsString = System.getProperty("spark_binary_versions")
+List<String> sparkBinaryVersions = sparkBinaryVersionsString != null && !sparkBinaryVersionsString.isEmpty() ? sparkBinaryVersionsString.split(",") : []
+
+if (!knownSparkBinaryVersions.containsAll(sparkBinaryVersions)) {
+    throw new GradleException("Found unsupported Spark versions: " + (sparkBinaryVersions - knownSparkBinaryVersions))
+}
+
+if (sparkBinaryVersions.contains("3.2")) {
+    include ":clickhouse-spark-3.2_$scala_binary_version"
+    project(":clickhouse-spark-3.2_$scala_binary_version").projectDir = file('spark-3.2/clickhouse-spark')
+    project(":clickhouse-spark-3.2_$scala_binary_version").name = "clickhouse-spark-3.2_$scala_binary_version"
+
+    include ":clickhouse-spark-runtime-3.2_$scala_binary_version"
+    project(":clickhouse-spark-runtime-3.2_$scala_binary_version").projectDir = file('spark-3.2/clickhouse-spark-runtime')
+    project(":clickhouse-spark-runtime-3.2_$scala_binary_version").name = "clickhouse-spark-runtime-3.2_$scala_binary_version"
+
+    include ":clickhouse-spark-it-3.2_$scala_binary_version"
+    project(":clickhouse-spark-it-3.2_$scala_binary_version").projectDir = file('spark-3.2/clickhouse-spark-it')
+    project(":clickhouse-spark-it-3.2_$scala_binary_version").name = "clickhouse-spark-it-3.2_$scala_binary_version"
+}

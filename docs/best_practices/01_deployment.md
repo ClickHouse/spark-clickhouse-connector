@@ -18,7 +18,7 @@ Deployment
 
 ## Jar
 
-Put `clickhouse-spark-32-runtime_2.12-{version}.jar` into `$SPARK_HOME/jars/`, then you don't need to bundle the jar
+Put `clickhouse-spark-runtime-3.2_2.12-{version}.jar` into `$SPARK_HOME/jars/`, then you don't need to bundle the jar
 into your Spark application, and `--jar` is not required when using `spark-shell` or `spark-sql`(again, for SQL-only
 use cases, [Apache Kyuubi(Incubating)](https://github.com/apache/incubator-kyuubi) is recommended for Production).
 

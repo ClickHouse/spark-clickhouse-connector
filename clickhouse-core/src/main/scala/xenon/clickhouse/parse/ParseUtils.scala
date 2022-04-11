@@ -32,7 +32,7 @@ object ParseUtils {
     case illegal => throw new IllegalArgumentException(s"Expect list size 0 or 1, but got $illegal")
   }
 
-  def listToOption[T](list: util.List[T]): Option[T] = seqToOption(list.asScala)
+  def listToOption[T](list: util.List[T]): Option[T] = seqToOption(list.asScala.toSeq)
 
   def source(ctx: ParserRuleContext): String = {
     val stream = ctx.getStart.getInputStream

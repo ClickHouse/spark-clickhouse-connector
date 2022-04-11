@@ -42,6 +42,7 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
         .map(_.columnsExpr.asScala)
         .getOrElse(List.empty)
         .map(visitColumnsExpr)
+        .toSeq
 
     val orderByOpt = listToOption(ctx.orderByClause)
       .map(visitOrderByClause)

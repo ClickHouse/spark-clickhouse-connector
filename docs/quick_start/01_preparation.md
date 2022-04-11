@@ -35,7 +35,7 @@ Build.
 ./gradlew clean build -x test
 ```
 
-Go to `clickhouse-spark-32-runtime/build/libs/` to find the output jar `clickhouse-spark-32-runtime_2.12-${version}.jar`.
+Go to `spark-3.2/clickhouse-spark-runtime/build/libs/` to find the output jar `clickhouse-spark-runtime-3.2_2.12-${version}.jar`.
 
 ## Publish to Private Repository
 
@@ -66,7 +66,7 @@ For Gradle.
 
 ```
 dependencies {
-  implementation("com.github.housepower:clickhouse-spark-32-runtime_2.12:${version}")
+  implementation("com.github.housepower:clickhouse-spark-runtime-3.2_2.12:${version}")
 }
 ```
 
@@ -75,7 +75,7 @@ For Maven.
 ```
 <dependency>
   <groupId>com.github.housepower</groupId>
-  <artifactId>clickhouse-spark-32-runtime_2.12</artifactId>
+  <artifactId>clickhouse-spark-runtime-3.2_2.12</artifactId>
   <version>${version}</version>
 </dependency>
 ```
