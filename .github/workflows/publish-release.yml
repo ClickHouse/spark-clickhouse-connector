@@ -10,21 +10,20 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: "Publish Snapshot"
+name: "Publish Release"
 
 on:
-  schedule:
-  - cron: '0 0 * * *'
+  push:
+    tags:
+      - 'v*'
 
 jobs:
-  publish-snapshot:
+  publish-release:
     if: ${{ startsWith(github.repository, 'housepower/') }}
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
       matrix:
-        branch:
-          - master
         scala: [ 2.12, 2.13 ]
         spark: [ 3.2 ]
     steps:
@@ -36,11 +35,18 @@ jobs:
         distribution: zulu
         java-version: 8
         cache: gradle
-    - name: Publish Snapshot - ${{ matrix.branch }}
+    - name: Publish Release
       run: >-
-        ./gradlew clean deploy --no-daemon --refresh-dependencies
+        ./gradlew clean deploy --no-daemon
         -Dscala_binary_version=${{ matrix.scala }}
         -Dspark_binary_versions=${{ matrix.spark }}
         -PmavenUser='${{ secrets.NEXUS_USER }}'
         -PmavenPassword='${{ secrets.NEXUS_PW }}'
         -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+    - name: Create Draft Release
+      uses: softprops/action-gh-release@v1
+      with:
+        draft: true
+        token: ${{ secrets.GITHUB_TOKEN }}
+      env:
+        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
