@@ -203,11 +203,9 @@ String getVersionFromFile() {
 }
 
 String getProjectVersion() {
-    if (isVersionFileExists())
-        return getVersionFromFile()
-
-    String baseVersion = new Date().format("yyyy.MM.dd")
-    return project.hasProperty("release") ? baseVersion : "$baseVersion-SNAPSHOT"
+    if (!isVersionFileExists())
+        throw new IllegalStateException("Can not find version.txt")
+    return getVersionFromFile()
 }
 
 if (System.getProperty("spark_binary_versions").split(",").contains("3.2")) {

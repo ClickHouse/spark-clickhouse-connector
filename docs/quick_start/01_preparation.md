@@ -37,9 +37,9 @@ Build.
 
 Go to `spark-3.2/clickhouse-spark-runtime/build/libs/` to find the output jar `clickhouse-spark-runtime-3.2_2.12-${version}.jar`.
 
-## Publish to Private Repository
+## Publish to Maven Repository
 
-Configure Gradle in `~/.gradle/gradle.properties`.
+1. Configure Gradle in `~/.gradle/gradle.properties`.
 
 ```
 mavenUser=xxx
@@ -48,17 +48,9 @@ mavenReleasesRepo=xxx
 mavenSnapshotsRepo=xxx
 ```
 
-Versions.
+2. Modify version in `./version.txt`.
 
-Use content of `./version.txt` if the file exists, otherwise fallback to `{year}.{month}.{date}[-SNAPSHOT]`.
-
-Publish Snapshots.
-
-`./gradlew publish`
-
-Publish Release.
-
-`./gradlew -Prelease publish`
+3. Publish to Maven Repository using `./gradlew publish`
 
 ## Import as Dependency
 
