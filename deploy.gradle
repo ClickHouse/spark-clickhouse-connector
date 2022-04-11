@@ -14,15 +14,36 @@
 
 subprojects {
     apply plugin: "maven-publish"
+    apply plugin: 'signing'
     afterEvaluate {
         publishing {
             if (project.name.contains("-runtime")) {
+                task sourceJar(type: Jar, dependsOn: classes) {
+                    classifier = 'sources'
+                    from sourceSets.main.allSource
+                    group 'build'
+                }
+
+                task javadocJar(type: Jar, dependsOn: javadoc) {
+                    classifier = 'javadoc'
+                    from javadoc.destinationDir
+                    group 'build'
+                }
+
+                artifacts {
+                    archives sourceJar
+                    archives javadocJar
+                }
                 publications {
                     shadow(MavenPublication) { publication ->
                         project.shadow.component(publication)
+                        artifact sourceJar
+                        artifact javadocJar
+
                         pom {
                             name = "Spark ClickHouse Connector"
                             url = "https://github.com/housepower/spark-clickhouse-connector"
+                            description = "Spark ClickHouse Connector build on DataSourceV2 API and gRPC protocol."
                             developers {
                                 developer {
                                     id = 'pan3793'
@@ -36,6 +57,13 @@ subprojects {
                                     url = "https://www.apache.org/licenses/LICENSE-2.0.txt"
                                     distribution = "repo"
                                 }
+                            }
+                            scm {
+                                url = "https://github.com/housepower/spark-clickhouse-connector.git"
+                            }
+                            issueManagement {
+                                system = 'GitHub'
+                                url = 'https://github.com/housepower/spark-clickhouse-connector/issues'
                             }
                         }
                     }
@@ -52,6 +80,12 @@ subprojects {
                         password = project.hasProperty("mavenPassword") ? "$mavenPassword" : ""
                     }
                 }
+            }
+        }
+        if (project.hasProperty('release') && project.name.contains("-runtime")) {
+            signing {
+                useGpgCmd()
+                sign publishing.publications.shadow
             }
         }
     }

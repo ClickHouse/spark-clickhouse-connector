@@ -29,13 +29,13 @@ $SPARK_HOME/bin/spark-shell \
   --jars /path/clickhouse-spark-runtime-3.2_2.12-{version}.jar
 ```
 
-If you published the jar to private Nexus, the following argument
+The following argument
 ```
   --jars /path/clickhouse-spark-runtime-3.2_2.12-{version}.jar
 ```
 can be replaced by
 ```
-  --repositories https://{private-nexus-repo} \
+  --repositories https://{maven-cental-mirror or private-nexus-repo} \
   --packages com.github.housepower:clickhouse-spark-runtime-3.2_2.12:{version}
 ```
 to avoid copying jar to your Spark client node.
