@@ -35,6 +35,7 @@ rat {
     exclude(
             "README.md",
             "CODE_OF_CONDUCT.md",
+            "version.txt",
             "clickhouse-core/src/main/scala-2.12/scala/util/Using.scala",
             "**/.gitkeep",
             "site/**",
@@ -203,11 +204,9 @@ String getVersionFromFile() {
 }
 
 String getProjectVersion() {
-    if (isVersionFileExists())
-        return getVersionFromFile()
-
-    String baseVersion = new Date().format("yyyy.MM.dd")
-    return project.hasProperty("release") ? baseVersion : "$baseVersion-SNAPSHOT"
+    if (!isVersionFileExists())
+        throw new IllegalStateException("Can not find version.txt")
+    return getVersionFromFile()
 }
 
 if (System.getProperty("spark_binary_versions").split(",").contains("3.2")) {

@@ -28,7 +28,7 @@ object ClickHouseSQLConf {
   val WRITE_BATCH_SIZE: ConfigEntry[Int] =
     buildConf(WRITE_BATCH_SIZE_KEY)
       .doc("The number of records per batch on writing to ClickHouse.")
-      .version("1.0.0")
+      .version("0.1.0")
       .intConf
       .checkValue(v => v > 0 && v <= 100000, "Should be positive but less than or equals 100000.")
       .createWithDefault(10000)
@@ -36,7 +36,7 @@ object ClickHouseSQLConf {
   val WRITE_MAX_RETRY: ConfigEntry[Int] =
     buildConf(WRITE_MAX_RETRY_KEY)
       .doc("The maximum number of write we will retry for a single batch write failed with retryable codes.")
-      .version("1.0.0")
+      .version("0.1.0")
       .intConf
       .checkValue(_ >= 0, "Should be 0 or positive value. 0 means disable retry.")
       .createWithDefault(3)
@@ -44,14 +44,14 @@ object ClickHouseSQLConf {
   val WRITE_RETRY_INTERVAL: ConfigEntry[Long] =
     buildConf(WRITE_RETRY_INTERVAL_KEY)
       .doc("The interval in seconds between write retry.")
-      .version("1.0.0")
+      .version("0.1.0")
       .timeConf(TimeUnit.SECONDS)
       .createWithDefault(10)
 
   val WRITE_RETRYABLE_ERROR_CODES: ConfigEntry[Seq[Int]] =
     buildConf(WRITE_RETRYABLE_ERROR_CODES_KEY)
       .doc("The retryable error codes returned by ClickHouse server when write failing.")
-      .version("1.0.0")
+      .version("0.1.0")
       .intConf
       .toSequence
       .checkValue(codes => !codes.exists(_ <= OK.code), "Error code should be positive.")
@@ -61,21 +61,21 @@ object ClickHouseSQLConf {
     buildConf(WRITE_REPARTITION_NUM_KEY)
       .doc("Repartition data to meet the distributions of ClickHouse table is required before writing, " +
         "use this conf to specific the repartition number, value less than 1 mean no requirement.")
-      .version("1.0.0")
+      .version("0.1.0")
       .intConf
       .createWithDefault(0)
 
   val WRITE_DISTRIBUTED_USE_CLUSTER_NODES: ConfigEntry[Boolean] =
     buildConf(WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY)
       .doc("Write to all nodes of cluster when writing Distributed table.")
-      .version("1.0.0")
+      .version("0.1.0")
       .booleanConf
       .createWithDefault(true)
 
   val READ_DISTRIBUTED_USE_CLUSTER_NODES: ConfigEntry[Boolean] =
     buildConf(READ_DISTRIBUTED_USE_CLUSTER_NODES_KEY)
       .doc("Read from all nodes of cluster when reading Distributed table.")
-      .version("1.0.0")
+      .version("0.1.0")
       .booleanConf
       .checkValue(_ == false, s"`$READ_DISTRIBUTED_USE_CLUSTER_NODES_KEY` is not support yet.")
       .createWithDefault(false)
@@ -84,7 +84,7 @@ object ClickHouseSQLConf {
     buildConf(WRITE_DISTRIBUTED_CONVERT_LOCAL_KEY)
       .doc("When writing Distributed table, write local table instead of itself. " +
         s"If `true`, ignore `$WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY`.")
-      .version("1.0.0")
+      .version("0.1.0")
       .booleanConf
       .createWithDefault(false)
 
@@ -92,7 +92,7 @@ object ClickHouseSQLConf {
     buildConf(READ_DISTRIBUTED_CONVERT_LOCAL_KEY)
       .doc("When reading Distributed table, read local table instead of itself. " +
         s"If `true`, ignore `$READ_DISTRIBUTED_USE_CLUSTER_NODES_KEY`.")
-      .version("1.0.0")
+      .version("0.1.0")
       .booleanConf
       .createWithDefault(true)
 }
