@@ -35,6 +35,7 @@ rat {
     exclude(
             "README.md",
             "CODE_OF_CONDUCT.md",
+            "version.txt",
             "clickhouse-core/src/main/scala-2.12/scala/util/Using.scala",
             "**/.gitkeep",
             "site/**",
