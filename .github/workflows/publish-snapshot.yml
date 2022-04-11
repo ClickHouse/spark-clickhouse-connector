@@ -39,7 +39,7 @@ jobs:
         cache: gradle
     - name: Publish Snapshot - ${{ matrix.branch }}
       run: >-
-        ./gradlew clean deploy --no-daemon --refresh-dependencies
+        ./gradlew clean publish --no-daemon --refresh-dependencies
         -Dscala_binary_version=${{ matrix.scala }}
         -Dspark_binary_versions=${{ matrix.spark }}
         -PmavenUser='${{ secrets.NEXUS_USER }}'

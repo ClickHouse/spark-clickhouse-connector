@@ -37,7 +37,7 @@ jobs:
         cache: gradle
     - name: Publish Release
       run: >-
-        ./gradlew clean deploy --no-daemon
+        ./gradlew clean publish --no-daemon
         -Dscala_binary_version=${{ matrix.scala }}
         -Dspark_binary_versions=${{ matrix.spark }}
         -PmavenUser='${{ secrets.NEXUS_USER }}'
