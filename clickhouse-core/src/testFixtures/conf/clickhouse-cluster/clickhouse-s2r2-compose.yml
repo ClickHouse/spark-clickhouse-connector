@@ -10,17 +10,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-version: '3.5'
-
 services:
   zookeeper:
-    image: zookeeper:3.6.3
+    image: zookeeper:${ZOOKEEPER_VERSION}
     ports:
       - 2181
     hostname: zookeeper
 
   clickhouse-s1r1:
-    image: clickhouse/clickhouse-server:21.8.14.5
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
     hostname: clickhouse-s1r1
     ports:
       - 8123
@@ -37,7 +35,7 @@ services:
       - zookeeper
 
   clickhouse-s1r2:
-    image: clickhouse/clickhouse-server:21.8.14.5
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
     hostname: clickhouse-s1r2
     ports:
       - 8123
@@ -54,7 +52,7 @@ services:
       - zookeeper
 
   clickhouse-s2r1:
-    image: clickhouse/clickhouse-server:21.8.14.5
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
     hostname: clickhouse-s2r1
     ports:
       - 8123
@@ -71,7 +69,7 @@ services:
       - zookeeper
 
   clickhouse-s2r2:
-    image: clickhouse/clickhouse-server:21.8.14.5
+    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
     hostname: clickhouse-s2r2
     ports:
       - 8123
