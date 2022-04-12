@@ -54,9 +54,6 @@ class ClickHouseDataTypeSuite extends BaseSparkSuite
         .writeTo(s"$db.$tbl")
         .append
 
-      val dates = spark.table(s"$db.$tbl").sort("id").collect.map(_.getLocalDate(2)).toSeq
-      println(dates)
-
       checkAnswer(
         spark.table(s"$db.$tbl").sort("id"),
         Row(1L, "a", Date.valueOf("1996-06-06"), Seq("a", "b", "c"), Map("a" -> "x")) ::
