@@ -97,7 +97,7 @@ class ClickHouseReader(
           .withZoneSameInstant(ZoneOffset.UTC)
           .toEpochSecond * 1000 * 1000
       case StringType => UTF8String.fromString(jsonNode.asText)
-      case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay
+      case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay.toInt
       case BinaryType => jsonNode.binaryValue
       case ArrayType(_dataType, _nullable) =>
         val _structField = StructField(s"${structField.name}__array_element__", _dataType, _nullable)

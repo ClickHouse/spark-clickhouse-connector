@@ -26,6 +26,7 @@ trait SparkClickHouseClusterMixin {
     "spark.sql.codegen.wholeStage" -> "false",
     "spark.app.name" -> "spark-clickhouse-cluster-ut",
     "spark.sql.shuffle.partitions" -> "4",
+    "spark.sql.datetime.java8API.enabled" -> "true",
     "spark.sql.defaultCatalog" -> "clickhouse-s1r1",
     "spark.sql.catalog.clickhouse-s1r1" -> "xenon.clickhouse.ClickHouseCatalog",
     "spark.sql.catalog.clickhouse-s1r1.host" -> clickhouse_s1r1_host,

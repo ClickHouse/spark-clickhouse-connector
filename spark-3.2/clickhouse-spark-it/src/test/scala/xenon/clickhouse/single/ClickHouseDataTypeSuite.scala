@@ -14,6 +14,8 @@
 
 package xenon.clickhouse.single
 
+import java.time.LocalDate
+
 import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.DataTypes.{createArrayType, createMapType}
@@ -31,6 +33,7 @@ class ClickHouseDataTypeSuite extends BaseSparkSuite
     val schema = StructType(
       StructField("id", LongType, false) ::
         StructField("col_string", StringType, false) ::
+        StructField("col_date", DateType, false) ::
         StructField("col_array_string", createArrayType(StringType, false), false) ::
         StructField("col_map_string", createMapType(StringType, StringType, false), false) ::
         Nil
@@ -43,18 +46,21 @@ class ClickHouseDataTypeSuite extends BaseSparkSuite
       // assert(StructType(structFields) === tblSchema)
 
       val dataDF = spark.createDataFrame(Seq(
-        (1L, "a", Seq("a", "b", "c"), Map("a" -> "x")),
-        (2L, "A", Seq("A", "B", "C"), Map("A" -> "X"))
-      )).toDF("id", "col_string", "col_array_string", "col_map_string")
+        (1L, "a", LocalDate.of(1996, 6, 6), Seq("a", "b", "c"), Map("a" -> "x")),
+        (2L, "A", LocalDate.of(2022, 4, 12), Seq("A", "B", "C"), Map("A" -> "X"))
+      )).toDF("id", "col_string", "col_date", "col_array_string", "col_map_string")
 
       spark.createDataFrame(dataDF.rdd, tblSchema)
         .writeTo(s"$db.$tbl")
         .append
 
+      val dates = spark.table(s"$db.$tbl").sort("id").collect.map(_.getLocalDate(2)).toSeq
+      println(dates)
+
       checkAnswer(
         spark.table(s"$db.$tbl").sort("id"),
-        Row(1L, "a", Seq("a", "b", "c"), Map("a" -> "x")) ::
-          Row(2L, "A", Seq("A", "B", "C"), Map("A" -> "X")) :: Nil
+        Row(1L, "a", LocalDate.of(1996, 6, 6), Seq("a", "b", "c"), Map("a" -> "x")) ::
+          Row(2L, "A", LocalDate.of(2022, 4, 12), Seq("A", "B", "C"), Map("A" -> "X")) :: Nil
       )
     }
   }
