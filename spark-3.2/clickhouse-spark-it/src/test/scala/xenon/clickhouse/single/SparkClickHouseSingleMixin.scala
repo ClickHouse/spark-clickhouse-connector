@@ -23,6 +23,7 @@ trait SparkClickHouseSingleMixin {
   override def sparkOptions: Map[String, String] = Map(
     "spark.master" -> "local[2]",
     "spark.ui.enabled" -> "false", // enable when debug
+    "spark.sql.codegen.wholeStage" -> "false",
     "spark.app.name" -> "spark-clickhouse-single-ut",
     "spark.sql.shuffle.partitions" -> "2",
     "spark.sql.defaultCatalog" -> "clickhouse",
