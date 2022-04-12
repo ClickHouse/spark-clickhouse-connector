@@ -50,11 +50,7 @@ jobs:
         -Psigning.gnupg.keyName='Cheng Pan'
         -Psigning.gnupg.executable=gpg
         -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
-    - run: |
-        RELEASE_VERSION="$(cat version.txt)"
-        RELEASE_JAR="clickhouse-spark-runtime-${{ matrix.spark }}_${{ matrix.scala }}-${RELEASE_VERSION}.jar"
-        mkdir -p build/release
-        mv "spark-${{ matrix.spark }}/clickhouse-spark-runtime/build/libs/${RELEASE_JAR}" build/release
+
   create-github-release:
     if: ${{ startsWith(github.repository, 'housepower/') }}
     runs-on: ubuntu-20.04
@@ -65,6 +61,5 @@ jobs:
       with:
         draft: true
         token: ${{ secrets.GITHUB_TOKEN }}
-        files: build/release/*
       env:
         GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
