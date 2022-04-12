@@ -63,7 +63,7 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
     }
 
     jar {
-        enabled = false
+        archiveClassifier.set('empty')
     }
 }
 
