@@ -14,14 +14,14 @@
 
 package xenon.clickhouse.single
 
-import java.time.LocalDate
+import java.sql.Date
 
 import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.types.DataTypes.{createArrayType, createMapType}
 import org.apache.spark.sql.types._
-import xenon.clickhouse.base.ClickHouseSingleMixIn
+import org.apache.spark.sql.types.DataTypes.{createArrayType, createMapType}
 import xenon.clickhouse.{BaseSparkSuite, Logging}
+import xenon.clickhouse.base.ClickHouseSingleMixIn
 
 class ClickHouseDataTypeSuite extends BaseSparkSuite
     with ClickHouseSingleMixIn
@@ -46,8 +46,8 @@ class ClickHouseDataTypeSuite extends BaseSparkSuite
       // assert(StructType(structFields) === tblSchema)
 
       val dataDF = spark.createDataFrame(Seq(
-        (1L, "a", LocalDate.of(1996, 6, 6), Seq("a", "b", "c"), Map("a" -> "x")),
-        (2L, "A", LocalDate.of(2022, 4, 12), Seq("A", "B", "C"), Map("A" -> "X"))
+        (1L, "a", Date.valueOf("1996-06-06"), Seq("a", "b", "c"), Map("a" -> "x")),
+        (2L, "A", Date.valueOf("2022-04-12"), Seq("A", "B", "C"), Map("A" -> "X"))
       )).toDF("id", "col_string", "col_date", "col_array_string", "col_map_string")
 
       spark.createDataFrame(dataDF.rdd, tblSchema)
@@ -59,8 +59,8 @@ class ClickHouseDataTypeSuite extends BaseSparkSuite
 
       checkAnswer(
         spark.table(s"$db.$tbl").sort("id"),
-        Row(1L, "a", LocalDate.of(1996, 6, 6), Seq("a", "b", "c"), Map("a" -> "x")) ::
-          Row(2L, "A", LocalDate.of(2022, 4, 12), Seq("A", "B", "C"), Map("A" -> "X")) :: Nil
+        Row(1L, "a", Date.valueOf("1996-06-06"), Seq("a", "b", "c"), Map("a" -> "x")) ::
+          Row(2L, "A", Date.valueOf("2022-04-12"), Seq("A", "B", "C"), Map("A" -> "X")) :: Nil
       )
     }
   }
