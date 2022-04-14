@@ -57,6 +57,13 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     }
   }
 
+  test("clickhouse system table") {
+    checkAnswer(
+      spark.sql("SELECT time_zone FROM `system`.`time_zones` WHERE time_zone = 'Asia/Shanghai'"),
+      Row("Asia/Shanghai") :: Nil
+    )
+  }
+
   test("clickhouse partition") {
     val db = "db_part"
     val tbl = "tbl_part"
