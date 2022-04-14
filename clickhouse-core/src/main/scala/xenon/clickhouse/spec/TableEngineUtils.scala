@@ -24,7 +24,7 @@ object TableEngineUtils extends Logging {
     try ParseUtils.parser.parseEngineClause(tableSpec.engine_full)
     catch {
       case cause: ParseException =>
-        log.warn(s"Unknown table engine for table ${tableSpec.database}.${tableSpec.name}: ${cause.message}")
+        log.warn(s"Unknown table engine for table ${tableSpec.database}.${tableSpec.name}: ${tableSpec.engine_full}")
         UnknownTableEngineSpec(tableSpec.engine_full)
     }
   }
