@@ -15,13 +15,19 @@
 package xenon.clickhouse.spec
 
 import xenon.clickhouse.exception.ClickHouseClientException
-import xenon.clickhouse.parse.ParseUtils
+import xenon.clickhouse.parse.{ParseException, ParseUtils}
+import xenon.clickhouse.Logging
 
-object TableEngineUtils {
+object TableEngineUtils extends Logging {
 
-  def resolveTableEngine(tableSpec: TableSpec): TableEngineSpec = synchronized(
-    ParseUtils.parser.parseEngineClause(tableSpec.engine_full)
-  )
+  def resolveTableEngine(tableSpec: TableSpec): TableEngineSpec = synchronized {
+    try ParseUtils.parser.parseEngineClause(tableSpec.engine_full)
+    catch {
+      case cause: ParseException =>
+        log.warn(s"Unknown table engine for table ${tableSpec.database}.${tableSpec.name}: ${cause.message}")
+        UnknownTableEngineSpec(tableSpec.engine_full)
+    }
+  }
 
   def resolveTableCluster(distributedEngineSpec: DistributedEngineSpec, clusterSpecs: Seq[ClusterSpec]): ClusterSpec =
     clusterSpecs.find(_.name == distributedEngineSpec.cluster)
