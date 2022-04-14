@@ -17,7 +17,7 @@ Goto [Home Page](https://housepower.github.io/spark-clickhouse-connector/) to le
 - ClickHouse 21.1.2.15 or newer
 
 Notes:
-1. Currently, only support gRPC protocol, and ClickHouse support gRPC since 
+1. Currently, only support gRPC protocol, and ClickHouse support gRPC since
    [v21.1.2.15-stable](https://github.com/ClickHouse/ClickHouse/blob/master/CHANGELOG.md#clickhouse-release-v211215-stable-2021-01-18),
    but we only do test on v21.8.14.5-lts.
 
@@ -27,9 +27,10 @@ Notes:
 
 ## Test
 
-The project leverage [Testcontainers](https://www.testcontainers.org/) and Docker Compose to do integration tests, 
-you should install Docker Desktop and Docker Compose before running test, and check more details on Testcontainers 
-documents if you'd like to run test with remote Docker daemon.
+The project leverage [Testcontainers](https://www.testcontainers.org/) and [Docker Compose](https://docs.docker.com/compose/)
+to do integration tests, you should install [Docker Desktop](https://docs.docker.com/desktop/) and [Docker Compose](https://docs.docker.com/compose/)
+before running test, and check more details on [Testcontainers Document](https://www.testcontainers.org/) if you'd
+like to run test with remote Docker daemon.
 
 `./gradlew clean test`
 
