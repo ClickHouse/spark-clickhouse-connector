@@ -14,6 +14,7 @@
 
 package xenon.clickhouse.single
 
+import java.sql.Date
 import java.sql.Timestamp
 
 import org.apache.spark.sql.types._
@@ -117,6 +118,49 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     }
   }
 
+  test("clickhouse partition (date type)") {
+    val db = "db_part_date"
+    val tbl = "tbl_part_date"
+    val schema =
+      StructType(
+        StructField("id", LongType, false) ::
+          StructField("date", DateType, false) :: Nil
+      )
+    withTable(db, tbl, schema, partKeys = Seq("date")) {
+      spark.sql(
+        s"""INSERT INTO `$db`.`$tbl`
+           |VALUES
+           |  (11L, "2022-04-11"),
+           |  (12L, "2022-04-12") AS tab(id, date)
+           |""".stripMargin
+      )
+      spark.createDataFrame(Seq(
+        (21L, Date.valueOf("2022-04-21")),
+        (22L, Date.valueOf("2022-04-22"))
+      ))
+        .toDF("id", "date")
+        .writeTo(s"$db.$tbl").append
+
+      checkAnswer(
+        spark.table(s"$db.$tbl").orderBy($"id"),
+        Row(11L, Date.valueOf("2022-04-11")) ::
+          Row(12L, Date.valueOf("2022-04-12")) ::
+          Row(21L, Date.valueOf("2022-04-21")) ::
+          Row(22L, Date.valueOf("2022-04-22")) :: Nil
+      )
+
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        Seq(
+          Row("date=2022-04-11"),
+          Row("date=2022-04-12"),
+          Row("date=2022-04-21"),
+          Row("date=2022-04-22")
+        )
+      )
+    }
+  }
+
   test("clickhouse multi part columns") {
     val db = "db_multi_part_col"
     val tbl = "tbl_multi_part_col"
@@ -158,6 +202,50 @@ class ClickHouseSingleSuite extends BaseSparkSuite
           Row("part_1=1/part_2=2"),
           Row("part_1=2/part_2=1"),
           Row("part_1=2/part_2=2")
+        )
+      )
+    }
+  }
+
+  test("clickhouse multi part columns (date type)") {
+    val db = "db_mul_part_date"
+    val tbl = "tbl_mul_part_date"
+    val schema =
+      StructType(
+        StructField("id", LongType, false) ::
+          StructField("part_1", DateType, false) ::
+          StructField("part_2", IntegerType, false) :: Nil
+      )
+    withTable(db, tbl, schema, partKeys = Seq("part_1", "part_2")) {
+      spark.sql(
+        s"""INSERT INTO `$db`.`$tbl`
+           |VALUES
+           |  (11L, "2022-04-11", 1),
+           |  (12L, "2022-04-12", 2) AS tab(id, part_1, part_2)
+           |""".stripMargin
+      )
+      spark.createDataFrame(Seq(
+        (21L, "2022-04-21", 1),
+        (22L, "2022-04-22", 2)
+      ))
+        .toDF("id", "part_1", "part_2")
+        .writeTo(s"$db.$tbl").append
+
+      checkAnswer(
+        spark.table(s"$db.$tbl").orderBy($"id"),
+        Row(11L, Date.valueOf("2022-04-11"), 1) ::
+          Row(12L, Date.valueOf("2022-04-12"), 2) ::
+          Row(21L, Date.valueOf("2022-04-21"), 1) ::
+          Row(22L, Date.valueOf("2022-04-22"), 2) :: Nil
+      )
+
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        Seq(
+          Row("part_1=2022-04-11/part_2=1"),
+          Row("part_1=2022-04-12/part_2=2"),
+          Row("part_1=2022-04-21/part_2=1"),
+          Row("part_1=2022-04-22/part_2=2")
         )
       )
     }
