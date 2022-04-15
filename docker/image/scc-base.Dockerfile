@@ -10,14 +10,17 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM ubuntu:20.04
-MAINTAINER Cheng Pan<chengpan@apache.com>
+ARG BASE_IMAGE
+
+FROM ${BASE_IMAGE}:20.04
+LABEL org.opencontainers.image.authors="Cheng Pan<chengpan@apache.com>"
 
 ARG UBUNTU_MIRROR
+ARG JDK_ARCH
 
 ENV LC_ALL=C.UTF-8
 ENV DEBIAN_FRONTEND=noninteractive
-ENV JAVA_HOME=/usr/lib/jvm/java-8-openjdk-amd64
+ENV JAVA_HOME=/usr/lib/jvm/java-8-openjdk-${JDK_ARCH}
 
 RUN sed -i "s/archive.ubuntu.com/${UBUNTU_MIRROR}/g" /etc/apt/sources.list && \
     sed -i "s/security.ubuntu.com/${UBUNTU_MIRROR}/g" /etc/apt/sources.list && \
