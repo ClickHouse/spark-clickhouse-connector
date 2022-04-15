@@ -19,7 +19,7 @@ Goto [Home Page](https://housepower.github.io/spark-clickhouse-connector/) to le
 Notes:
 1. Currently, only support gRPC protocol, and ClickHouse support gRPC since
    [v21.1.2.15-stable](https://github.com/ClickHouse/ClickHouse/blob/master/CHANGELOG.md#clickhouse-release-v211215-stable-2021-01-18),
-   but we only do test on v21.8.14.5-lts.
+   but we only do test on v22.3.3.44-lts.
 
 ## Build
 
