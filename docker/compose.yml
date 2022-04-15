@@ -12,7 +12,7 @@
 
 services:
   minio:
-    image: bitnami/minio:latest
+    image: minio/minio:latest
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio_minio
