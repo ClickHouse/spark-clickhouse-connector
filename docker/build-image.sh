@@ -36,11 +36,26 @@ SCALA_BINARY_VERSION=2.12
 SPARK_VERSION=3.2.1
 SPARK_BINARY_VERSION=3.2
 
+ARCH=$(uname -m)
+if test $ARCH = "x86_64"; then
+  BASE_IMAGE="ubuntu"
+  JDK_ARCH="amd64"
+elif test $ARCH = "aarch64"; then
+  BASE_IMAGE="arm64v8/ubuntu"
+  JDK_ARCH="arm64"
+else 
+  echo "Unsupported architecture: $ARCH"
+  exit 1
+fi
+
+
 docker build \
   --build-arg UBUNTU_MIRROR=${UBUNTU_MIRROR} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
+  --build-arg BASE_IMAGE=${BASE_IMAGE} \
+  --build-arg JDK_ARCH=${JDK_ARCH} \
   --file "${SELF_DIR}/image/scc-base.Dockerfile" \
   --tag scc-base:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
