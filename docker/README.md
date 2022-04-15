@@ -4,7 +4,7 @@ Docker Compose based one-click playground
 ## Requirements
 
 1. Install [Docker Desktop](https://docs.docker.com/desktop/) and [Docker Compose](https://docs.docker.com/compose/).
-2. Follow [README](../README.md#build) to build project.
+2. Follow [README](../README.md#build) to build the project.
 
 ## Setup playground
 
