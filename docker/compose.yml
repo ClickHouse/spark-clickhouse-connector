@@ -23,7 +23,7 @@ services:
       - 9001:9001
 
   mysql:
-    image: mysql:${MYSQL_VERSION}
+    image: mysql:${MYSQL_VERSION}-oracle
     environment:
       MYSQL_USER: mysql
       MYSQL_PASSWORD: mysql
