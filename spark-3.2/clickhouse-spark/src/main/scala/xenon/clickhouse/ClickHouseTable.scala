@@ -15,7 +15,7 @@
 package xenon.clickhouse
 
 import java.lang.{Integer => JInt, Long => JLong}
-import java.time.ZoneId
+import java.time.{LocalDate, ZoneId}
 import java.util
 
 import scala.collection.JavaConverters._
@@ -223,6 +223,7 @@ case class ClickHouseTable(
       case StringType => UTF8String.fromString(str.stripPrefix("'").stripSuffix("'"))
       case IntegerType => JInt.parseInt(str)
       case LongType => JLong.parseLong(str)
+      case DateType => LocalDate.parse(str.stripPrefix("'").stripSuffix("'"), dateFmt).toEpochDay.toInt
       case unsupported => throw new UnsupportedOperationException(s"$unsupported")
     }
 
