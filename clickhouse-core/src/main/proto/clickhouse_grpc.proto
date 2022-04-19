@@ -57,12 +57,15 @@ message ExternalTable {
 
   // Compression type used to compress `data`.
   // Supported values: none, gzip(gz), deflate, brotli(br), lzma(xz), zstd(zst), lz4, bz2.
+  //
+  // @since v22.1.1.2542-prestable https://github.com/ClickHouse/ClickHouse/pull/32747
   string compression_type = 6;
 
   // Settings for executing that insertion, applied after QueryInfo.settings.
   map<string, string> settings = 5;
 }
 
+// @since v21.11.1.8636-prestable https://github.com/ClickHouse/ClickHouse/pull/28953
 enum CompressionAlgorithm {
   NO_COMPRESSION = 0;
   DEFLATE = 1;
@@ -70,6 +73,7 @@ enum CompressionAlgorithm {
   STREAM_GZIP = 3;
 }
 
+// @since v21.11.1.8636-prestable https://github.com/ClickHouse/ClickHouse/pull/28953
 enum CompressionLevel {
   COMPRESSION_NONE = 0;
   COMPRESSION_LOW = 1;
@@ -77,6 +81,7 @@ enum CompressionLevel {
   COMPRESSION_HIGH = 3;
 }
 
+// @since v21.11.1.8636-prestable https://github.com/ClickHouse/ClickHouse/pull/28953
 message Compression {
   CompressionAlgorithm algorithm = 1;
   CompressionLevel level = 2;
@@ -122,6 +127,8 @@ message QueryInfo {
 
   /// Controls how a ClickHouse server will compress query execution results before sending back to the client.
   /// If not set the compression settings from the configuration file will be used.
+  ///
+  /// @since v21.11.1.8636-prestable https://github.com/ClickHouse/ClickHouse/pull/28953
   Compression result_compression = 17;
 
   // Compression type for `input_data`, `output_data`, `totals` and `extremes`.
@@ -129,6 +136,8 @@ message QueryInfo {
   // When used for `input_data` the client is responsible to compress data before putting it into `input_data`.
   // When used for `output_data` or `totals` or `extremes` the client receives compressed data and should decompress it by itself.
   // In the latter case consider to specify also `compression_level`.
+  //
+  // @since v22.1.1.2542-prestable https://github.com/ClickHouse/ClickHouse/pull/32747
   string compression_type = 18;
 
   // Compression level.
@@ -141,6 +150,8 @@ message QueryInfo {
   // zstd: 1..22; 3 is recommended by default (compression level 0 also means 3)
   // lz4: 0..16; values < 0 mean fast acceleration
   // bz2: 1..9
+  //
+  // @since v22.1.1.2542-prestable https://github.com/ClickHouse/ClickHouse/pull/32747
   int32 compression_level = 19;
 }
 
