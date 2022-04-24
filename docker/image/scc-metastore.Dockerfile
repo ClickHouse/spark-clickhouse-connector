@@ -15,10 +15,8 @@ ARG PROJECT_VERSION
 FROM scc-hadoop:${PROJECT_VERSION}
 
 ARG HIVE_VERSION
-ARG MYSQL_VERSION
 
 ARG APACHE_MIRROR
-ARG MAVEN_MIRROR
 
 ENV HIVE_HOME=/opt/hive
 ENV HIVE_CONF_DIR=/etc/hive/conf
@@ -26,8 +24,6 @@ ENV HIVE_CONF_DIR=/etc/hive/conf
 RUN wget -q ${APACHE_MIRROR}/hive/hive-${HIVE_VERSION}/apache-hive-${HIVE_VERSION}-bin.tar.gz && \
     tar -xzf apache-hive-${HIVE_VERSION}-bin.tar.gz -C /opt && \
     ln -s /opt/apache-hive-${HIVE_VERSION}-bin ${HIVE_HOME} && \
-    rm apache-hive-${HIVE_VERSION}-bin.tar.gz && \
-    MYSQL_JDBC_JAR_NAME=mysql-connector-java && \
-    wget -q ${MAVEN_MIRROR}/mysql/${MYSQL_JDBC_JAR_NAME}/${MYSQL_VERSION}/${MYSQL_JDBC_JAR_NAME}-${MYSQL_VERSION}.jar -P ${HIVE_HOME}/lib
+    rm apache-hive-${HIVE_VERSION}-bin.tar.gz
 
 ENTRYPOINT ["/opt/hive/bin/hive", "--service", "metastore"]

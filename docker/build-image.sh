@@ -31,7 +31,6 @@ HADOOP_VERSION=3.3.1
 HIVE_VERSION=2.3.9
 ICEBERG_VERSION=0.13.1
 KYUUBI_VERSION=1.5.0-incubating
-MYSQL_VERSION=8.0.28
 SCALA_BINARY_VERSION=2.12
 SPARK_VERSION=3.2.1
 SPARK_BINARY_VERSION=3.2
@@ -77,7 +76,6 @@ docker build \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
   --build-arg HIVE_VERSION=${HIVE_VERSION} \
-  --build-arg MYSQL_VERSION=${MYSQL_VERSION} \
   --file "${SELF_DIR}/image/scc-metastore.Dockerfile" \
   --tag scc-metastore:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
@@ -91,7 +89,6 @@ docker build \
   --build-arg DELTA_VERSION=${DELTA_VERSION} \
   --build-arg HADOOP_VERSION=${HADOOP_VERSION} \
   --build-arg ICEBERG_VERSION=${ICEBERG_VERSION} \
-  --build-arg MYSQL_VERSION=${MYSQL_VERSION} \
   --build-arg SCALA_BINARY_VERSION=${SCALA_BINARY_VERSION} \
   --build-arg SPARK_VERSION=${SPARK_VERSION} \
   --build-arg SPARK_BINARY_VERSION=${SPARK_BINARY_VERSION} \
