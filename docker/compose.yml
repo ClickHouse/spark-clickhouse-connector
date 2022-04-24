@@ -22,19 +22,18 @@ services:
       - 9000
       - 9001:9001
 
-  mysql:
-    image: mysql:${MYSQL_VERSION}-oracle
+  postgres:
+    image: postgres:${POSTGRES_VERSION}
     environment:
-      MYSQL_USER: mysql
-      MYSQL_PASSWORD: mysql
-      MYSQL_DATABASE: metastore
-      MYSQL_ALLOW_EMPTY_PASSWORD: TRUE
-    hostname: mysql
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: metastore
+    hostname: postgres
     ports:
-      - 3306
+      - 5432
     volumes:
-      - ./image/hive-schema-2.3.0.mysql.sql:/docker-entrypoint-initdb.d/hive-schema-2.3.0.mysql.sql
-      - ./image/hive-txn-schema-2.3.0.mysql.sql:/docker-entrypoint-initdb.d/hive-txn-schema-2.3.0.mysql.sql
+      - ./image/hive-schema-2.3.0.postgres.sql:/docker-entrypoint-initdb.d/hive-schema-2.3.0.postgres.sql
+      - ./image/hive-txn-schema-2.3.0.postgres.sql:/docker-entrypoint-initdb.d/hive-txn-schema-2.3.0.postgres.sql
 
   zookeeper:
     image: zookeeper:${ZOOKEEPER_VERSION}
@@ -119,7 +118,7 @@ services:
       - ./image/core-site.xml:/etc/hadoop/conf/core-site.xml
       - ./image/hive-site.xml:/etc/hive/conf/hive-site.xml
     depends_on:
-      - mysql
+      - postgres
 
   kyuubi:
     image: scc-kyuubi:${PROJECT_VERSION}
