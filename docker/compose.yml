@@ -12,7 +12,7 @@
 
 services:
   minio:
-    image: minio/minio:latest
+    image: pan3793/bitnami-minio:20220426
     environment:
       MINIO_ROOT_USER: minio
       MINIO_ROOT_PASSWORD: minio_minio
