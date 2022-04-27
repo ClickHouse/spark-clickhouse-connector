@@ -23,10 +23,11 @@ ARG MAVEN_MIRROR
 ENV HADOOP_HOME=/opt/hadoop
 ENV HADOOP_CONF_DIR=/etc/hadoop/conf
 
-RUN wget -q ${APACHE_MIRROR}/hadoop/core/hadoop-${HADOOP_VERSION}/hadoop-${HADOOP_VERSION}.tar.gz && \
-    tar -xzf hadoop-${HADOOP_VERSION}.tar.gz -C /opt && \
+RUN if [ $(uname -m) = "aarch64" ]; then HADOOP_TAR_NAME=hadoop-${HADOOP_VERSION}-aarch64; else HADOOP_TAR_NAME=hadoop-${HADOOP_VERSION}; fi && \
+    wget -q ${APACHE_MIRROR}/hadoop/core/hadoop-${HADOOP_VERSION}/${HADOOP_TAR_NAME}.tar.gz && \
+    tar -xzf ${HADOOP_TAR_NAME}.tar.gz -C /opt && \
     ln -s /opt/hadoop-${HADOOP_VERSION} ${HADOOP_HOME} && \
-    rm hadoop-${HADOOP_VERSION}.tar.gz && \
+    rm ${HADOOP_TAR_NAME}.tar.gz && \
     HADOOP_CLOUD_STORAGE_JAR_NAME=hadoop-cloud-storage && \
     wget -q ${MAVEN_MIRROR}/org/apache/hadoop/${HADOOP_CLOUD_STORAGE_JAR_NAME}/${HADOOP_VERSION}/${HADOOP_CLOUD_STORAGE_JAR_NAME}-${HADOOP_VERSION}.jar -P ${HADOOP_HOME}/share/hadoop/hdfs/lib && \
     HADOOP_AWS_JAR_NAME=hadoop-aws && \
