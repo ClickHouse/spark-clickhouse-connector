@@ -32,7 +32,7 @@
     </property>
     <property>
         <name>hive.metastore.warehouse.dir</name>
-        <value>/warehouse</value>
+        <value>s3a://spark-bucket/warehouse</value>
         <description>location of default database for the warehouse</description>
     </property>
     <property>

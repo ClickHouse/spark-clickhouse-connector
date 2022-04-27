@@ -13,54 +13,39 @@
 # limitations under the License.
 #
 
+# Set Mirror:
+# export APACHE_MIRROR=mirrors.cloud.tencent.com/apache
+# export MAVEN_MIRROR=mirrors.cloud.tencent.com/maven
+
 set -e
 
 SELF_DIR="$(cd "$(dirname "$0")"; pwd)"
 
 PROJECT_VERSION="$(cat "${SELF_DIR}/../version.txt")"
 
-UBUNTU_MIRROR=mirrors.cloud.tencent.com
-APACHE_MIRROR=https://dlcdn.apache.org
-#APACHE_MIRROR=mirrors.cloud.tencent.com/apache
-MAVEN_MIRROR=https://repo1.maven.org/maven2
-#MAVEN_MIRROR=mirrors.cloud.tencent.com/maven
+APACHE_MIRROR=${APACHE_MIRROR:-https://dlcdn.apache.org}
+MAVEN_MIRROR=${MAVEN_MIRROR:-https://repo1.maven.org/maven2}
 
 AWS_JAVA_SDK_VERSION=1.11.901
 DELTA_VERSION=1.2.0
 HADOOP_VERSION=3.3.1
 HIVE_VERSION=2.3.9
 ICEBERG_VERSION=0.13.1
-KYUUBI_VERSION=1.5.0-incubating
+KYUUBI_VERSION=1.5.1-incubating
+POSTGRES_JDBC_VERSION=42.3.4
 SCALA_BINARY_VERSION=2.12
 SPARK_VERSION=3.2.1
 SPARK_BINARY_VERSION=3.2
 
-ARCH=$(uname -m)
-if test $ARCH = "x86_64"; then
-  BASE_IMAGE="ubuntu"
-  JDK_ARCH="amd64"
-elif test $ARCH = "aarch64"; then
-  BASE_IMAGE="arm64v8/ubuntu"
-  JDK_ARCH="arm64"
-else 
-  echo "Unsupported architecture: $ARCH"
-  exit 1
-fi
-
-
 docker build \
-  --build-arg UBUNTU_MIRROR=${UBUNTU_MIRROR} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
-  --build-arg BASE_IMAGE=${BASE_IMAGE} \
-  --build-arg JDK_ARCH=${JDK_ARCH} \
   --file "${SELF_DIR}/image/scc-base.Dockerfile" \
   --tag scc-base:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
 
 docker build \
-  --build-arg UBUNTU_MIRROR=${UBUNTU_MIRROR} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
@@ -71,7 +56,6 @@ docker build \
   "${SELF_DIR}/image" $@
 
 docker build \
-  --build-arg UBUNTU_MIRROR=${UBUNTU_MIRROR} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
@@ -81,7 +65,6 @@ docker build \
   "${SELF_DIR}/image" $@
 
 docker build \
-  --build-arg UBUNTU_MIRROR=${UBUNTU_MIRROR} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
@@ -89,6 +72,7 @@ docker build \
   --build-arg DELTA_VERSION=${DELTA_VERSION} \
   --build-arg HADOOP_VERSION=${HADOOP_VERSION} \
   --build-arg ICEBERG_VERSION=${ICEBERG_VERSION} \
+  --build-arg POSTGRES_JDBC_VERSION=${POSTGRES_JDBC_VERSION} \
   --build-arg SCALA_BINARY_VERSION=${SCALA_BINARY_VERSION} \
   --build-arg SPARK_VERSION=${SPARK_VERSION} \
   --build-arg SPARK_BINARY_VERSION=${SPARK_BINARY_VERSION} \
@@ -97,7 +81,6 @@ docker build \
   "${SELF_DIR}/image" $@
 
 docker build \
-  --build-arg UBUNTU_MIRROR=${UBUNTU_MIRROR} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
