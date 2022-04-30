@@ -19,11 +19,11 @@
                 <weight>1</weight>
                 <internal_replication>true</internal_replication>
                 <replica>
-                    <host>clickhouse-s1r1</host>
+                    <host>clickhouse_s1r1</host>
                     <port>9000</port>
                 </replica>
                 <replica>
-                    <host>clickhouse-s1r2</host>
+                    <host>clickhouse_s1r2</host>
                     <port>9000</port>
                 </replica>
             </shard>
@@ -31,11 +31,11 @@
                 <weight>1</weight>
                 <internal_replication>true</internal_replication>
                 <replica>
-                    <host>clickhouse-s2r1</host>
+                    <host>clickhouse_s2r1</host>
                     <port>9000</port>
                 </replica>
                 <replica>
-                    <host>clickhouse-s2r2</host>
+                    <host>clickhouse_s2r2</host>
                     <port>9000</port>
                 </replica>
             </shard>
@@ -43,25 +43,25 @@
         <single_replica>
             <shard>
                 <replica>
-                    <host>clickhouse-s1r1</host>
+                    <host>clickhouse_s1r1</host>
                     <port>9000</port>
                 </replica>
             </shard>
             <shard>
                 <replica>
-                    <host>clickhouse-s1r2</host>
+                    <host>clickhouse_s1r2</host>
                     <port>9000</port>
                 </replica>
             </shard>
             <shard>
                 <replica>
-                    <host>clickhouse-s2r1</host>
+                    <host>clickhouse_s2r1</host>
                     <port>9000</port>
                 </replica>
             </shard>
             <shard>
                 <replica>
-                    <host>clickhouse-s2r2</host>
+                    <host>clickhouse_s2r2</host>
                     <port>9000</port>
                 </replica>
             </shard>
