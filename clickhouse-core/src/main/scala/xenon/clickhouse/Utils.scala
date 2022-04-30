@@ -14,18 +14,18 @@
 
 package xenon.clickhouse
 
+import org.apache.commons.lang3.time.FastDateFormat
+
 import java.io.{File, InputStream}
 import java.net.URI
 import java.nio.file.{Files, Path, StandardCopyOption}
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.concurrent.locks.LockSupport
-
 import scala.annotation.tailrec
+import scala.collection.mutable
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try, Using}
-
-import org.apache.commons.lang3.time.FastDateFormat
 
 object Utils extends Logging {
 
@@ -67,7 +67,7 @@ object Utils extends Logging {
   }
 
   def wrapBackQuote(identifier: String): String = {
-    val sb = new StringBuilder(identifier.length + 2)
+    val sb = new mutable.StringBuilder(identifier.length + 2)
     if (!identifier.startsWith("`")) sb.append('`')
     sb.append(identifier)
     if (identifier == "`" || !identifier.endsWith("`") || identifier.endsWith("\\`")) sb.append('`')
