@@ -335,7 +335,9 @@ class ClickHouseCatalog extends TableCatalog
 
   @throws[NamespaceAlreadyExistsException]
   override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = namespace match {
-    case Array(database) => grpcNodeClient.syncQueryOutputJSONEachRow(s"CREATE DATABASE ${quoted(database)}")
+    case Array(database) =>
+      val onClusterClause = metadata.asScala.get("cluster").map(c => s"ON CLUSTER $c").getOrElse("")
+      grpcNodeClient.syncQueryOutputJSONEachRow(s"CREATE DATABASE ${quoted(database)} $onClusterClause")
   }
 
   @throws[NoSuchNamespaceException]
