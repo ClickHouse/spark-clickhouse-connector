@@ -90,6 +90,16 @@ subprojects {
 
     test {
         maxParallelForks = 1
+        tags {
+            exclude 'org.scalatest.tags.Slow'
+        }
+    }
+
+    task slowTest(type: Test) {
+        maxParallelForks = 1
+        tags {
+            include 'org.scalatest.tags.Slow'
+        }
     }
 
     scoverage {

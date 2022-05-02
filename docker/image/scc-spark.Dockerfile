@@ -46,4 +46,5 @@ RUN wget -q ${APACHE_MIRROR}/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}
     AWS_JAVA_SDK_BUNDLE_JAR_NAME=aws-java-sdk-bundle && \
     wget -q ${MAVEN_MIRROR}/com/amazonaws/${AWS_JAVA_SDK_BUNDLE_JAR_NAME}/${AWS_JAVA_SDK_VERSION}/${AWS_JAVA_SDK_BUNDLE_JAR_NAME}-${AWS_JAVA_SDK_VERSION}.jar -P ${SPARK_HOME}/jars && \
     POSTGRES_JDBC_JAR_NAME=postgresql && \
-    wget -q ${MAVEN_MIRROR}/org/postgresql/${POSTGRES_JDBC_JAR_NAME}/${POSTGRES_JDBC_VERSION}/${POSTGRES_JDBC_JAR_NAME}-${POSTGRES_JDBC_VERSION}.jar -P ${SPARK_HOME}/jars
+    wget -q ${MAVEN_MIRROR}/org/postgresql/${POSTGRES_JDBC_JAR_NAME}/${POSTGRES_JDBC_VERSION}/${POSTGRES_JDBC_JAR_NAME}-${POSTGRES_JDBC_VERSION}.jar -P ${SPARK_HOME}/jars && \
+    wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/kyuubi-spark-connector-tpcds_2.12/1.6.0-SNAPSHOT/kyuubi-spark-connector-tpcds_2.12-1.6.0-20220502.174436-1.jar -P ${SPARK_HOME}/jars
