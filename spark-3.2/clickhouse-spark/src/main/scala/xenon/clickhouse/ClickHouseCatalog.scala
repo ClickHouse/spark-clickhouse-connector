@@ -15,7 +15,7 @@
 package xenon.clickhouse
 
 import org.apache.spark.sql.catalyst.analysis._
-import org.apache.spark.sql.clickhouse.ExprUtils
+import org.apache.spark.sql.clickhouse.{ExprUtils, SchemaUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.functions.UnboundFunction
 import org.apache.spark.sql.connector.expressions.Transform

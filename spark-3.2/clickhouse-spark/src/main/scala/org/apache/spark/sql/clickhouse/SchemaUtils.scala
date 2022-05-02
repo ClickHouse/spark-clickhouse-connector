@@ -12,12 +12,12 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse
-
-import scala.util.matching.Regex
+package org.apache.spark.sql.clickhouse
 
 import org.apache.spark.sql.types._
 import xenon.clickhouse.exception.ClickHouseClientException
+
+import scala.util.matching.Regex
 
 object SchemaUtils {
 
@@ -81,6 +81,7 @@ object SchemaUtils {
       case CharType(_) => "String" // TODO: maybe FixString?
       case DateType => "Date"
       case TimestampType => "DateTime"
+      case DecimalType.Fixed(p, s) => s"Decimal($p, $s)"
       case ArrayType(elemType, nullable) => s"Array(${maybeNullable(toClickHouseType(elemType), nullable)})"
       // TODO currently only support String as key
       case MapType(keyType, valueType, nullable) if keyType.isInstanceOf[StringType] =>

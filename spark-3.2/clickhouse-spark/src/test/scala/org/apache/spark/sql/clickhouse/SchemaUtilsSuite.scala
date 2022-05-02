@@ -12,10 +12,10 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse
+package org.apache.spark.sql.clickhouse
 
+import org.apache.spark.sql.clickhouse.SchemaUtils._
 import org.scalatest.funsuite.AnyFunSuite
-import xenon.clickhouse.SchemaUtils._
 
 class SchemaUtilsSuite extends AnyFunSuite {
   test("regex ArrayType") {
