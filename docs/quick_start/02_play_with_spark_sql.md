@@ -68,7 +68,7 @@ spark-sql> CREATE TABLE test_db.tbl_sql (
          > PARTITIONED BY (m)
          > TBLPROPERTIES (
          >   engine = 'MergeTree()',
-         >   order_by = '(id)',
+         >   order_by = 'id',
          >   settings.index_granularity = 8192
          > );
 Time taken: 0.242 seconds

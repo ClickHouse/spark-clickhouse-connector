@@ -38,7 +38,7 @@ trait SparkClickHouseSingleTestHelper { self: BaseSparkSuite with SparkClickHous
            |) USING ClickHouse
            |${if (partKeys.isEmpty) "" else partKeys.mkString("PARTITIONED BY(", ", ", ")")}
            |TBLPROPERTIES (
-           |  ${if (sortKeys.isEmpty) "" else sortKeys.mkString("order_by = '(", ", ", ")',")}
+           |  ${if (sortKeys.isEmpty) "" else sortKeys.mkString("order_by = '", ", ", "',")}
            |  engine = '$engine'
            |)
            |""".stripMargin
@@ -69,7 +69,7 @@ trait SparkClickHouseSingleTestHelper { self: BaseSparkSuite with SparkClickHous
            |PARTITIONED BY (m)
            |TBLPROPERTIES (
            |  engine = 'MergeTree()',
-           |  order_by = '(id)'
+           |  order_by = 'id'
            |)
            |""".stripMargin
       )

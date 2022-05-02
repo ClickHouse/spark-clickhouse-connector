@@ -14,11 +14,6 @@
 
 package xenon.clickhouse
 
-import java.time.ZoneId
-import java.util
-
-import scala.collection.JavaConverters._
-
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.catalog._
@@ -27,11 +22,15 @@ import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
-import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
 import xenon.clickhouse.exception.ClickHouseErrCode._
+import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
 import xenon.clickhouse.func.{ClickHouseXxHash64, ClickHouseXxHash64Shard}
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
+
+import java.time.ZoneId
+import java.util
+import scala.collection.JavaConverters._
 
 class ClickHouseCatalog extends TableCatalog
     with SupportsNamespaces
@@ -176,8 +175,6 @@ class ClickHouseCatalog extends TableCatalog
    * }}}
    *
    * `ver` — column with version. Type `UInt*`, `Date` or `DateTime`.
-   *
-   * TODO Support create Distributed tables
    */
   @throws[TableAlreadyExistsException]
   @throws[NoSuchNamespaceException]
@@ -192,42 +189,89 @@ class ClickHouseCatalog extends TableCatalog
       case None => throw ClickHouseClientException(s"Invalid table identifier: $ident")
     }
     val props = properties.asScala
-    val engineClause = props.get("engine").map(e => s"ENGINE = $e")
-      .getOrElse(throw ClickHouseClientException("Missing property 'engine'"))
+
+    val engineExpr = props.getOrElse("engine", "MergeTree()")
+
+    val isCreatingDistributed = engineExpr equalsIgnoreCase "Distributed"
+    val keyPrefix = if (isCreatingDistributed) "local." else ""
+
     val partitionsClause = partitions match {
       case transforms if transforms.nonEmpty =>
         transforms.map(ExprUtils.toClickHouse(_).sql).mkString("PARTITION BY (", ", ", ")")
       case _ => ""
     }
-    // TODO we need consider to support other DML, like alter table, drop table, truncate table ...
-    val clusterClause = props.get("cluster").map(c => s"ON CLUSTER $c").getOrElse("")
-    val orderClause = props.get("order_by").map(o => s"ORDER BY $o").getOrElse("")
-    val primaryKeyClause = props.get("primary_key").map(p => s"PRIMARY KEY $p").getOrElse("")
-    val sampleClause = props.get("sample_by").map(p => s"SAMPLE BY $p").getOrElse("")
 
-    val settingsClause = props.filterKeys(_.startsWith("settings.")) match {
-      case settings if settings.nonEmpty =>
-        settings.map { case (k, v) => s"${k.substring("settings.".length)}=$v" }.mkString("SETTINGS ", ", ", "")
-      case _ => ""
-    }
+    val orderClause = props.get(s"${keyPrefix}order_by").map(o => s"ORDER BY ($o)").getOrElse("")
+    val primaryKeyClause = props.get(s"${keyPrefix}primary_key").map(p => s"PRIMARY KEY ($p)").getOrElse("")
+    val sampleClause = props.get(s"${keyPrefix}sample_by").map(p => s"SAMPLE BY ($p)").getOrElse("")
 
     val fieldsClause = SchemaUtils
       .toClickHouseSchema(schema)
       .map { case (fieldName, ckType) => s"${quoted(fieldName)} $ckType" }
       .mkString(",\n ")
 
-    grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
-      s"""CREATE TABLE `$db`.`$tbl` $clusterClause (
-         |$fieldsClause
-         |) $engineClause
-         |$partitionsClause
-         |$orderClause
-         |$primaryKeyClause
-         |$sampleClause
+    val clusterOpt = props.get("cluster")
+
+    def tblSettingsClause(prefix: String): String = props.filterKeys(_.startsWith(prefix)) match {
+      case settings if settings.nonEmpty =>
+        settings.map { case (k, v) =>
+          s"${k.substring(prefix.length)}=$v"
+        }.mkString("SETTINGS ", ", ", "")
+      case _ => ""
+    }
+
+    def createTable(
+      clusterOpt: Option[String],
+      engineExpr: String,
+      database: String,
+      table: String,
+      settingsClause: String
+    ): Unit = {
+      val clusterClause = clusterOpt.map(c => s"ON CLUSTER $c").getOrElse("")
+      grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
+        s"""CREATE TABLE `$database`.`$table` $clusterClause (
+           |$fieldsClause
+           |) ENGINE = $engineExpr
+           |$partitionsClause
+           |$orderClause
+           |$primaryKeyClause
+           |$sampleClause
+           |$settingsClause
+           |""".stripMargin
+          .replaceAll("""\n\s+\n""", "\n") // remove empty lines
+      )
+    }
+
+    def createDistributedTable(
+      cluster: String,
+      shardExpr: String,
+      localDatabase: String,
+      localTable: String,
+      distributedDatabase: String,
+      distributedTable: String,
+      settingsClause: String
+    ): Unit = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
+      s"""CREATE TABLE `$distributedDatabase`.`$distributedTable` ON CLUSTER $cluster
+         |AS `$localDatabase`.`$localTable`
+         |ENGINE = Distributed($cluster, '$localDatabase', '$localTable', ($shardExpr))
          |$settingsClause
          |""".stripMargin
-        .replaceAll("""\n\s+\n""", "\n") // remove empty lines
     )
+
+    if (isCreatingDistributed) {
+      val cluster = clusterOpt.getOrElse("default")
+      val shardExpr = props.getOrElse("shard_by", "rand()")
+      val settingsClause = tblSettingsClause("settings.")
+      val localEngineExpr = props.getOrElse(s"${keyPrefix}engine", s"MergeTree()")
+      val localDatabase = props.getOrElse(s"${keyPrefix}database", db)
+      val localTable = props.getOrElse(s"${keyPrefix}table", s"${tbl}_local")
+      val localSettingsClause = tblSettingsClause(s"${keyPrefix}settings.")
+      createTable(Some(cluster), localEngineExpr, localDatabase, localTable, localSettingsClause)
+      createDistributedTable(cluster, shardExpr, localDatabase, localTable, db, tbl, settingsClause)
+    } else {
+      val settingsClause = tblSettingsClause(s"${keyPrefix}settings.")
+      createTable(clusterOpt, engineExpr, db, tbl, settingsClause)
+    }
 
     loadTable(ident)
   }
