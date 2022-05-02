@@ -45,7 +45,7 @@ trait SparkClickHouseClusterTestHelper { self: BaseSparkSuite with SparkClickHou
     autoCleanupDistTable(cluster, db, tbl_dist) { (cluster, db, tbl_dist, tbl_local) =>
       try {
         spark.sql(
-          s"""CREATE TABLE $db.$tbl_local (
+          s"""CREATE TABLE $db.$tbl_dist (
              |  create_time TIMESTAMP NOT NULL,
              |  y           INT       NOT NULL COMMENT 'shard key',
              |  m           INT       NOT NULL COMMENT 'part key',
@@ -55,17 +55,14 @@ trait SparkClickHouseClusterTestHelper { self: BaseSparkSuite with SparkClickHou
              |PARTITIONED BY (m)
              |TBLPROPERTIES (
              |  cluster = '$cluster',
-             |  engine = 'MergeTree()',
-             |  order_by = '(id)',
-             |  settings.index_granularity = 8192
+             |  engine = 'Distributed',
+             |  shard_by = 'y',
+             |  local.engine = 'MergeTree()',
+             |  local.database = '$db',
+             |  local.table = '$tbl_local',
+             |  local.order_by = 'id',
+             |  local.settings.index_granularity = 8192
              |)
-             |""".stripMargin
-        )
-
-        runClickHouseSQL(
-          s"""CREATE TABLE $db.$tbl_dist ON CLUSTER $cluster
-             |AS $db.$tbl_local
-             |ENGINE = Distributed($cluster, '$db', '$tbl_local', y)
              |""".stripMargin
         )
 

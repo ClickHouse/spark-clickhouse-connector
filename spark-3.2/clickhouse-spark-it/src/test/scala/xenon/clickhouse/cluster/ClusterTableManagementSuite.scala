@@ -32,26 +32,26 @@ class ClusterTableManagementSuite extends BaseSparkSuite
            |TBLPROPERTIES (
            |  cluster = '$cluster',
            |  engine = 'MergeTree()',
-           |  order_by = '(id)',
+           |  order_by = 'id',
            |  settings.index_granularity = 8192
            |)
            |""".stripMargin
       )
 
-      def createOrReplaceTable(): Unit = spark.sql(
-        s"""CREATE TABLE IF NOT EXISTS `$db`.`$tbl_dist` (
+      def createOrReplaceLocalTable(): Unit = spark.sql(
+        s"""CREATE TABLE IF NOT EXISTS `$db`.`$tbl_local` (
            |  id Long NOT NULL
            |) USING ClickHouse
            |TBLPROPERTIES (
            |  engine = 'MergeTree()',
-           |  order_by = '(id)',
+           |  order_by = 'id',
            |  settings.index_granularity = 8192
            |)
            |""".stripMargin
       )
       createLocalTable()
-      createOrReplaceTable()
-      createOrReplaceTable()
+      createOrReplaceLocalTable()
+      createOrReplaceLocalTable()
     }
   }
 }

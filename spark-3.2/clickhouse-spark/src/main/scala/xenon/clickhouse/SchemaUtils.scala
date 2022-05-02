@@ -77,6 +77,8 @@ object SchemaUtils {
       case FloatType => "Float32"
       case DoubleType => "Float64"
       case StringType => "String"
+      case VarcharType(_) => "String"
+      case CharType(_) => "String" // TODO: maybe FixString?
       case DateType => "Date"
       case TimestampType => "DateTime"
       case ArrayType(elemType, nullable) => s"Array(${maybeNullable(toClickHouseType(elemType), nullable)})"

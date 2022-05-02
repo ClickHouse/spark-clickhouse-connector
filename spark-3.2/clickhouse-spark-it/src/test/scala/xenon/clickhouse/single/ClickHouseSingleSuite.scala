@@ -398,7 +398,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite
            |) USING ClickHouse
            |TBLPROPERTIES (
            |  engine = 'MergeTree()',
-           |  order_by = '(id)',
+           |  order_by = 'id',
            |  settings.index_granularity = 8192
            |)
            |""".stripMargin
