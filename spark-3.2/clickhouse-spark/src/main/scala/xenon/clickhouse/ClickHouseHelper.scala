@@ -15,12 +15,11 @@
 package xenon.clickhouse
 
 import java.time.{LocalDateTime, ZoneId}
-
 import scala.collection.JavaConverters._
-
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
+import org.apache.spark.sql.clickhouse.SchemaUtils
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap

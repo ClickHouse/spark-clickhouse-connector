@@ -15,7 +15,7 @@
 package xenon.clickhouse
 
 import org.scalatest.funsuite.AnyFunSuite
-import xenon.clickhouse.SchemaUtils._
+import org.apache.spark.sql.clickhouse.SchemaUtils._
 
 class SchemaUtilsSuite extends AnyFunSuite {
   test("regex ArrayType") {
