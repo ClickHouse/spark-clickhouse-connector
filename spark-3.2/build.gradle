@@ -84,7 +84,9 @@ project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version") {
         testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version:tests"
         testImplementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
 
-        testImplementation "org.apache.kyuubi:kyuubi-spark-connector-tpcds_${scala_binary_version}:1.6.0-SNAPSHOT"
+        if (scala_binary_version == "2.12") {
+            testImplementation "org.apache.kyuubi:kyuubi-spark-connector-tpcds_${scala_binary_version}:1.6.0-SNAPSHOT"
+        }
     }
 
     test {
