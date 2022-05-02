@@ -24,7 +24,7 @@ use cases, [Apache Kyuubi(Incubating)](https://github.com/apache/incubator-kyuub
 
 ## Configuration
 
-Persist catalog configurations into `$SPARK_HOME/conf/spark-defaults.conf`, then `--conf`s are not required when using
+Persist catalog configurations into `SPARK_HOME/conf/spark-defaults.conf`, then `--conf`s are not required when using
 `spark-shell` or `spark-sql`.
 
 ```

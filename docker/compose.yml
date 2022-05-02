@@ -41,9 +41,9 @@ services:
       - 2181
     hostname: zookeeper
 
-  clickhouse_s1r1:
+  clickhouse-s1r1:
     image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
-    hostname: clickhouse_s1r1
+    hostname: clickhouse-s1r1
     ports:
       - 8123
       - 9000
@@ -58,9 +58,9 @@ services:
     depends_on:
       - zookeeper
 
-  clickhouse_s1r2:
+  clickhouse-s1r2:
     image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
-    hostname: clickhouse_s1r2
+    hostname: clickhouse-s1r2
     ports:
       - 8123
       - 9000
@@ -75,9 +75,9 @@ services:
     depends_on:
       - zookeeper
 
-  clickhouse_s2r1:
+  clickhouse-s2r1:
     image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
-    hostname: clickhouse_s2r1
+    hostname: clickhouse-s2r1
     ports:
       - 8123
       - 9000
@@ -92,9 +92,9 @@ services:
     depends_on:
       - zookeeper
 
-  clickhouse_s2r2:
+  clickhouse-s2r2:
     image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
-    hostname: clickhouse_s2r2
+    hostname: clickhouse-s2r2
     ports:
       - 8123
       - 9000
@@ -133,10 +133,10 @@ services:
       - ./image/kyuubi-defaults.conf:/etc/kyuubi/conf/kyuubi-defaults.conf
       - ../spark-${SPARK_BINARY_VERSION}/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-${SPARK_BINARY_VERSION}_${SCALA_BINARY_VERSION}-${PROJECT_VERSION}.jar:/opt/spark/jars/clickhouse-spark-runtime-${SPARK_BINARY_VERSION}_${SCALA_BINARY_VERSION}-${PROJECT_VERSION}.jar
     depends_on:
-      - clickhouse_s1r1
-      - clickhouse_s1r2
-      - clickhouse_s2r1
-      - clickhouse_s2r2
+      - clickhouse-s1r1
+      - clickhouse-s1r2
+      - clickhouse-s2r1
+      - clickhouse-s2r2
       - metastore
       - minio
       - zookeeper
