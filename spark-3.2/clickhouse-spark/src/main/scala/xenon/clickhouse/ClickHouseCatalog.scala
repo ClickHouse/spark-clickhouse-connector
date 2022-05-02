@@ -212,7 +212,7 @@ class ClickHouseCatalog extends TableCatalog
 
     val clusterOpt = props.get("cluster")
 
-    def settingsClause(prefix: String): String = props.filterKeys(_.startsWith(prefix)) match {
+    def tblSettingsClause(prefix: String): String = props.filterKeys(_.startsWith(prefix)) match {
       case settings if settings.nonEmpty =>
         settings.map { case (k, v) =>
           s"${k.substring(prefix.length)}=$v"
@@ -261,15 +261,15 @@ class ClickHouseCatalog extends TableCatalog
     if (isCreatingDistributed) {
       val cluster = clusterOpt.getOrElse("default")
       val shardExpr = props.getOrElse("shard_by", "rand()")
-      val settingsClause = settingsClause("settings.")
+      val settingsClause = tblSettingsClause("settings.")
       val localEngineExpr = props.getOrElse(s"${keyPrefix}engine", s"MergeTree()")
       val localDatabase = props.getOrElse(s"${keyPrefix}database", db)
       val localTable = props.getOrElse(s"${keyPrefix}table", s"${tbl}_local")
-      val localSettingsClause = settingsClause(s"${keyPrefix}settings.")
+      val localSettingsClause = tblSettingsClause(s"${keyPrefix}settings.")
       createTable(Some(cluster), localEngineExpr, localDatabase, localTable, localSettingsClause)
       createDistributedTable(cluster, shardExpr, localDatabase, localTable, db, tbl, settingsClause)
     } else {
-      val settingsClause = settingsClause(s"${keyPrefix}settings.")
+      val settingsClause = tblSettingsClause(s"${keyPrefix}settings.")
       createTable(clusterOpt, engineExpr, db, tbl, settingsClause)
     }
 
