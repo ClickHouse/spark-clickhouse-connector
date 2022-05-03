@@ -21,7 +21,8 @@ ARG APACHE_MIRROR
 ENV HIVE_HOME=/opt/hive
 ENV HIVE_CONF_DIR=/etc/hive/conf
 
-RUN wget -q ${APACHE_MIRROR}/hive/hive-${HIVE_VERSION}/apache-hive-${HIVE_VERSION}-bin.tar.gz && \
+RUN set -x && \
+    wget -q ${APACHE_MIRROR}/hive/hive-${HIVE_VERSION}/apache-hive-${HIVE_VERSION}-bin.tar.gz && \
     tar -xzf apache-hive-${HIVE_VERSION}-bin.tar.gz -C /opt && \
     ln -s /opt/apache-hive-${HIVE_VERSION}-bin ${HIVE_HOME} && \
     rm apache-hive-${HIVE_VERSION}-bin.tar.gz
