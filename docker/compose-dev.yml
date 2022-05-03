@@ -139,6 +139,7 @@ services:
       - ./image/hive-site.xml:/etc/hive/conf/hive-site.xml
       - ./image/spark-defaults.conf:/etc/spark/conf/spark-defaults.conf
       - ./image/kyuubi-defaults.conf:/etc/kyuubi/conf/kyuubi-defaults.conf
+      - ../spark-${SPARK_BINARY_VERSION}/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-${SPARK_BINARY_VERSION}_${SCALA_BINARY_VERSION}-${PROJECT_VERSION}.jar:/opt/spark/jars/clickhouse-spark-runtime-${SPARK_BINARY_VERSION}_${SCALA_BINARY_VERSION}-${PROJECT_VERSION}.jar
     depends_on:
       - clickhouse-s1r1
       - clickhouse-s1r2

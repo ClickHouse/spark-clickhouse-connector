@@ -28,8 +28,8 @@ Notes:
 ## Test
 
 The project leverage [Testcontainers](https://www.testcontainers.org/) and [Docker Compose](https://docs.docker.com/compose/)
-to do integration tests, you should install [Docker Desktop](https://docs.docker.com/desktop/) and [Docker Compose](https://docs.docker.com/compose/)
-before running test, and check more details on [Testcontainers Document](https://www.testcontainers.org/) if you'd
+to do integration tests, you should install [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/)
+before running test, and check more details on [Testcontainers document](https://www.testcontainers.org/) if you'd
 like to run test with remote Docker daemon.
 
 `./gradlew clean test`

@@ -42,7 +42,7 @@ docker build \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
   --file "${SELF_DIR}/image/scc-base.Dockerfile" \
-  --tag scc-base:${PROJECT_VERSION} \
+  --tag pan3793/scc-base:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
 
 docker build \
@@ -52,7 +52,7 @@ docker build \
   --build-arg AWS_JAVA_SDK_VERSION=${AWS_JAVA_SDK_VERSION} \
   --build-arg HADOOP_VERSION=${HADOOP_VERSION} \
   --file "${SELF_DIR}/image/scc-hadoop.Dockerfile" \
-  --tag scc-hadoop:${PROJECT_VERSION} \
+  --tag pan3793/scc-hadoop:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
 
 docker build \
@@ -61,7 +61,7 @@ docker build \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
   --build-arg HIVE_VERSION=${HIVE_VERSION} \
   --file "${SELF_DIR}/image/scc-metastore.Dockerfile" \
-  --tag scc-metastore:${PROJECT_VERSION} \
+  --tag pan3793/scc-metastore:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
 
 docker build \
@@ -77,7 +77,7 @@ docker build \
   --build-arg SPARK_VERSION=${SPARK_VERSION} \
   --build-arg SPARK_BINARY_VERSION=${SPARK_BINARY_VERSION} \
   --file "${SELF_DIR}/image/scc-spark.Dockerfile" \
-  --tag scc-spark:${PROJECT_VERSION} \
+  --tag pan3793/scc-spark:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
 
 docker build \
@@ -88,5 +88,5 @@ docker build \
   --build-arg HADOOP_VERSION=${HADOOP_VERSION} \
   --build-arg KYUUBI_VERSION=${KYUUBI_VERSION} \
   --file "${SELF_DIR}/image/scc-kyuubi.Dockerfile" \
-  --tag scc-kyuubi:${PROJECT_VERSION} \
+  --tag pan3793/scc-kyuubi:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
