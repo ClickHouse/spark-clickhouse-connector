@@ -41,6 +41,7 @@ services:
     image: zookeeper:${ZOOKEEPER_VERSION}
     ports:
       - 2181
+    container_name: zookeeper
     hostname: zookeeper
 
   clickhouse-s1r1:
