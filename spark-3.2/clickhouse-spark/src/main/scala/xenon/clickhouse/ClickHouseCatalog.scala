@@ -14,7 +14,7 @@
 
 package xenon.clickhouse
 
-import org.apache.spark.sql.catalyst.analysis._
+import org.apache.spark.sql.catalyst.analysis.{NoSuchTableException, _}
 import org.apache.spark.sql.clickhouse.{ExprUtils, SchemaUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.functions.UnboundFunction
@@ -106,14 +106,14 @@ class ClickHouseCatalog extends TableCatalog
   @throws[NoSuchTableException]
   override def loadTable(ident: Identifier): ClickHouseTable = {
     val (database, table) = unwrap(ident) match {
-      case None => throw ClickHouseClientException(s"Invalid table identifier: $ident")
+      case None => throw new NoSuchTableException(ident)
       case Some((db, tbl)) =>
         grpcNodeClient.syncQueryOutputJSONEachRow(s"SELECT * FROM `$db`.`$tbl` WHERE 1=0") match {
           case Left(exception) if exception.getCode == UNKNOWN_TABLE.code =>
-            throw new NoSuchTableException(ident.toString)
+            throw new NoSuchTableException(ident)
           // not sure if this check is necessary
           case Left(exception) if exception.getCode == UNKNOWN_DATABASE.code =>
-            throw new NoSuchNamespaceException(db)
+            throw new NoSuchTableException(s"Database $db does not exist")
           case Left(exception) =>
             throw new ClickHouseServerException(exception)
           case Right(_) => (db, tbl)
