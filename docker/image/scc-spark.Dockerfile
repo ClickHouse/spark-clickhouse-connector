@@ -19,6 +19,7 @@ ARG DELTA_VERSION
 ARG HADOOP_VERSION
 ARG ICEBERG_VERSION
 ARG POSTGRES_JDBC_VERSION
+ARG PROJECT_VERSION
 ARG SCALA_BINARY_VERSION
 ARG SPARK_VERSION
 ARG SPARK_BINARY_VERSION
@@ -31,7 +32,8 @@ ENV HADOOP_CONF_DIR=/etc/hadoop/conf
 ENV HIVE_CONF_DIR=/etc/hive/conf
 ENV SPARK_CONF_DIR=/etc/spark/conf
 
-RUN wget -q ${APACHE_MIRROR}/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.2.tgz && \
+RUN set -x && \
+    wget -q ${APACHE_MIRROR}/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.2.tgz && \
     tar -xzf spark-${SPARK_VERSION}-bin-hadoop3.2.tgz -C /opt && \
     ln -s /opt/spark-${SPARK_VERSION}-bin-hadoop3.2 ${SPARK_HOME} && \
     rm spark-${SPARK_VERSION}-bin-hadoop3.2.tgz && \
@@ -50,4 +52,4 @@ RUN wget -q ${APACHE_MIRROR}/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}
     TPCDS_CONNECTOR_JAR_NAME=kyuubi-spark-connector-tpcds_${SCALA_BINARY_VERSION} && \
     wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/${TPCDS_CONNECTOR_JAR_NAME}/1.6.0-SNAPSHOT/${TPCDS_CONNECTOR_JAR_NAME}-1.6.0-20220502.174436-1.jar -P ${SPARK_HOME}/jars && \
     SCC_JAR_NAME=clickhouse-spark-runtime-${SPARK_BINARY_VERSION}_${SCALA_BINARY_VERSION} && \
-    if [[ ${PROJECT_VERSION} != *SNAPSHOT ]]; then wget -q ${MAVEN_MIRROR}/com/github/housepower/${SCC_JAR_NAME}/${PROJECT_VERSION}/${SCC_JAR_NAME}-${PROJECT_VERSION}.jar -P ${SPARK_HOME}/jars; fi
+    if [ "$(echo ${PROJECT_VERSION} | grep SNAPSHOT)" = "" ]; then wget -q ${MAVEN_MIRROR}/com/github/housepower/${SCC_JAR_NAME}/${PROJECT_VERSION}/${SCC_JAR_NAME}-${PROJECT_VERSION}.jar -P ${SPARK_HOME}/jars; fi

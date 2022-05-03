@@ -24,7 +24,8 @@ ARG MAVEN_MIRROR
 ENV KYUUBI_HOME=/opt/kyuubi
 ENV KYUUBI_CONF_DIR=/opt/kyuubi/conf
 
-RUN wget -q ${APACHE_MIRROR}/incubator/kyuubi/kyuubi-${KYUUBI_VERSION}/apache-kyuubi-${KYUUBI_VERSION}-bin.tgz && \
+RUN set -x && \
+    wget -q ${APACHE_MIRROR}/incubator/kyuubi/kyuubi-${KYUUBI_VERSION}/apache-kyuubi-${KYUUBI_VERSION}-bin.tgz && \
     tar -xzf apache-kyuubi-${KYUUBI_VERSION}-bin.tgz -C /opt && \
     ln -s /opt/apache-kyuubi-${KYUUBI_VERSION}-bin ${KYUUBI_HOME} && \
     rm apache-kyuubi-${KYUUBI_VERSION}-bin.tgz && \
