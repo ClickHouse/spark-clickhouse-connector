@@ -50,4 +50,4 @@ RUN wget -q ${APACHE_MIRROR}/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}
     TPCDS_CONNECTOR_JAR_NAME=kyuubi-spark-connector-tpcds_${SCALA_BINARY_VERSION} && \
     wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/${TPCDS_CONNECTOR_JAR_NAME}/1.6.0-SNAPSHOT/${TPCDS_CONNECTOR_JAR_NAME}-1.6.0-20220502.174436-1.jar -P ${SPARK_HOME}/jars && \
     SCC_JAR_NAME=clickhouse-spark-runtime-${SPARK_BINARY_VERSION}_${SCALA_BINARY_VERSION} && \
-    if [[ ${PROJECT_VERSION} = *SNAPSHOT ]]; then wget -q ${MAVEN_MIRROR}/com/github/housepower/${SCC_JAR_NAME}/${PROJECT_VERSION}/${SCC_JAR_NAME}-${PROJECT_VERSION}.jar -P ${SPARK_HOME}/jars; fi
+    if [[ ${PROJECT_VERSION} != *SNAPSHOT ]]; then wget -q ${MAVEN_MIRROR}/com/github/housepower/${SCC_JAR_NAME}/${PROJECT_VERSION}/${SCC_JAR_NAME}-${PROJECT_VERSION}.jar -P ${SPARK_HOME}/jars; fi
