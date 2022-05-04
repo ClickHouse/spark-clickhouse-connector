@@ -7,7 +7,7 @@ Build on Apache Spark DataSourceV2 API.
 
 ## Usage
 
-Goto [Home Page](https://housepower.github.io/spark-clickhouse-connector/) to learn how to use this connector.
+See the [documentation](https://housepower.github.io/spark-clickhouse-connector/) for how to use this connector.
 
 ## Requirements
 
@@ -23,6 +23,8 @@ Notes:
 
 ## Build
 
+Build w/o test
+
 `./gradlew clean build -x test`
 
 ## Test
@@ -32,8 +34,10 @@ to do integration tests, you should install [Docker](https://docs.docker.com/get
 before running test, and check more details on [Testcontainers document](https://www.testcontainers.org/) if you'd
 like to run test with remote Docker daemon.
 
+Run all test
+
 `./gradlew clean test`
 
-Run single test.
+Run single test
 
 `./gradlew test --tests=ConvertDistToLocalWriteSuite`

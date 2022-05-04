@@ -36,7 +36,7 @@ extra:
 nav:
   - Home: index.md
   - Quick Start:
-    - Preparation: quick_start/01_preparation.md
+    - Get the Library: quick_start/01_get_the_library.md
     - Play with Spark SQL: quick_start/02_play_with_spark_sql.md
     - Play with Spark Shell: quick_start/03_play_with_spark_shell.md
   - Best Practices:
@@ -46,6 +46,8 @@ nav:
     - Catalog Configurations: configurations/01_catalog_configurations.md
     - SQL Configurations: configurations/02_sql_configurations.md
   - Developers:
-    - developers/index.md
+    - Build and Test: developers/01_build_and_test.md
+    - Private Release: developers/02_private_release.md
+    - Public Release: developers/03_public_release.md
   - Internals:
     - internals/index.md

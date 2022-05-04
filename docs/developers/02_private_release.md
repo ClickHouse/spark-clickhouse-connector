@@ -13,17 +13,29 @@ license: |
   limitations under the License.
 ---
 
-Configurations
+Private Release
 ===
 
-## TODO
+!!! tip
 
-## Overwrite SQL Configurations
+    Internal Release means deploying to private Nexus Repository. Please make sure you are granted to access your
+    company private Nexus Repository.
 
-Your can overwrite [ClickHouse SQL Configurations](./02_sql_configurations.md) by editing
-`$SPARK_HOME/conf/spark-defaults.conf`, e.g.
+### Repository and Authentication 
+
+Configure Gradle in `~/.gradle/gradle.properties`.
 
 ```
-spark.clickhouse.write.batchSize          10000
-spark.clickhouse.write.maxRetry           2
+mavenUser=xxx
+mavenPassword=xxx
+mavenReleasesRepo=xxx
+mavenSnapshotsRepo=xxx
 ```
+
+### Upgrade Version
+
+Modify version in `version.txt` and `docker/.env-dev`
+
+### Build and Deploy
+
+Publish to Maven Repository using `./gradlew publish`
