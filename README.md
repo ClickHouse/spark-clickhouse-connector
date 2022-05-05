@@ -13,7 +13,7 @@ See the [documentation](https://housepower.github.io/spark-clickhouse-connector/
 
 - Java 8 or 11
 - Scala 2.12 or 2.13
-- Apache Spark 3.2.x
+- Apache Spark 3.2 or 3.3 
 - ClickHouse 21.1.2.15 or newer
 
 Notes:
