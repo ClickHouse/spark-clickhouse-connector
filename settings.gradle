@@ -44,3 +44,17 @@ if (sparkBinaryVersions.contains("3.2")) {
     project(":clickhouse-spark-it-3.2_$scala_binary_version").projectDir = file('spark-3.2/clickhouse-spark-it')
     project(":clickhouse-spark-it-3.2_$scala_binary_version").name = "clickhouse-spark-it-3.2_$scala_binary_version"
 }
+
+if (sparkBinaryVersions.contains("3.3")) {
+    include ":clickhouse-spark-3.3_$scala_binary_version"
+    project(":clickhouse-spark-3.3_$scala_binary_version").projectDir = file('spark-3.3/clickhouse-spark')
+    project(":clickhouse-spark-3.3_$scala_binary_version").name = "clickhouse-spark-3.3_$scala_binary_version"
+
+    include ":clickhouse-spark-runtime-3.3_$scala_binary_version"
+    project(":clickhouse-spark-runtime-3.3_$scala_binary_version").projectDir = file('spark-3.3/clickhouse-spark-runtime')
+    project(":clickhouse-spark-runtime-3.3_$scala_binary_version").name = "clickhouse-spark-runtime-3.3_$scala_binary_version"
+
+    include ":clickhouse-spark-it-3.3_$scala_binary_version"
+    project(":clickhouse-spark-it-3.3_$scala_binary_version").projectDir = file('spark-3.3/clickhouse-spark-it')
+    project(":clickhouse-spark-it-3.3_$scala_binary_version").name = "clickhouse-spark-it-3.3_$scala_binary_version"
+}
