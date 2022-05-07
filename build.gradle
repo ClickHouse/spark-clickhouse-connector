@@ -61,6 +61,7 @@ subprojects {
 
     repositories {
         maven { url = "$mavenCentralMirror" }
+        maven { url = "https://repository.apache.org/content/repositories/orgapachespark-1402" }
     }
 
     version = getProjectVersion()
@@ -221,6 +222,10 @@ String getProjectVersion() {
 
 if (System.getProperty("spark_binary_versions").split(",").contains("3.2")) {
     apply from: file("spark-3.2/build.gradle")
+}
+
+if (System.getProperty("spark_binary_versions").split(",").contains("3.3")) {
+    apply from: file("spark-3.3/build.gradle")
 }
 
 apply from: "deploy.gradle"
