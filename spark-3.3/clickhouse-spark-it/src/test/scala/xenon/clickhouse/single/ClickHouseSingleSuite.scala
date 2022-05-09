@@ -393,7 +393,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite
   test("create or replace table") {
     autoCleanupTable("db_cor", "tbl_cor") { (db, tbl) =>
       def createOrReplaceTable(): Unit = spark.sql(
-        s"""CREATE TABLE IF NOT EXISTS `$db`.`$tbl` (
+        s"""CREATE OR REPLACE TABLE `$db`.`$tbl` (
            |  id Long NOT NULL
            |) USING ClickHouse
            |TBLPROPERTIES (
