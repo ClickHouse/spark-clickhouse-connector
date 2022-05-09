@@ -39,7 +39,7 @@ class ClusterTableManagementSuite extends BaseSparkSuite
       )
 
       def createOrReplaceLocalTable(): Unit = spark.sql(
-        s"""CREATE TABLE IF NOT EXISTS `$db`.`$tbl_local` (
+        s"""CREATE OR REPLACE TABLE `$db`.`$tbl_local` (
            |  id Long NOT NULL
            |) USING ClickHouse
            |TBLPROPERTIES (
