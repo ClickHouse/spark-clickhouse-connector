@@ -344,16 +344,10 @@ class ClickHouseCatalog extends TableCatalog
   override def alterNamespace(namespace: Array[String], changes: NamespaceChange*): Unit =
     throw new UnsupportedOperationException("ALTER NAMESPACE OPERATION is unsupported yet")
 
-  // Removed in SPARK-37929
   @throws[NoSuchNamespaceException]
-  def dropNamespace(namespace: Array[String]): Boolean = dropNamespace(namespace, false)
-
-  // Introduced SPARK-37929
-  @throws[NoSuchNamespaceException]
-  def dropNamespace(namespace: Array[String], cascade: Boolean): Boolean = namespace match {
+  override def dropNamespace(namespace: Array[String]): Boolean = namespace match {
     case Array(database) =>
-      val cascadeClause = if (cascade) "CASCADE" else ""
-      grpcNodeClient.syncQueryOutputJSONEachRow(s"DROP DATABASE ${quoted(database)} $cascadeClause").isRight
+      grpcNodeClient.syncQueryOutputJSONEachRow(s"DROP DATABASE ${quoted(database)}").isRight
     case _ => false
   }
 

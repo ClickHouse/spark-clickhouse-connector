@@ -14,15 +14,14 @@
 
 package xenon.clickhouse
 
-import java.sql.{Date, Timestamp}
-import java.time.{Instant, LocalDate, ZoneId}
-
 import org.apache.commons.lang3.StringUtils
 import org.apache.spark.sql.connector.expressions.aggregate._
-import org.apache.spark.sql.connector.expressions.NamedReference
 import org.apache.spark.sql.sources._
 import org.apache.spark.unsafe.types.UTF8String
 import xenon.clickhouse.Utils._
+
+import java.sql.{Date, Timestamp}
+import java.time.{Instant, LocalDate, ZoneId}
 
 trait SQLHelper {
 
@@ -72,25 +71,21 @@ trait SQLHelper {
 
   def compileAggregate(aggFunction: AggregateFunc): Option[String] =
     aggFunction match {
-      case min: Min if min.column.isInstanceOf[NamedReference] =>
-        val col = min.column.asInstanceOf[NamedReference]
-        if (col.fieldNames().length != 1) return None
-        Some(s"MIN(${quoted(col.fieldNames.head)})")
-      case max: Max if max.column.isInstanceOf[NamedReference] =>
-        val col = max.column.asInstanceOf[NamedReference]
-        if (col.fieldNames.length != 1) return None
-        Some(s"MAX(${quoted(col.fieldNames.head)})")
-      case count: Count if count.column.isInstanceOf[NamedReference] =>
-        val col = count.column.asInstanceOf[NamedReference]
-        if (col.fieldNames.length != 1) return None
+      case min: Min =>
+        if (min.column.fieldNames.length != 1) return None
+        Some(s"MIN(${quoted(min.column.fieldNames.head)})")
+      case max: Max =>
+        if (max.column.fieldNames.length != 1) return None
+        Some(s"MAX(${quoted(max.column.fieldNames.head)})")
+      case count: Count =>
+        if (count.column.fieldNames.length != 1) return None
         val distinct = if (count.isDistinct) "DISTINCT " else ""
-        val column = quoted(col.fieldNames.head)
+        val column = quoted(count.column.fieldNames.head)
         Some(s"COUNT($distinct$column)")
-      case sum: Sum if sum.column.isInstanceOf[NamedReference] =>
-        val col = sum.column.asInstanceOf[NamedReference]
-        if (col.fieldNames.length != 1) return None
+      case sum: Sum =>
+        if (sum.column.fieldNames.length != 1) return None
         val distinct = if (sum.isDistinct) "DISTINCT " else ""
-        val column = quoted(col.fieldNames.head)
+        val column = quoted(sum.column.fieldNames.head)
         Some(s"SUM($distinct$column)")
       case _: CountStar =>
         Some("COUNT(*)")

@@ -22,8 +22,7 @@ case class ClickHousePartitioning(inputParts: Array[ClickHouseInputPartition]) e
 
   override def numPartitions(): Int = inputParts.length
 
-  // Removed in SPARK-37377
-  def satisfy(distribution: Distribution): Boolean = false
+  override def satisfy(distribution: Distribution): Boolean = false
 }
 
 case class ClickHouseInputPartition(
