@@ -80,7 +80,7 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Ev
       block(database, table)
     } finally if (cleanup) {
       spark.sql(s"DROP TABLE IF EXISTS `$database`.`$table`")
-      spark.sql(s"DROP DATABASE IF EXISTS `$database`")
+      spark.sql(s"DROP DATABASE IF EXISTS `$database` CASCADE")
     }
 
   def withClickHouseSingleIdTable(
