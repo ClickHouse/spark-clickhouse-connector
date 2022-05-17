@@ -38,6 +38,7 @@ class ClickHouseScanBuilder(
   metadataSchema: StructType,
   partitionTransforms: Array[Transform]
 ) extends ScanBuilder
+    with SupportsPushDownLimit
     with SupportsPushDownFilters
     with SupportsPushDownAggregates
     with SupportsPushDownRequiredColumns
@@ -54,6 +55,13 @@ class ClickHouseScanBuilder(
   private var _readSchema: StructType = StructType(
     physicalSchema.fields ++ reservedMetadataSchema.fields
   )
+
+  private var _limit: Option[Int] = None
+
+  override def pushLimit(limit: Int): Boolean = {
+    this._limit = Some(limit)
+    true
+  }
 
   private var _pushedFilters = Array.empty[Filter]
 
@@ -112,7 +120,8 @@ class ClickHouseScanBuilder(
   override def build(): Scan = new ClickHouseBatchScan(scanJob.copy(
     readSchema = _readSchema,
     filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
-    groupByClause = _groupByClause
+    groupByClause = _groupByClause,
+    limit = _limit
   ))
 }
 
