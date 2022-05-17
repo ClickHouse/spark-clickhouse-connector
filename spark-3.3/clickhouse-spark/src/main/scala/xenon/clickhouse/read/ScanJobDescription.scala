@@ -34,5 +34,6 @@ case class ScanJobDescription(
   // We should pass compiled ClickHouse SQL snippets(or ClickHouse SQL AST data structure) instead of Spark Expression
   // into Scan tasks because the check happens in planing phase on driver side.
   filtersExpr: String = "1=1",
-  groupByClause: Option[String] = None
+  groupByClause: Option[String] = None,
+  limit: Option[Int] = None
 )

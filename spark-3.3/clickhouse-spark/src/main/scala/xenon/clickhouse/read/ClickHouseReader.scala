@@ -52,15 +52,19 @@ class ClickHouseReader(
 
   lazy val streamOutput: StreamOutput[Array[JsonNode]] = {
     val selectItems =
-      if (readSchema.isEmpty) "1" // for case like COUNT(*) which prunes all columns
-      else readSchema.map {
-        field => if (scanJob.groupByClause.isDefined) field.name else s"`${field.name}`"
-      }.mkString(", ")
+      if (readSchema.isEmpty) {
+        "1" // for case like COUNT(*) which prunes all columns
+      } else {
+        readSchema.map {
+          field => if (scanJob.groupByClause.isDefined) field.name else s"`${field.name}`"
+        }.mkString(", ")
+      }
     grpcNodeClient.syncStreamQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(
       s"""SELECT $selectItems
          |FROM `$database`.`$table`
          |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
          |${scanJob.groupByClause.getOrElse("")}
+         |${scanJob.limit.map(n => s"LIMIT $n").getOrElse("")}
          |""".stripMargin
     )
   }

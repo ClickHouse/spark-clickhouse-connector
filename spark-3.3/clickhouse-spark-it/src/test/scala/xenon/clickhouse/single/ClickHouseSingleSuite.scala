@@ -352,6 +352,13 @@ class ClickHouseSingleSuite extends BaseSparkSuite
     }
   }
 
+  test("push down limit") {
+    checkAnswer(
+      spark.sql(s"SELECT zero FROM system.zeros LIMIT 2"),
+      Seq(Row(0), Row(0))
+    )
+  }
+
   test("push down aggregation") {
     val db = "db_agg_col"
     val tbl = "tbl_agg_col"
