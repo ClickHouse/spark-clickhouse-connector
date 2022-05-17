@@ -61,7 +61,7 @@ subprojects {
 
     repositories {
         maven { url = "$mavenCentralMirror" }
-        maven { url = "https://repository.apache.org/content/repositories/orgapachespark-1402" }
+        maven { url = "https://repository.apache.org/content/repositories/orgapachespark-1403" }
     }
 
     version = getProjectVersion()
