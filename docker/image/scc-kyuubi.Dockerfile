@@ -22,7 +22,7 @@ ARG APACHE_MIRROR
 ARG MAVEN_MIRROR
 
 ENV KYUUBI_HOME=/opt/kyuubi
-ENV KYUUBI_CONF_DIR=/opt/kyuubi/conf
+ENV KYUUBI_CONF_DIR=/etc/kyuubi/conf
 
 RUN set -x && \
     wget -q ${APACHE_MIRROR}/incubator/kyuubi/kyuubi-${KYUUBI_VERSION}/apache-kyuubi-${KYUUBI_VERSION}-bin.tgz && \
