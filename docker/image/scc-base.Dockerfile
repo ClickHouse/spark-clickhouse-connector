@@ -13,10 +13,8 @@
 FROM openjdk:8-bullseye
 LABEL org.opencontainers.image.authors="Cheng Pan<chengpan@apache.com>"
 
-ARG UBUNTU_MIRROR
-
 RUN apt-get update -q && \
-    apt-get install -yq retry &&  \
+    apt-get install -yq retry && \
     retry --times=3 --delay=1 -- apt-get install -yq vim less net-tools wget curl && \
     retry --times=3 --delay=1 -- apt-get install -yq python-is-python3 python3-pip && \
     rm -rf /var/lib/apt/lists/*
