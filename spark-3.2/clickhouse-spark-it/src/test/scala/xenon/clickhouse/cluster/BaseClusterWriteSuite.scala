@@ -52,19 +52,19 @@ abstract class BaseClusterWriteSuite extends BaseSparkSuite
       )
 
       checkAnswer(
-        spark.table(s"`clickhouse-s1r1`.$db.$tbl_local"),
+        spark.table(s"clickhouse_s1r1.$db.$tbl_local"),
         Row(Timestamp.valueOf("2024-04-04 10:10:10"), 2024, 4, 4L, "4") :: Nil
       )
       checkAnswer(
-        spark.table(s"`clickhouse-s1r2`.$db.$tbl_local"),
+        spark.table(s"clickhouse_s1r2.$db.$tbl_local"),
         Row(Timestamp.valueOf("2021-01-01 10:10:10"), 2021, 1, 1L, "1") :: Nil
       )
       checkAnswer(
-        spark.table(s"`clickhouse-s2r1`.$db.$tbl_local"),
+        spark.table(s"clickhouse_s2r1.$db.$tbl_local"),
         Row(Timestamp.valueOf("2022-02-02 10:10:10"), 2022, 2, 2L, "2") :: Nil
       )
       checkAnswer(
-        spark.table(s"`clickhouse-s2r2`.$db.$tbl_local"),
+        spark.table(s"clickhouse_s2r2.$db.$tbl_local"),
         Row(Timestamp.valueOf("2023-03-03 10:10:10"), 2023, 3, 3L, "3") :: Nil
       )
 
