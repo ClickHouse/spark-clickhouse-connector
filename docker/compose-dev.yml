@@ -166,5 +166,6 @@ services:
       - ./image/cloudbeaver-conf/initial-data.conf:/opt/cloudbeaver/conf/initial-data.conf
       - ./image/cloudbeaver-conf/initial-data-sources.conf:/opt/cloudbeaver/conf/initial-data-sources.conf
       - ./image/cloudbeaver-conf/product.conf:/opt/cloudbeaver/conf/product.conf
+      - /Users/chengpan/.m2/repository/org/apache/kyuubi/kyuubi-hive-jdbc-shaded/1.6.0-SNAPSHOT/kyuubi-hive-jdbc-shaded-1.6.0-SNAPSHOT.jar:/opt/cloudbeaver/drivers/kyuubi/kyuubi-hive-jdbc-shaded-1.5.1-incubating.jar
     depends_on:
       - postgres
