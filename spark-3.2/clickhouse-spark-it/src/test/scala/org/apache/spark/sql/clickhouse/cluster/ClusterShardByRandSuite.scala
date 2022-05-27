@@ -12,11 +12,12 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.cluster
+package org.apache.spark.sql.clickhouse.cluster
 
 import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.Row
-import xenon.clickhouse.{BaseSparkSuite, Logging}
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
+import xenon.clickhouse.Logging
 import xenon.clickhouse.base.ClickHouseClusterMixIn
 
 class ClusterShardByRandSuite extends BaseSparkSuite

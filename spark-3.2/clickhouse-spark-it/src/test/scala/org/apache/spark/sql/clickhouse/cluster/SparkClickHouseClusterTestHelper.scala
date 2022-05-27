@@ -12,10 +12,10 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.cluster
+package org.apache.spark.sql.clickhouse.cluster
 
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
 import org.apache.spark.sql.functions._
-import xenon.clickhouse.BaseSparkSuite
 
 trait SparkClickHouseClusterTestHelper { self: BaseSparkSuite with SparkClickHouseClusterMixin =>
   import spark.implicits._

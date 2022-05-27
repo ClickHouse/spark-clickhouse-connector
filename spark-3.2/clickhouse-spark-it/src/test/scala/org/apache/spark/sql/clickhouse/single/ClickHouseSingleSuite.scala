@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.single
+package org.apache.spark.sql.clickhouse.single
 
 import java.sql.Date
 import java.sql.Timestamp
@@ -20,7 +20,8 @@ import java.sql.Timestamp
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.QueryTest._
 import org.apache.spark.sql.Row
-import xenon.clickhouse.{BaseSparkSuite, Logging}
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
+import xenon.clickhouse.Logging
 import xenon.clickhouse.base.ClickHouseSingleMixIn
 
 class ClickHouseSingleSuite extends BaseSparkSuite

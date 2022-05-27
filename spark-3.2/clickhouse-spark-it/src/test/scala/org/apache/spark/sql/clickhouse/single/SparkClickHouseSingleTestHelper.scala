@@ -12,11 +12,11 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.single
+package org.apache.spark.sql.clickhouse.single
 
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.{DataTypes, StructField, StructType}
-import xenon.clickhouse.BaseSparkSuite
 
 trait SparkClickHouseSingleTestHelper { self: BaseSparkSuite with SparkClickHouseSingleMixin =>
   import spark.implicits._

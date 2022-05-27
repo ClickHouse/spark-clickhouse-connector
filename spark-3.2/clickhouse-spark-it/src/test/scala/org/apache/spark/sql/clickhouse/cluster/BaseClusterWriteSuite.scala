@@ -12,14 +12,15 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.cluster
+package org.apache.spark.sql.clickhouse.cluster
 
 import java.sql.Timestamp
 
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.QueryTest._
 import org.apache.spark.sql.Row
-import xenon.clickhouse.{BaseSparkSuite, Logging}
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
+import xenon.clickhouse.Logging
 import xenon.clickhouse.base.ClickHouseClusterMixIn
 
 abstract class BaseClusterWriteSuite extends BaseSparkSuite
