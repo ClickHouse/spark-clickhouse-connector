@@ -72,3 +72,9 @@ SQL Configurations
 
     Description: When reading Distributed table, read local table instead of itself. If `true`, ignore
                  `read.distributed.useClusterNodes`.
+
+!!! tip "Since 0.3.0 - spark.clickhouse.write.localSortByKey"
+
+    Default Value: true
+
+    Description: If `true`, do local sort by sort keys before writing.
