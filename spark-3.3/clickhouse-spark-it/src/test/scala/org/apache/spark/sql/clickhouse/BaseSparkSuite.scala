@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse
+package org.apache.spark.sql.clickhouse
 
 import org.apache.hadoop.fs.FileSystem
 import org.apache.spark.SparkContext
@@ -20,6 +20,7 @@ import org.apache.spark.sql.{DataFrame, SparkSession}
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.concurrent.Eventually
 import org.scalatest.funsuite.AnyFunSuite
+import xenon.clickhouse.{ClickHouseCommandRunner, Utils}
 
 abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Eventually {
 

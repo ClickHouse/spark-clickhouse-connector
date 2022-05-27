@@ -12,12 +12,13 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.single
+package org.apache.spark.sql.clickhouse.single
 
 import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
 import xenon.clickhouse.base.ClickHouseSingleMixIn
-import xenon.clickhouse.{BaseSparkSuite, Logging}
+import xenon.clickhouse.Logging
 
 class ClickHouseTableDDLSuite extends BaseSparkSuite
     with ClickHouseSingleMixIn

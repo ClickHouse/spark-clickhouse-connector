@@ -12,13 +12,14 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.cluster
+package org.apache.spark.sql.clickhouse.cluster
 
 import xenon.clickhouse.JsonProtocol.om
 import xenon.clickhouse.base.ClickHouseClusterMixIn
-import xenon.clickhouse.{BaseSparkSuite, Logging}
+import xenon.clickhouse.Logging
 
 import java.lang.{Long => JLong}
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
 
 class ClickHouseClusterUDFSuite extends BaseSparkSuite
     with ClickHouseClusterMixIn

@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse
+package org.apache.spark.sql.clickhouse
 
 trait TPCDSHelper {
   val tablePrimaryKeys: Map[String, Seq[String]] = Map(
