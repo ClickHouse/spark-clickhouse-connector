@@ -12,9 +12,10 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.cluster
+package org.apache.spark.sql.clickhouse.cluster
 
-import xenon.clickhouse.{BaseSparkSuite, Logging}
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
+import xenon.clickhouse.Logging
 import xenon.clickhouse.base.ClickHouseClusterMixIn
 
 class ClusterTableManagementSuite extends BaseSparkSuite

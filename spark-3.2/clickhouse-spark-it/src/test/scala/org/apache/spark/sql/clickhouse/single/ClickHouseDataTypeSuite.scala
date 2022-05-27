@@ -12,15 +12,16 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.single
+package org.apache.spark.sql.clickhouse.single
 
 import java.sql.Date
 
 import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.types.DataTypes.{createArrayType, createMapType}
-import xenon.clickhouse.{BaseSparkSuite, Logging}
+import xenon.clickhouse.Logging
 import xenon.clickhouse.base.ClickHouseSingleMixIn
 
 class ClickHouseDataTypeSuite extends BaseSparkSuite

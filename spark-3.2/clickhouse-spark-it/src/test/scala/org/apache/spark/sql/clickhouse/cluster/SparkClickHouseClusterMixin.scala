@@ -12,9 +12,9 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.cluster
+package org.apache.spark.sql.clickhouse.cluster
 
-import xenon.clickhouse.BaseSparkSuite
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
 import xenon.clickhouse.base.ClickHouseClusterMixIn
 
 trait SparkClickHouseClusterMixin {

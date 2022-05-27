@@ -12,39 +12,37 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.cluster
+package org.apache.spark.sql.clickhouse.single
 
+import org.apache.spark.sql.clickhouse.{BaseSparkSuite, TPCDSHelper}
 import org.scalatest.tags.Slow
-import xenon.clickhouse.base.ClickHouseClusterMixIn
-import xenon.clickhouse.{BaseSparkSuite, Logging, TPCDSHelper}
+import xenon.clickhouse.base.ClickHouseSingleMixIn
+import xenon.clickhouse.Logging
 
 @Slow
-class TPCDSClusterSuite extends BaseSparkSuite
-    with ClickHouseClusterMixIn
-    with SparkClickHouseClusterMixin
-    with SparkClickHouseClusterTestHelper
+class TPCDSSuite extends BaseSparkSuite
+    with ClickHouseSingleMixIn
+    with SparkClickHouseSingleMixin
+    with SparkClickHouseSingleTestHelper
     with TPCDSHelper
     with Logging {
 
   override def sparkOptions: Map[String, String] = super.sparkOptions + (
     "spark.sql.catalog.tpcds" -> "org.apache.kyuubi.spark.connector.tpcds.TPCDSCatalog",
-    "spark.clickhouse.write.batchSize" -> "100000",
-    "spark.clickhouse.write.distributed.convertLocal" -> "true"
+    "spark.clickhouse.write.batchSize" -> "100000"
   )
 
-  test("Cluster: TPC-DS sf1 write and count(*)") {
-    spark.sql("CREATE DATABASE tpcds_sf1_cluster WITH DBPROPERTIES (cluster = 'single_replica');")
+  test("TPC-DS sf1 write and count(*)") {
+    spark.sql("CREATE DATABASE tpcds_sf1;").collect()
 
     tablePrimaryKeys.foreach { case (table, primaryKeys) =>
       spark.sql(
         s"""
-           |CREATE TABLE tpcds_sf1_cluster.$table
+           |CREATE TABLE tpcds_sf1.$table
            |USING clickhouse
            |TBLPROPERTIES (
-           |    cluster = 'single_replica',
-           |    engine = 'distributed',
-           |    'local.order_by' = '${primaryKeys.mkString(",")}',
-           |    'local.settings.allow_nullable_key' = 1
+           |    order_by = '${primaryKeys.mkString(",")}',
+           |    'settings.allow_nullable_key' = 1
            |)
            |SELECT * FROM tpcds.sf1.$table;
            |""".stripMargin
@@ -52,7 +50,7 @@ class TPCDSClusterSuite extends BaseSparkSuite
     }
 
     tablePrimaryKeys.keys.foreach { table =>
-      assert(spark.table(s"tpcds.sf1.$table").count === spark.table(s"tpcds_sf1_cluster.$table").count)
+      assert(spark.table(s"tpcds.sf1.$table").count === spark.table(s"tpcds_sf1.$table").count)
     }
   }
 }
