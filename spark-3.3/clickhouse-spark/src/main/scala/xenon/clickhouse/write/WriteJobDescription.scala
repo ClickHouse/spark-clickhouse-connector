@@ -60,5 +60,10 @@ case class WriteJobDescription(
 
   def sparkSplits: Array[Transform] = ExprUtils.toSparkSplits(shardingKeyIgnoreRand, partitionKey)
 
-  def sparkSortOrders: Array[SortOrder] = ExprUtils.toSparkSortOrders(shardingKeyIgnoreRand, partitionKey, sortingKey)
+  def sparkSortOrders: Array[SortOrder] =
+    if (writeOptions.localSortByKey) {
+      ExprUtils.toSparkSortOrders(shardingKeyIgnoreRand, partitionKey, sortingKey)
+    } else {
+      ExprUtils.toSparkSortOrders(shardingKeyIgnoreRand, partitionKey, None)
+    }
 }
