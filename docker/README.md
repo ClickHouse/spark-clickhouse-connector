@@ -22,7 +22,11 @@ Playground
 
 `docker exec -it kyuubi /opt/spark/bin/spark-shell`
 
-4. Connect using DataGrip or DBeaver
+4. Play with CloudBeaver
+
+Open `http://localhost:8978` in browser, and login w/ admin authentication `kyuubi`/`kyuubi`.
+
+5. Connect using DataGrip or DBeaver
 
 Add a new Hive or Spark SQL or Kyuubi datasource with
 
