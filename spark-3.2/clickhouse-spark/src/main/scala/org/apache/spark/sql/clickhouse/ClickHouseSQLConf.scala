@@ -95,4 +95,11 @@ object ClickHouseSQLConf {
       .version("0.1.0")
       .booleanConf
       .createWithDefault(true)
+
+  val WRITE_LOCAL_SORT_BY_KEY: ConfigEntry[Boolean] =
+    buildConf(WRITE_LOCAL_SORT_BY_KEY_KEY)
+      .doc("If `true`, do local sort by sort keys before writing.")
+      .version("0.3.0")
+      .booleanConf
+      .createWithDefault(true)
 }
