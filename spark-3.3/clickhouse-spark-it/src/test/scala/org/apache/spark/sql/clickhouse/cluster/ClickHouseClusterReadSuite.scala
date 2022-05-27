@@ -12,12 +12,13 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.cluster
+package org.apache.spark.sql.clickhouse.cluster
 
 import org.apache.spark.sql.{AnalysisException, Row}
 import org.apache.spark.sql.QueryTest._
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
-import xenon.clickhouse.{BaseSparkSuite, Logging}
+import xenon.clickhouse.Logging
 import xenon.clickhouse.base.ClickHouseClusterMixIn
 
 class ClickHouseClusterReadSuite extends BaseSparkSuite

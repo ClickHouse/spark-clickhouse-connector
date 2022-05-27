@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.cluster
+package org.apache.spark.sql.clickhouse.cluster
 
 class ConvertDistToLocalWriteSuite extends BaseClusterWriteSuite {
 

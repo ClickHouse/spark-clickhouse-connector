@@ -12,9 +12,9 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.single
+package org.apache.spark.sql.clickhouse.single
 
-import xenon.clickhouse.BaseSparkSuite
+import org.apache.spark.sql.clickhouse.BaseSparkSuite
 import xenon.clickhouse.base.ClickHouseSingleMixIn
 
 trait SparkClickHouseSingleMixin {
