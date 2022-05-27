@@ -65,6 +65,14 @@ object ClickHouseSQLConf {
       .intConf
       .createWithDefault(0)
 
+  val WRITE_REPARTITION_BY_PARTITION: ConfigEntry[Boolean] =
+    buildConf(WRITE_REPARTITION_BY_PARTITION_KEY)
+      .doc("Whether to repartition data by ClickHouse partition keys to meet the distributions of " +
+        "ClickHouse table before writing.")
+      .version("0.3.0")
+      .booleanConf
+      .createWithDefault(true)
+
   val WRITE_DISTRIBUTED_USE_CLUSTER_NODES: ConfigEntry[Boolean] =
     buildConf(WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY)
       .doc("Write to all nodes of cluster when writing Distributed table.")
