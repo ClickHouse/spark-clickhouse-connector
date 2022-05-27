@@ -34,6 +34,7 @@ object SparkOptions {
   val WRITE_REPARTITION_NUM_KEY: String = "write.repartitionNum"
   val WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY: String = "write.distributed.useClusterNodes"
   val WRITE_DISTRIBUTED_CONVERT_LOCAL_KEY: String = "write.distributed.convertLocal"
+  val WRITE_LOCAL_SORT_BY_KEY_KEY: String = "write.localSortByKey"
 }
 
 trait SparkOptions extends SQLConfHelper with Serializable {
@@ -74,4 +75,7 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
 
   def convertDistributedToLocal: Boolean =
     eval(WRITE_DISTRIBUTED_CONVERT_LOCAL_KEY, WRITE_DISTRIBUTED_CONVERT_LOCAL)
+
+  def localSortByKey: Boolean =
+    eval(WRITE_LOCAL_SORT_BY_KEY_KEY, WRITE_LOCAL_SORT_BY_KEY)
 }
