@@ -25,7 +25,9 @@ project(":clickhouse-spark-${spark_binary_version}_$scala_binary_version") {
 
         testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
         testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
-        testRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
+        testRuntimeOnly "org.junit.platform:junit-platform-engine:$junit_platform_version"
+        testRuntimeOnly "org.junit.platform:junit-platform-launcher:$junit_platform_version"
+        testRuntimeOnly "co.helmethair:scalatest-junit-runner:$scalatest_junit_runner_version"
     }
 }
 
@@ -90,10 +92,6 @@ project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version") {
     }
 
     test {
-        classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
-    }
-
-    slowTest {
         classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
     }
 }

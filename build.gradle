@@ -17,7 +17,6 @@ plugins {
     id "org.scoverage" version "7.0.0" apply false
     id "com.google.protobuf" version "0.8.18" apply false
     id "org.nosphere.apache.rat" version "0.7.0"
-    id "com.github.maiflai.scalatest" version "0.32" apply false
     id "com.github.johnrengelman.shadow" version "7.1.2" apply false
 }
 
@@ -57,7 +56,6 @@ subprojects {
     apply plugin: "scala"
     apply plugin: "java-library"
     apply plugin: "org.scoverage"
-    apply plugin: "com.github.maiflai.scalatest"
 
     repositories {
         maven { url = "$mavenCentralMirror" }
@@ -90,16 +88,20 @@ subprojects {
     }
 
     test {
-        maxParallelForks = 1
-        tags {
-            exclude 'org.scalatest.tags.Slow'
+        testLogging {
+            events("passed", "skipped", "failed")
         }
-    }
-
-    task slowTest(type: Test) {
-        maxParallelForks = 1
-        tags {
-            include 'org.scalatest.tags.Slow'
+        useJUnitPlatform {
+            // IDEA-230571: Known issue of running single test in IDEA
+            includeEngines 'scalatest'
+            if (project.hasProperty("includeTags")) {
+                String includeTagsString = project.getProperty("includeTags")
+                includeTags = includeTagsString.isEmpty() ? [] : includeTagsString.split(",")
+            }
+            if (project.hasProperty("excludeTags")) {
+                String excludeTagsString = project.getProperty("excludeTags")
+                excludeTags = excludeTagsString.isEmpty() ? [] : excludeTagsString.split(",")
+            }
         }
     }
 
@@ -197,7 +199,9 @@ project(':clickhouse-core') {
 
         testFixturesApi "org.slf4j:slf4j-api:$slf4j_version"
         testFixturesApi "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
-        testFixturesRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
+        testFixturesRuntimeOnly "org.junit.platform:junit-platform-engine:$junit_platform_version"
+        testFixturesRuntimeOnly "org.junit.platform:junit-platform-launcher:$junit_platform_version"
+        testFixturesRuntimeOnly "co.helmethair:scalatest-junit-runner:$scalatest_junit_runner_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
         testFixturesRuntimeOnly "com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
