@@ -25,16 +25,59 @@ import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import xenon.clickhouse.Logging
 import xenon.clickhouse.base.ClickHouseSingleMixIn
 
-class LocalSortByKeySuite extends BaseSparkSuite
-  with ClickHouseSingleMixIn
-  with SparkClickHouseSingleMixin
-  with SparkClickHouseSingleTestHelper
-  with Logging {
+class WriteDistributionAndOrderingSuite extends BaseSparkSuite
+    with ClickHouseSingleMixIn
+    with SparkClickHouseSingleMixin
+    with SparkClickHouseSingleTestHelper
+    with Logging {
 
   import spark.implicits._
 
+  test("write repartitionByPartition") {
+    autoCleanupTable("db_repartitionByPartition", "tbl_repartitionByPartition") { (db, tbl) =>
+      runClickHouseSQL(
+        s"""CREATE TABLE `$db`.`$tbl` (
+           |    `id` String,
+           |    `load_date` Date
+           |) ENGINE = MergeTree
+           |ORDER BY load_date
+           |PARTITION BY xxHash64(id)
+           |""".stripMargin
+      )
+      import org.apache.spark.sql.functions._
+
+      spark.sessionState.conf.setConf(WRITE_REPARTITION_BY_PARTITION, true)
+      intercept[AnalysisException] {
+        spark.range(3)
+          .toDF("id")
+          .withColumn("id", $"id".cast(StringType))
+          .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
+          .writeTo(s"$db.$tbl")
+          .append
+      }
+
+      spark.sessionState.conf.setConf(WRITE_REPARTITION_BY_PARTITION, false)
+      spark.range(3)
+        .toDF("id")
+        .withColumn("id", $"id".cast(StringType))
+        .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
+        .writeTo(s"$db.$tbl")
+        .append
+
+      checkAnswer(
+        spark.sql(s"SELECT id, load_date FROM $db.$tbl"),
+        Seq(
+          Row("0", Date.valueOf("2022-05-27")),
+          Row("1", Date.valueOf("2022-05-27")),
+          Row("2", Date.valueOf("2022-05-27"))
+        )
+      )
+      spark.sessionState.conf.unsetConf(WRITE_REPARTITION_BY_PARTITION)
+    }
+  }
+
   test("write localSortByKey") {
-    autoCleanupTable("db_sort", "tbl_sort") { (db, tbl) =>
+    autoCleanupTable("db_localSortByKey", "tbl_localSortByKey") { (db, tbl) =>
       runClickHouseSQL(
         s"""CREATE TABLE `$db`.`$tbl` (
            |    `id` String,
@@ -42,7 +85,6 @@ class LocalSortByKeySuite extends BaseSparkSuite
            |) ENGINE = MergeTree
            |ORDER BY xxHash64(id)
            |PARTITION BY load_date
-           |SAMPLE BY xxHash64(id)
            |""".stripMargin
       )
       import org.apache.spark.sql.functions._
@@ -56,6 +98,7 @@ class LocalSortByKeySuite extends BaseSparkSuite
           .writeTo(s"$db.$tbl")
           .append
       }
+
       spark.sessionState.conf.setConf(WRITE_LOCAL_SORT_BY_KEY, false)
       spark.range(3)
         .toDF("id")
@@ -72,7 +115,7 @@ class LocalSortByKeySuite extends BaseSparkSuite
           Row("2", Date.valueOf("2022-05-27"))
         )
       )
-      spark.sessionState.conf.clear()
+      spark.sessionState.conf.unsetConf(WRITE_LOCAL_SORT_BY_KEY)
     }
   }
 }
