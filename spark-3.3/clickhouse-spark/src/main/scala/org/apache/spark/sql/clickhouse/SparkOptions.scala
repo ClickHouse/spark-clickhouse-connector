@@ -35,6 +35,7 @@ object SparkOptions {
   val WRITE_REPARTITION_BY_PARTITION_KEY: String = "write.repartitionByPartition"
   val WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY: String = "write.distributed.useClusterNodes"
   val WRITE_DISTRIBUTED_CONVERT_LOCAL_KEY: String = "write.distributed.convertLocal"
+  val WRITE_LOCAL_SORT_BY_PARTITION_KEY: String = "write.localSortByPartition"
   val WRITE_LOCAL_SORT_BY_KEY_KEY: String = "write.localSortByKey"
 }
 
@@ -79,6 +80,9 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
 
   def convertDistributedToLocal: Boolean =
     eval(WRITE_DISTRIBUTED_CONVERT_LOCAL_KEY, WRITE_DISTRIBUTED_CONVERT_LOCAL)
+
+  def localSortByPartition: Boolean =
+    eval(WRITE_LOCAL_SORT_BY_PARTITION_KEY, WRITE_LOCAL_SORT_BY_PARTITION)
 
   def localSortByKey: Boolean =
     eval(WRITE_LOCAL_SORT_BY_KEY_KEY, WRITE_LOCAL_SORT_BY_KEY)
