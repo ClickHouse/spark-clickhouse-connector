@@ -47,6 +47,13 @@ SQL Configurations
     Description: Repartition data to meet the distributions of ClickHouse table is required before writing, use this
                  conf to specific the repartition number, value less than 1 mean no requirement.
 
+!!! tip "Since 0.3.0 - spark.clickhouse.write.repartitionByPartition"
+
+    Default Value: true
+
+    Description: Whether to repartition data by ClickHouse partition keys to meet the distributions of ClickHouse table
+                 before writing.
+
 !!! tip "Since 0.1.0 - spark.clickhouse.write.distributed.useClusterNodes"
 
     Default Value: true
