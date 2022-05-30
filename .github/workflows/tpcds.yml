@@ -30,7 +30,5 @@ jobs:
           java-version: 8
           cache: gradle
       - run: >-
-          ./gradlew clean test --no-daemon --refresh-dependencies
-          -PincludeTags=org.scalatest.tags.Slow
-          -PexcludeTags=
+          ./gradlew clean slowTest --no-daemon --refresh-dependencies
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
