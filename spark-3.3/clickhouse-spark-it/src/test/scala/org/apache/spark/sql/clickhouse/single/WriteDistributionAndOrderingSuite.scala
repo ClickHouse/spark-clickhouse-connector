@@ -56,6 +56,7 @@ class WriteDistributionAndOrderingSuite extends BaseSparkSuite
       //     .writeTo(s"$db.$tbl")
       //     .append
       // }
+
       spark.sessionState.conf.setConf(WRITE_REPARTITION_BY_PARTITION, false)
       spark.range(3)
         .toDF("id")
@@ -99,6 +100,7 @@ class WriteDistributionAndOrderingSuite extends BaseSparkSuite
       //     .writeTo(s"$db.$tbl")
       //     .append
       // }
+
       spark.sessionState.conf.setConf(WRITE_LOCAL_SORT_BY_KEY, false)
       spark.range(3)
         .toDF("id")
