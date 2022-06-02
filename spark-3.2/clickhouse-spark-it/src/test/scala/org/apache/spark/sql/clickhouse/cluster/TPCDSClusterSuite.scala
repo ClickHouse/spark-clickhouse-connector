@@ -33,13 +33,13 @@ class TPCDSClusterSuite extends BaseSparkSuite
     "spark.clickhouse.write.distributed.convertLocal" -> "true"
   )
 
-  test("Cluster: TPC-DS sf1 write and count(*)") {
-    spark.sql("CREATE DATABASE tpcds_sf1_cluster WITH DBPROPERTIES (cluster = 'single_replica');")
+  test("Cluster: TPC-DS tiny write and count(*)") {
+    spark.sql("CREATE DATABASE tpcds_tiny_cluster WITH DBPROPERTIES (cluster = 'single_replica');")
 
     tablePrimaryKeys.foreach { case (table, primaryKeys) =>
       spark.sql(
         s"""
-           |CREATE TABLE tpcds_sf1_cluster.$table
+           |CREATE TABLE tpcds_tiny_cluster.$table
            |USING clickhouse
            |TBLPROPERTIES (
            |    cluster = 'single_replica',
@@ -47,13 +47,13 @@ class TPCDSClusterSuite extends BaseSparkSuite
            |    'local.order_by' = '${primaryKeys.mkString(",")}',
            |    'local.settings.allow_nullable_key' = 1
            |)
-           |SELECT * FROM tpcds.sf1.$table;
+           |SELECT * FROM tpcds.tiny.$table;
            |""".stripMargin
       )
     }
 
     tablePrimaryKeys.keys.foreach { table =>
-      assert(spark.table(s"tpcds.sf1.$table").count === spark.table(s"tpcds_sf1_cluster.$table").count)
+      assert(spark.table(s"tpcds.tiny.$table").count === spark.table(s"tpcds_tiny_cluster.$table").count)
     }
   }
 }
