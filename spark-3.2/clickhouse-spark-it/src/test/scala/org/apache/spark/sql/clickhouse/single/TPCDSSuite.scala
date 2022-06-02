@@ -32,25 +32,25 @@ class TPCDSSuite extends BaseSparkSuite
     "spark.clickhouse.write.batchSize" -> "100000"
   )
 
-  test("TPC-DS sf1 write and count(*)") {
-    spark.sql("CREATE DATABASE tpcds_sf1;").collect()
+  test("TPC-DS tiny write and count(*)") {
+    spark.sql("CREATE DATABASE tpcds_tiny;").collect()
 
     tablePrimaryKeys.foreach { case (table, primaryKeys) =>
       spark.sql(
         s"""
-           |CREATE TABLE tpcds_sf1.$table
+           |CREATE TABLE tpcds_tiny.$table
            |USING clickhouse
            |TBLPROPERTIES (
            |    order_by = '${primaryKeys.mkString(",")}',
            |    'settings.allow_nullable_key' = 1
            |)
-           |SELECT * FROM tpcds.sf1.$table;
+           |SELECT * FROM tpcds.tiny.$table;
            |""".stripMargin
       )
     }
 
     tablePrimaryKeys.keys.foreach { table =>
-      assert(spark.table(s"tpcds.sf1.$table").count === spark.table(s"tpcds_sf1.$table").count)
+      assert(spark.table(s"tpcds.tiny.$table").count === spark.table(s"tpcds_tiny.$table").count)
     }
   }
 }
