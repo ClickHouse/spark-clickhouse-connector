@@ -14,27 +14,28 @@
 
 package org.apache.spark.sql.clickhouse
 
+import scala.util.matching.Regex
+
 import org.apache.spark.sql.types._
 import xenon.clickhouse.exception.ClickHouseClientException
-
-import scala.util.matching.Regex
 
 object SchemaUtils {
 
   // format: off
-  private[clickhouse] val arrayTypePattern:       Regex = """^Array\((.+)\)$""".r
-  private[clickhouse] val mapTypePattern:         Regex = """^Map\((\w+),\s*(.+)\)$""".r
-  private[clickhouse] val dateTypePattern:        Regex = """^Date$""".r
-  private[clickhouse] val dateTimeTypePattern:    Regex = """^DateTime(64)?(\((.*)\))?$""".r
-  private[clickhouse] val decimalTypePattern:     Regex = """^Decimal\((\d+),\s*(\d+)\)$""".r
-  private[clickhouse] val decimalTypePattern2:    Regex = """^Decimal(32|64|128|256)\((\d+)\)$""".r
-  private[clickhouse] val enumTypePattern:        Regex = """^Enum(8|16)$""".r
-  private[clickhouse] val fixedStringTypePattern: Regex = """^FixedString\((\d+)\)$""".r
-  private[clickhouse] val nullableTypePattern:    Regex = """^Nullable\((.*)\)""".r
+  private[clickhouse] val arrayTypePattern:          Regex = """^Array\((.+)\)$""".r
+  private[clickhouse] val mapTypePattern:            Regex = """^Map\((\w+),\s*(.+)\)$""".r
+  private[clickhouse] val dateTypePattern:           Regex = """^Date$""".r
+  private[clickhouse] val dateTimeTypePattern:       Regex = """^DateTime(64)?(\((.*)\))?$""".r
+  private[clickhouse] val decimalTypePattern:        Regex = """^Decimal\((\d+),\s*(\d+)\)$""".r
+  private[clickhouse] val decimalTypePattern2:       Regex = """^Decimal(32|64|128|256)\((\d+)\)$""".r
+  private[clickhouse] val enumTypePattern:           Regex = """^Enum(8|16)$""".r
+  private[clickhouse] val fixedStringTypePattern:    Regex = """^FixedString\((\d+)\)$""".r
+  private[clickhouse] val nullableTypePattern:       Regex = """^Nullable\((.*)\)""".r
+  private[clickhouse] val lowCardinalityTypePattern: Regex = """^LowCardinality\((.*)\)""".r
   // format: on
 
   def fromClickHouseType(chType: String): (DataType, Boolean) = {
-    val (unwrappedChType, nullable) = unwrapNullable(chType)
+    val (unwrappedChType, nullable) = unwrapNullable(unwrapLowCardinalityTypePattern(chType))
     val catalystType = unwrappedChType match {
       case "String" | "UUID" | fixedStringTypePattern() | enumTypePattern(_) => StringType
       case "Int8" => ByteType
@@ -49,11 +50,11 @@ object SchemaUtils {
       case dateTimeTypePattern(_, _, _) => TimestampType
       case decimalTypePattern(precision, scale) => DecimalType(precision.toInt, scale.toInt)
       case decimalTypePattern2(w, scale) => w match {
-          case "32" => DecimalType(9, scale.toInt)
-          case "64" => DecimalType(18, scale.toInt)
-          case "128" => DecimalType(38, scale.toInt)
-          case "256" => DecimalType(76, scale.toInt) // throw exception, spark support precision up to 38
-        }
+        case "32" => DecimalType(9, scale.toInt)
+        case "64" => DecimalType(18, scale.toInt)
+        case "128" => DecimalType(38, scale.toInt)
+        case "256" => DecimalType(76, scale.toInt) // throw exception, spark support precision up to 38
+      }
       case arrayTypePattern(nestedChType) =>
         val (_type, _nullable) = fromClickHouseType(nestedChType)
         ArrayType(_type, _nullable)
@@ -110,8 +111,15 @@ object SchemaUtils {
 
   private[clickhouse] def wrapNullable(chType: String): String = s"Nullable($chType)"
 
-  private[clickhouse] def unwrapNullable(maybeNullableType: String): (String, Boolean) = maybeNullableType match {
-    case nullableTypePattern(typeName) => (typeName, true)
-    case _ => (maybeNullableType, false)
-  }
+  private[clickhouse] def unwrapNullable(maybeNullableType: String): (String, Boolean) =
+    maybeNullableType match {
+      case nullableTypePattern(typeName) => (typeName, true)
+      case _ => (maybeNullableType, false)
+    }
+
+  private[clickhouse] def unwrapLowCardinalityTypePattern(maybeLowCardinalityType: String): String =
+    maybeLowCardinalityType match {
+      case lowCardinalityTypePattern(typeName) => typeName
+      case _ => maybeLowCardinalityType
+    }
 }
