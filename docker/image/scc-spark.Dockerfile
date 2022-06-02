@@ -50,6 +50,8 @@ RUN set -x && \
     POSTGRES_JDBC_JAR_NAME=postgresql && \
     wget -q ${MAVEN_MIRROR}/org/postgresql/${POSTGRES_JDBC_JAR_NAME}/${POSTGRES_JDBC_VERSION}/${POSTGRES_JDBC_JAR_NAME}-${POSTGRES_JDBC_VERSION}.jar -P ${SPARK_HOME}/jars && \
     TPCDS_CONNECTOR_JAR_NAME=kyuubi-spark-connector-tpcds_${SCALA_BINARY_VERSION} && \
-    wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/${TPCDS_CONNECTOR_JAR_NAME}/1.6.0-SNAPSHOT/${TPCDS_CONNECTOR_JAR_NAME}-1.6.0-20220520.042525-28.jar -P ${SPARK_HOME}/jars && \
+    wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/${TPCDS_CONNECTOR_JAR_NAME}/1.6.0-SNAPSHOT/${TPCDS_CONNECTOR_JAR_NAME}-1.6.0-20220602.053139-56.jar -P ${SPARK_HOME}/jars && \
+    TPCH_CONNECTOR_JAR_NAME=kyuubi-spark-connector-tpch_${SCALA_BINARY_VERSION} && \
+    wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/${TPCH_CONNECTOR_JAR_NAME}/1.6.0-SNAPSHOT/${TPCH_CONNECTOR_JAR_NAME}-1.6.0-20220602.053139-17.jar -P ${SPARK_HOME}/jars && \
     SCC_JAR_NAME=clickhouse-spark-runtime-${SPARK_BINARY_VERSION}_${SCALA_BINARY_VERSION} && \
     if [ "$(echo ${PROJECT_VERSION} | grep SNAPSHOT)" = "" ]; then wget -q ${MAVEN_MIRROR}/com/github/housepower/${SCC_JAR_NAME}/${PROJECT_VERSION}/${SCC_JAR_NAME}-${PROJECT_VERSION}.jar -P ${SPARK_HOME}/jars; fi
