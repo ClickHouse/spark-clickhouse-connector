@@ -16,8 +16,7 @@ package org.apache.spark.sql.clickhouse.single
 
 import java.sql.Date
 import java.time.LocalDate
-
-import org.apache.spark.sql.Row
+import org.apache.spark.sql.{AnalysisException, Row}
 import org.apache.spark.sql.types.StringType
 import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.clickhouse.BaseSparkSuite
@@ -47,15 +46,14 @@ class WriteDistributionAndOrderingSuite extends BaseSparkSuite
       import org.apache.spark.sql.functions._
 
       spark.sessionState.conf.setConf(WRITE_REPARTITION_BY_PARTITION, true)
-      // SPARK-39313
-      // intercept[AnalysisException] {
-      //   spark.range(3)
-      //     .toDF("id")
-      //     .withColumn("id", $"id".cast(StringType))
-      //     .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
-      //     .writeTo(s"$db.$tbl")
-      //     .append
-      // }
+      intercept[AnalysisException] {
+        spark.range(3)
+          .toDF("id")
+          .withColumn("id", $"id".cast(StringType))
+          .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
+          .writeTo(s"$db.$tbl")
+          .append
+      }
 
       spark.sessionState.conf.setConf(WRITE_REPARTITION_BY_PARTITION, false)
       spark.range(3)
@@ -91,15 +89,14 @@ class WriteDistributionAndOrderingSuite extends BaseSparkSuite
       import org.apache.spark.sql.functions._
 
       spark.sessionState.conf.setConf(WRITE_LOCAL_SORT_BY_KEY, true)
-      // SPARK-39313
-      // intercept[AnalysisException] {
-      //   spark.range(3)
-      //     .toDF("id")
-      //     .withColumn("id", $"id".cast(StringType))
-      //     .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
-      //     .writeTo(s"$db.$tbl")
-      //     .append
-      // }
+      intercept[AnalysisException] {
+        spark.range(3)
+          .toDF("id")
+          .withColumn("id", $"id".cast(StringType))
+          .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
+          .writeTo(s"$db.$tbl")
+          .append
+      }
 
       spark.sessionState.conf.setConf(WRITE_LOCAL_SORT_BY_KEY, false)
       spark.range(3)
