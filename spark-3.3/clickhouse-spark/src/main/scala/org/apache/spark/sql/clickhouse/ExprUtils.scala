@@ -25,7 +25,7 @@ import scala.annotation.tailrec
 
 object ExprUtils {
 
-  def toSparkPartitions(partitionKey: Option[List[Expr]]) : Array[Transform] =
+  def toSparkPartitions(partitionKey: Option[List[Expr]]): Array[Transform] =
     partitionKey.seq.flatten.map(toSparkTransform).toArray
 
   def toSparkSplits(shardingKey: Option[Expr], partitionKey: Option[List[Expr]]): Array[Transform] =
@@ -76,6 +76,7 @@ object ExprUtils {
     // TODO support arbitrary functions
     case FuncExpr("xxHash64", List(FieldRef(col))) => apply("ck_xx_hash64", column(col))
     case FuncExpr("rand", Nil) => apply("rand")
+    case FuncExpr("toYYYYMMDD", List(FuncExpr("toDate", List(FieldRef(col))))) => identity(col)
     case unsupported => throw ClickHouseClientException(s"Unsupported ClickHouse expression: $unsupported")
   }
 
