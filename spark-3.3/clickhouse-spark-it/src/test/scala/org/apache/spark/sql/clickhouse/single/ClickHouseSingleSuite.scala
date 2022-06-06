@@ -228,8 +228,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite
       spark.createDataFrame(Seq(
         (21L, "2022-04-21", 1),
         (22L, "2022-04-22", 2)
-      ))
-        .toDF("id", "part_1", "part_2")
+      )).toDF("id", "part_1", "part_2")
         .writeTo(s"$db.$tbl").append
 
       checkAnswer(
@@ -247,6 +246,42 @@ class ClickHouseSingleSuite extends BaseSparkSuite
           Row("part_1=2022-04-12/part_2=2"),
           Row("part_1=2022-04-21/part_2=1"),
           Row("part_1=2022-04-22/part_2=2")
+        )
+      )
+    }
+  }
+
+  // TODO remove this hack version
+  test("clickhouse partition toYYYYMMDD(toDate(col))") {
+    val db = "db_part_toYYYYMMDD_toDate"
+    val tbl = "tbl_part_toYYYYMMDD_toDate"
+    autoCleanupTable(db, tbl) { case (db, tbl) =>
+      runClickHouseSQL(
+        s"""CREATE TABLE IF NOT EXISTS `$db`.`$tbl` (
+           |    `id` Int64,
+           |    `dt` String
+           |) ENGINE = MergeTree
+           |PARTITION BY toYYYYMMDD(toDate(dt))
+           |ORDER BY (id)
+           |""".stripMargin
+      )
+      spark.createDataFrame(Seq(
+        (1L, "2022-06-06"),
+        (2L, "2022-06-07")
+      )).toDF("id", "dt")
+        .writeTo(s"$db.$tbl").append
+      checkAnswer(
+        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        Seq(
+          Row("dt=20220606"),
+          Row("dt=20220607")
+        )
+      )
+      checkAnswer(
+        spark.table(s"$db.$tbl").orderBy($"id"),
+        Seq(
+          Row(1L, "2022-06-06"),
+          Row(2L, "2022-06-07")
         )
       )
     }
