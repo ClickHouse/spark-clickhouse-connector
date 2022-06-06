@@ -41,6 +41,9 @@ class ClickHouseWrite(
     with RequiresDistributionAndOrdering
     with SQLConfHelper {
 
+  // for SPARK-37523
+  def distributionStrictlyRequired: Boolean = writeJob.writeOptions.repartitionStrictly
+
   override def requiredDistribution(): Distribution = Distributions.clustered(writeJob.sparkSplits.toArray)
 
   override def requiredNumPartitions(): Int = conf.getConf(WRITE_REPARTITION_NUM)

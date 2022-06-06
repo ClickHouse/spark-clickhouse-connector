@@ -73,6 +73,17 @@ object ClickHouseSQLConf {
       .booleanConf
       .createWithDefault(true)
 
+  val WRITE_REPARTITION_STRICTLY: ConfigEntry[Boolean] =
+    buildConf(WRITE_REPARTITION_STRICTLY_KEY)
+      .doc("If true, Spark will strictly distribute incoming records across partitions to satisfy " +
+        "the required distribution before passing the records to the data source table on write. " +
+        "Otherwise, Spark may apply certain optimizations to speed up the query but break the " +
+        "distribution requirement. Note, this configuration requires SPARK-37523, w/o this patch, " +
+        "it always act as `true`.")
+      .version("0.3.0")
+      .booleanConf
+      .createWithDefault(false)
+
   val WRITE_DISTRIBUTED_USE_CLUSTER_NODES: ConfigEntry[Boolean] =
     buildConf(WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY)
       .doc("Write to all nodes of cluster when writing Distributed table.")
