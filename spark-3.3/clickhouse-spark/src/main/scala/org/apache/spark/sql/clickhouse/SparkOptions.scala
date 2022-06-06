@@ -33,6 +33,7 @@ object SparkOptions {
   val WRITE_RETRYABLE_ERROR_CODES_KEY: String = "write.retryableErrorCodes"
   val WRITE_REPARTITION_NUM_KEY: String = "write.repartitionNum"
   val WRITE_REPARTITION_BY_PARTITION_KEY: String = "write.repartitionByPartition"
+  val WRITE_REPARTITION_STRICTLY_KEY: String = "write.repartitionStrictly"
   val WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY: String = "write.distributed.useClusterNodes"
   val WRITE_DISTRIBUTED_CONVERT_LOCAL_KEY: String = "write.distributed.convertLocal"
   val WRITE_LOCAL_SORT_BY_PARTITION_KEY: String = "write.localSortByPartition"
@@ -74,6 +75,9 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
 
   def repartitionByPartition: Boolean =
     eval(WRITE_REPARTITION_BY_PARTITION_KEY, WRITE_REPARTITION_BY_PARTITION)
+
+  def repartitionStrictly: Boolean =
+    eval(WRITE_REPARTITION_STRICTLY_KEY, WRITE_REPARTITION_STRICTLY)
 
   def useClusterNodesForDistributed: Boolean =
     eval(WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY, WRITE_DISTRIBUTED_USE_CLUSTER_NODES)
