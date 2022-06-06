@@ -20,7 +20,7 @@ import scala.util.{Failure, Success}
 import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.{expressions, InternalRow, SQLConfHelper}
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
-import org.apache.spark.sql.clickhouse.{ExprUtils, JsonFormatUtils}
+import org.apache.spark.sql.clickhouse.{ExprUtils, JsonWriter}
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types.{ByteType, IntegerType, LongType, ShortType}
 import xenon.clickhouse._
@@ -81,12 +81,13 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
 
   var lastShardNum: Option[Int] = None
   val buf: ArrayBuffer[ByteString] = new ArrayBuffer[ByteString](writeJob.writeOptions.batchSize)
+  val jsonWriter = new JsonWriter(writeJob.dataSetSchema, writeJob.tz)
 
   override def write(record: InternalRow): Unit = {
     val shardNum = calcShard(record)
     if (shardNum != lastShardNum && buf.nonEmpty) flush(lastShardNum)
     lastShardNum = shardNum
-    buf += JsonFormatUtils.row2Json(record, writeJob.dataSetSchema, writeJob.tz)
+    buf += jsonWriter.row2Json(record)
     if (buf.size == writeJob.writeOptions.batchSize) flush(lastShardNum)
   }
 

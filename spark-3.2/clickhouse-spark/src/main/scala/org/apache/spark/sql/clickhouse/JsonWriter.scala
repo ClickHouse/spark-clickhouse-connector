@@ -18,26 +18,29 @@ import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.json.{JSONOptions, JacksonGenerator}
 import org.apache.spark.sql.types.StructType
-
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
 import java.time.ZoneId
 
-object JsonFormatUtils {
+import xenon.clickhouse.ForwardingWriter
 
-  private val option = Map(
+class JsonWriter(schema: StructType, tz: ZoneId) {
+
+  val option: Map[String, String] = Map(
     "timestampFormat" -> "yyyy-MM-dd HH:mm:ss"
   )
 
-  // inefficiently
-  def row2Json(row: InternalRow, schema: StructType, tz: ZoneId): ByteString = {
-    val line = ByteString.newOutput()
+  val forwardingWriter = new ForwardingWriter
 
-    val gen = new JacksonGenerator(
-      schema,
-      new OutputStreamWriter(line, StandardCharsets.UTF_8),
-      new JSONOptions(option, tz.getId)
-    )
+  val gen = new JacksonGenerator(
+    schema,
+    forwardingWriter,
+    new JSONOptions(option, tz.getId)
+  )
+
+  def row2Json(row: InternalRow): ByteString = {
+    val line = ByteString.newOutput()
+    forwardingWriter.updateDelegate(new OutputStreamWriter(line, StandardCharsets.UTF_8))
     gen.write(row)
     gen.writeLineEnding
     gen.flush
