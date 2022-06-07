@@ -116,12 +116,12 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
     case _ => None
   }
 
-  def flush(shardNum: Option[Int]): Unit =
+  def flush(shardNum: Option[Int]): Unit = {
+    val client = grpcNodeClient(shardNum)
     Utils.retry[Unit, RetryableClickHouseException](
       writeJob.writeOptions.maxRetry,
       writeJob.writeOptions.retryInterval
     ) {
-      val client = grpcNodeClient(shardNum)
       log.info(s"""Job[${writeJob.queryId}]: prepare to flush batch
                   |node: ${client.node.host}:${client.node.grpc_port}
                   |batch size: ${buf.size}
@@ -143,6 +143,7 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
       case Success(_) => log.info(s"Job[${writeJob.queryId}]: flush batch completed")
       case Failure(rethrow) => throw rethrow
     }
+  }
 }
 
 class ClickHouseTruncateWriter(writeJob: WriteJobDescription)
