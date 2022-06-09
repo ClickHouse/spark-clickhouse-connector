@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM azul/zulu-openjdk:8
+FROM openjdk:8-bullseye
 LABEL org.opencontainers.image.authors="Cheng Pan<chengpan@apache.com>"
 
 RUN apt-get update -q && \
