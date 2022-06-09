@@ -19,6 +19,13 @@
 
 set -e
 
+BUILD_CMD="docker build"
+
+if [ $BUILDX ]; then
+  echo "Using buildx to build cross-platform images"
+  BUILD_CMD="docker buildx build --platform=linux/amd64,linux/arm64 --push"
+fi
+
 SELF_DIR="$(cd "$(dirname "$0")"; pwd)"
 
 PROJECT_VERSION="$(cat "${SELF_DIR}/../version.txt")"
@@ -37,7 +44,7 @@ SCALA_BINARY_VERSION=2.12
 SPARK_VERSION=3.2.1
 SPARK_BINARY_VERSION=3.2
 
-docker build \
+${BUILD_CMD} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
@@ -45,7 +52,7 @@ docker build \
   --tag pan3793/scc-base:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
 
-docker build \
+${BUILD_CMD} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
@@ -55,7 +62,7 @@ docker build \
   --tag pan3793/scc-hadoop:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
 
-docker build \
+${BUILD_CMD} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
@@ -64,7 +71,7 @@ docker build \
   --tag pan3793/scc-metastore:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
 
-docker build \
+${BUILD_CMD} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
@@ -80,7 +87,7 @@ docker build \
   --tag pan3793/scc-spark:${PROJECT_VERSION} \
   "${SELF_DIR}/image" $@
 
-docker build \
+${BUILD_CMD} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \
   --build-arg MAVEN_MIRROR=${MAVEN_MIRROR} \
   --build-arg PROJECT_VERSION=${PROJECT_VERSION} \
