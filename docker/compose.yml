@@ -150,7 +150,7 @@ services:
       - zookeeper
 
   cloudbeaver:
-    image: pan3793/cloudbeaver:20220522
+    image: pan3793/cloudbeaver:20220609
     environment:
       CB_LOCAL_HOST_ADDR: 0.0.0.0
       CB_SERVER_NAME: Kyuubi Playground
