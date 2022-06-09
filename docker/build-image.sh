@@ -22,7 +22,8 @@ set -e
 BUILD_CMD="docker build"
 
 if [ $BUILDX ]; then
-  BUILD_CMD="docker buildx build --push"
+  echo "Using buildx to build cross-platform images"
+  BUILD_CMD="docker buildx build --platform=linux/amd64,linux/arm64 --push"
 fi
 
 SELF_DIR="$(cd "$(dirname "$0")"; pwd)"
