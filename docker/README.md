@@ -52,6 +52,7 @@ In addition to play with the pre-build images, developers may want to build the 
 
 1. Follow [README](../README.md#build) to build the project;
 2. Build images `cd docker && ./build-image.sh`;
+3. Optional to use buildx to build cross-platform images `BUILDX=1 ./build-image.sh`;
 
 ### Setup
 
