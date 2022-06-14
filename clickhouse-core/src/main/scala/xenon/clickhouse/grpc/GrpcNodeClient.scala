@@ -161,7 +161,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     deserializer: ByteString => SimpleOutput[OUT],
     settings: Map[String, String]
   ): SimpleOutput[OUT] = syncQuery[OUT](sql, outputFormat, deserializer, settings) match {
-    case Left(exception) => throw new ClickHouseServerException(exception)
+    case Left(exception) => throw new ClickHouseServerException(exception, Some(node))
     case Right(output) => output
   }
 
@@ -212,7 +212,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
         if (result.getException.getCode == OK.code) Right(result.getOutput) else Left(result.getException)
       }
       .map {
-        case Left(gRPCException) => throw new ClickHouseServerException(gRPCException)
+        case Left(gRPCException) => throw new ClickHouseServerException(gRPCException, Some(node))
         case Right(output) => output
       }
     outputStreamDeserializer(outputIterator)
@@ -245,6 +245,6 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       }
     }
     if (throwException && result.getException.getCode != OK.code)
-      throw new ClickHouseServerException(result.getException)
+      throw new ClickHouseServerException(result.getException, Some(node))
   }
 }
