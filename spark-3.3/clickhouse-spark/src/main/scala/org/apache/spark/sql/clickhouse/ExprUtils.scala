@@ -54,7 +54,7 @@ object ExprUtils {
           .getOrElse(throw ClickHouseClientException(s"Invalid field reference: $ref"))
         BoundReference(ordinal, field.dataType, field.nullable)
       case _ => throw ClickHouseClientException(
-          s"Unsupported V2 expression: $v2Expr, SPARK-33779: Spark 3.2 only support IdentityTransform"
+          s"Unsupported V2 expression: $v2Expr, SPARK-33779: Spark 3.3 only support IdentityTransform"
         )
     }
 
