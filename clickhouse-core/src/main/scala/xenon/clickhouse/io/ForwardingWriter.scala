@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse
+package xenon.clickhouse.io
 
 import java.io.Writer
 

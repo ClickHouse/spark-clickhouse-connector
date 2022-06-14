@@ -18,11 +18,11 @@ import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.json.{JSONOptions, JacksonGenerator}
 import org.apache.spark.sql.types.StructType
+import xenon.clickhouse.io.ForwardingWriter
+
 import java.io.OutputStreamWriter
 import java.nio.charset.StandardCharsets
 import java.time.ZoneId
-
-import xenon.clickhouse.ForwardingWriter
 
 class JsonWriter(schema: StructType, tz: ZoneId) {
 
