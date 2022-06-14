@@ -132,6 +132,7 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
         database,
         table,
         "JSONEachRow",
+        None,
         buf.reduce((l, r) => l concat r)
       ) match {
         case Right(_) => buf.clear

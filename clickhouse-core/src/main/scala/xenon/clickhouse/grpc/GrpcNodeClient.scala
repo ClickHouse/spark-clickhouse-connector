@@ -100,10 +100,20 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     database: String,
     table: String,
     inputFormat: String,
+    inputCompressionType: Option[String],
     data: ByteString,
     settings: Map[String, String] = Map.empty
   ): Either[GRPCException, SimpleOutput[ObjectNode]] =
-    syncInsert(database, table, inputFormat, data, "JSONEachRow", JSONEachRowSimpleOutput.deserialize, settings)
+    syncInsert(
+      database,
+      table,
+      inputFormat,
+      inputCompressionType,
+      data,
+      "JSONEachRow",
+      JSONEachRowSimpleOutput.deserialize,
+      settings
+    )
 
   def syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(
     sql: String,
@@ -120,6 +130,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     database: String,
     table: String,
     inputFormat: String,
+    inputCompressionType: Option[String],
     data: ByteString,
     outputFormat: String,
     deserializer: ByteString => SimpleOutput[OUT],
@@ -128,13 +139,14 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     val queryId = nextQueryId()
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecuteQuery(queryId, sql)
-    val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
+    val builder = QueryInfo.newBuilder(baseQueryInfo)
       .setQuery(sql)
       .setQueryId(queryId)
       .setInputData(data)
       .setOutputFormat(outputFormat)
       .putAllSettings(settings.asJava)
-      .build
+    inputCompressionType.foreach(builder.setInputCompressionType)
+    val queryInfo = builder.build
     executeQuery(queryInfo, deserializer)
   }
 
