@@ -14,17 +14,24 @@
 
 package xenon.clickhouse.exception
 
+import xenon.clickhouse.spec.NodeSpec
 import xenon.protocol.grpc.{Exception => GRPCException}
 
-abstract class ClickHouseException(code: Int, reason: String) extends RuntimeException(s"[$code] $reason")
+abstract class ClickHouseException(code: Int, reason: String, node: Option[NodeSpec])
+    extends RuntimeException(s"[$code]${node.getOrElse("")} $reason")
 
-case class ClickHouseServerException(code: Int, reason: String) extends ClickHouseException(code, reason) {
-  def this(exception: GRPCException) = this(exception.getCode, exception.getDisplayText)
+case class ClickHouseServerException(code: Int, reason: String, node: Option[NodeSpec])
+    extends ClickHouseException(code, reason, node) {
+
+  def this(exception: GRPCException, node: Option[NodeSpec] = None) =
+    this(exception.getCode, exception.getDisplayText, node)
 }
 
-case class ClickHouseClientException(reason: String)
-    extends ClickHouseException(ClickHouseErrCode.CLIENT_ERROR.code(), reason)
+case class ClickHouseClientException(reason: String, node: Option[NodeSpec] = None)
+    extends ClickHouseException(ClickHouseErrCode.CLIENT_ERROR.code(), reason, node)
 
-case class RetryableClickHouseException(code: Int, reason: String) extends ClickHouseException(code, reason) {
-  def this(exception: GRPCException) = this(exception.getCode, exception.getDisplayText)
+case class RetryableClickHouseException(code: Int, reason: String, node: Option[NodeSpec])
+    extends ClickHouseException(code, reason, node) {
+
+  def this(exception: GRPCException, node: Option[NodeSpec]) = this(exception.getCode, exception.getDisplayText, node)
 }
