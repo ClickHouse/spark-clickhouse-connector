@@ -123,7 +123,7 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
       writeJob.writeOptions.retryInterval
     ) {
       log.info(s"""Job[${writeJob.queryId}]: prepare to flush batch
-                  |node: ${client.node.host}:${client.node.grpc_port}
+                  |node: ${client.node}
                   |batch size: ${buf.size}
                   |cluster: ${writeJob.cluster.map(_.name)}
                   |shard: $shardNum

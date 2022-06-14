@@ -48,6 +48,8 @@ case class NodeSpec(
       source.map(p => sys.props.get(s"${PREFIX}_HOST_${_host}_PORT_$p").map(_.toInt).getOrElse(p))
     } else source
 
+  override def toString: String = s"$username@${_host}${grpc_port.map(p => s":$p").getOrElse("")}/$database"
+
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = Array(this)
 }
 
@@ -57,6 +59,8 @@ case class ReplicaSpec(
 ) extends Ordered[ReplicaSpec] with Nodes with ToJson with Serializable {
 
   override def compare(that: ReplicaSpec): Int = Ordering[Int].compare(num, that.num)
+
+  override def toString: String = s"$node, replica_num: $num"
 
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = Array(node)
 }
@@ -69,6 +73,8 @@ case class ShardSpec(
 
   override def compare(that: ShardSpec): Int = Ordering[Int].compare(num, that.num)
 
+  override def toString: String = s"shard_num: $num, shard_weight: $weight, replicas: [${replicas.mkString(", ")}]"
+
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = replicas.sorted.flatMap(_.nodes)
 }
 
@@ -76,6 +82,8 @@ case class ClusterSpec(
   name: String,
   shards: Array[ShardSpec]
 ) extends Nodes with ToJson with Serializable {
+
+  override def toString: String = s"cluster: $name, shards: [${shards.mkString(", ")}]"
 
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = shards.sorted.flatMap(_.nodes)
 }

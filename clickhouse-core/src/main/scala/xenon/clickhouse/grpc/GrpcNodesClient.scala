@@ -37,7 +37,7 @@ class GrpcNodesClient(nodes: Nodes) extends AutoCloseable with Logging {
     cache.computeIfAbsent(
       nodeSpec,
       { nodeSpec =>
-        log.info(s"Create gRPC client of ${nodeSpec.host}:${nodeSpec.grpc_port.get}")
+        log.info(s"Create gRPC client of $nodeSpec")
         new GrpcNodeClient(nodeSpec)
       }
     )
