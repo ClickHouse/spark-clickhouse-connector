@@ -101,3 +101,9 @@ SQL Configurations
     Default Value: true
 
     Description: If `true`, do local sort by sort keys before writing.
+
+!!! tip "Since 0.3.0 - spark.clickhouse.write.compression.codec"
+
+    Default Value: undefined
+
+    Description: The codec used to compress data for writing. Supported codecs: gzip
