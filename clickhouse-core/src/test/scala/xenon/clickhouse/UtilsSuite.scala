@@ -15,7 +15,9 @@
 package xenon.clickhouse
 
 import org.scalatest.funsuite.AnyFunSuite
-import Utils._
+import xenon.clickhouse.Utils._
+
+import java.time.Duration
 
 class UtilsSuite extends AnyFunSuite {
 
@@ -36,5 +38,27 @@ class UtilsSuite extends AnyFunSuite {
     assert(wrapBackQuote("abc") === "`abc`")
     assert(wrapBackQuote("`abc") === "`abc`")
     assert(wrapBackQuote("abc`") === "`abc`")
+  }
+
+  class BaseException extends RuntimeException
+  class InheritedException extends BaseException
+  class OtherException extends Throwable
+
+  test("retry - positive") {
+    var counter = 0
+    retry[Unit, BaseException](3, Duration.ZERO) {
+      counter = counter + 1
+      if (counter < 2) throw new InheritedException
+    }
+    assert(counter == 2)
+  }
+
+  test("retry - negative") {
+    var counter = 0
+    retry[Unit, BaseException](3, Duration.ZERO) {
+      counter = counter + 1
+      if (counter < 2) throw new OtherException
+    }
+    assert(counter == 1)
   }
 }
