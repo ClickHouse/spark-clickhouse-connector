@@ -32,10 +32,10 @@ ENV HIVE_CONF_DIR=/etc/hive/conf
 ENV SPARK_CONF_DIR=/etc/spark/conf
 
 RUN set -x && \
-    wget -q ${APACHE_MIRROR}/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.2.tgz && \
-    tar -xzf spark-${SPARK_VERSION}-bin-hadoop3.2.tgz -C /opt && \
-    ln -s /opt/spark-${SPARK_VERSION}-bin-hadoop3.2 ${SPARK_HOME} && \
-    rm spark-${SPARK_VERSION}-bin-hadoop3.2.tgz && \
+    wget -q ${APACHE_MIRROR}/spark/spark-${SPARK_VERSION}/spark-${SPARK_VERSION}-bin-hadoop3.tgz && \
+    tar -xzf spark-${SPARK_VERSION}-bin-hadoop3.tgz -C /opt && \
+    ln -s /opt/spark-${SPARK_VERSION}-bin-hadoop3 ${SPARK_HOME} && \
+    rm spark-${SPARK_VERSION}-bin-hadoop3.tgz && \
     SPARK_HADOOP_CLOUD_JAR_NAME=spark-hadoop-cloud_${SCALA_BINARY_VERSION} && \
     wget -q ${MAVEN_MIRROR}/org/apache/spark/${SPARK_HADOOP_CLOUD_JAR_NAME}/${SPARK_VERSION}/${SPARK_HADOOP_CLOUD_JAR_NAME}-${SPARK_VERSION}.jar -P ${SPARK_HOME}/jars && \
     HADOOP_CLOUD_STORAGE_JAR_NAME=hadoop-cloud-storage && \
@@ -47,8 +47,8 @@ RUN set -x && \
     POSTGRES_JDBC_JAR_NAME=postgresql && \
     wget -q ${MAVEN_MIRROR}/org/postgresql/${POSTGRES_JDBC_JAR_NAME}/${POSTGRES_JDBC_VERSION}/${POSTGRES_JDBC_JAR_NAME}-${POSTGRES_JDBC_VERSION}.jar -P ${SPARK_HOME}/jars && \
     TPCDS_CONNECTOR_JAR_NAME=kyuubi-spark-connector-tpcds_${SCALA_BINARY_VERSION} && \
-    wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/${TPCDS_CONNECTOR_JAR_NAME}/1.6.0-SNAPSHOT/${TPCDS_CONNECTOR_JAR_NAME}-1.6.0-20220609.001749-69.jar -P ${SPARK_HOME}/jars && \
+    wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/${TPCDS_CONNECTOR_JAR_NAME}/1.6.0-SNAPSHOT/${TPCDS_CONNECTOR_JAR_NAME}-1.6.0-20220616.001724-85.jar -P ${SPARK_HOME}/jars && \
     TPCH_CONNECTOR_JAR_NAME=kyuubi-spark-connector-tpch_${SCALA_BINARY_VERSION} && \
-    wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/${TPCH_CONNECTOR_JAR_NAME}/1.6.0-SNAPSHOT/${TPCH_CONNECTOR_JAR_NAME}-1.6.0-20220609.001749-31.jar -P ${SPARK_HOME}/jars && \
+    wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/${TPCH_CONNECTOR_JAR_NAME}/1.6.0-SNAPSHOT/${TPCH_CONNECTOR_JAR_NAME}-1.6.0-20220616.001724-47.jar -P ${SPARK_HOME}/jars && \
     SCC_JAR_NAME=clickhouse-spark-runtime-${SPARK_BINARY_VERSION}_${SCALA_BINARY_VERSION} && \
     if [ "$(echo ${PROJECT_VERSION} | grep SNAPSHOT)" = "" ]; then wget -q ${MAVEN_MIRROR}/com/github/housepower/${SCC_JAR_NAME}/${PROJECT_VERSION}/${SCC_JAR_NAME}-${PROJECT_VERSION}.jar -P ${SPARK_HOME}/jars; fi
