@@ -17,10 +17,12 @@ package xenon.clickhouse
 import org.apache.commons.lang3.time.FastDateFormat
 
 import java.io.{File, InputStream}
+import java.math.{MathContext, RoundingMode}
 import java.net.URI
 import java.nio.file.{Files, Path, StandardCopyOption}
 import java.time.Duration
 import java.time.format.DateTimeFormatter
+import java.util.Locale
 import java.util.concurrent.locks.LockSupport
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -86,6 +88,44 @@ object Utils extends Logging {
         LockSupport.parkNanos(interval.toNanos)
         retry(retryTimes - 1, interval)(f)
       case Failure(exception) => Failure(exception)
+    }
+  }
+
+  /**
+   * Convert a quantity in bytes to a human-readable string such as "4.0 MiB".
+   */
+  def bytesToString(size: Long): String = bytesToString(BigInt(size))
+
+  def bytesToString(size: BigInt): String = {
+    val EiB = 1L << 60
+    val PiB = 1L << 50
+    val TiB = 1L << 40
+    val GiB = 1L << 30
+    val MiB = 1L << 20
+    val KiB = 1L << 10
+
+    if (size >= BigInt(1L << 11) * EiB) {
+      // The number is too large, show it in scientific notation.
+      BigDecimal(size, new MathContext(3, RoundingMode.HALF_UP)).toString() + " B"
+    } else {
+      val (value, unit) = {
+        if (size >= 2 * EiB) {
+          (BigDecimal(size) / EiB, "EiB")
+        } else if (size >= 2 * PiB) {
+          (BigDecimal(size) / PiB, "PiB")
+        } else if (size >= 2 * TiB) {
+          (BigDecimal(size) / TiB, "TiB")
+        } else if (size >= 2 * GiB) {
+          (BigDecimal(size) / GiB, "GiB")
+        } else if (size >= 2 * MiB) {
+          (BigDecimal(size) / MiB, "MiB")
+        } else if (size >= 2 * KiB) {
+          (BigDecimal(size) / KiB, "KiB")
+        } else {
+          (BigDecimal(size), "B")
+        }
+      }
+      "%.1f %s".formatLocal(Locale.US, value, unit)
     }
   }
 

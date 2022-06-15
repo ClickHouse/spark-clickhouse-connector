@@ -14,12 +14,9 @@
 
 package xenon.clickhouse.write
 
-import scala.collection.mutable.ArrayBuffer
-import scala.util.{Failure, Success}
-
 import com.google.protobuf.ByteString
-import org.apache.spark.sql.catalyst.{expressions, InternalRow, SQLConfHelper}
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
+import org.apache.spark.sql.catalyst.{expressions, InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.{ExprUtils, JsonWriter}
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types.{ByteType, IntegerType, LongType, ShortType}
@@ -27,6 +24,11 @@ import xenon.clickhouse._
 import xenon.clickhouse.exception._
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
 import xenon.clickhouse.spec.{DistributedEngineSpec, ShardUtils}
+
+import java.io.ByteArrayOutputStream
+import java.util.zip.GZIPOutputStream
+import scala.collection.mutable.ArrayBuffer
+import scala.util.{Failure, Success}
 
 class ClickHouseAppendWriter(writeJob: WriteJobDescription)
     extends DataWriter[InternalRow] with Logging {
@@ -116,24 +118,44 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
     case _ => None
   }
 
+  private def assembleData(code: Option[String], buf: ArrayBuffer[ByteString]): ByteString =
+    code match {
+      case None => buf.reduce((l, r) => l concat r)
+      case Some(codec) if codec.toLowerCase == "gzip" =>
+        val out = new ByteArrayOutputStream(4096)
+        val gzipOut = new GZIPOutputStream(out, 8192)
+        buf.foreach(_.writeTo(gzipOut))
+        gzipOut.flush()
+        gzipOut.close()
+        ByteString.copyFrom(out.toByteArray)
+      case Some(unsupported) =>
+        throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
+    }
+
   def flush(shardNum: Option[Int]): Unit = {
     val client = grpcNodeClient(shardNum)
     Utils.retry[Unit, RetryableClickHouseException](
       writeJob.writeOptions.maxRetry,
       writeJob.writeOptions.retryInterval
     ) {
+      val codec = writeJob.writeOptions.compressionCodec
+      val uncompressedSize = buf.map(_.size).sum
+      val data = assembleData(codec, buf)
+      val compressedSize = data.size
       log.info(s"""Job[${writeJob.queryId}]: prepare to flush batch
+                  |cluster: ${writeJob.cluster.map(_.name).getOrElse("none")}, shard: ${shardNum.getOrElse("none")}
                   |node: ${client.node}
-                  |batch size: ${buf.size}
-                  |cluster: ${writeJob.cluster.map(_.name)}
-                  |shard: $shardNum
+                  |             rows: ${buf.size}
+                  |uncompressed size: ${Utils.bytesToString(uncompressedSize)} 
+                  |  compressed size: ${Utils.bytesToString(compressedSize)}
+                  |compression codec: ${codec.getOrElse("none")}
                   |""".stripMargin)
       client.syncInsertOutputJSONEachRow(
         database,
         table,
         "JSONEachRow",
-        None,
-        buf.reduce((l, r) => l concat r)
+        codec,
+        data
       ) match {
         case Right(_) => buf.clear
         case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.getCode) =>

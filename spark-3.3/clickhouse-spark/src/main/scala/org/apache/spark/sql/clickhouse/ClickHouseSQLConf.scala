@@ -15,8 +15,7 @@
 package org.apache.spark.sql.clickhouse
 
 import java.util.concurrent.TimeUnit
-
-import org.apache.spark.internal.config.{ConfigBuilder, ConfigEntry}
+import org.apache.spark.internal.config.{ConfigBuilder, ConfigEntry, OptionalConfigEntry}
 import org.apache.spark.sql.clickhouse.SparkOptions._
 import org.apache.spark.sql.internal.SQLConf
 import xenon.clickhouse.exception.ClickHouseErrCode._
@@ -127,4 +126,11 @@ object ClickHouseSQLConf {
       .version("0.3.0")
       .booleanConf
       .createWithDefault(true)
+
+  val WRITE_COMPRESSION_CODEC: OptionalConfigEntry[String] =
+    buildConf(WRITE_COMPRESSION_CODEC_KEY)
+      .doc("The codec used to compress data for writing. Supported codecs: gzip")
+      .version("0.3.0")
+      .stringConf
+      .createOptional
 }

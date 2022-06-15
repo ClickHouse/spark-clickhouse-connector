@@ -38,6 +38,7 @@ object SparkOptions {
   val WRITE_DISTRIBUTED_CONVERT_LOCAL_KEY: String = "write.distributed.convertLocal"
   val WRITE_LOCAL_SORT_BY_PARTITION_KEY: String = "write.localSortByPartition"
   val WRITE_LOCAL_SORT_BY_KEY_KEY: String = "write.localSortByKey"
+  val WRITE_COMPRESSION_CODEC_KEY: String = "write.compression"
 }
 
 trait SparkOptions extends SQLConfHelper with Serializable {
@@ -90,4 +91,7 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
 
   def localSortByKey: Boolean =
     eval(WRITE_LOCAL_SORT_BY_KEY_KEY, WRITE_LOCAL_SORT_BY_KEY)
+
+  def compressionCodec: Option[String] =
+    eval(WRITE_COMPRESSION_CODEC_KEY, WRITE_COMPRESSION_CODEC)
 }
