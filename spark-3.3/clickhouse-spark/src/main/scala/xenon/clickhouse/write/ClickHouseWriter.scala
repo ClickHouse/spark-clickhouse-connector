@@ -140,7 +140,9 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
     ) {
       val codec = writeJob.writeOptions.compressionCodec
       val uncompressedSize = buf.map(_.size).sum
+      val startTime = System.currentTimeMillis
       val data = assembleData(codec, buf)
+      val costMs = System.currentTimeMillis - startTime
       val compressedSize = data.size
       log.info(s"""Job[${writeJob.queryId}]: prepare to flush batch
                   |cluster: ${writeJob.cluster.map(_.name).getOrElse("none")}, shard: ${shardNum.getOrElse("none")}
@@ -149,6 +151,7 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
                   |uncompressed size: ${Utils.bytesToString(uncompressedSize)} 
                   |  compressed size: ${Utils.bytesToString(compressedSize)}
                   |compression codec: ${codec.getOrElse("none")}
+                  | compression cost: ${costMs}ms
                   |""".stripMargin)
       client.syncInsertOutputJSONEachRow(
         database,
