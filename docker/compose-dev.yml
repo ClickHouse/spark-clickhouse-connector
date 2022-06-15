@@ -45,7 +45,7 @@ services:
     hostname: zookeeper
 
   clickhouse-s1r1:
-    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
+    image: ${CLICKHOUSE_IMAGE}
     container_name: clickhouse-s1r1
     hostname: clickhouse-s1r1
     ports:
@@ -63,7 +63,7 @@ services:
       - zookeeper
 
   clickhouse-s1r2:
-    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
+    image: ${CLICKHOUSE_IMAGE}
     container_name: clickhouse-s1r2
     hostname: clickhouse-s1r2
     ports:
@@ -81,7 +81,7 @@ services:
       - zookeeper
 
   clickhouse-s2r1:
-    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
+    image: ${CLICKHOUSE_IMAGE}
     container_name: clickhouse-s2r1
     hostname: clickhouse-s2r1
     ports:
@@ -99,7 +99,7 @@ services:
       - zookeeper
 
   clickhouse-s2r2:
-    image: clickhouse/clickhouse-server:${CLICKHOUSE_VERSION}
+    image: ${CLICKHOUSE_IMAGE}
     container_name: clickhouse-s2r2
     hostname: clickhouse-s2r2
     ports:
