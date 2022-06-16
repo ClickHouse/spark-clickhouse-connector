@@ -17,7 +17,6 @@ FROM pan3793/scc-base:${PROJECT_VERSION}
 ARG AWS_JAVA_SDK_VERSION
 ARG DELTA_VERSION
 ARG HADOOP_VERSION
-ARG ICEBERG_VERSION
 ARG POSTGRES_JDBC_VERSION
 ARG PROJECT_VERSION
 ARG SCALA_BINARY_VERSION
@@ -37,8 +36,6 @@ RUN set -x && \
     tar -xzf spark-${SPARK_VERSION}-bin-hadoop3.2.tgz -C /opt && \
     ln -s /opt/spark-${SPARK_VERSION}-bin-hadoop3.2 ${SPARK_HOME} && \
     rm spark-${SPARK_VERSION}-bin-hadoop3.2.tgz && \
-    ICEBERG_SPARK_JAR_NAME=iceberg-spark-runtime-${SPARK_BINARY_VERSION}_${SCALA_BINARY_VERSION} && \
-    wget -q ${MAVEN_MIRROR}/org/apache/iceberg/${ICEBERG_SPARK_JAR_NAME}/${ICEBERG_VERSION}/${ICEBERG_SPARK_JAR_NAME}-${ICEBERG_VERSION}.jar -P ${SPARK_HOME}/jars && \
     SPARK_HADOOP_CLOUD_JAR_NAME=spark-hadoop-cloud_${SCALA_BINARY_VERSION} && \
     wget -q ${MAVEN_MIRROR}/org/apache/spark/${SPARK_HADOOP_CLOUD_JAR_NAME}/${SPARK_VERSION}/${SPARK_HADOOP_CLOUD_JAR_NAME}-${SPARK_VERSION}.jar -P ${SPARK_HOME}/jars && \
     HADOOP_CLOUD_STORAGE_JAR_NAME=hadoop-cloud-storage && \
