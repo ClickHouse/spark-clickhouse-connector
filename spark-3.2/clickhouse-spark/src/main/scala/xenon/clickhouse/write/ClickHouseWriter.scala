@@ -118,8 +118,8 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
     case _ => None
   }
 
-  private def assembleData(code: Option[String], buf: ArrayBuffer[ByteString]): ByteString =
-    code match {
+  private def assembleData(codec: Option[String], buf: ArrayBuffer[ByteString]): ByteString =
+    codec match {
       case None => buf.reduce((l, r) => l concat r)
       case Some(codec) if codec.toLowerCase == "gzip" =>
         val out = new ByteArrayOutputStream(4096)
