@@ -16,7 +16,7 @@ package xenon.clickhouse.write
 
 import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
-import org.apache.spark.sql.catalyst.{expressions, InternalRow, SQLConfHelper}
+import org.apache.spark.sql.catalyst.{InternalRow, expressions}
 import org.apache.spark.sql.clickhouse.{ExprUtils, JsonWriter}
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types.{ByteType, IntegerType, LongType, ShortType}
@@ -30,7 +30,7 @@ import java.util.zip.GZIPOutputStream
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
 
-class ClickHouseAppendWriter(writeJob: WriteJobDescription)
+class ClickHouseWriter(writeJob: WriteJobDescription)
     extends DataWriter[InternalRow] with Logging {
 
   val database: String = writeJob.targetDatabase(writeJob.writeOptions.convertDistributedToLocal)
@@ -170,26 +170,4 @@ class ClickHouseAppendWriter(writeJob: WriteJobDescription)
       case Failure(rethrow) => throw rethrow
     }
   }
-}
-
-class ClickHouseTruncateWriter(writeJob: WriteJobDescription)
-    extends DataWriter[InternalRow] with SQLConfHelper with Logging {
-
-  val database: String = writeJob.targetDatabase(true)
-  val table: String = writeJob.targetTable(true)
-
-  lazy val grpcNodeClient: GrpcNodeClient = GrpcNodeClient(writeJob.node)
-
-  def clusterClause: String = s"ON CLUSTER ${writeJob.cluster.get.name}"
-
-  override def write(record: InternalRow): Unit = {}
-
-  override def commit(): WriterCommitMessage = {
-    grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(s"TRUNCATE TABLE `$database`.`$table` $clusterClause")
-    CommitMessage(s"Job[${writeJob.queryId}]: commit truncate")
-  }
-
-  override def abort(): Unit = grpcNodeClient.close()
-
-  override def close(): Unit = grpcNodeClient.close()
 }
