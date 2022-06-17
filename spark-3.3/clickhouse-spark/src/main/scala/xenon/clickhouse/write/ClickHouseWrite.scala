@@ -19,24 +19,14 @@ import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.distributions.{Distribution, Distributions}
 import org.apache.spark.sql.connector.expressions.SortOrder
 import org.apache.spark.sql.connector.write._
-import xenon.clickhouse.write.WriteAction._
 
-class ClickHouseWriteBuilder(writeJob: WriteJobDescription)
-    extends WriteBuilder with SupportsTruncate {
+class ClickHouseWriteBuilder(writeJob: WriteJobDescription) extends WriteBuilder {
 
-  private var action: WriteAction = APPEND
-
-  override def truncate(): WriteBuilder = {
-    this.action = TRUNCATE
-    this
-  }
-
-  override def build(): Write = new ClickHouseWrite(writeJob, action)
+  override def build(): Write = new ClickHouseWrite(writeJob)
 }
 
 class ClickHouseWrite(
-  writeJob: WriteJobDescription,
-  action: WriteAction
+  writeJob: WriteJobDescription
 ) extends Write
     with RequiresDistributionAndOrdering
     with SQLConfHelper {
@@ -50,12 +40,11 @@ class ClickHouseWrite(
 
   override def requiredOrdering(): Array[SortOrder] = writeJob.sparkSortOrders
 
-  override def toBatch: BatchWrite = new ClickHouseBatchWrite(writeJob, action)
+  override def toBatch: BatchWrite = new ClickHouseBatchWrite(writeJob)
 }
 
 class ClickHouseBatchWrite(
-  writeJob: WriteJobDescription,
-  action: WriteAction
+  writeJob: WriteJobDescription
 ) extends BatchWrite with DataWriterFactory {
 
   override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory = this
@@ -64,10 +53,7 @@ class ClickHouseBatchWrite(
 
   override def abort(messages: Array[WriterCommitMessage]): Unit = {}
 
-  override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] = action match {
-    case APPEND =>
-      new ClickHouseAppendWriter(writeJob)
-    case TRUNCATE =>
-      new ClickHouseTruncateWriter(writeJob)
+  override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] = {
+      new ClickHouseWriter(writeJob)
   }
 }
