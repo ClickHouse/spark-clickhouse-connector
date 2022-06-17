@@ -41,3 +41,17 @@ Run all test
 Run single test
 
 `./gradlew test --tests=ConvertDistToLocalWriteSuite`
+
+### ARM Platform
+
+For developers/users who use ARM platform, e.g. [Apple Silicon](https://developer.apple.com/documentation/apple-silicon) chips,
+[Kunpeng](https://www.hikunpeng.com/) chips, you may not run integrations test in local directly, because 
+[ClickHouse does not provide gRPC support in official ARM image](https://github.com/ClickHouse/ClickHouse/pull/36754).
+
+As a workaround, you can set the environment variable `CLICKHOUSE_IMAGE` to use a custom image which support gRPC
+on ARM platform for testing.
+
+```
+export CLICKHOUSE_IMAGE=pan3793/clickhouse-server:22.5.1-alpine-arm-grpc
+./gradlew clean test
+```
