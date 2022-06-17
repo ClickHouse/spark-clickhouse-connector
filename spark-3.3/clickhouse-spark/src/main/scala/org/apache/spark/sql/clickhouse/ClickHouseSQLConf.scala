@@ -14,18 +14,16 @@
 
 package org.apache.spark.sql.clickhouse
 
-import java.util.concurrent.TimeUnit
-import org.apache.spark.internal.config.{ConfigBuilder, ConfigEntry, OptionalConfigEntry}
-import org.apache.spark.sql.clickhouse.SparkOptions._
-import org.apache.spark.sql.internal.SQLConf
+import org.apache.spark.internal.config.{ConfigEntry, OptionalConfigEntry}
+import org.apache.spark.sql.internal.SQLConf._
 import xenon.clickhouse.exception.ClickHouseErrCode._
 
+import java.util.concurrent.TimeUnit
+
 object ClickHouseSQLConf {
-  def buildConf(key: String): ConfigBuilder = SQLConf.buildConf(s"spark.clickhouse.$key")
-  def buildStaticConf(key: String): ConfigBuilder = SQLConf.buildStaticConf(s"spark.clickhouse.$key")
 
   val WRITE_BATCH_SIZE: ConfigEntry[Int] =
-    buildConf(WRITE_BATCH_SIZE_KEY)
+    buildConf("spark.clickhouse.write.batchSize")
       .doc("The number of records per batch on writing to ClickHouse.")
       .version("0.1.0")
       .intConf
@@ -33,7 +31,7 @@ object ClickHouseSQLConf {
       .createWithDefault(10000)
 
   val WRITE_MAX_RETRY: ConfigEntry[Int] =
-    buildConf(WRITE_MAX_RETRY_KEY)
+    buildConf("spark.clickhouse.write.maxRetry")
       .doc("The maximum number of write we will retry for a single batch write failed with retryable codes.")
       .version("0.1.0")
       .intConf
@@ -41,14 +39,14 @@ object ClickHouseSQLConf {
       .createWithDefault(3)
 
   val WRITE_RETRY_INTERVAL: ConfigEntry[Long] =
-    buildConf(WRITE_RETRY_INTERVAL_KEY)
+    buildConf("spark.clickhouse.write.retryInterval")
       .doc("The interval in seconds between write retry.")
       .version("0.1.0")
       .timeConf(TimeUnit.SECONDS)
       .createWithDefault(10)
 
   val WRITE_RETRYABLE_ERROR_CODES: ConfigEntry[Seq[Int]] =
-    buildConf(WRITE_RETRYABLE_ERROR_CODES_KEY)
+    buildConf("spark.clickhouse.write.retryableErrorCodes")
       .doc("The retryable error codes returned by ClickHouse server when write failing.")
       .version("0.1.0")
       .intConf
@@ -57,7 +55,7 @@ object ClickHouseSQLConf {
       .createWithDefault(MEMORY_LIMIT_EXCEEDED.code :: Nil)
 
   val WRITE_REPARTITION_NUM: ConfigEntry[Int] =
-    buildConf(WRITE_REPARTITION_NUM_KEY)
+    buildConf("spark.clickhouse.write.repartitionNum")
       .doc("Repartition data to meet the distributions of ClickHouse table is required before writing, " +
         "use this conf to specific the repartition number, value less than 1 mean no requirement.")
       .version("0.1.0")
@@ -65,7 +63,7 @@ object ClickHouseSQLConf {
       .createWithDefault(0)
 
   val WRITE_REPARTITION_BY_PARTITION: ConfigEntry[Boolean] =
-    buildConf(WRITE_REPARTITION_BY_PARTITION_KEY)
+    buildConf("spark.clickhouse.write.repartitionByPartition")
       .doc("Whether to repartition data by ClickHouse partition keys to meet the distributions of " +
         "ClickHouse table before writing.")
       .version("0.3.0")
@@ -73,7 +71,7 @@ object ClickHouseSQLConf {
       .createWithDefault(true)
 
   val WRITE_REPARTITION_STRICTLY: ConfigEntry[Boolean] =
-    buildConf(WRITE_REPARTITION_STRICTLY_KEY)
+    buildConf("spark.clickhouse.write.repartitionStrictly")
       .doc("If true, Spark will strictly distribute incoming records across partitions to satisfy " +
         "the required distribution before passing the records to the data source table on write. " +
         "Otherwise, Spark may apply certain optimizations to speed up the query but break the " +
@@ -84,51 +82,51 @@ object ClickHouseSQLConf {
       .createWithDefault(false)
 
   val WRITE_DISTRIBUTED_USE_CLUSTER_NODES: ConfigEntry[Boolean] =
-    buildConf(WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY)
+    buildConf("spark.clickhouse.write.distributed.useClusterNodes")
       .doc("Write to all nodes of cluster when writing Distributed table.")
       .version("0.1.0")
       .booleanConf
       .createWithDefault(true)
 
   val READ_DISTRIBUTED_USE_CLUSTER_NODES: ConfigEntry[Boolean] =
-    buildConf(READ_DISTRIBUTED_USE_CLUSTER_NODES_KEY)
+    buildConf("spark.clickhouse.read.distributed.useClusterNodes")
       .doc("Read from all nodes of cluster when reading Distributed table.")
       .version("0.1.0")
       .booleanConf
-      .checkValue(_ == false, s"`$READ_DISTRIBUTED_USE_CLUSTER_NODES_KEY` is not support yet.")
+      .checkValue(_ == false, s"`spark.clickhouse.read.distributed.useClusterNodes` is not support yet.")
       .createWithDefault(false)
 
   val WRITE_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
-    buildConf(WRITE_DISTRIBUTED_CONVERT_LOCAL_KEY)
+    buildConf("spark.clickhouse.write.distributed.convertLocal")
       .doc("When writing Distributed table, write local table instead of itself. " +
-        s"If `true`, ignore `$WRITE_DISTRIBUTED_USE_CLUSTER_NODES_KEY`.")
+        "If `true`, ignore `spark.clickhouse.write.distributed.useClusterNodes`.")
       .version("0.1.0")
       .booleanConf
       .createWithDefault(false)
 
   val READ_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
-    buildConf(READ_DISTRIBUTED_CONVERT_LOCAL_KEY)
+    buildConf("spark.clickhouse.read.distributed.convertLocal")
       .doc("When reading Distributed table, read local table instead of itself. " +
-        s"If `true`, ignore `$READ_DISTRIBUTED_USE_CLUSTER_NODES_KEY`.")
+        s"If `true`, ignore `${READ_DISTRIBUTED_USE_CLUSTER_NODES.key}`.")
       .version("0.1.0")
       .booleanConf
       .createWithDefault(true)
 
   val WRITE_LOCAL_SORT_BY_PARTITION: ConfigEntry[Boolean] =
-    buildConf(WRITE_LOCAL_SORT_BY_PARTITION_KEY)
+    buildConf("spark.clickhouse.write.localSortByPartition")
       .doc("If `true`, do local sort by partition before writing.")
       .version("0.3.0")
       .fallbackConf(WRITE_REPARTITION_BY_PARTITION)
 
   val WRITE_LOCAL_SORT_BY_KEY: ConfigEntry[Boolean] =
-    buildConf(WRITE_LOCAL_SORT_BY_KEY_KEY)
+    buildConf("spark.clickhouse.write.localSortByKey")
       .doc("If `true`, do local sort by sort keys before writing.")
       .version("0.3.0")
       .booleanConf
       .createWithDefault(true)
 
   val WRITE_COMPRESSION_CODEC: OptionalConfigEntry[String] =
-    buildConf(WRITE_COMPRESSION_CODEC_KEY)
+    buildConf("spark.clickhouse.write.compression.codec")
       .doc("The codec used to compress data for writing. Supported codecs: gzip")
       .version("0.3.0")
       .stringConf
