@@ -106,4 +106,10 @@ SQL Configurations
 
     Default Value: undefined
 
-    Description: The codec used to compress data for writing. Supported codecs: gzip
+    Description: The codec used to compress data for writing. Supported codecs: gzip.
+
+!!! tip "Since 0.4.0 - spark.clickhouse.write.format"
+
+    Default Value: ArrowStream
+
+    Description: (Spark 3.3) Serialize format for writing. Supported formats: JSONEachRow, ArrowStream.
