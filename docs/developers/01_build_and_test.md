@@ -30,7 +30,7 @@ Build w/o test
 ./gradlew clean build -x test
 ```
 
-Go to `spark-3.2/clickhouse-spark-runtime/build/libs/` to find the output jar `clickhouse-spark-runtime-3.2_2.12-${version}.jar`.
+Go to `spark-3.2/clickhouse-spark-runtime/build/libs/` to find the output jar `clickhouse-spark-runtime-3.3_2.12-${version}.jar`.
 
 ## Test
 

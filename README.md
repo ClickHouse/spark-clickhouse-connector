@@ -1,6 +1,6 @@
 Spark ClickHouse Connector
 ===
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.housepower/clickhouse-spark-runtime-3.2_2.12/badge.svg)](https://search.maven.org/search?q=clickhouse-spark-runtime)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.housepower/clickhouse-spark-runtime-3.3_2.12/badge.svg)](https://search.maven.org/search?q=clickhouse-spark-runtime)
 [![License](https://img.shields.io/github/license/housepower/spark-clickhouse-connector)](https://github.com/housepower/spark-clickhouse-connector/blob/master/LICENSE)
 
 Build on Apache Spark DataSourceV2 API.
