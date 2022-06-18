@@ -43,47 +43,45 @@ trait SparkClickHouseClusterTestHelper { self: BaseSparkSuite with SparkClickHou
     writeData: Boolean = false
   )(f: (String, String, String, String) => Unit): Unit =
     autoCleanupDistTable(cluster, db, tbl_dist) { (cluster, db, tbl_dist, tbl_local) =>
-      try {
-        spark.sql(
-          s"""CREATE TABLE $db.$tbl_dist (
-             |  create_time TIMESTAMP NOT NULL,
-             |  y           INT       NOT NULL COMMENT 'shard key',
-             |  m           INT       NOT NULL COMMENT 'part key',
-             |  id          BIGINT    NOT NULL COMMENT 'sort key',
-             |  value       STRING
-             |) USING ClickHouse
-             |PARTITIONED BY (m)
-             |TBLPROPERTIES (
-             |  cluster = '$cluster',
-             |  engine = 'Distributed',
-             |  shard_by = 'y',
-             |  local.engine = 'MergeTree()',
-             |  local.database = '$db',
-             |  local.table = '$tbl_local',
-             |  local.order_by = 'id',
-             |  local.settings.index_granularity = 8192
-             |)
-             |""".stripMargin
-        )
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl_dist (
+           |  create_time TIMESTAMP NOT NULL,
+           |  y           INT       NOT NULL COMMENT 'shard key',
+           |  m           INT       NOT NULL COMMENT 'part key',
+           |  id          BIGINT    NOT NULL COMMENT 'sort key',
+           |  value       STRING
+           |) USING ClickHouse
+           |PARTITIONED BY (m)
+           |TBLPROPERTIES (
+           |  cluster = '$cluster',
+           |  engine = 'Distributed',
+           |  shard_by = 'y',
+           |  local.engine = 'MergeTree()',
+           |  local.database = '$db',
+           |  local.table = '$tbl_local',
+           |  local.order_by = 'id',
+           |  local.settings.index_granularity = 8192
+           |)
+           |""".stripMargin
+      )
 
-        if (writeData) {
-          val tblSchema = spark.table(s"$db.$tbl_dist").schema
-          val dataDF = spark.createDataFrame(Seq(
-            ("2021-01-01 10:10:10", 1L, "1"),
-            ("2022-02-02 10:10:10", 2L, "2"),
-            ("2023-03-03 10:10:10", 3L, "3"),
-            ("2024-04-04 10:10:10", 4L, "4")
-          )).toDF("create_time", "id", "value")
-            .withColumn("create_time", to_timestamp($"create_time"))
-            .withColumn("y", year($"create_time"))
-            .withColumn("m", month($"create_time"))
-            .select($"create_time", $"y", $"m", $"id", $"value")
+      if (writeData) {
+        val tblSchema = spark.table(s"$db.$tbl_dist").schema
+        val dataDF = spark.createDataFrame(Seq(
+          ("2021-01-01 10:10:10", 1L, "1"),
+          ("2022-02-02 10:10:10", 2L, "2"),
+          ("2023-03-03 10:10:10", 3L, "3"),
+          ("2024-04-04 10:10:10", 4L, "4")
+        )).toDF("create_time", "id", "value")
+          .withColumn("create_time", to_timestamp($"create_time"))
+          .withColumn("y", year($"create_time"))
+          .withColumn("m", month($"create_time"))
+          .select($"create_time", $"y", $"m", $"id", $"value")
 
-          spark.createDataFrame(dataDF.rdd, tblSchema)
-            .writeTo(s"$db.$tbl_dist")
-            .append
-        }
-        f(cluster, db, tbl_dist, tbl_local)
+        spark.createDataFrame(dataDF.rdd, tblSchema)
+          .writeTo(s"$db.$tbl_dist")
+          .append
       }
+      f(cluster, db, tbl_dist, tbl_local)
     }
 }
