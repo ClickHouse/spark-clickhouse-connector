@@ -29,17 +29,17 @@ $SPARK_HOME/bin/spark-sql \
   --conf spark.sql.catalog.clickhouse.user=${CLICKHOUSE_USER:-default} \
   --conf spark.sql.catalog.clickhouse.password=${CLICKHOUSE_PASSWORD:-} \
   --conf spark.sql.catalog.clickhouse.database=default \
-  --jars /path/clickhouse-spark-runtime-3.2_2.12-{version}.jar
+  --jars /path/clickhouse-spark-runtime-3.3_2.12-{version}.jar
 ```
 
 The following argument
 ```
-  --jars /path/clickhouse-spark-runtime-3.2_2.12-{version}.jar
+  --jars /path/clickhouse-spark-runtime-3.3_2.12-{version}.jar
 ```
 can be replaced by
 ```
   --repositories https://{maven-cental-mirror or private-nexus-repo} \
-  --packages com.github.housepower:clickhouse-spark-runtime-3.2_2.12:{version}
+  --packages com.github.housepower:clickhouse-spark-runtime-3.3_2.12:{version}
 ```
 to avoid copying jar to your Spark client node.
 

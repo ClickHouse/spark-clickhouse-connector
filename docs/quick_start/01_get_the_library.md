@@ -33,7 +33,7 @@ and all daily build snapshot jars under [Sonatype OSS Snapshots Repository](http
 
 ```
 dependencies {
-  implementation("com.github.housepower:clickhouse-spark-runtime-3.2_2.12:${version}")
+  implementation("com.github.housepower:clickhouse-spark-runtime-3.3_2.12:${version}")
 }
 ```
 
@@ -50,7 +50,7 @@ repositries {
 ```
 <dependency>
   <groupId>com.github.housepower</groupId>
-  <artifactId>clickhouse-spark-runtime-3.2_2.12</artifactId>
+  <artifactId>clickhouse-spark-runtime-3.3_2.12</artifactId>
   <version>${version}</version>
 </dependency>
 ```
