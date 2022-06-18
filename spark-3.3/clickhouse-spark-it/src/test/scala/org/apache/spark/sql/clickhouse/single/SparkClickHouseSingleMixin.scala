@@ -39,7 +39,7 @@ trait SparkClickHouseSingleMixin {
     "spark.clickhouse.write.retryInterval" -> "1",
     "spark.clickhouse.write.retryableErrorCodes" -> "241",
     "spark.clickhouse.write.write.repartitionNum" -> "0",
-    "spark.clickhouse.write.format" -> "JsonEachRow"
+    "spark.clickhouse.write.format" -> "JSONEachRow"
   )
 
   override def cmdRunnerOptions: Map[String, String] = Map(
