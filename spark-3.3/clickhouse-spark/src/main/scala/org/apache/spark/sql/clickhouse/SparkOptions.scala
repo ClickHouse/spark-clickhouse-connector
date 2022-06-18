@@ -75,4 +75,7 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
 
   def compressionCodec: Option[String] =
     eval(WRITE_COMPRESSION_CODEC.key, WRITE_COMPRESSION_CODEC)
+
+  def format: String =
+    eval(WRITE_FORMAT.key, WRITE_FORMAT)
 }

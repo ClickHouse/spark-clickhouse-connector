@@ -16,8 +16,8 @@ package xenon.clickhouse.write
 
 import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
-import org.apache.spark.sql.catalyst.{InternalRow, expressions}
-import org.apache.spark.sql.clickhouse.{ExprUtils, JsonWriter}
+import org.apache.spark.sql.catalyst.{expressions, InternalRow}
+import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types.{ByteType, IntegerType, LongType, ShortType}
 import xenon.clickhouse._
@@ -25,18 +25,16 @@ import xenon.clickhouse.exception._
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
 import xenon.clickhouse.spec.{DistributedEngineSpec, ShardUtils}
 
-import java.io.ByteArrayOutputStream
-import java.util.zip.GZIPOutputStream
-import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
 
-class ClickHouseWriter(writeJob: WriteJobDescription)
+abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     extends DataWriter[InternalRow] with Logging {
 
   val database: String = writeJob.targetDatabase(writeJob.writeOptions.convertDistributedToLocal)
   val table: String = writeJob.targetTable(writeJob.writeOptions.convertDistributedToLocal)
+  val codec: Option[String] = writeJob.writeOptions.compressionCodec
 
-  private lazy val shardExpr: Option[Expression] = writeJob.sparkShardExpr match {
+  protected lazy val shardExpr: Option[Expression] = writeJob.sparkShardExpr match {
     case None if writeJob.tableEngineSpec.is_distributed =>
       throw ClickHouseClientException("Can not write data to a Distributed table that lacks sharding key")
     case None => None
@@ -57,13 +55,13 @@ class ClickHouseWriter(writeJob: WriteJobDescription)
       }
   }
 
-  private lazy val shardProjection: Option[expressions.Projection] = shardExpr
+  protected lazy val shardProjection: Option[expressions.Projection] = shardExpr
     .filter(_ => writeJob.writeOptions.convertDistributedToLocal)
     .map(expr => SafeProjection.create(Seq(expr)))
 
   // put the node select strategy in executor side because we need to calculate shard and don't know the records
   // util DataWriter#write(InternalRow) invoked.
-  private lazy val grpcClient: Either[GrpcClusterClient, GrpcNodeClient] =
+  protected lazy val grpcClient: Either[GrpcClusterClient, GrpcNodeClient] =
     writeJob.tableEngineSpec match {
       case _: DistributedEngineSpec
           if writeJob.writeOptions.useClusterNodesForDistributed || writeJob.writeOptions.convertDistributedToLocal =>
@@ -81,30 +79,6 @@ class ClickHouseWriter(writeJob: WriteJobDescription)
     case Right(nodeClient) => nodeClient
   }
 
-  var lastShardNum: Option[Int] = None
-  val buf: ArrayBuffer[ByteString] = new ArrayBuffer[ByteString](writeJob.writeOptions.batchSize)
-  val jsonWriter = new JsonWriter(writeJob.dataSetSchema, writeJob.tz)
-
-  override def write(record: InternalRow): Unit = {
-    val shardNum = calcShard(record)
-    if (shardNum != lastShardNum && buf.nonEmpty) flush(lastShardNum)
-    lastShardNum = shardNum
-    buf += jsonWriter.row2Json(record)
-    if (buf.size == writeJob.writeOptions.batchSize) flush(lastShardNum)
-  }
-
-  override def commit(): WriterCommitMessage = {
-    if (buf.nonEmpty) flush(lastShardNum)
-    CommitMessage(s"Job[${writeJob.queryId}]: commit")
-  }
-
-  override def abort(): Unit = close()
-
-  override def close(): Unit = grpcClient match {
-    case Left(clusterClient) => clusterClient.close()
-    case Right(nodeClient) => nodeClient.close()
-  }
-
   def calcShard(record: InternalRow): Option[Int] = (shardExpr, shardProjection) match {
     case (Some(BoundReference(_, dataType, _)), Some(projection)) =>
       val shardValue = dataType match {
@@ -118,19 +92,24 @@ class ClickHouseWriter(writeJob: WriteJobDescription)
     case _ => None
   }
 
-  private def assembleData(codec: Option[String], buf: ArrayBuffer[ByteString]): ByteString =
-    codec match {
-      case None => buf.reduce((l, r) => l concat r)
-      case Some(codec) if codec.toLowerCase == "gzip" =>
-        val out = new ByteArrayOutputStream(4096)
-        val gzipOut = new GZIPOutputStream(out, 8192)
-        buf.foreach(_.writeTo(gzipOut))
-        gzipOut.flush()
-        gzipOut.close()
-        ByteString.copyFrom(out.toByteArray)
-      case Some(unsupported) =>
-        throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
-    }
+  def format: String
+
+  def bufferedRows: Int
+  def bufferedBytes: Long
+  def resetBuffer(): Unit
+  var lastShardNum: Option[Int] = None
+
+  override def write(record: InternalRow): Unit = {
+    val shardNum = calcShard(record)
+    if (shardNum != lastShardNum && bufferedRows > 0) flush(lastShardNum)
+    lastShardNum = shardNum
+    writeRow(record)
+    if (bufferedRows >= writeJob.writeOptions.batchSize) flush(lastShardNum)
+  }
+
+  def writeRow(record: InternalRow): Unit
+
+  def serialize(): ByteString
 
   def flush(shardNum: Option[Int]): Unit = {
     val client = grpcNodeClient(shardNum)
@@ -138,29 +117,22 @@ class ClickHouseWriter(writeJob: WriteJobDescription)
       writeJob.writeOptions.maxRetry,
       writeJob.writeOptions.retryInterval
     ) {
-      val codec = writeJob.writeOptions.compressionCodec
-      val uncompressedSize = buf.map(_.size).sum
+      val uncompressedSize = bufferedBytes
       val startTime = System.currentTimeMillis
-      val data = assembleData(codec, buf)
+      val data = serialize()
       val costMs = System.currentTimeMillis - startTime
       val compressedSize = data.size
       log.info(s"""Job[${writeJob.queryId}]: prepare to flush batch
                   |cluster: ${writeJob.cluster.map(_.name).getOrElse("none")}, shard: ${shardNum.getOrElse("none")}
                   |node: ${client.node}
-                  |             rows: ${buf.size}
-                  |uncompressed size: ${Utils.bytesToString(uncompressedSize)} 
+                  |             rows: $bufferedRows
+                  |uncompressed size: ${Utils.bytesToString(uncompressedSize)}
                   |  compressed size: ${Utils.bytesToString(compressedSize)}
                   |compression codec: ${codec.getOrElse("none")}
                   | compression cost: ${costMs}ms
                   |""".stripMargin)
-      client.syncInsertOutputJSONEachRow(
-        database,
-        table,
-        "JSONEachRow",
-        codec,
-        data
-      ) match {
-        case Right(_) => buf.clear
+      client.syncInsertOutputJSONEachRow(database, table, format, codec, data) match {
+        case Right(_) => resetBuffer()
         case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.getCode) =>
           throw new RetryableClickHouseException(retryable, Some(client.node))
         case Left(rethrow) => throw new ClickHouseServerException(rethrow, Some(client.node))
@@ -169,5 +141,17 @@ class ClickHouseWriter(writeJob: WriteJobDescription)
       case Success(_) => log.info(s"Job[${writeJob.queryId}]: flush batch completed")
       case Failure(rethrow) => throw rethrow
     }
+  }
+
+  override def commit(): WriterCommitMessage = {
+    if (bufferedRows > 0) flush(lastShardNum)
+    CommitMessage(s"Job[${writeJob.queryId}]: commit")
+  }
+
+  override def abort(): Unit = close()
+
+  override def close(): Unit = grpcClient match {
+    case Left(clusterClient) => clusterClient.close()
+    case Right(nodeClient) => nodeClient.close()
   }
 }
