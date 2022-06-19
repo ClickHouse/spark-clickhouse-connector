@@ -29,7 +29,7 @@ class ClickHouseJsonEachRowWriter(writeJob: WriteJobDescription) extends ClickHo
   override def format: String = "JSONEachRow"
 
   val buf: ArrayBuffer[ByteString] = new ArrayBuffer[ByteString](writeJob.writeOptions.batchSize)
-  val jsonWriter = new JsonWriter(writeJob.dataSetSchema, writeJob.tz)
+  val jsonWriter = new JsonWriter(revisedDataSchema, writeJob.tz)
 
   override def bufferedRows: Int = buf.length
   override def bufferedBytes: Long = buf.map(_.size).sum

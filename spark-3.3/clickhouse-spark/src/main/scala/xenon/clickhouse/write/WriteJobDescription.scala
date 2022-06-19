@@ -24,6 +24,8 @@ import xenon.clickhouse.spec._
 
 case class WriteJobDescription(
   queryId: String,
+  tableSchema: StructType,
+  metadataSchema: StructType,
   dataSetSchema: StructType,
   node: NodeSpec,
   tz: ZoneId,
