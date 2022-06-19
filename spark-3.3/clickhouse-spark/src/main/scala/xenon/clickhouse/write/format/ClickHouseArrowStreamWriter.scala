@@ -30,7 +30,7 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
 
   val reusedByteArray: ByteString.Output = ByteString.newOutput(16 * 1024 * 1024)
 
-  val arrowWriter: ArrowWriter = ArrowWriter.create(writeJob.dataSetSchema, writeJob.tz.getId)
+  val arrowWriter: ArrowWriter = ArrowWriter.create(revisedDataSchema, writeJob.tz.getId)
   val countField: Field = arrowWriter.getClass.getDeclaredField("count")
   countField.setAccessible(true)
 
