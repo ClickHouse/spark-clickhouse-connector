@@ -18,6 +18,7 @@ import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
 import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.clickhouse.ExprUtils
+import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types._
 import xenon.clickhouse._
@@ -25,6 +26,7 @@ import xenon.clickhouse.exception._
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
 import xenon.clickhouse.spec.{DistributedEngineSpec, ShardUtils}
 
+import java.util.concurrent.atomic.LongAdder
 import scala.util.{Failure, Success}
 
 abstract class ClickHouseWriter(writeJob: WriteJobDescription)
@@ -109,18 +111,31 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   def bufferedBytes: Long
   def resetBuffer(): Unit
   var lastShardNum: Option[Int] = None
+  val recordWrittenCounter = new LongAdder
 
   override def write(record: InternalRow): Unit = {
     val shardNum = calcShard(record)
     if (shardNum != lastShardNum && bufferedRows > 0) flush(lastShardNum)
     lastShardNum = shardNum
     writeRow(record)
+    recordWrittenCounter.add(1)
     if (bufferedRows >= writeJob.writeOptions.batchSize) flush(lastShardNum)
   }
 
   def writeRow(record: InternalRow): Unit
 
   def serialize(): ByteString
+
+  def totalRawBytesWritten: Long
+  def totalSerializedBytesWritten: Long
+  def totalSerializeTime: Long
+
+  override def currentMetricsValues: Array[CustomTaskMetric] = Array(
+    WriteTaskMetric("recordsWritten", recordWrittenCounter.longValue),
+    WriteTaskMetric("bytesWritten", totalSerializedBytesWritten),
+    WriteTaskMetric("rawBytesWritten", totalRawBytesWritten),
+    WriteTaskMetric("serializeTime", totalSerializeTime)
+  )
 
   def flush(shardNum: Option[Int]): Unit = {
     val client = grpcNodeClient(shardNum)

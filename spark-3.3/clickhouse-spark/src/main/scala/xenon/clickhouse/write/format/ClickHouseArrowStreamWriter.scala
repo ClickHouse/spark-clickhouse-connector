@@ -17,10 +17,11 @@ package xenon.clickhouse.write.format
 import com.google.protobuf.ByteString
 import org.apache.arrow.vector.ipc.ArrowStreamWriter
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.execution.arrow.ArrowWriter
 import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.io.ObservableOutputStream
-import xenon.clickhouse.write.{ClickHouseWriter, WriteJobDescription}
+import xenon.clickhouse.write.{ClickHouseWriter, WriteJobDescription, WriteTaskMetric}
 
 import java.lang.reflect.Field
 import java.util.concurrent.atomic.LongAdder
@@ -36,18 +37,28 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
   val countField: Field = arrowWriter.getClass.getDeclaredField("count")
   countField.setAccessible(true)
 
-  val writeBytesCounter = new LongAdder
-  val totalWriteByteCounter = new LongAdder
-  val writeTimeCounter = new LongAdder
-  val totalWriteTimeCounter = new LongAdder
+  val rawBytesWrittenCounter = new LongAdder
+  val totalRawBytesWrittenCounter = new LongAdder
+  val serializedBytesWrittenCounter = new LongAdder
+  val totalSerializedBytesWrittenCounter = new LongAdder
+  val serializeTimeCounter = new LongAdder
+  val totalSerializeTimeCounter = new LongAdder
+
+  override def totalRawBytesWritten: Long = totalRawBytesWrittenCounter.longValue
+  override def totalSerializedBytesWritten: Long = totalSerializedBytesWrittenCounter.longValue
+  override def totalSerializeTime: Long = totalSerializeTimeCounter.longValue
+
+  override def currentMetricsValues: Array[CustomTaskMetric] = super.currentMetricsValues ++ Array(
+    WriteTaskMetric("flushBufferSize", reusedByteArray.size),
+  )
 
   override def bufferedRows: Int = countField.getInt(arrowWriter)
-  override def bufferedBytes: Long = writeBytesCounter.longValue
+  override def bufferedBytes: Long = rawBytesWrittenCounter.longValue
   override def resetBuffer(): Unit = {
     reusedByteArray.reset()
     arrowWriter.reset()
-    writeBytesCounter.reset()
-    writeTimeCounter.reset()
+    rawBytesWrittenCounter.reset()
+    serializeTimeCounter.reset()
   }
 
   override def writeRow(record: InternalRow): Unit = arrowWriter.write(record)
@@ -63,10 +74,10 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
     }
     val output = new ObservableOutputStream(
       out,
-      Some(writeBytesCounter),
-      Some(totalWriteByteCounter),
-      Some(writeTimeCounter),
-      Some(totalWriteTimeCounter)
+      Some(rawBytesWrittenCounter),
+      Some(totalRawBytesWrittenCounter),
+      Some(serializeTimeCounter),
+      Some(totalSerializeTimeCounter)
     )
     val arrowStreamWriter = new ArrowStreamWriter(arrowWriter.root, null, output)
     arrowStreamWriter.writeBatch()
