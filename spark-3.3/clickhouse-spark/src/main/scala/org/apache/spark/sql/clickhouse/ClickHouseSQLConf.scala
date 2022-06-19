@@ -127,7 +127,7 @@ object ClickHouseSQLConf {
 
   val WRITE_COMPRESSION_CODEC: OptionalConfigEntry[String] =
     buildConf("spark.clickhouse.write.compression.codec")
-      .doc("The codec used to compress data for writing. Supported codecs: gzip")
+      .doc("The codec used to compress data for writing. Supported codecs: gzip, lz4")
       .version("0.3.0")
       .stringConf
       .createOptional

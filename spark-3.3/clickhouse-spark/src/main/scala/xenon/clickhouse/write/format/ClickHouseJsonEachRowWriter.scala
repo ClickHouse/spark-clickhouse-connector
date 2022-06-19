@@ -20,9 +20,10 @@ import org.apache.spark.sql.clickhouse.JsonWriter
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import xenon.clickhouse.Utils
 import xenon.clickhouse.exception.ClickHouseClientException
-import xenon.clickhouse.io.ObservableOutputStream
+import xenon.clickhouse.io.{ClickHouseLz4OutputStream, ObservableOutputStream}
 import xenon.clickhouse.write.{ClickHouseWriter, WriteJobDescription, WriteTaskMetric}
 
+import java.io.OutputStream
 import java.util.concurrent.atomic.LongAdder
 import java.util.zip.GZIPOutputStream
 import scala.collection.mutable.ArrayBuffer
@@ -75,19 +76,25 @@ class ClickHouseJsonEachRowWriter(writeJob: WriteJobDescription) extends ClickHo
       _totalSerializedBytesWritten.add(serializedTime)
       data
     case Some(codec) if codec.toLowerCase == "gzip" =>
-      val output = new ObservableOutputStream(
-        reusedByteArray,
-        Some(_lastRawBytesWritten),
-        Some(_totalRawBytesWritten),
-        Some(_lastSerializeTime),
-        Some(_totalSerializeTime)
-      )
-      val gzipOut = new GZIPOutputStream(output, 8192)
-      buf.foreach(_.writeTo(gzipOut))
-      gzipOut.flush()
-      gzipOut.close()
-      reusedByteArray.toByteString
+      doSerialize(output => new GZIPOutputStream(output, 8192))
+    case Some(codec) if codec.toLowerCase == "laz4" =>
+      doSerialize(output => new ClickHouseLz4OutputStream(output, 8192))
     case Some(unsupported) =>
       throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
+  }
+
+  private def doSerialize(compress: OutputStream => OutputStream): ByteString = {
+    val output = new ObservableOutputStream(
+      reusedByteArray,
+      Some(_lastRawBytesWritten),
+      Some(_totalRawBytesWritten),
+      Some(_lastSerializeTime),
+      Some(_totalSerializeTime)
+    )
+    val compressedOutput = compress(output)
+    buf.foreach(_.writeTo(compressedOutput))
+    compressedOutput.flush()
+    compressedOutput.close()
+    reusedByteArray.toByteString
   }
 }
