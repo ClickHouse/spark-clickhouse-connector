@@ -14,7 +14,13 @@
 
 package xenon.clickhouse.write.format
 
+import java.lang.reflect.Field
+import java.util.concurrent.atomic.LongAdder
+import java.util.zip.GZIPOutputStream
+
 import com.google.protobuf.ByteString
+import net.jpountz.lz4.LZ4FrameOutputStream
+import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE
 import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.ipc.ArrowStreamWriter
@@ -24,12 +30,8 @@ import org.apache.spark.sql.clickhouse.SparkUtils
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.execution.arrow.ArrowWriter
 import xenon.clickhouse.exception.ClickHouseClientException
-import xenon.clickhouse.io.{ClickHouseLZ4OutputStream, ObservableOutputStream}
+import xenon.clickhouse.io.ObservableOutputStream
 import xenon.clickhouse.write.{ClickHouseWriter, WriteJobDescription, WriteTaskMetric}
-
-import java.lang.reflect.Field
-import java.util.concurrent.atomic.LongAdder
-import java.util.zip.GZIPOutputStream
 
 class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHouseWriter(writeJob) {
 
@@ -84,7 +86,8 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
       case Some(codec) if codec.toLowerCase == "gzip" =>
         new GZIPOutputStream(serializedOutput, 8192)
       case Some(codec) if codec.toLowerCase == "lz4" =>
-        new ClickHouseLZ4OutputStream(serializedOutput, 8192)
+        // new ClickHouseLZ4OutputStream(serializedOutput, 8192)
+        new LZ4FrameOutputStream(serializedOutput, BLOCKSIZE.SIZE_1MB)
       case Some(unsupported) =>
         throw ClickHouseClientException(s"Unsupported compression codec: $unsupported")
     }

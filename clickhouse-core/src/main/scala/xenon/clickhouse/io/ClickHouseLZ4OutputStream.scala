@@ -68,9 +68,9 @@ class ClickHouseLZ4OutputStream(output: OutputStream, bufferLength: Int) extends
       .compress(uncompressedBuffer, 0, pos, compressedBuffer, COMPRESSION_HEADER_LENGTH + CHECKSUM_LENGTH)
     compressedBuffer(CHECKSUM_LENGTH) = (0x82 & 0xff).toByte
     val compressedSize = compressedDataLen + COMPRESSION_HEADER_LENGTH
-    System.arraycopy(littleEndian(compressedSize), 0, compressedBuffer, CHECKSUM_LENGTH + 1, 4)
-    System.arraycopy(littleEndian(pos), 0, compressedBuffer, 21, 4)
-    val checksum = ClickHouseCityHash.cityHash128(compressedBuffer, 16, compressedSize)
+    System.arraycopy(littleEndian(compressedSize), 0, compressedBuffer, CHECKSUM_LENGTH + 1, Integer.BYTES)
+    System.arraycopy(littleEndian(pos), 0, compressedBuffer, CHECKSUM_LENGTH + Integer.BYTES + 1, Integer.BYTES)
+    val checksum = ClickHouseCityHash.cityHash128(compressedBuffer, CHECKSUM_LENGTH, compressedSize)
     System.arraycopy(littleEndian(checksum(0)), 0, compressedBuffer, 0, 8)
     System.arraycopy(littleEndian(checksum(1)), 0, compressedBuffer, 8, 8)
     output.write(compressedBuffer, 0, compressedSize + CHECKSUM_LENGTH)
