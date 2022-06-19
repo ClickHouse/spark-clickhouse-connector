@@ -16,7 +16,7 @@ package xenon.clickhouse
 
 import org.apache.commons.lang3.time.FastDateFormat
 
-import java.io.{File, InputStream}
+import java.io.{Closeable, File, InputStream}
 import java.math.{MathContext, RoundingMode}
 import java.net.URI
 import java.nio.file.{Files, Path, StandardCopyOption}
@@ -27,7 +27,7 @@ import java.util.concurrent.locks.LockSupport
 import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.reflect.ClassTag
-import scala.util.{Failure, Success, Try, Using}
+import scala.util.{Failure, Success, Try}
 
 object Utils extends Logging {
 
@@ -51,7 +51,7 @@ object Utils extends Logging {
   def copyFileFromClasspath(name: String): File = {
     val copyPath = tmpDirPath.resolve(name)
     Files.createDirectories(copyPath.getParent)
-    Using.resource(classpathResourceAsStream(name)) { input =>
+    tryWithResource(classpathResourceAsStream(name)) { input =>
       Files.copy(input, copyPath, StandardCopyOption.REPLACE_EXISTING)
     }
     copyPath.toFile
@@ -127,6 +127,32 @@ object Utils extends Logging {
       }
       "%.1f %s".formatLocal(Locale.US, value, unit)
     }
+  }
+
+  /**
+   * Returns a human-readable string representing a duration such as "35ms"
+   */
+  def msDurationToString(ms: Long): String = {
+    val second = 1000
+    val minute = 60 * second
+    val hour = 60 * minute
+    val locale = Locale.US
+
+    ms match {
+      case t if t < second =>
+        "%d ms".formatLocal(locale, t)
+      case t if t < minute =>
+        "%.1f s".formatLocal(locale, t.toFloat / second)
+      case t if t < hour =>
+        "%.1f m".formatLocal(locale, t.toFloat / minute)
+      case t =>
+        "%.2f h".formatLocal(locale, t.toFloat / hour)
+    }
+  }
+
+  def tryWithResource[R <: AutoCloseable, T](resource: R)(f: R => T): T = {
+    try f.apply(resource)
+    finally resource.close()
   }
 
   val PREFIX = "SPARK_ON_CLICKHOUSE"
