@@ -21,7 +21,6 @@ import org.apache.spark.sql.execution.arrow.ArrowWriter
 import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.write.{ClickHouseWriter, WriteJobDescription}
 
-import java.io.ByteArrayOutputStream
 import java.lang.reflect.Field
 import java.util.zip.GZIPOutputStream
 
@@ -29,7 +28,7 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
 
   override def format: String = "ArrowStream"
 
-  val reusedByteArray = new ByteArrayOutputStream()
+  val reusedByteArray: ByteString.Output = ByteString.newOutput(16 * 1024 * 1024)
 
   val arrowWriter: ArrowWriter = ArrowWriter.create(writeJob.dataSetSchema, writeJob.tz.getId)
   val countField: Field = arrowWriter.getClass.getDeclaredField("count")
@@ -57,7 +56,6 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
     arrowStreamWriter.writeBatch()
     arrowStreamWriter.end()
     out.flush()
-    arrowStreamWriter.close()
-    ByteString.copyFrom(reusedByteArray.toByteArray)
+    reusedByteArray.toByteString
   }
 }
