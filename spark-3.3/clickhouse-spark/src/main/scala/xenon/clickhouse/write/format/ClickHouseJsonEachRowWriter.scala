@@ -36,25 +36,29 @@ class ClickHouseJsonEachRowWriter(writeJob: WriteJobDescription) extends ClickHo
   val buf: ArrayBuffer[ByteString] = new ArrayBuffer[ByteString](writeJob.writeOptions.batchSize)
   val jsonWriter = new JsonWriter(revisedDataSchema, writeJob.tz)
 
-  val rawBytesWrittenCounter = new LongAdder
-  val totalRawBytesWrittenCounter = new LongAdder
-  val serializedBytesWrittenCounter = new LongAdder
-  val totalSerializedBytesWrittenCounter = new LongAdder
-  val serializeTimeCounter = new LongAdder
-  val totalSerializeTimeCounter = new LongAdder
-
-  override def totalRawBytesWritten: Long = totalRawBytesWrittenCounter.longValue
-  override def totalSerializedBytesWritten: Long = totalSerializedBytesWrittenCounter.longValue
-  override def totalSerializeTime: Long = totalSerializeTimeCounter.longValue
+  override def lastRecordsWritten: Long = buf.length
+  val _lastRawBytesWritten = new LongAdder
+  override def lastRawBytesWritten: Long = buf.map(_.size).sum
+  val _totalRawBytesWritten = new LongAdder
+  override def totalRawBytesWritten: Long = _totalRawBytesWritten.longValue
+  val _lastSerializedBytesWritten = new LongAdder
+  override def lastSerializedBytesWritten: Long = _lastSerializedBytesWritten.longValue
+  val _totalSerializedBytesWritten = new LongAdder
+  override def totalSerializedBytesWritten: Long = _totalSerializedBytesWritten.longValue
+  val _lastSerializeTime = new LongAdder
+  override def lastSerializeTime: Long = _lastSerializeTime.longValue
+  val _totalSerializeTime = new LongAdder
+  override def totalSerializeTime: Long = _totalSerializeTime.longValue
 
   override def currentMetricsValues: Array[CustomTaskMetric] = super.currentMetricsValues ++ Array(
     WriteTaskMetric("flushBufferSize", reusedByteArray.size)
   )
 
-  override def bufferedRows: Int = buf.length
-  override def bufferedBytes: Long = buf.map(_.size).sum
   override def resetBuffer(): Unit = {
     reusedByteArray.reset()
+    _lastRawBytesWritten.reset()
+    _lastSerializedBytesWritten.reset()
+    _lastSerializeTime.reset()
     buf.clear()
   }
 
@@ -63,20 +67,20 @@ class ClickHouseJsonEachRowWriter(writeJob: WriteJobDescription) extends ClickHo
   override def serialize(): ByteString = codec match {
     case None =>
       val (data, serializedTime) = Utils.timeTakenMs(buf.reduce((l, r) => l concat r))
-      rawBytesWrittenCounter.add(data.size)
-      totalRawBytesWrittenCounter.add(data.size)
-      serializedBytesWrittenCounter.add(data.size)
-      totalSerializedBytesWrittenCounter.add(data.size)
-      serializeTimeCounter.add(serializedTime)
-      totalSerializedBytesWrittenCounter.add(serializedTime)
+      _lastRawBytesWritten.add(data.size)
+      _totalRawBytesWritten.add(data.size)
+      _lastSerializedBytesWritten.add(data.size)
+      _totalSerializedBytesWritten.add(data.size)
+      _lastSerializeTime.add(serializedTime)
+      _totalSerializedBytesWritten.add(serializedTime)
       data
     case Some(codec) if codec.toLowerCase == "gzip" =>
       val output = new ObservableOutputStream(
         reusedByteArray,
-        Some(rawBytesWrittenCounter),
-        Some(totalRawBytesWrittenCounter),
-        Some(serializeTimeCounter),
-        Some(totalSerializeTimeCounter)
+        Some(_lastRawBytesWritten),
+        Some(_totalRawBytesWritten),
+        Some(_lastSerializeTime),
+        Some(_totalSerializeTime)
       )
       val gzipOut = new GZIPOutputStream(output, 8192)
       buf.foreach(_.writeTo(gzipOut))

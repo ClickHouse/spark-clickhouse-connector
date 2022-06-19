@@ -107,41 +107,47 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   def format: String
 
-  def bufferedRows: Int
-  def bufferedBytes: Long
-  def resetBuffer(): Unit
   var lastShardNum: Option[Int] = None
-  val recordWrittenCounter = new LongAdder
 
   override def write(record: InternalRow): Unit = {
     val shardNum = calcShard(record)
-    if (shardNum != lastShardNum && bufferedRows > 0) flush(lastShardNum)
+    if (shardNum != lastShardNum && lastRecordsWritten > 0) flush(lastShardNum)
     lastShardNum = shardNum
     writeRow(record)
-    recordWrittenCounter.add(1)
-    if (bufferedRows >= writeJob.writeOptions.batchSize) flush(lastShardNum)
+    _totalRecordsWritten.add(1)
+    if (lastRecordsWritten >= writeJob.writeOptions.batchSize) flush(lastShardNum)
   }
 
   def writeRow(record: InternalRow): Unit
 
   def serialize(): ByteString
 
+  def resetBuffer(): Unit
+
+  // metrics
+  def lastRecordsWritten: Long
+  val _totalRecordsWritten = new LongAdder
+  def totalRecordsWritten: Long = _totalRecordsWritten.longValue
+  def lastRawBytesWritten: Long
   def totalRawBytesWritten: Long
+  def lastSerializedBytesWritten: Long
   def totalSerializedBytesWritten: Long
+  def lastSerializeTime: Long
   def totalSerializeTime: Long
+  val _totalWrittenTime = new LongAdder
+  def totalWrittenTime: Long = _totalWrittenTime.longValue
 
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
-    WriteTaskMetric("recordsWritten", recordWrittenCounter.longValue),
+    WriteTaskMetric("recordsWritten", totalRecordsWritten),
     WriteTaskMetric("bytesWritten", totalSerializedBytesWritten),
     WriteTaskMetric("rawBytesWritten", totalRawBytesWritten),
-    WriteTaskMetric("serializeTime", totalSerializeTime)
+    WriteTaskMetric("serializeTime", totalSerializeTime),
+    WriteTaskMetric("writtenTime", totalWrittenTime)
   )
 
   def flush(shardNum: Option[Int]): Unit = {
     val client = grpcNodeClient(shardNum)
-    val rawSize = bufferedBytes
-    val (data, serializeTime) = Utils.timeTakenMs(serialize())
-    val serializedSize = data.size
+    val data = serialize()
     var writeTime = 0L
     Utils.retry[Unit, RetryableClickHouseException](
       writeJob.writeOptions.maxRetry,
@@ -151,31 +157,33 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
       client.syncInsertOutputJSONEachRow(database, table, format, codec, data) match {
         case Right(_) =>
           writeTime = System.currentTimeMillis - startWriteTime
-          resetBuffer()
+          _totalWrittenTime.add(writeTime)
         case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.getCode) =>
           startWriteTime = System.currentTimeMillis
           throw new RetryableClickHouseException(retryable, Some(client.node))
         case Left(rethrow) => throw new ClickHouseServerException(rethrow, Some(client.node))
       }
     } match {
-      case Success(_) => log.info(
+      case Success(_) =>
+        log.info(
           s"""Job[${writeJob.queryId}]: batch write completed
              |cluster: ${writeJob.cluster.map(_.name).getOrElse("none")}, shard: ${shardNum.getOrElse("none")}
              |node: ${client.node}
-             |        row count: $bufferedRows
-             |         raw size: ${Utils.bytesToString(rawSize)}
-             |  serialized size: ${Utils.bytesToString(serializedSize)}
+             |        row count: $lastRecordsWritten
+             |         raw size: ${Utils.bytesToString(lastRawBytesWritten)}
+             |  serialized size: ${Utils.bytesToString(lastSerializedBytesWritten)}
              |compression codec: ${codec.getOrElse("none")}
-             |   serialize cost: ${serializeTime}ms
-             |       write cost: ${writeTime}ms
+             |   serialize time: ${lastSerializeTime}ms
+             |       write time: ${writeTime}ms
              |""".stripMargin
         )
+        resetBuffer()
       case Failure(rethrow) => throw rethrow
     }
   }
 
   override def commit(): WriterCommitMessage = {
-    if (bufferedRows > 0) flush(lastShardNum)
+    if (lastRecordsWritten > 0) flush(lastShardNum)
     CommitMessage(s"Job[${writeJob.queryId}]: commit")
   }
 

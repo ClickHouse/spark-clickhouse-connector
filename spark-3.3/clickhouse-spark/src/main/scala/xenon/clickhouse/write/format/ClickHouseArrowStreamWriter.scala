@@ -15,8 +15,12 @@
 package xenon.clickhouse.write.format
 
 import com.google.protobuf.ByteString
+import org.apache.arrow.memory.BufferAllocator
+import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.ipc.ArrowStreamWriter
+import org.apache.arrow.vector.types.pojo.Schema
 import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.clickhouse.SparkUtils
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.execution.arrow.ArrowWriter
 import xenon.clickhouse.exception.ClickHouseClientException
@@ -33,57 +37,73 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
 
   val reusedByteArray: ByteString.Output = ByteString.newOutput(16 * 1024 * 1024)
 
-  val arrowWriter: ArrowWriter = ArrowWriter.create(revisedDataSchema, writeJob.tz.getId)
+  val allocator: BufferAllocator = SparkUtils.spawnArrowAllocator("writer for ClickHouse")
+  val arrowSchema: Schema = SparkUtils.toArrowSchema(revisedDataSchema, writeJob.tz.getId)
+  val root: VectorSchemaRoot = VectorSchemaRoot.create(arrowSchema, allocator)
+  val arrowWriter: ArrowWriter = ArrowWriter.create(root)
   val countField: Field = arrowWriter.getClass.getDeclaredField("count")
   countField.setAccessible(true)
 
-  val rawBytesWrittenCounter = new LongAdder
-  val totalRawBytesWrittenCounter = new LongAdder
-  val serializedBytesWrittenCounter = new LongAdder
-  val totalSerializedBytesWrittenCounter = new LongAdder
-  val serializeTimeCounter = new LongAdder
-  val totalSerializeTimeCounter = new LongAdder
-
-  override def totalRawBytesWritten: Long = totalRawBytesWrittenCounter.longValue
-  override def totalSerializedBytesWritten: Long = totalSerializedBytesWrittenCounter.longValue
-  override def totalSerializeTime: Long = totalSerializeTimeCounter.longValue
+  override def lastRecordsWritten: Long = countField.getInt(arrowWriter)
+  val _lastRawBytesWritten = new LongAdder
+  override def lastRawBytesWritten: Long = _lastRawBytesWritten.longValue
+  val _totalRawBytesWritten = new LongAdder
+  override def totalRawBytesWritten: Long = _totalRawBytesWritten.longValue
+  val _lastSerializedBytesWritten = new LongAdder
+  override def lastSerializedBytesWritten: Long = _lastSerializedBytesWritten.longValue
+  val _totalSerializedBytesWritten = new LongAdder
+  override def totalSerializedBytesWritten: Long = _totalSerializedBytesWritten.longValue
+  val _serializeTime = new LongAdder
+  override def lastSerializeTime: Long = _serializeTime.longValue
+  val _totalSerializeTime = new LongAdder
+  override def totalSerializeTime: Long = _totalSerializeTime.longValue
 
   override def currentMetricsValues: Array[CustomTaskMetric] = super.currentMetricsValues ++ Array(
-    WriteTaskMetric("flushBufferSize", reusedByteArray.size),
+    WriteTaskMetric("flushBufferSize", reusedByteArray.size)
   )
 
-  override def bufferedRows: Int = countField.getInt(arrowWriter)
-  override def bufferedBytes: Long = rawBytesWrittenCounter.longValue
   override def resetBuffer(): Unit = {
     reusedByteArray.reset()
     arrowWriter.reset()
-    rawBytesWrittenCounter.reset()
-    serializeTimeCounter.reset()
+    _lastRawBytesWritten.reset()
+    _lastSerializedBytesWritten.reset()
+    _serializeTime.reset()
   }
 
   override def writeRow(record: InternalRow): Unit = arrowWriter.write(record)
 
   override def serialize(): ByteString = {
     arrowWriter.finish()
-    val out = codec match {
-      case None => reusedByteArray
+    val serializedOutput = new ObservableOutputStream(
+      reusedByteArray,
+      Some(_lastSerializedBytesWritten),
+      Some(_totalSerializedBytesWritten)
+    )
+    val codecOutput = codec match {
+      case None => serializedOutput
       case Some(codec) if codec.toLowerCase == "gzip" =>
-        new GZIPOutputStream(reusedByteArray, 8192)
+        new GZIPOutputStream(serializedOutput, 8192)
       case Some(unsupported) =>
         throw ClickHouseClientException(s"Unsupported compression codec: $unsupported")
     }
-    val output = new ObservableOutputStream(
-      out,
-      Some(rawBytesWrittenCounter),
-      Some(totalRawBytesWrittenCounter),
-      Some(serializeTimeCounter),
-      Some(totalSerializeTimeCounter)
+    val rawOutput = new ObservableOutputStream(
+      codecOutput,
+      Some(_lastRawBytesWritten),
+      Some(_totalRawBytesWritten),
+      Some(_serializeTime),
+      Some(_totalSerializeTime)
     )
-    val arrowStreamWriter = new ArrowStreamWriter(arrowWriter.root, null, output)
+    val arrowStreamWriter = new ArrowStreamWriter(arrowWriter.root, null, rawOutput)
     arrowStreamWriter.writeBatch()
     arrowStreamWriter.end()
-    out.flush()
-    out.close()
+    codecOutput.flush()
+    codecOutput.close()
     reusedByteArray.toByteString
+  }
+
+  override def close(): Unit = {
+    root.close()
+    allocator.close()
+    super.close()
   }
 }
