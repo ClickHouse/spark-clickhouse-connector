@@ -14,10 +14,19 @@
 
 package org.apache.spark.sql.clickhouse
 
+import org.apache.arrow.memory.BufferAllocator
+import org.apache.arrow.vector.types.pojo.Schema
 import org.apache.spark._
+import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.util.ArrowUtils
 import org.apache.spark.util.VersionUtils
 
 object SparkUtils {
 
   lazy val MAJOR_MINOR_VERSION: (Int, Int) = VersionUtils.majorMinorVersion(SPARK_VERSION)
+
+  def toArrowSchema(schema: StructType, timeZoneId: String): Schema = ArrowUtils.toArrowSchema(schema, timeZoneId)
+
+  def spawnArrowAllocator(name: String): BufferAllocator =
+    ArrowUtils.rootAllocator.newChildAllocator(name, 0, Long.MaxValue)
 }
