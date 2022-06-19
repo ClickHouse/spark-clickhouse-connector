@@ -23,6 +23,7 @@ import java.nio.file.{Files, Path, StandardCopyOption}
 import java.time.Duration
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+import java.util.concurrent.TimeUnit.NANOSECONDS
 import java.util.concurrent.locks.LockSupport
 import scala.annotation.tailrec
 import scala.collection.mutable
@@ -154,6 +155,14 @@ object Utils extends Logging {
     val resource = createResource
     try f.apply(resource)
     finally resource.close()
+  }
+
+  /** Records the duration of running `body`. */
+  def timeTakenMs[T](body: => T): (T, Long) = {
+    val startTime = System.nanoTime()
+    val result = body
+    val endTime = System.nanoTime()
+    (result, math.max(NANOSECONDS.toMillis(endTime - startTime), 0))
   }
 
   val PREFIX = "SPARK_ON_CLICKHOUSE"
