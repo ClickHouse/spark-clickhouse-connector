@@ -50,7 +50,6 @@ class ClickHouseBatchWrite(
 
   override def abort(messages: Array[WriterCommitMessage]): Unit = {}
 
-  override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] = {
-      new ClickHouseWriter(writeJob)
-  }
+  override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] =
+    new ClickHouseWriter(writeJob)
 }

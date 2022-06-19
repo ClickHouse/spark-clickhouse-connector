@@ -16,7 +16,7 @@ package xenon.clickhouse
 
 import org.apache.commons.lang3.time.FastDateFormat
 
-import java.io.{Closeable, File, InputStream}
+import java.io.{File, InputStream}
 import java.math.{MathContext, RoundingMode}
 import java.net.URI
 import java.nio.file.{Files, Path, StandardCopyOption}
@@ -150,7 +150,8 @@ object Utils extends Logging {
     }
   }
 
-  def tryWithResource[R <: AutoCloseable, T](resource: R)(f: R => T): T = {
+  def tryWithResource[R <: AutoCloseable, T](createResource: => R)(f: R => T): T = {
+    val resource = createResource
     try f.apply(resource)
     finally resource.close()
   }

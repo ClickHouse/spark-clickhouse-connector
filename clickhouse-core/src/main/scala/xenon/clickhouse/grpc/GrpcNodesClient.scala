@@ -14,13 +14,12 @@
 
 package xenon.clickhouse.grpc
 
-import java.util.concurrent.ConcurrentHashMap
+import xenon.clickhouse.Logging
+import xenon.clickhouse.spec.{NodeSpec, Nodes}
 
+import java.util.concurrent.ConcurrentHashMap
 import scala.collection.JavaConverters._
 import scala.util.Random._
-
-import xenon.clickhouse.spec.{Nodes, NodeSpec}
-import xenon.clickhouse.Logging
 
 object GrpcNodesClient {
   def apply(nodes: Nodes) = new GrpcNodesClient(nodes)
