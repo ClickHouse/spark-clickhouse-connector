@@ -17,10 +17,13 @@ package xenon.clickhouse.write.format
 import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.clickhouse.JsonWriter
+import org.apache.spark.sql.connector.metric.CustomTaskMetric
+import xenon.clickhouse.Utils
 import xenon.clickhouse.exception.ClickHouseClientException
-import xenon.clickhouse.write.{ClickHouseWriter, WriteJobDescription}
+import xenon.clickhouse.io.ObservableOutputStream
+import xenon.clickhouse.write.{ClickHouseWriter, WriteJobDescription, WriteTaskMetric}
 
-import java.io.ByteArrayOutputStream
+import java.util.concurrent.atomic.LongAdder
 import java.util.zip.GZIPOutputStream
 import scala.collection.mutable.ArrayBuffer
 
@@ -28,24 +31,62 @@ class ClickHouseJsonEachRowWriter(writeJob: WriteJobDescription) extends ClickHo
 
   override def format: String = "JSONEachRow"
 
+  val reusedByteArray: ByteString.Output = ByteString.newOutput(16 * 1024 * 1024)
+
   val buf: ArrayBuffer[ByteString] = new ArrayBuffer[ByteString](writeJob.writeOptions.batchSize)
   val jsonWriter = new JsonWriter(revisedDataSchema, writeJob.tz)
 
-  override def bufferedRows: Int = buf.length
-  override def bufferedBytes: Long = buf.map(_.size).sum
-  override def resetBuffer(): Unit = buf.clear()
+  override def lastRecordsWritten: Long = buf.length
+  val _lastRawBytesWritten = new LongAdder
+  override def lastRawBytesWritten: Long = buf.map(_.size).sum
+  val _totalRawBytesWritten = new LongAdder
+  override def totalRawBytesWritten: Long = _totalRawBytesWritten.longValue
+  val _lastSerializedBytesWritten = new LongAdder
+  override def lastSerializedBytesWritten: Long = _lastSerializedBytesWritten.longValue
+  val _totalSerializedBytesWritten = new LongAdder
+  override def totalSerializedBytesWritten: Long = _totalSerializedBytesWritten.longValue
+  val _lastSerializeTime = new LongAdder
+  override def lastSerializeTime: Long = _lastSerializeTime.longValue
+  val _totalSerializeTime = new LongAdder
+  override def totalSerializeTime: Long = _totalSerializeTime.longValue
+
+  override def currentMetricsValues: Array[CustomTaskMetric] = super.currentMetricsValues ++ Array(
+    WriteTaskMetric("flushBufferSize", reusedByteArray.size)
+  )
+
+  override def resetBuffer(): Unit = {
+    reusedByteArray.reset()
+    _lastRawBytesWritten.reset()
+    _lastSerializedBytesWritten.reset()
+    _lastSerializeTime.reset()
+    buf.clear()
+  }
 
   override def writeRow(record: InternalRow): Unit = buf += jsonWriter.row2Json(record)
 
   override def serialize(): ByteString = codec match {
-    case None => buf.reduce((l, r) => l concat r)
+    case None =>
+      val (data, serializedTime) = Utils.timeTakenMs(buf.reduce((l, r) => l concat r))
+      _lastRawBytesWritten.add(data.size)
+      _totalRawBytesWritten.add(data.size)
+      _lastSerializedBytesWritten.add(data.size)
+      _totalSerializedBytesWritten.add(data.size)
+      _lastSerializeTime.add(serializedTime)
+      _totalSerializedBytesWritten.add(serializedTime)
+      data
     case Some(codec) if codec.toLowerCase == "gzip" =>
-      val out = new ByteArrayOutputStream(4096)
-      val gzipOut = new GZIPOutputStream(out, 8192)
+      val output = new ObservableOutputStream(
+        reusedByteArray,
+        Some(_lastRawBytesWritten),
+        Some(_totalRawBytesWritten),
+        Some(_lastSerializeTime),
+        Some(_totalSerializeTime)
+      )
+      val gzipOut = new GZIPOutputStream(output, 8192)
       buf.foreach(_.writeTo(gzipOut))
       gzipOut.flush()
       gzipOut.close()
-      ByteString.copyFrom(out.toByteArray)
+      reusedByteArray.toByteString
     case Some(unsupported) =>
       throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
   }
