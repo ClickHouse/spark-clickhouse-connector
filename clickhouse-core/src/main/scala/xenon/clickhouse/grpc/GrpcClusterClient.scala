@@ -14,14 +14,13 @@
 
 package xenon.clickhouse.grpc
 
-import java.util.concurrent.ConcurrentHashMap
-
-import scala.collection.JavaConverters._
-import scala.util.Random._
-
-import xenon.clickhouse.spec.ClusterSpec
 import xenon.clickhouse.Logging
 import xenon.clickhouse.exception.ClickHouseClientException
+import xenon.clickhouse.spec.ClusterSpec
+
+import java.util.concurrent.ConcurrentHashMap
+import scala.collection.JavaConverters._
+import scala.util.Random._
 
 object GrpcClusterClient {
   def apply(cluster: ClusterSpec) = new GrpcClusterClient(cluster)
@@ -42,8 +41,9 @@ class GrpcClusterClient(cluster: ClusterSpec) extends AutoCloseable with Logging
         val shardSpec = shuffle(cluster.shards.toSeq).head
         val replicaSpec = shuffle(shardSpec.replicas.toSeq).head
         (shardSpec.num, replicaSpec.num)
-      case _ =>
-        throw ClickHouseClientException(s"Invalid shard[${shard.orNull}] replica[${replica.orNull}] of cluster ${cluster.name}")
+      case _ => throw ClickHouseClientException(
+          s"Invalid shard[${shard.orNull}] replica[${replica.orNull}] of cluster ${cluster.name}"
+        )
     }
 
     cache.computeIfAbsent(

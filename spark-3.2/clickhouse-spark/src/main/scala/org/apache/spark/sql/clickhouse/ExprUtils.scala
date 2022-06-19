@@ -25,7 +25,7 @@ import scala.annotation.tailrec
 
 object ExprUtils {
 
-  def toSparkPartitions(partitionKey: Option[List[Expr]]) : Array[Transform] =
+  def toSparkPartitions(partitionKey: Option[List[Expr]]): Array[Transform] =
     partitionKey.seq.flatten.map(toSparkTransform).toArray
 
   def toSparkSplits(shardingKey: Option[Expr], partitionKey: Option[List[Expr]]): Array[Transform] =
