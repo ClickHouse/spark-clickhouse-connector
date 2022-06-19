@@ -56,6 +56,7 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
     arrowStreamWriter.writeBatch()
     arrowStreamWriter.end()
     out.flush()
+    out.close()
     reusedByteArray.toByteString
   }
 }
