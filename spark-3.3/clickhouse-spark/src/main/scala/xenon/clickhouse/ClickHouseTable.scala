@@ -155,6 +155,8 @@ case class ClickHouseTable(
   override def newWriteBuilder(info: LogicalWriteInfo): ClickHouseWriteBuilder = {
     val writeJob = WriteJobDescription(
       queryId = info.queryId,
+      tableSchema = schema,
+      metadataSchema = metadataSchema,
       dataSetSchema = info.schema,
       node = node,
       tz = tz,

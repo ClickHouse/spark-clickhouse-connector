@@ -19,7 +19,7 @@ import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, Sa
 import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
-import org.apache.spark.sql.types.{ByteType, IntegerType, LongType, ShortType}
+import org.apache.spark.sql.types.{ByteType, IntegerType, LongType, ShortType, StructType}
 import xenon.clickhouse._
 import xenon.clickhouse.exception._
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
@@ -33,6 +33,17 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   val database: String = writeJob.targetDatabase(writeJob.writeOptions.convertDistributedToLocal)
   val table: String = writeJob.targetTable(writeJob.writeOptions.convertDistributedToLocal)
   val codec: Option[String] = writeJob.writeOptions.compressionCodec
+
+  // ClickHouse is nullable sensitive, if the table column is not nullable, we need to cast the column
+  // to be non-nullable forcibly.
+  protected val revisedDataSchema: StructType = StructType(
+    writeJob.dataSetSchema.map { field =>
+      writeJob.tableSchema.find(_.name == field.name) match {
+        case Some(tableField) if !tableField.nullable && field.nullable => field.copy(nullable = false)
+        case _ => field
+      }
+    }
+  )
 
   protected lazy val shardExpr: Option[Expression] = writeJob.sparkShardExpr match {
     case None if writeJob.tableEngineSpec.is_distributed =>
