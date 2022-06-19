@@ -19,9 +19,11 @@ import org.apache.arrow.vector.ipc.ArrowStreamWriter
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.execution.arrow.ArrowWriter
 import xenon.clickhouse.exception.ClickHouseClientException
+import xenon.clickhouse.io.ObservableOutputStream
 import xenon.clickhouse.write.{ClickHouseWriter, WriteJobDescription}
 
 import java.lang.reflect.Field
+import java.util.concurrent.atomic.LongAdder
 import java.util.zip.GZIPOutputStream
 
 class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHouseWriter(writeJob) {
@@ -34,11 +36,18 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
   val countField: Field = arrowWriter.getClass.getDeclaredField("count")
   countField.setAccessible(true)
 
+  val writeBytesCounter = new LongAdder
+  val totalWriteByteCounter = new LongAdder
+  val writeTimeCounter = new LongAdder
+  val totalWriteTimeCounter = new LongAdder
+
   override def bufferedRows: Int = countField.getInt(arrowWriter)
-  override def bufferedBytes: Long = reusedByteArray.size
+  override def bufferedBytes: Long = writeBytesCounter.longValue
   override def resetBuffer(): Unit = {
     reusedByteArray.reset()
     arrowWriter.reset()
+    writeBytesCounter.reset()
+    writeTimeCounter.reset()
   }
 
   override def writeRow(record: InternalRow): Unit = arrowWriter.write(record)
@@ -52,7 +61,14 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
       case Some(unsupported) =>
         throw ClickHouseClientException(s"Unsupported compression codec: $unsupported")
     }
-    val arrowStreamWriter = new ArrowStreamWriter(arrowWriter.root, null, out)
+    val output = new ObservableOutputStream(
+      out,
+      Some(writeBytesCounter),
+      Some(totalWriteByteCounter),
+      Some(writeTimeCounter),
+      Some(totalWriteTimeCounter)
+    )
+    val arrowStreamWriter = new ArrowStreamWriter(arrowWriter.root, null, output)
     arrowStreamWriter.writeBatch()
     arrowStreamWriter.end()
     out.flush()

@@ -19,7 +19,7 @@ import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, Sa
 import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
-import org.apache.spark.sql.types.{ByteType, IntegerType, LongType, ShortType, StructType}
+import org.apache.spark.sql.types._
 import xenon.clickhouse._
 import xenon.clickhouse.exception._
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
@@ -124,32 +124,37 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   def flush(shardNum: Option[Int]): Unit = {
     val client = grpcNodeClient(shardNum)
+    val rawSize = bufferedBytes
+    val (data, serializeTime) = Utils.timeTakenMs(serialize())
+    val serializedSize = data.size
+    var writeTime = 0L
     Utils.retry[Unit, RetryableClickHouseException](
       writeJob.writeOptions.maxRetry,
       writeJob.writeOptions.retryInterval
     ) {
-      val uncompressedSize = bufferedBytes
-      val startTime = System.currentTimeMillis
-      val data = serialize()
-      val costMs = System.currentTimeMillis - startTime
-      val compressedSize = data.size
-      log.info(s"""Job[${writeJob.queryId}]: prepare to flush batch
-                  |cluster: ${writeJob.cluster.map(_.name).getOrElse("none")}, shard: ${shardNum.getOrElse("none")}
-                  |node: ${client.node}
-                  |             rows: $bufferedRows
-                  |uncompressed size: ${Utils.bytesToString(uncompressedSize)}
-                  |  compressed size: ${Utils.bytesToString(compressedSize)}
-                  |compression codec: ${codec.getOrElse("none")}
-                  | compression cost: ${costMs}ms
-                  |""".stripMargin)
+      var startWriteTime = System.currentTimeMillis
       client.syncInsertOutputJSONEachRow(database, table, format, codec, data) match {
-        case Right(_) => resetBuffer()
+        case Right(_) =>
+          writeTime = System.currentTimeMillis - startWriteTime
+          resetBuffer()
         case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.getCode) =>
+          startWriteTime = System.currentTimeMillis
           throw new RetryableClickHouseException(retryable, Some(client.node))
         case Left(rethrow) => throw new ClickHouseServerException(rethrow, Some(client.node))
       }
     } match {
-      case Success(_) => log.info(s"Job[${writeJob.queryId}]: flush batch completed")
+      case Success(_) => log.info(
+          s"""Job[${writeJob.queryId}]: batch write completed
+             |cluster: ${writeJob.cluster.map(_.name).getOrElse("none")}, shard: ${shardNum.getOrElse("none")}
+             |node: ${client.node}
+             |        row count: $bufferedRows
+             |         raw size: ${Utils.bytesToString(rawSize)}
+             |  serialized size: ${Utils.bytesToString(serializedSize)}
+             |compression codec: ${codec.getOrElse("none")}
+             |   serialize cost: ${serializeTime}ms
+             |       write cost: ${writeTime}ms
+             |""".stripMargin
+        )
       case Failure(rethrow) => throw rethrow
     }
   }
