@@ -50,11 +50,11 @@ object SchemaUtils {
       case dateTimeTypePattern(_, _, _) => TimestampType
       case decimalTypePattern(precision, scale) => DecimalType(precision.toInt, scale.toInt)
       case decimalTypePattern2(w, scale) => w match {
-        case "32" => DecimalType(9, scale.toInt)
-        case "64" => DecimalType(18, scale.toInt)
-        case "128" => DecimalType(38, scale.toInt)
-        case "256" => DecimalType(76, scale.toInt) // throw exception, spark support precision up to 38
-      }
+          case "32" => DecimalType(9, scale.toInt)
+          case "64" => DecimalType(18, scale.toInt)
+          case "128" => DecimalType(38, scale.toInt)
+          case "256" => DecimalType(76, scale.toInt) // throw exception, spark support precision up to 38
+        }
       case arrayTypePattern(nestedChType) =>
         val (_type, _nullable) = fromClickHouseType(nestedChType)
         ArrayType(_type, _nullable)

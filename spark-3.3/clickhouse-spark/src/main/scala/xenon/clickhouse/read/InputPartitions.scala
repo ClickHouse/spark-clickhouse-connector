@@ -39,10 +39,10 @@ case class ClickHouseInputPartition(
   def partFilterExpr: String = partition match {
     case NoPartitionSpec => "1=1"
     case PartitionSpec(part, _, _) => (part.contains("-"), part.contains("(")) match {
-      // quote when partition by a single Date Type column to avoid illegal types of arguments (Date, Int64)
-      case (true, false) => s"${table.partition_key} = '$part'"
-      // Date type column is quoted if there are multi partition columns
-      case _ => s"${table.partition_key} = $part"
-    }
+        // quote when partition by a single Date Type column to avoid illegal types of arguments (Date, Int64)
+        case (true, false) => s"${table.partition_key} = '$part'"
+        // Date type column is quoted if there are multi partition columns
+        case _ => s"${table.partition_key} = $part"
+      }
   }
 }

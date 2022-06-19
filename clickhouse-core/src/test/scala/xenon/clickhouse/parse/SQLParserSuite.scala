@@ -168,7 +168,6 @@ class SQLParserSuite extends AnyFunSuite {
     assert(actual === expected)
   }
 
-
   test("parse MergeTree - order by tuple - 1") {
     val ddl = "MergeTree ORDER BY (a)"
     val actual = parser.parseEngineClause(ddl)
