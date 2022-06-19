@@ -42,7 +42,6 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
             exclude group: "org.scala-lang", module: "scala-library"
             exclude group: "org.slf4j", module: "slf4j-api"
             exclude group: "org.apache.commons", module: "commons-lang3"
-            exclude group: "org.lz4", module: "lz4-java"
             exclude group: "com.fasterxml.jackson.core", module: "jackson-databind"
             exclude group: "com.fasterxml.jackson.module", module: "jackson-module-scala_$scala_binary_version"
         }

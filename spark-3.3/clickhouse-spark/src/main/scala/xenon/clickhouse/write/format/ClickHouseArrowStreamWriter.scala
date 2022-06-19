@@ -86,7 +86,6 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
       case Some(codec) if codec.toLowerCase == "gzip" =>
         new GZIPOutputStream(serializedOutput, 8192)
       case Some(codec) if codec.toLowerCase == "lz4" =>
-        // new ClickHouseLZ4OutputStream(serializedOutput, 8192)
         new LZ4FrameOutputStream(serializedOutput, BLOCKSIZE.SIZE_1MB)
       case Some(unsupported) =>
         throw ClickHouseClientException(s"Unsupported compression codec: $unsupported")

@@ -160,7 +160,6 @@ project(':clickhouse-core') {
 
         api "org.slf4j:slf4j-api:$slf4j_version"
         api "org.apache.commons:commons-lang3:$commons_lang3_version"
-        api "org.lz4:lz4-java:$lz4_version"
 
         api "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
         api "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
