@@ -30,7 +30,8 @@ class TPCDSClusterSuite extends BaseSparkSuite
   override def sparkOptions: Map[String, String] = super.sparkOptions + (
     "spark.sql.catalog.tpcds" -> "org.apache.kyuubi.spark.connector.tpcds.TPCDSCatalog",
     "spark.clickhouse.write.batchSize" -> "100000",
-    "spark.clickhouse.write.distributed.convertLocal" -> "true"
+    "spark.clickhouse.write.distributed.convertLocal" -> "true",
+    "spark.clickhouse.write.compression.codec" -> "lz4"
   )
 
   test("Cluster: TPC-DS tiny write and count(*)") {
