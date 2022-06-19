@@ -185,7 +185,8 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       .map { result => onReceiveResult(result, false); result }
       .get match {
       case result: Result if result.getException.getCode == OK.code => Right(deserializer(result.getOutput))
-      case result: Result => Left(result.getException)
+      case result: Result =>
+        Left(result.getException)
     }
 
   // //////////////////////////////////////////////////////////////////////////////

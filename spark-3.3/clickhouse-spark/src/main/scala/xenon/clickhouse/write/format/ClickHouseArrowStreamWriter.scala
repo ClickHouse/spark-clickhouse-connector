@@ -24,7 +24,7 @@ import org.apache.spark.sql.clickhouse.SparkUtils
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.execution.arrow.ArrowWriter
 import xenon.clickhouse.exception.ClickHouseClientException
-import xenon.clickhouse.io.{ClickHouseLz4OutputStream, ObservableOutputStream}
+import xenon.clickhouse.io.{ClickHouseLZ4OutputStream, ObservableOutputStream}
 import xenon.clickhouse.write.{ClickHouseWriter, WriteJobDescription, WriteTaskMetric}
 
 import java.lang.reflect.Field
@@ -84,7 +84,7 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
       case Some(codec) if codec.toLowerCase == "gzip" =>
         new GZIPOutputStream(serializedOutput, 8192)
       case Some(codec) if codec.toLowerCase == "lz4" =>
-        new ClickHouseLz4OutputStream(serializedOutput, 8192)
+        new ClickHouseLZ4OutputStream(serializedOutput, 8192)
       case Some(unsupported) =>
         throw ClickHouseClientException(s"Unsupported compression codec: $unsupported")
     }
@@ -95,7 +95,7 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
       Some(_serializeTime),
       Some(_totalSerializeTime)
     )
-    val arrowStreamWriter = new ArrowStreamWriter(arrowWriter.root, null, rawOutput)
+    val arrowStreamWriter = new ArrowStreamWriter(root, null, rawOutput)
     arrowStreamWriter.writeBatch()
     arrowStreamWriter.end()
     codecOutput.flush()
