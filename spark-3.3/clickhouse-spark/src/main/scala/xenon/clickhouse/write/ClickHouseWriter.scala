@@ -113,14 +113,14 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   def compressedOutput(output: OutputStream): OutputStream = codec.map(_.toLowerCase) match {
     case None => output
     case Some("gzip") =>
-      new GZIPOutputStream(output, 256 * 1024)
+      new GZIPOutputStream(output, 4 * 1024 * 1024)
     case Some("lz4") =>
-      new LZ4FrameOutputStream(output, BLOCKSIZE.SIZE_256KB)
+      new LZ4FrameOutputStream(output, BLOCKSIZE.SIZE_4MB)
     case Some("zstd") =>
       val zstdOutput = new ZstdOutputStreamNoFinalizer(output, RecyclingBufferPool.INSTANCE)
         .setLevel(writeJob.writeOptions.zstdLevel)
         .setWorkers(writeJob.writeOptions.zstdThread)
-      new BufferedOutputStream(zstdOutput, 256 * 1024)
+      new BufferedOutputStream(zstdOutput, 4 * 1024 * 1024)
     case unsupported =>
       throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
   }
