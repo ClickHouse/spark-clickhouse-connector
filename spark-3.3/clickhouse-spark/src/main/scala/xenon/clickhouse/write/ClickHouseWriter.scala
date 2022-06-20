@@ -126,7 +126,6 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
       throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
   }
 
-  var currentShardNum: Option[Int] = None
   val _currentBufferedRows = new LongAdder
   def currentBufferedRows: Long = _currentBufferedRows.longValue
   val _totalRecordsWritten = new LongAdder
@@ -176,6 +175,8 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   )
 
   def format: String
+
+  var currentShardNum: Option[Int] = None
 
   override def write(record: InternalRow): Unit = {
     val shardNum = calcShard(record)
