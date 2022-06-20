@@ -27,7 +27,7 @@ object ClickHouseSQLConf {
       .doc("The number of records per batch on writing to ClickHouse.")
       .version("0.1.0")
       .intConf
-      .checkValue(v => v > 0 && v <= 1000000, "Should be positive but less than or equals 1000000.")
+      .checkValue(v => v > 0, "`spark.clickhouse.write.batchSize` should be positive.")
       .createWithDefault(10000)
 
   val WRITE_MAX_RETRY: ConfigEntry[Int] =
