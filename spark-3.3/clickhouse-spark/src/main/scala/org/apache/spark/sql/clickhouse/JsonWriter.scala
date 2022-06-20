@@ -14,37 +14,28 @@
 
 package org.apache.spark.sql.clickhouse
 
-import com.google.protobuf.ByteString
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.json.{JSONOptions, JacksonGenerator}
 import org.apache.spark.sql.types.StructType
-import xenon.clickhouse.io.ForwardingWriter
 
-import java.io.OutputStreamWriter
+import java.io.{OutputStream, OutputStreamWriter}
 import java.nio.charset.StandardCharsets
 import java.time.ZoneId
 
-class JsonWriter(schema: StructType, tz: ZoneId) {
-
-  val option: Map[String, String] = Map(
-    "timestampFormat" -> "yyyy-MM-dd HH:mm:ss"
+class JsonWriter(schema: StructType, tz: ZoneId, output: OutputStream) {
+  private val option: Map[String, String] = Map(
+    "timestampFormat" -> "yyyy-MM-dd HH:mm:ss",
+    "timestampNTZFormat" -> "yyyy-MM-dd HH:mm:ss"
   )
+  private val utf8Writer = new OutputStreamWriter(output, StandardCharsets.UTF_8)
+  private val jsonWriter = new JacksonGenerator(schema, utf8Writer, new JSONOptions(option, tz.getId))
 
-  val forwardingWriter = new ForwardingWriter
-
-  val gen = new JacksonGenerator(
-    schema,
-    forwardingWriter,
-    new JSONOptions(option, tz.getId)
-  )
-
-  def row2Json(row: InternalRow): ByteString = {
-    val line = ByteString.newOutput()
-    forwardingWriter.updateDelegate(new OutputStreamWriter(line, StandardCharsets.UTF_8))
-    gen.write(row)
-    gen.writeLineEnding
-    gen.flush
-
-    line.toByteString
+  def write(row: InternalRow): Unit = {
+    jsonWriter.write(row)
+    jsonWriter.writeLineEnding
   }
+
+  def flush(): Unit = jsonWriter.flush()
+
+  def close(): Unit = jsonWriter.close()
 }
