@@ -134,14 +134,14 @@ object ClickHouseSQLConf {
 
   val WRITE_COMPRESSION_ZSTD_LEVEL: ConfigEntry[Int] =
     buildConf("spark.clickhouse.write.compression.zstd.level")
-      .doc("ZStd compression level")
+      .doc("Zstd compression level")
       .version("0.4.0")
       .intConf
       .createWithDefault(3)
 
   val WRITE_COMPRESSION_ZSTD_THREAD: ConfigEntry[Int] =
     buildConf("spark.clickhouse.write.compression.zstd.thread")
-      .doc("ZStd worker pool size. Default value is `0`, aka 'single-threaded mode': no worker is spawned. " +
+      .doc("Zstd worker pool size. Default value is `0`, aka 'single-threaded mode': no worker is spawned. " +
         "Spawn worker threads and trigger asynchronous mode when value equals or greater than 1.")
       .version("0.4.0")
       .intConf

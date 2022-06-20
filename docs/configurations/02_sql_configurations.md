@@ -106,7 +106,20 @@ SQL Configurations
 
     Default Value: undefined
 
-    Description: The codec used to compress data for writing. Supported codecs: gzip, (Spark 3.3) lz4.
+    Description: The codec used to compress data for writing. Supported codecs: gzip, lz4, zstd.
+
+!!! tip "Since 0.4.0 - spark.clickhouse.write.compression.zstd.level"
+
+    Default Value: 3
+
+    Description: Zstd compression level.
+
+!!! tip "Since 0.4.0 - spark.clickhouse.write.compression.zstd.thread"
+
+    Default Value: 0
+
+    Description: Zstd worker pool size. Default value is `0`, aka 'single-threaded mode': no worker is spawned.
+                 Spawn worker threads and trigger asynchronous mode when value equals or greater than 1.
 
 !!! tip "Since 0.4.0 - spark.clickhouse.write.format"
 
