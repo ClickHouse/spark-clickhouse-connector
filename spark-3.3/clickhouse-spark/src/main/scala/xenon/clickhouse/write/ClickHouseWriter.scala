@@ -18,8 +18,9 @@ import com.github.luben.zstd.{RecyclingBufferPool, ZstdOutputStreamNoFinalizer}
 import com.google.protobuf.ByteString
 import net.jpountz.lz4.LZ4FrameOutputStream
 import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE
+import org.apache.commons.io.IOUtils
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
-import org.apache.spark.sql.catalyst.{InternalRow, expressions}
+import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
@@ -27,9 +28,10 @@ import org.apache.spark.sql.types._
 import xenon.clickhouse._
 import xenon.clickhouse.exception._
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
+import xenon.clickhouse.io.{ForwardingOutputStream, ObservableOutputStream}
 import xenon.clickhouse.spec.{DistributedEngineSpec, ShardUtils}
 
-import java.io.{BufferedOutputStream, OutputStream}
+import java.io.OutputStream
 import java.util.concurrent.atomic.LongAdder
 import java.util.zip.GZIPOutputStream
 import scala.util.{Failure, Success}
@@ -84,11 +86,12 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
       case _: DistributedEngineSpec
           if writeJob.writeOptions.useClusterNodesForDistributed || writeJob.writeOptions.convertDistributedToLocal =>
         val clusterSpec = writeJob.cluster.get
-        log.info(s"Connect to ClickHouse cluster ${clusterSpec.name}, which has ${clusterSpec.nodes.length} nodes.")
+        log.info(s"Connect to cluster ${clusterSpec.name}, which has ${clusterSpec.shards.length} shards and " +
+          s"${clusterSpec.nodes.length} nodes.")
         Left(GrpcClusterClient(clusterSpec))
       case _ =>
         val nodeSpec = writeJob.node
-        log.info("Connect to ClickHouse single node.")
+        log.info(s"Connect to single node: $nodeSpec")
         Right(GrpcNodeClient(nodeSpec))
     }
 
@@ -110,52 +113,67 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     case _ => None
   }
 
-  def compressedOutput(output: OutputStream): OutputStream = codec.map(_.toLowerCase) match {
-    case None => output
-    case Some("gzip") =>
-      new GZIPOutputStream(output, 4 * 1024 * 1024)
-    case Some("lz4") =>
-      new LZ4FrameOutputStream(output, BLOCKSIZE.SIZE_4MB)
-    case Some("zstd") =>
-      val zstdOutput = new ZstdOutputStreamNoFinalizer(output, RecyclingBufferPool.INSTANCE)
-        .setLevel(writeJob.writeOptions.zstdLevel)
-        .setWorkers(writeJob.writeOptions.zstdThread)
-      new BufferedOutputStream(zstdOutput, 4 * 1024 * 1024)
-    case unsupported =>
-      throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
-  }
-
-  def format: String
-
-  var lastShardNum: Option[Int] = None
-
-  override def write(record: InternalRow): Unit = {
-    val shardNum = calcShard(record)
-    if (shardNum != lastShardNum && lastRecordsWritten > 0) flush(lastShardNum)
-    lastShardNum = shardNum
-    writeRow(record)
-    _totalRecordsWritten.add(1)
-    if (lastRecordsWritten >= writeJob.writeOptions.batchSize) flush(lastShardNum)
-  }
-
-  def writeRow(record: InternalRow): Unit
-
-  def serialize(): ByteString
-
-  def resetBuffer(): Unit
-
-  // metrics
-  def lastRecordsWritten: Long
+  val _currentBufferedRows = new LongAdder
+  def currentBufferedRows: Long = _currentBufferedRows.longValue
   val _totalRecordsWritten = new LongAdder
   def totalRecordsWritten: Long = _totalRecordsWritten.longValue
-  def lastRawBytesWritten: Long
-  def totalRawBytesWritten: Long
-  def lastSerializedBytesWritten: Long
-  def totalSerializedBytesWritten: Long
-  def lastSerializeTime: Long
-  def totalSerializeTime: Long
+  val _currentRawBytesWritten = new LongAdder
+  def currentBufferedRawBytes: Long = _currentRawBytesWritten.longValue
+  val _totalRawBytesWritten = new LongAdder
+  def totalRawBytesWritten: Long = _totalRawBytesWritten.longValue
+  val _lastSerializedBytesWritten = new LongAdder
+  def lastSerializedBytesWritten: Long = _lastSerializedBytesWritten.longValue
+  val _totalSerializedBytesWritten = new LongAdder
+  def totalSerializedBytesWritten: Long = _totalSerializedBytesWritten.longValue
+  val _lastSerializeTime = new LongAdder
+  def lastSerializeTime: Long = _lastSerializeTime.longValue
+  val _totalSerializeTime = new LongAdder
+  def totalSerializeTime: Long = _totalSerializeTime.longValue
   val _totalWrittenTime = new LongAdder
   def totalWrittenTime: Long = _totalWrittenTime.longValue
+
+  // zstd only
+  private lazy val bufferedForwardingOutput = new ForwardingOutputStream()
+
+  val serializedBuffer: ByteString.Output = ByteString.newOutput(16 * 1024 * 1024)
+
+  private val observableSerializedOutput = new ObservableOutputStream(
+    serializedBuffer,
+    Some(_lastSerializedBytesWritten),
+    Some(_totalSerializedBytesWritten)
+  )
+
+  private val compressedForwardingOutput: ForwardingOutputStream = new ForwardingOutputStream()
+
+  private val observableCompressedOutput = new ObservableOutputStream(
+    compressedForwardingOutput,
+    Some(_currentRawBytesWritten),
+    Some(_totalRawBytesWritten),
+    Some(_lastSerializeTime),
+    Some(_totalSerializeTime)
+  )
+
+  def output: OutputStream = observableCompressedOutput
+
+  private def renewCompressedOutput(): Unit = {
+    val compressedOutput = codec.map(_.toLowerCase) match {
+      case None => observableSerializedOutput
+      case Some("gzip") =>
+        new GZIPOutputStream(observableSerializedOutput, 4 * 1024 * 1024)
+      case Some("lz4") =>
+        new LZ4FrameOutputStream(observableSerializedOutput, BLOCKSIZE.SIZE_4MB)
+      case Some("zstd") =>
+        val zstdOutput = new ZstdOutputStreamNoFinalizer(observableSerializedOutput, RecyclingBufferPool.INSTANCE)
+          .setLevel(writeJob.writeOptions.zstdLevel)
+          .setWorkers(writeJob.writeOptions.zstdThread)
+        bufferedForwardingOutput.updateDelegate(zstdOutput)
+        bufferedForwardingOutput
+      case unsupported =>
+        throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
+    }
+    compressedForwardingOutput.updateDelegate(compressedOutput)
+  }
+  renewCompressedOutput()
 
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
     WriteTaskMetric("recordsWritten", totalRecordsWritten),
@@ -165,7 +183,48 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     WriteTaskMetric("writtenTime", totalWrittenTime)
   )
 
-  def flush(shardNum: Option[Int]): Unit = {
+  def format: String
+
+  var currentShardNum: Option[Int] = None
+
+  override def write(record: InternalRow): Unit = {
+    val shardNum = calcShard(record)
+    flush(force = shardNum != currentShardNum && currentBufferedRows > 0, currentShardNum)
+    currentShardNum = shardNum
+    writeRow(record)
+    _currentBufferedRows.add(1)
+    flush(force = false, currentShardNum)
+  }
+
+  def writeRow(record: InternalRow): Unit
+
+  def serialize(): ByteString = {
+    val (data, serializedTime) = Utils.timeTakenMs(doSerialize())
+    _lastSerializeTime.add(serializedTime)
+    _totalSerializeTime.add(serializedTime)
+    data
+  }
+
+  def doSerialize(): ByteString
+
+  def reset(): Unit = {
+    _currentBufferedRows.reset()
+    _currentRawBytesWritten.reset()
+    _lastSerializedBytesWritten.reset()
+    _lastSerializeTime.reset()
+    currentShardNum = None
+    serializedBuffer.reset()
+    renewCompressedOutput()
+  }
+
+  def flush(force: Boolean, shardNum: Option[Int]): Unit =
+    if (force) {
+      doFlush(shardNum)
+    } else if (currentBufferedRows >= writeJob.writeOptions.batchSize) {
+      doFlush(shardNum)
+    }
+
+  def doFlush(shardNum: Option[Int]): Unit = {
     val client = grpcNodeClient(shardNum)
     val data = serialize()
     var writeTime = 0L
@@ -178,6 +237,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
         case Right(_) =>
           writeTime = System.currentTimeMillis - startWriteTime
           _totalWrittenTime.add(writeTime)
+          _totalRecordsWritten.add(currentBufferedRows)
         case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.getCode) =>
           startWriteTime = System.currentTimeMillis
           throw new RetryableClickHouseException(retryable, Some(client.node))
@@ -189,28 +249,31 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
           s"""Job[${writeJob.queryId}]: batch write completed
              |cluster: ${writeJob.cluster.map(_.name).getOrElse("none")}, shard: ${shardNum.getOrElse("none")}
              |node: ${client.node}
-             |        row count: $lastRecordsWritten
-             |         raw size: ${Utils.bytesToString(lastRawBytesWritten)}
+             |        row count: $currentBufferedRows
+             |         raw size: ${Utils.bytesToString(currentBufferedRawBytes)}
              |  serialized size: ${Utils.bytesToString(lastSerializedBytesWritten)}
-             |compression codec: $codec
+             |compression codec: ${codec.getOrElse("none")}
              |   serialize time: ${lastSerializeTime}ms
              |       write time: ${writeTime}ms
              |""".stripMargin
         )
-        resetBuffer()
+        reset()
       case Failure(rethrow) => throw rethrow
     }
   }
 
   override def commit(): WriterCommitMessage = {
-    if (lastRecordsWritten > 0) flush(lastShardNum)
+    flush(currentBufferedRows > 0, currentShardNum)
     CommitMessage(s"Job[${writeJob.queryId}]: commit")
   }
 
-  override def abort(): Unit = close()
+  override def abort(): Unit = {}
 
-  override def close(): Unit = grpcClient match {
-    case Left(clusterClient) => clusterClient.close()
-    case Right(nodeClient) => nodeClient.close()
+  override def close(): Unit = {
+    IOUtils.closeQuietly(output)
+    grpcClient match {
+      case Left(clusterClient) => clusterClient.close()
+      case Right(nodeClient) => nodeClient.close()
+    }
   }
 }

@@ -18,7 +18,7 @@ import xenon.clickhouse.spec.NodeSpec
 import xenon.protocol.grpc.{Exception => GRPCException}
 
 abstract class ClickHouseException(code: Int, reason: String, node: Option[NodeSpec])
-    extends RuntimeException(s"[$code]${node.getOrElse("")} $reason")
+    extends RuntimeException(s"${node.getOrElse("")} [$code] $reason")
 
 case class ClickHouseServerException(code: Int, reason: String, node: Option[NodeSpec])
     extends ClickHouseException(code, reason, node) {
