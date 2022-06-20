@@ -125,12 +125,27 @@ object ClickHouseSQLConf {
       .booleanConf
       .createWithDefault(true)
 
-  val WRITE_COMPRESSION_CODEC: OptionalConfigEntry[String] =
+  val WRITE_COMPRESSION_CODEC: ConfigEntry[String] =
     buildConf("spark.clickhouse.write.compression.codec")
-      .doc("The codec used to compress data for writing. Supported codecs: gzip, lz4")
+      .doc("The codec used to compress data for writing. Supported codecs: none, gzip, lz4, zstd")
       .version("0.3.0")
       .stringConf
-      .createOptional
+      .createWithDefault("zstd")
+
+  val WRITE_COMPRESSION_ZSTD_LEVEL: ConfigEntry[Int] =
+    buildConf("spark.clickhouse.write.compression.zstd.level")
+      .doc("ZStd compression level")
+      .version("0.4.0")
+      .intConf
+      .createWithDefault(3)
+
+  val WRITE_COMPRESSION_ZSTD_THREAD: ConfigEntry[Int] =
+    buildConf("spark.clickhouse.write.compression.zstd.thread")
+      .doc("ZStd worker pool size. Default value is `0`, aka 'single-threaded mode': no worker is spawned. " +
+        "Spawn worker threads and trigger asynchronous mode when value equals or greater than 1.")
+      .version("0.4.0")
+      .intConf
+      .createWithDefault(0)
 
   val WRITE_FORMAT: ConfigEntry[String] =
     buildConf("spark.clickhouse.write.format")

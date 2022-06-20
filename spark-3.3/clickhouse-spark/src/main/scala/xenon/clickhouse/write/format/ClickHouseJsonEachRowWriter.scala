@@ -14,22 +14,16 @@
 
 package xenon.clickhouse.write.format
 
-import java.io.OutputStream
-import java.util.concurrent.atomic.LongAdder
-import java.util.zip.GZIPOutputStream
-
-import scala.collection.mutable.ArrayBuffer
-
 import com.google.protobuf.ByteString
-import net.jpountz.lz4.LZ4FrameOutputStream
-import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.clickhouse.JsonWriter
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import xenon.clickhouse.Utils
-import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.io.ObservableOutputStream
 import xenon.clickhouse.write.{ClickHouseWriter, WriteJobDescription, WriteTaskMetric}
+
+import java.util.concurrent.atomic.LongAdder
+import scala.collection.mutable.ArrayBuffer
 
 class ClickHouseJsonEachRowWriter(writeJob: WriteJobDescription) extends ClickHouseWriter(writeJob) {
 
@@ -78,26 +72,18 @@ class ClickHouseJsonEachRowWriter(writeJob: WriteJobDescription) extends ClickHo
       _lastSerializeTime.add(serializedTime)
       _totalSerializedBytesWritten.add(serializedTime)
       data
-    case Some(codec) if codec.toLowerCase == "gzip" =>
-      doSerialize(output => new GZIPOutputStream(output, 8192))
-    case Some(codec) if codec.toLowerCase == "lz4" =>
-      doSerialize(output => new LZ4FrameOutputStream(output, BLOCKSIZE.SIZE_1MB))
-    case Some(unsupported) =>
-      throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
-  }
-
-  private def doSerialize(compress: OutputStream => OutputStream): ByteString = {
-    val output = new ObservableOutputStream(
-      reusedByteArray,
-      Some(_lastRawBytesWritten),
-      Some(_totalRawBytesWritten),
-      Some(_lastSerializeTime),
-      Some(_totalSerializeTime)
-    )
-    val compressedOutput = compress(output)
-    buf.foreach(_.writeTo(compressedOutput))
-    compressedOutput.flush()
-    compressedOutput.close()
-    reusedByteArray.toByteString
+    case _ =>
+      val output = new ObservableOutputStream(
+        reusedByteArray,
+        Some(_lastRawBytesWritten),
+        Some(_totalRawBytesWritten),
+        Some(_lastSerializeTime),
+        Some(_totalSerializeTime)
+      )
+      val codecOutput = compressedOutput(output)
+      buf.foreach(_.writeTo(codecOutput))
+      codecOutput.flush()
+      codecOutput.close()
+      reusedByteArray.toByteString
   }
 }
