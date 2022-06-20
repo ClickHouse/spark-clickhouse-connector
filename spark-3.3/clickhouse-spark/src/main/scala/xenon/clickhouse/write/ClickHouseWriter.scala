@@ -180,7 +180,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   override def write(record: InternalRow): Unit = {
     val shardNum = calcShard(record)
-    flush(force = shardNum != currentShardNum && currentBufferedRows > 0, shardNum)
+    flush(force = shardNum != currentShardNum && currentBufferedRows > 0, currentShardNum)
     currentShardNum = shardNum
     writeRow(record)
     _currentBufferedRows.add(1)
