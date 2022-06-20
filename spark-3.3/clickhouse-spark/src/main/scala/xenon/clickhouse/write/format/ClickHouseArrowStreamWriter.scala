@@ -35,12 +35,13 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
 
   override def writeRow(record: InternalRow): Unit = arrowWriter.write(record)
 
-  override def serialize(): ByteString = {
+  override def doSerialize(): ByteString = {
     arrowWriter.finish()
-    val arrowStreamWriter = new ArrowStreamWriter(root, null, serializedOutput)
+    val arrowStreamWriter = new ArrowStreamWriter(root, null, output)
     arrowStreamWriter.writeBatch()
     arrowStreamWriter.end()
-    serializedOutput.flush()
+    output.flush()
+    output.close()
     serializedBuffer.toByteString
   }
 

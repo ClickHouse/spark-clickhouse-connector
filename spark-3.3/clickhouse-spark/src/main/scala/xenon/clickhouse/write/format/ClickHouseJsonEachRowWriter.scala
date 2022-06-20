@@ -15,6 +15,7 @@
 package xenon.clickhouse.write.format
 
 import com.google.protobuf.ByteString
+import org.apache.commons.io.IOUtils
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.clickhouse.JsonWriter
 import xenon.clickhouse.write.{ClickHouseWriter, WriteJobDescription}
@@ -23,17 +24,18 @@ class ClickHouseJsonEachRowWriter(writeJob: WriteJobDescription) extends ClickHo
 
   override def format: String = "JSONEachRow"
 
-  val jsonWriter: JsonWriter = new JsonWriter(revisedDataSchema, writeJob.tz, serializedOutput)
+  val jsonWriter: JsonWriter = new JsonWriter(revisedDataSchema, writeJob.tz, output)
 
   override def writeRow(record: InternalRow): Unit = jsonWriter.write(record)
 
-  override def serialize(): ByteString = {
+  override def doSerialize(): ByteString = {
     jsonWriter.flush()
+    output.close()
     serializedBuffer.toByteString
   }
 
   override def close(): Unit = {
-    jsonWriter.close()
+    IOUtils.closeQuietly(jsonWriter)
     super.close()
   }
 }

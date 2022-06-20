@@ -18,11 +18,11 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.json.{JSONOptions, JacksonGenerator}
 import org.apache.spark.sql.types.StructType
 
-import java.io.{OutputStream, OutputStreamWriter}
+import java.io.{Closeable, Flushable, OutputStream, OutputStreamWriter}
 import java.nio.charset.StandardCharsets
 import java.time.ZoneId
 
-class JsonWriter(schema: StructType, tz: ZoneId, output: OutputStream) {
+class JsonWriter(schema: StructType, tz: ZoneId, output: OutputStream) extends Closeable with Flushable {
   private val option: Map[String, String] = Map(
     "timestampFormat" -> "yyyy-MM-dd HH:mm:ss",
     "timestampNTZFormat" -> "yyyy-MM-dd HH:mm:ss"
@@ -32,10 +32,10 @@ class JsonWriter(schema: StructType, tz: ZoneId, output: OutputStream) {
 
   def write(row: InternalRow): Unit = {
     jsonWriter.write(row)
-    jsonWriter.writeLineEnding
+    jsonWriter.writeLineEnding()
   }
 
-  def flush(): Unit = jsonWriter.flush()
+  override def flush(): Unit = jsonWriter.flush()
 
-  def close(): Unit = jsonWriter.close()
+  override def close(): Unit = jsonWriter.close()
 }

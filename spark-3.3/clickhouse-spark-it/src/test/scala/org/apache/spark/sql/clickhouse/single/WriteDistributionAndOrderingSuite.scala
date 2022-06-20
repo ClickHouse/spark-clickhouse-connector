@@ -32,7 +32,7 @@ class WriteDistributionAndOrderingSuite extends BaseSparkSuite
 
   import spark.implicits._
 
-  test("write repartitionByPartition") {
+  ignore("write repartitionByPartition") {
     autoCleanupTable("db_repartitionByPartition", "tbl_repartitionByPartition") { (db, tbl) =>
       runClickHouseSQL(
         s"""CREATE TABLE `$db`.`$tbl` (
