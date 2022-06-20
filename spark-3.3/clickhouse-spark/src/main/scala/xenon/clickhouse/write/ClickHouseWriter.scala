@@ -14,9 +14,12 @@
 
 package xenon.clickhouse.write
 
+import com.github.luben.zstd.{RecyclingBufferPool, ZstdOutputStreamNoFinalizer}
 import com.google.protobuf.ByteString
+import net.jpountz.lz4.LZ4FrameOutputStream
+import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
-import org.apache.spark.sql.catalyst.{expressions, InternalRow}
+import org.apache.spark.sql.catalyst.{InternalRow, expressions}
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
@@ -26,7 +29,9 @@ import xenon.clickhouse.exception._
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
 import xenon.clickhouse.spec.{DistributedEngineSpec, ShardUtils}
 
+import java.io.{BufferedOutputStream, OutputStream}
 import java.util.concurrent.atomic.LongAdder
+import java.util.zip.GZIPOutputStream
 import scala.util.{Failure, Success}
 
 abstract class ClickHouseWriter(writeJob: WriteJobDescription)
@@ -105,6 +110,21 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     case _ => None
   }
 
+  def compressedOutput(output: OutputStream): OutputStream = codec.map(_.toLowerCase) match {
+    case None => output
+    case Some("gzip") =>
+      new GZIPOutputStream(output, 256 * 1024)
+    case Some("lz4") =>
+      new LZ4FrameOutputStream(output, BLOCKSIZE.SIZE_256KB)
+    case Some("zstd") =>
+      val zstdOutput = new ZstdOutputStreamNoFinalizer(output, RecyclingBufferPool.INSTANCE)
+        .setLevel(writeJob.writeOptions.zstdLevel)
+        .setWorkers(writeJob.writeOptions.zstdThread)
+      new BufferedOutputStream(zstdOutput, 256 * 1024)
+    case unsupported =>
+      throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
+  }
+
   def format: String
 
   var lastShardNum: Option[Int] = None
@@ -172,7 +192,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
              |        row count: $lastRecordsWritten
              |         raw size: ${Utils.bytesToString(lastRawBytesWritten)}
              |  serialized size: ${Utils.bytesToString(lastSerializedBytesWritten)}
-             |compression codec: ${codec.getOrElse("none")}
+             |compression codec: $codec
              |   serialize time: ${lastSerializeTime}ms
              |       write time: ${writeTime}ms
              |""".stripMargin
