@@ -55,10 +55,10 @@ class ClickHouseBatchWrite(
 
   override def abort(messages: Array[WriterCommitMessage]): Unit = {}
 
-  override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] =
-    writeJob.writeOptions.format match {
-      case "JSONEachRow" => new ClickHouseJsonEachRowWriter(writeJob)
-      case "ArrowStream" => new ClickHouseArrowStreamWriter(writeJob)
-      case unsupported => throw ClickHouseClientException(s"Unsupported write format: $unsupported")
-    }
+  override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] = {
+    val format = writeJob.writeOptions.format
+    if (format equalsIgnoreCase "JSONEachRow") new ClickHouseJsonEachRowWriter(writeJob)
+    else if (format equalsIgnoreCase "ArrowStream") new ClickHouseArrowStreamWriter(writeJob)
+    else throw ClickHouseClientException(s"Unsupported write format: $format")
+  }
 }
