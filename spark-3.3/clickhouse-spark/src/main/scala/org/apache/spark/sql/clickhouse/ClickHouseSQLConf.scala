@@ -130,7 +130,7 @@ object ClickHouseSQLConf {
       .doc("The codec used to compress data for writing. Supported codecs: none, gzip, lz4, zstd")
       .version("0.3.0")
       .stringConf
-      .createWithDefault("zstd")
+      .createWithDefault("lz4")
 
   val WRITE_COMPRESSION_ZSTD_LEVEL: ConfigEntry[Int] =
     buildConf("spark.clickhouse.write.compression.zstd.level")
