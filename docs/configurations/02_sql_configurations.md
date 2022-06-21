@@ -104,9 +104,9 @@ SQL Configurations
 
 !!! tip "Since 0.3.0 - spark.clickhouse.write.compression.codec"
 
-    Default Value: undefined
+    Default Value: zstd
 
-    Description: The codec used to compress data for writing. Supported codecs: gzip, lz4, zstd.
+    Description: The codec used to compress data for writing. Supported codecs: none, gzip, lz4, zstd.
 
 !!! tip "Since 0.4.0 - spark.clickhouse.write.compression.zstd.level"
 
