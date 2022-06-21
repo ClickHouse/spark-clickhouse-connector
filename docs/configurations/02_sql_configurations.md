@@ -125,4 +125,4 @@ SQL Configurations
 
     Default Value: ArrowStream
 
-    Description: (Spark 3.3) Serialize format for writing. Supported formats: JSONEachRow, ArrowStream.
+    Description: Serialize format for writing. Supported formats: JSONEachRow, ArrowStream.
