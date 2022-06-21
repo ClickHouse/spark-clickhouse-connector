@@ -251,8 +251,9 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
              |node: ${client.node}
              |        row count: $currentBufferedRows
              |         raw size: ${Utils.bytesToString(currentBufferedRawBytes)}
-             |  serialized size: ${Utils.bytesToString(lastSerializedBytesWritten)}
+             |           format: $format
              |compression codec: ${codec.getOrElse("none")}
+             |  serialized size: ${Utils.bytesToString(lastSerializedBytesWritten)}
              |   serialize time: ${lastSerializeTime}ms
              |       write time: ${writeTime}ms
              |""".stripMargin
