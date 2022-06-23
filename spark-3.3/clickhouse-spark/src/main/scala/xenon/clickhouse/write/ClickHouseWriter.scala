@@ -191,7 +191,9 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     val shardNum = calcShard(record)
     flush(force = shardNum != currentShardNum && currentBufferedRows > 0, currentShardNum)
     currentShardNum = shardNum
-    writeRow(record)
+    val (_, serializedTime) = Utils.timeTakenMs(writeRow(record))
+    _lastSerializeTime.add(serializedTime)
+    _totalSerializeTime.add(serializedTime)
     _currentBufferedRows.add(1)
     flush(force = false, currentShardNum)
   }
