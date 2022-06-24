@@ -120,23 +120,21 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     with PartitionReaderFactory
     with ClickHouseHelper {
 
-  val database: String = scanJob.tableEngineSpec match {
-    case dist: DistributedEngineSpec if scanJob.readOptions.convertDistributedToLocal => dist.local_db
-    case _ => scanJob.tableSpec.database
-  }
-
-  val table: String = scanJob.tableEngineSpec match {
-    case dist: DistributedEngineSpec if scanJob.readOptions.convertDistributedToLocal => dist.local_table
-    case _ => scanJob.tableSpec.name
-  }
+  val database: String = scanJob.database
+  val table: String = scanJob.table
 
   lazy val inputPartitions: Array[ClickHouseInputPartition] = scanJob.tableEngineSpec match {
     case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
       scanJob.cluster.get.shards.flatMap { shardSpec =>
         Utils.tryWithResource(GrpcNodeClient(shardSpec.nodes.head)) { implicit grpcNodeClient: GrpcNodeClient =>
-          queryPartitionSpec(local_db, local_table).map(partitionSpec =>
-            ClickHouseInputPartition(scanJob.localTableSpec.get, partitionSpec, shardSpec) // TODO pickup preferred
-          )
+          queryPartitionSpec(local_db, local_table).map { partitionSpec =>
+            ClickHouseInputPartition(
+              scanJob.localTableSpec.get,
+              partitionSpec,
+              scanJob.readOptions.splitByPartitionId,
+              shardSpec // TODO pickup preferred
+            )
+          }
         }
       }
     case _: DistributedEngineSpec if scanJob.readOptions.useClusterNodesForDistributed =>
@@ -145,12 +143,22 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
       )
     case _: DistributedEngineSpec =>
       // we can not collect all partitions from single node, thus should treat table as no partitioned table
-      Array(ClickHouseInputPartition(scanJob.tableSpec, NoPartitionSpec, scanJob.node))
+      Array(ClickHouseInputPartition(
+        scanJob.tableSpec,
+        NoPartitionSpec,
+        scanJob.readOptions.splitByPartitionId,
+        scanJob.node
+      ))
     case _: TableEngineSpec =>
       Utils.tryWithResource(GrpcNodeClient(scanJob.node)) { implicit grpcNodeClient: GrpcNodeClient =>
-        queryPartitionSpec(database, table).map(partitionSpec =>
-          ClickHouseInputPartition(scanJob.tableSpec, partitionSpec, scanJob.node) // TODO pickup preferred
-        )
+        queryPartitionSpec(database, table).map { partitionSpec =>
+          ClickHouseInputPartition(
+            scanJob.tableSpec,
+            partitionSpec,
+            scanJob.readOptions.splitByPartitionId,
+            scanJob.node // TODO pickup preferred
+          )
+        }
       }.toArray
   }
 

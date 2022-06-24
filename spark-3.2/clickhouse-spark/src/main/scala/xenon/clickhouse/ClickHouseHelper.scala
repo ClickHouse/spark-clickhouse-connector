@@ -245,12 +245,13 @@ trait ClickHouseHelper extends Logging {
     val partOutput = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  partition,                           -- String
+         |  partition_id,                        -- String
          |  sum(rows)          AS row_count,     -- UInt64
          |  sum(bytes_on_disk) AS size_in_bytes  -- UInt64
          |FROM `system`.`parts`
          |WHERE `database`='$database' AND `table`='$table' AND `active`=1
-         |GROUP BY `partition`
-         |ORDER BY `partition` ASC
+         |GROUP BY `partition`, `partition_id`
+         |ORDER BY `partition` ASC, `partition_id` ASC
          |""".stripMargin
     )
     if (partOutput.isEmpty || partOutput.rows == 1 && partOutput.records.head.get("partition").asText == "tuple()") {
@@ -258,7 +259,8 @@ trait ClickHouseHelper extends Logging {
     }
     partOutput.records.map { row =>
       PartitionSpec(
-        partition = row.get("partition").asText,
+        partition_value = row.get("partition").asText,
+        partition_id = row.get("partition_id").asText,
         row_count = row.get("row_count").asLong,
         size_in_bytes = row.get("size_in_bytes").asLong
       )

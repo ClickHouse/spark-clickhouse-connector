@@ -237,7 +237,7 @@ case class ClickHouseTable(
           queryPartitionSpec(database, table)
         }
     }
-    partitionSpecs.map(_.partition)
+    partitionSpecs.map(_.partition_value)
       .distinct
       .filterNot(_.isEmpty) // represent partitioned table w/o records
       .filterNot(_ == "tuple()") // represent the root partition of un-partitioned table
