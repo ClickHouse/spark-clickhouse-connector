@@ -73,6 +73,6 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
   def localSortByKey: Boolean =
     eval(WRITE_LOCAL_SORT_BY_KEY.key, WRITE_LOCAL_SORT_BY_KEY)
 
-  def compressionCodec: Option[String] =
+  def compressionCodec: String =
     eval(WRITE_COMPRESSION_CODEC.key, WRITE_COMPRESSION_CODEC)
 }

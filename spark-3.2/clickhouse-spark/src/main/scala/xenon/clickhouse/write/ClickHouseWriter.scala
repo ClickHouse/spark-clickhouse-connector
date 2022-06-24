@@ -15,6 +15,8 @@
 package xenon.clickhouse.write
 
 import com.google.protobuf.ByteString
+import net.jpountz.lz4.LZ4FrameOutputStream
+import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
 import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.clickhouse.{ExprUtils, JsonWriter}
@@ -25,7 +27,6 @@ import xenon.clickhouse.exception._
 import xenon.clickhouse.grpc.{GrpcClusterClient, GrpcNodeClient}
 import xenon.clickhouse.spec.{DistributedEngineSpec, ShardUtils}
 
-import java.io.ByteArrayOutputStream
 import java.util.zip.GZIPOutputStream
 import scala.collection.mutable.ArrayBuffer
 import scala.util.{Failure, Success}
@@ -116,19 +117,23 @@ class ClickHouseWriter(writeJob: WriteJobDescription)
     case _ => None
   }
 
-  private def assembleData(codec: Option[String], buf: ArrayBuffer[ByteString]): ByteString =
-    codec match {
-      case None => buf.reduce((l, r) => l concat r)
-      case Some(codec) if codec.toLowerCase == "gzip" =>
-        val out = new ByteArrayOutputStream(4096)
-        val gzipOut = new GZIPOutputStream(out, 8192)
-        buf.foreach(_.writeTo(gzipOut))
-        gzipOut.flush()
-        gzipOut.close()
-        ByteString.copyFrom(out.toByteArray)
-      case Some(unsupported) =>
+  private val reusedByteArray = ByteString.newOutput(16 * 1024 * 1024)
+
+  private def assembleData(codec: String, buf: ArrayBuffer[ByteString]): ByteString = {
+    val out = codec.toLowerCase match {
+      case "none" => reusedByteArray
+      case "gzip" => new GZIPOutputStream(reusedByteArray, 8192)
+      case "lz4" => new LZ4FrameOutputStream(reusedByteArray, BLOCKSIZE.SIZE_4MB)
+      case unsupported =>
         throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
     }
+    buf.foreach(_.writeTo(out))
+    out.flush()
+    out.close()
+    val result = reusedByteArray.toByteString
+    reusedByteArray.reset()
+    result
+  }
 
   def flush(shardNum: Option[Int]): Unit = {
     val client = grpcNodeClient(shardNum)
@@ -148,7 +153,7 @@ class ClickHouseWriter(writeJob: WriteJobDescription)
                   |             rows: ${buf.size}
                   |uncompressed size: ${Utils.bytesToString(uncompressedSize)}
                   |  compressed size: ${Utils.bytesToString(compressedSize)}
-                  |compression codec: ${codec.getOrElse("none")}
+                  |compression codec: $codec
                   | compression cost: ${costMs}ms
                   |""".stripMargin)
       client.syncInsertOutputJSONEachRow(
