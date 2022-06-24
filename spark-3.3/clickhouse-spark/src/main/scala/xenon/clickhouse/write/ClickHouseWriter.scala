@@ -41,7 +41,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   val database: String = writeJob.targetDatabase(writeJob.writeOptions.convertDistributedToLocal)
   val table: String = writeJob.targetTable(writeJob.writeOptions.convertDistributedToLocal)
-  val codec: Option[String] = writeJob.writeOptions.compressionCodec
+  val codec: String = writeJob.writeOptions.compressionCodec
 
   // ClickHouse is nullable sensitive, if the table column is not nullable, we need to cast the column
   // to be non-nullable forcibly.
@@ -154,13 +154,13 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   def output: OutputStream = observableCompressedOutput
 
   private def renewCompressedOutput(): Unit = {
-    val compressedOutput = codec.map(_.toLowerCase) match {
-      case None => observableSerializedOutput
-      case Some("gzip") =>
+    val compressedOutput = codec.toLowerCase match {
+      case "none" => observableSerializedOutput
+      case "gzip" =>
         new GZIPOutputStream(observableSerializedOutput, 4 * 1024 * 1024)
-      case Some("lz4") =>
+      case "lz4" =>
         new LZ4FrameOutputStream(observableSerializedOutput, BLOCKSIZE.SIZE_4MB)
-      case Some("zstd") =>
+      case "zstd" =>
         val zstdOutput = new ZstdOutputStreamNoFinalizer(observableSerializedOutput, RecyclingBufferPool.INSTANCE)
           .setLevel(writeJob.writeOptions.zstdLevel)
           .setWorkers(writeJob.writeOptions.zstdThread)
@@ -252,7 +252,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
              |        row count: $currentBufferedRows
              |         raw size: ${Utils.bytesToString(currentBufferedRawBytes)}
              |           format: $format
-             |compression codec: ${codec.getOrElse("none")}
+             |compression codec: $codec
              |  serialized size: ${Utils.bytesToString(lastSerializedBytesWritten)}
              |   serialize time: ${lastSerializeTime}ms
              |       write time: ${writeTime}ms

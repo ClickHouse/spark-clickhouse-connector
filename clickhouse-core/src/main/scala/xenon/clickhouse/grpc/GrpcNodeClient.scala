@@ -100,7 +100,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     database: String,
     table: String,
     inputFormat: String,
-    inputCompressionType: Option[String],
+    inputCompressionType: String = "none",
     data: ByteString,
     settings: Map[String, String] = Map.empty
   ): Either[GRPCException, SimpleOutput[ObjectNode]] =
@@ -130,7 +130,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     database: String,
     table: String,
     inputFormat: String,
-    inputCompressionType: Option[String],
+    inputCompressionType: String,
     data: ByteString,
     outputFormat: String,
     deserializer: ByteString => SimpleOutput[OUT],
@@ -143,9 +143,9 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       .setQuery(sql)
       .setQueryId(queryId)
       .setInputData(data)
+      .setInputCompressionType(inputCompressionType)
       .setOutputFormat(outputFormat)
       .putAllSettings(settings.asJava)
-    inputCompressionType.foreach(builder.setInputCompressionType)
     val queryInfo = builder.build
     executeQuery(queryInfo, deserializer)
   }
