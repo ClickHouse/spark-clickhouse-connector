@@ -187,4 +187,14 @@ class SQLParserSuite extends AnyFunSuite {
     )
     assert(actual === expected)
   }
+
+  test("parse MergeTree - partition by %") {
+    val ddl = "MergeTree PARTITION BY id % 3"
+    val actual = parser.parseEngineClause(ddl)
+    val expected = MergeTreeEngineSpec(
+      engine_clause = "MergeTree",
+      _partition_key = TupleExpr(FuncExpr("remainder", FieldRef("id") :: StringLiteral("3") :: Nil) :: Nil)
+    )
+    assert(actual === expected)
+  }
 }

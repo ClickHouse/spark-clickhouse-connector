@@ -130,6 +130,8 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
     case funcCtx: ColumnExprFunctionContext => visitColumnExprFunction(funcCtx)
     case singleColCtx: ColumnExprParensContext => visitColumnExpr(singleColCtx.columnExpr)
     case tupleCtx: ColumnExprTupleContext => visitColumnExprTuple(tupleCtx)
+    case precedence1Ctx: ColumnExprPrecedence1Context => visitColumnExprPrecedence1(precedence1Ctx)
+    case precedence2Ctx: ColumnExprPrecedence2Context => visitColumnExprPrecedence2(precedence2Ctx)
     case other: ColumnExprContext => throw new IllegalArgumentException(
         s"Unsupported ColumnExpr: [${other.getClass.getSimpleName}] ${other.getText}"
       )
@@ -165,6 +167,24 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
 
   override def visitColumnExprTuple(ctx: ColumnExprTupleContext): TupleExpr =
     TupleExpr(visitColumnExprList(ctx.columnExprList))
+
+  override def visitColumnExprPrecedence1(ctx: ColumnExprPrecedence1Context): FuncExpr = {
+    val funcName = if (ctx.PERCENT != null) "remainder"
+    else if (ctx.SLASH != null) "divide"
+    else if (ctx.ASTERISK != null) "multiply"
+    else throw new IllegalArgumentException(s"Invalid [ColumnExprPrecedence1] ${ctx.getText}")
+    val funArgs = List(visitColumnExpr(ctx.columnExpr(0)), visitColumnExpr(ctx.columnExpr(1)))
+    FuncExpr(funcName, funArgs)
+  }
+
+  override def visitColumnExprPrecedence2(ctx: ColumnExprPrecedence2Context): FuncExpr = {
+    val funcName = if (ctx.PLUS != null) "add"
+    else if (ctx.DASH != null) "subtract"
+    else if (ctx.CONCAT != null) "concat"
+    else throw new IllegalArgumentException(s"Invalid [ColumnExprPrecedence2] ${ctx.getText}")
+    val funArgs = List(visitColumnExpr(ctx.columnExpr(0)), visitColumnExpr(ctx.columnExpr(1)))
+    FuncExpr(funcName, funArgs)
+  }
 
   // //////////////////////////////////////////////
   // ////////////// visit order by ////////////////
