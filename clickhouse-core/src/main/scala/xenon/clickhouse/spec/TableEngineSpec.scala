@@ -134,5 +134,5 @@ case class DistributedEngineSpec(
 ) extends TableEngineSpec {
   override def engine: String = "Distributed"
   override def settings: Map[String, String] = _settings
-  override def is_distributed: Boolean = false
+  override def is_distributed: Boolean = true
 }
