@@ -55,8 +55,6 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   )
 
   protected lazy val shardExpr: Option[Expression] = writeJob.sparkShardExpr match {
-    case None if writeJob.tableEngineSpec.is_distributed =>
-      throw ClickHouseClientException("Can not write data to a Distributed table that lacks sharding key")
     case None => None
     case Some(v2Expr) =>
       val catalystExpr = ExprUtils.toCatalyst(v2Expr, writeJob.dataSetSchema.fields)
