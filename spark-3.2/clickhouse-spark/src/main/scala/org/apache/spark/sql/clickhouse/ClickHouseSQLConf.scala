@@ -101,6 +101,15 @@ object ClickHouseSQLConf {
       .booleanConf
       .createWithDefault(true)
 
+  val READ_SPLIT_BY_PARTITION_ID: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.read.splitByPartitionId")
+      .doc("If `true`, construct input partition filter by virtual column `_partition_id`, " +
+        "instead of partition value. There are known bugs to assemble SQL predication by " +
+        "partition value. This feature requires ClickHouse Server v21.6+")
+      .version("0.4.0")
+      .booleanConf
+      .createWithDefault(true)
+
   val WRITE_LOCAL_SORT_BY_PARTITION: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.write.localSortByPartition")
       .doc("If `true`, do local sort by partition before writing.")
