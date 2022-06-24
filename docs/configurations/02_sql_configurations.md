@@ -90,6 +90,14 @@ SQL Configurations
     Description: When reading Distributed table, read local table instead of itself. If `true`, ignore
                  `read.distributed.useClusterNodes`.
 
+!!! tip "Since 0.4.0 - spark.clickhouse.read.splitByPartitionId"
+
+    Default Value: true
+
+    Description: If `true`, construct input partition filter by virtual column `_partition_id`,
+                 instead of partition value. There are known bugs to assemble SQL predication by
+                 partition value. This feature requires ClickHouse Server v21.6+.
+
 !!! tip "Since 0.3.0 - spark.clickhouse.write.localSortByPartition"
 
     Default Value: `spark.clickhouse.write.repartitionByPartition`

@@ -14,11 +14,11 @@
 
 package xenon.clickhouse.read
 
-import java.time.ZoneId
-
 import org.apache.spark.sql.clickhouse.ReadOptions
 import org.apache.spark.sql.types.StructType
 import xenon.clickhouse.spec._
+
+import java.time.ZoneId
 
 case class ScanJobDescription(
   node: NodeSpec,
@@ -36,4 +36,15 @@ case class ScanJobDescription(
   filtersExpr: String = "1=1",
   groupByClause: Option[String] = None,
   limit: Option[Int] = None
-)
+) {
+
+  def database: String = tableEngineSpec match {
+    case dist: DistributedEngineSpec if readOptions.convertDistributedToLocal => dist.local_db
+    case _ => tableSpec.database
+  }
+
+  def table: String = tableEngineSpec match {
+    case dist: DistributedEngineSpec if readOptions.convertDistributedToLocal => dist.local_table
+    case _ => tableSpec.name
+  }
+}

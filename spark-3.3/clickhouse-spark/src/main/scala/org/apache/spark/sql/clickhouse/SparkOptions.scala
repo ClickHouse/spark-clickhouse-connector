@@ -38,6 +38,9 @@ class ReadOptions(_options: JMap[String, String]) extends SparkOptions {
 
   def convertDistributedToLocal: Boolean =
     eval(READ_DISTRIBUTED_CONVERT_LOCAL.key, READ_DISTRIBUTED_CONVERT_LOCAL)
+
+  def splitByPartitionId: Boolean =
+    eval(READ_SPLIT_BY_PARTITION_ID.key, READ_SPLIT_BY_PARTITION_ID)
 }
 
 class WriteOptions(_options: JMap[String, String]) extends SparkOptions {

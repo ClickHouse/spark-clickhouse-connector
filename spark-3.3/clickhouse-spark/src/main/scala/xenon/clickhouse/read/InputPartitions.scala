@@ -27,6 +27,7 @@ case class ClickHousePartitioning(inputParts: Array[ClickHouseInputPartition]) e
 case class ClickHouseInputPartition(
   table: TableSpec,
   partition: PartitionSpec,
+  filterByPartitionId: Boolean,
   candidateNodes: Nodes, // try to use them only when preferredNode unavailable
   preferredNode: Option[NodeSpec] = None // TODO assigned by ScanBuilder in Spark Driver side
 ) extends InputPartition {
@@ -38,11 +39,19 @@ case class ClickHouseInputPartition(
 
   def partFilterExpr: String = partition match {
     case NoPartitionSpec => "1=1"
-    case PartitionSpec(part, _, _) => (part.contains("-"), part.contains("(")) match {
-        // quote when partition by a single Date Type column to avoid illegal types of arguments (Date, Int64)
-        case (true, false) => s"${table.partition_key} = '$part'"
-        // Date type column is quoted if there are multi partition columns
-        case _ => s"${table.partition_key} = $part"
-      }
+    case PartitionSpec(_, partitionId, _, _) if filterByPartitionId =>
+      s"_partition_id = '$partitionId'"
+    case PartitionSpec(partitionValue, _, _, _) =>
+      s"${table.partition_key} = ${compilePartitionFilterValue(partitionValue)}"
+  }
+
+  // TODO improve and test
+  def compilePartitionFilterValue(partitionValue: String): String = {
+    (partitionValue.contains("-"), partitionValue.contains("(")) match {
+      // quote when partition by a single Date Type column to avoid illegal types of arguments (Date, Int64)
+      case (true, false) => s"'$partitionValue'"
+      // Date type column is quoted if there are multi partition columns
+      case _ => s"$partitionValue"
+    }
   }
 }
