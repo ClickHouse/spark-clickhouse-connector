@@ -199,7 +199,7 @@ project(':clickhouse-core') {
         testFixturesRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
-        testFixturesRuntimeOnly "com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version"
+        testFixturesRuntimeOnly "com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version:http"
 
         testImplementation "org.slf4j:slf4j-log4j12:$slf4j_version"
     }
