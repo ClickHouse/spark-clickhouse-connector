@@ -27,6 +27,8 @@ theme:
 
 markdown_extensions:
   - admonition
+  - attr_list
+  - md_in_html
 
 extra:
   social:
@@ -47,7 +49,8 @@ nav:
     - SQL Configurations: configurations/02_sql_configurations.md
   - Developers:
     - Build and Test: developers/01_build_and_test.md
-    - Private Release: developers/02_private_release.md
-    - Public Release: developers/03_public_release.md
+    - Docs and Website: developers/02_docs_and_website.md
+    - Private Release: developers/03_private_release.md
+    - Public Release: developers/04_public_release.md
   - Internals:
     - internals/index.md

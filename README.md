@@ -23,10 +23,10 @@ Notes:
    [v21.1.2.15-stable](https://github.com/ClickHouse/ClickHouse/blob/master/CHANGELOG.md#clickhouse-release-v211215-stable-2021-01-18),
    but we only do test on v22.3.3.44-lts.
 2. Due to lack of developer resources, the project is currently only focusing on Spark 3.3 support, which means you
-   may find something it documents but does not work in Spark 3.2, or has significantly worse performance compared
-   to Spark 3.3. When you come into such a situation, send a PR to backport the patch from Spark 3.3 modules to
-   Spark 3.2 is first choice, the secondary option is open an issue to request a backport, I will check the issue
-   list and fix some of important ones if I have time.
+   may find something it documents but does not work in Spark 3.2, or has significantly worse performance comparing
+   to Spark 3.3. When you come into such a situation, send a PR to backport the patch from Spark 3.3 module to
+   Spark 3.2 is first choice. Also, open an issue to request a backport is fine, I will check the issue list and
+   fix some of important ones if I have time.
 
 ## Build
 
