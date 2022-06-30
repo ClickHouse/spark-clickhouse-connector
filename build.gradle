@@ -39,6 +39,7 @@ rat {
             "version.txt",
             "clickhouse-core/src/main/scala-2.12/scala/util/Using.scala",
             "**/.gitkeep",
+            "docs/imgs",
             "site/**",
             ".python-version",
             // Gradle
