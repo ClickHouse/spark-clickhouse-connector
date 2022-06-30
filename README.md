@@ -5,6 +5,8 @@ Spark ClickHouse Connector
 
 Build on Apache Spark DataSourceV2 API.
 
+![Overview](docs/imgs/scc_overview.drawio.png)
+
 ## Usage
 
 See the [documentation](https://housepower.github.io/spark-clickhouse-connector/) for how to use this connector.

@@ -22,6 +22,8 @@ Overview
 Spark ClickHouse Connector is a high performance connector build on top of Spark DataSource V2 and
 ClickHouse gRPC protocol.
 
+![Overview](imgs/scc_overview.drawio.png)
+
 ## Requirements
 
 1. Basic knowledge of [Apache Spark](https://spark.apache.org/docs/latest/) and [ClickHouse](https://clickhouse.com/docs/en/).
