@@ -54,3 +54,6 @@ nav:
     - Public Release: developers/04_public_release.md
   - Internals:
     - internals/index.md
+    - Catalog: internals/01_catalog.md
+    - Query Table: internals/02_read.md
+    - Write Data: internals/03_write.md

@@ -13,12 +13,10 @@ license: |
   limitations under the License.
 ---
 
-Overview Design
+How writing of the connector works?
 ===
 
-In high level, Spark ClickHouse Connector is a connector build on top of Spark DataSource V2 and
-ClickHouse gRPC protocol.
-
 <figure markdown>
-  ![Overview](../imgs/scc_overview.drawio.png)
+  ![Overview](../imgs/scc_write_rebalance_sort.drawio.png)
 </figure>
+
