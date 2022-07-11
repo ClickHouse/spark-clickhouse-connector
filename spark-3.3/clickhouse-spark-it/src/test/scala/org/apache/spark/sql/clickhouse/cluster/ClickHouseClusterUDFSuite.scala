@@ -14,12 +14,12 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
-import xenon.clickhouse.JsonProtocol.om
 import xenon.clickhouse.base.ClickHouseClusterMixIn
 import xenon.clickhouse.Logging
 
 import java.lang.{Long => JLong}
 import org.apache.spark.sql.clickhouse.BaseSparkSuite
+import org.apache.spark.sql.clickhouse.TestUtils.om
 
 class ClickHouseClusterUDFSuite extends BaseSparkSuite
     with ClickHouseClusterMixIn

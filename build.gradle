@@ -72,6 +72,7 @@ subprojects {
             force "com.fasterxml.jackson.core:jackson-annotations:$jackson_version"
             force "com.fasterxml.jackson.core:jackson-core:$jackson_version"
             force "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
+            force "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
             force "com.fasterxml.jackson.module:jackson-module-paranamer:$jackson_version"
             force "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
 
@@ -164,6 +165,7 @@ project(':clickhouse-core') {
         api "org.apache.commons:commons-lang3:$commons_lang3_version"
 
         api "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
+        api "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
         api "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
 
         api("com.google.guava:guava:$guava_version") {
