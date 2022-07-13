@@ -49,9 +49,9 @@ services:
     container_name: clickhouse-s1r1
     hostname: clickhouse-s1r1
     ports:
-      - 8123
-      - 9000
-      - 9100
+      - 8123:8123
+      - 9000:9000
+      - 9100:9100
     volumes:
       - ../clickhouse-core/src/testFixtures/conf/clickhouse-cluster/config.xml:/etc/clickhouse-server/config.xml
       - ../clickhouse-core/src/testFixtures/conf/clickhouse-cluster/remote_servers.xml:/etc/clickhouse-server/config.d/remote_servers.xml
