@@ -209,7 +209,7 @@ message QueryInfo {
   //
   // @since v22.1.1.2542-prestable https://github.com/ClickHouse/ClickHouse/pull/32747
   //
-  /// change name from compression_level to obsolete_compression_type
+  /// change name from compression_type to obsolete_compression_type
   /// @since v22.2.1.2139-prestable https://github.com/ClickHouse/ClickHouse/pull/34408
   string obsolete_compression_type = 18;
 }
