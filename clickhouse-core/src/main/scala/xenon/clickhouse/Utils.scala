@@ -165,11 +165,10 @@ object Utils extends Logging {
     (result, math.max(NANOSECONDS.toMillis(endTime - startTime), 0))
   }
 
+  val IS_TESTING = "spark.testing"
   val PREFIX = "SPARK_ON_CLICKHOUSE"
 
-  def setTesting(name: String = "ut"): Unit = sys.props += ((s"${PREFIX}_TESTING", name))
+  def setTesting(): Unit = System.setProperty(IS_TESTING, "true")
 
-  def unsetTesting(): Unit = sys.props -= s"${PREFIX}_TESTING"
-
-  def isTesting: Boolean = sys.env.contains(s"${PREFIX}_TESTING") || sys.props.contains(s"${PREFIX}_TESTING")
+  def isTesting: Boolean = System.getProperty(IS_TESTING) == "true"
 }
