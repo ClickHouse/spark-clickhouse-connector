@@ -13,7 +13,7 @@
  */
 
 project.ext {
-    spark_version = "3.2.1"
+    spark_version = "3.2.2"
     spark_binary_version = "3.2"
 }
 
