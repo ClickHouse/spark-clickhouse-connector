@@ -14,17 +14,9 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
-import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.clickhouse.BaseSparkSuite
-import xenon.clickhouse.Logging
-import xenon.clickhouse.base.ClickHouseClusterMixIn
 
-class ClusterShardByRandSuite extends BaseSparkSuite
-    with ClickHouseClusterMixIn
-    with SparkClickHouseClusterMixin
-    with SparkClickHouseClusterTestHelper
-    with Logging {
+class ClusterShardByRandSuite extends SparkClickHouseClusterTest {
 
   test("shard by rand()") {
     val cluster = "single_replica"

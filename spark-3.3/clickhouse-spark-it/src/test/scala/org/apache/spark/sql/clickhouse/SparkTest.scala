@@ -14,59 +14,24 @@
 
 package org.apache.spark.sql.clickhouse
 
-import org.apache.hadoop.fs.FileSystem
-import org.apache.spark.SparkContext
-import org.apache.spark.sql.{DataFrame, SparkSession}
-import org.scalatest.BeforeAndAfterAll
-import org.scalatest.concurrent.Eventually
-import org.scalatest.funsuite.AnyFunSuite
-import xenon.clickhouse.{ClickHouseCommandRunner, Utils}
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.test.SharedSparkSession
+import org.apache.spark.sql.{DataFrame, QueryTest}
+import xenon.clickhouse.ClickHouseCommandRunner
 
-abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Eventually {
-
-  Utils.setTesting()
-
-  test("is testing") {
-    assert(Utils.isTesting)
-  }
-
-  def sparkOptions: Map[String, String]
+trait SparkTest extends QueryTest with SharedSparkSession {
 
   def cmdRunnerOptions: Map[String, String]
 
-  /**
-   * The spark session, which is the entrance point of DataFrame, DataSet and Spark SQL.
-   */
-  @transient implicit lazy val spark: SparkSession = {
-    val builder = SparkSession.builder()
-
-    builder
-      .config("spark.master", "local[2]")
-      .config("spark.ui.enabled", "false")
-      .config("spark.app.name", "spark-ut")
-      .config("spark.driver.host", "localhost")
-      .config("spark.driver.memory", "500M")
-      .config("spark.executor.memory", "500M")
-      .config("spark.sql.catalogImplementation", "in-memory")
-      .config("spark.sql.shuffle.partitions", "2")
-
-    sparkOptions.foreach { case (k, v) => builder.config(k, v) }
-
-    builder.getOrCreate
-  }
-
-  /**
-   * The spark context
-   */
-  @transient lazy val sc: SparkContext = spark.sparkContext
-
-  /**
-   * The spark file system
-   */
-  @transient lazy val fs: FileSystem = {
-    val hadoopConf = sc.hadoopConfiguration
-    FileSystem.get(hadoopConf)
-  }
+  override protected def sparkConf: SparkConf = super.sparkConf
+    .setMaster("local[2]")
+    .setAppName("spark-ut")
+    .set("spark.ui.enabled", "false")
+    .set("spark.driver.host", "localhost")
+    .set("spark.driver.memory", "500M")
+    .set("spark.sql.catalogImplementation", "in-memory")
+    .set("spark.sql.codegen.wholeStage", "false")
+    .set("spark.sql.shuffle.partitions", "2")
 
   def runClickHouseSQL(sql: String, options: Map[String, String] = cmdRunnerOptions): DataFrame =
     spark.executeCommand(classOf[ClickHouseCommandRunner].getName, sql, options)
@@ -107,10 +72,5 @@ abstract class BaseSparkSuite extends AnyFunSuite with BeforeAndAfterAll with Ev
   protected def infiniteLoop(): Unit = while (true) {
     Thread.sleep(1000)
     spark.catalog.listTables()
-  }
-
-  override def afterAll(): Unit = {
-    spark.stop
-    super.afterAll()
   }
 }

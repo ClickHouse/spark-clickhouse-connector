@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
-trait TPCDSHelper {
+object TPCDSTestUtils {
   val tablePrimaryKeys: Map[String, Seq[String]] = Map(
     "call_center" -> Array("cc_call_center_sk"),
     "catalog_page" -> Array("cp_catalog_page_sk"),
