@@ -14,26 +14,19 @@
 
 package org.apache.spark.sql.clickhouse.single
 
-import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.clickhouse.BaseSparkSuite
-import xenon.clickhouse.base.ClickHouseSingleMixIn
-import xenon.clickhouse.Logging
 
-class ClickHouseTableDDLSuite extends BaseSparkSuite
-    with ClickHouseSingleMixIn
-    with SparkClickHouseSingleMixin
-    with Logging {
+class ClickHouseTableDDLSuite extends SparkClickHouseSingleTest {
 
-  import spark.implicits._
+  import testImplicits._
 
   test("clickhouse command runner") {
-    try {
+    withTable("default.abc") {
       runClickHouseSQL("CREATE TABLE default.abc(a UInt8) ENGINE=Log()")
       checkAnswer(
         spark.sql("""DESC default.abc""").select($"col_name", $"data_type").limit(1),
         Row("a", "smallint") :: Nil
       )
-    } finally runClickHouseSQL("DROP TABLE IF EXISTS default.abc")
+    }
   }
 }

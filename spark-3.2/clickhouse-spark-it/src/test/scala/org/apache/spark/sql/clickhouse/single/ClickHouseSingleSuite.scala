@@ -14,23 +14,14 @@
 
 package org.apache.spark.sql.clickhouse.single
 
-import java.sql.Date
-import java.sql.Timestamp
-
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.QueryTest._
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.clickhouse.BaseSparkSuite
-import xenon.clickhouse.Logging
-import xenon.clickhouse.base.ClickHouseSingleMixIn
+import org.apache.spark.sql.types._
 
-class ClickHouseSingleSuite extends BaseSparkSuite
-    with ClickHouseSingleMixIn
-    with SparkClickHouseSingleMixin
-    with SparkClickHouseSingleTestHelper
-    with Logging {
+import java.sql.{Date, Timestamp}
 
-  import spark.implicits._
+class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
+
+  import testImplicits._
 
   test("clickhouse command runner") {
     checkAnswer(
@@ -40,7 +31,7 @@ class ClickHouseSingleSuite extends BaseSparkSuite
   }
 
   test("clickhouse catalog") {
-    try {
+    withDatabase("db_t1", "db_t2") {
       spark.sql("CREATE DATABASE db_t1")
       spark.sql("CREATE DATABASE db_t2")
       checkAnswer(
@@ -53,9 +44,6 @@ class ClickHouseSingleSuite extends BaseSparkSuite
         Row("system") :: Nil
       )
       assert(spark.sql("SHOW tables").where($"tableName" === "contributors").count === 1)
-    } finally {
-      runClickHouseSQL(s"DROP DATABASE IF EXISTS db_t1")
-      runClickHouseSQL(s"DROP DATABASE IF EXISTS db_t2")
     }
   }
 

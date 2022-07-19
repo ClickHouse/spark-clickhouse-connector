@@ -14,44 +14,39 @@
 
 package org.apache.spark.sql.clickhouse.single
 
-import org.apache.spark.sql.clickhouse.{BaseSparkSuite, TPCDSHelper}
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.clickhouse.TPCDSTestUtils
 import org.scalatest.tags.Slow
-import xenon.clickhouse.base.ClickHouseSingleMixIn
-import xenon.clickhouse.Logging
 
 @Slow
-class TPCDSSuite extends BaseSparkSuite
-    with ClickHouseSingleMixIn
-    with SparkClickHouseSingleMixin
-    with SparkClickHouseSingleTestHelper
-    with TPCDSHelper
-    with Logging {
+class TPCDSSuite extends SparkClickHouseSingleTest {
 
-  override def sparkOptions: Map[String, String] = super.sparkOptions + (
-    "spark.sql.catalog.tpcds" -> "org.apache.kyuubi.spark.connector.tpcds.TPCDSCatalog",
-    "spark.clickhouse.write.batchSize" -> "100000",
-    "spark.clickhouse.write.compression.codec" -> "gzip"
-  )
+  override protected def sparkConf: SparkConf = super.sparkConf
+    .set("spark.sql.catalog.tpcds", "org.apache.kyuubi.spark.connector.tpcds.TPCDSCatalog")
+    .set("spark.clickhouse.write.batchSize", "100000")
+    .set("spark.clickhouse.write.compression.codec", "gzip")
 
   test("TPC-DS tiny write and count(*)") {
-    spark.sql("CREATE DATABASE tpcds_tiny;").collect()
+    withDatabase("tpcds_tiny") {
+      spark.sql("CREATE DATABASE tpcds_tiny")
 
-    tablePrimaryKeys.foreach { case (table, primaryKeys) =>
-      spark.sql(
-        s"""
-           |CREATE TABLE tpcds_tiny.$table
-           |USING clickhouse
-           |TBLPROPERTIES (
-           |    order_by = '${primaryKeys.mkString(",")}',
-           |    'settings.allow_nullable_key' = 1
-           |)
-           |SELECT * FROM tpcds.tiny.$table;
-           |""".stripMargin
-      )
-    }
+      TPCDSTestUtils.tablePrimaryKeys.foreach { case (table, primaryKeys) =>
+        spark.sql(
+          s"""
+             |CREATE TABLE tpcds_tiny.$table
+             |USING clickhouse
+             |TBLPROPERTIES (
+             |    order_by = '${primaryKeys.mkString(",")}',
+             |    'settings.allow_nullable_key' = 1
+             |)
+             |SELECT * FROM tpcds.tiny.$table;
+             |""".stripMargin
+        )
+      }
 
-    tablePrimaryKeys.keys.foreach { table =>
-      assert(spark.table(s"tpcds.tiny.$table").count === spark.table(s"tpcds_tiny.$table").count)
+      TPCDSTestUtils.tablePrimaryKeys.keys.foreach { table =>
+        assert(spark.table(s"tpcds_tiny.$table").count === spark.table(s"tpcds.tiny.$table").count)
+      }
     }
   }
 }

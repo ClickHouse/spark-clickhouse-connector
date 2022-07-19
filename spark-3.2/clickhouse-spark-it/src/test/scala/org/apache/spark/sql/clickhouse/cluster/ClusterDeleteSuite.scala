@@ -14,15 +14,7 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
-import org.apache.spark.sql.clickhouse.BaseSparkSuite
-import xenon.clickhouse.Logging
-import xenon.clickhouse.base.ClickHouseClusterMixIn
-
-class ClusterDeleteSuite extends BaseSparkSuite
-    with ClickHouseClusterMixIn
-    with SparkClickHouseClusterMixin
-    with SparkClickHouseClusterTestHelper
-    with Logging {
+class ClusterDeleteSuite extends SparkClickHouseClusterTest {
 
   test("truncate distribute table") {
     withSimpleDistTable("single_replica", "db_truncate", "tbl_truncate", true) { (_, db, tbl_dist, _) =>

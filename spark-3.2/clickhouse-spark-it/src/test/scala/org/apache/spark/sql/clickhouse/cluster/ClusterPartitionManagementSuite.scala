@@ -14,17 +14,9 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
-import org.apache.spark.sql.QueryTest.checkAnswer
 import org.apache.spark.sql.Row
-import org.apache.spark.sql.clickhouse.BaseSparkSuite
-import xenon.clickhouse.Logging
-import xenon.clickhouse.base.ClickHouseClusterMixIn
 
-class ClusterPartitionManagementSuite extends BaseSparkSuite
-    with ClickHouseClusterMixIn
-    with SparkClickHouseClusterMixin
-    with SparkClickHouseClusterTestHelper
-    with Logging {
+class ClusterPartitionManagementSuite extends SparkClickHouseClusterTest {
 
   test("distribute table partition") {
     withSimpleDistTable("single_replica", "db_part", "tbl_part", true) { (_, db, tbl_dist, _) =>

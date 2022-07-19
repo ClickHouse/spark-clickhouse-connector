@@ -14,21 +14,13 @@
 
 package org.apache.spark.sql.clickhouse.single
 
+import org.apache.spark.sql.Row
+import org.apache.spark.sql.types.DataTypes.{createArrayType, createMapType}
+import org.apache.spark.sql.types._
+
 import java.sql.Date
 
-import org.apache.spark.sql.QueryTest.checkAnswer
-import org.apache.spark.sql.Row
-import org.apache.spark.sql.clickhouse.BaseSparkSuite
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.types.DataTypes.{createArrayType, createMapType}
-import xenon.clickhouse.Logging
-import xenon.clickhouse.base.ClickHouseSingleMixIn
-
-class ClickHouseDataTypeSuite extends BaseSparkSuite
-    with ClickHouseSingleMixIn
-    with SparkClickHouseSingleMixin
-    with SparkClickHouseSingleTestHelper
-    with Logging {
+class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
 
   test("write supported data types") {
     val schema = StructType(
