@@ -14,20 +14,13 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.Row
+import org.apache.spark.sql.types._
+
 import java.sql.Timestamp
 
-import org.apache.spark.sql.types._
-import org.apache.spark.sql.QueryTest._
-import org.apache.spark.sql.Row
-import org.apache.spark.sql.clickhouse.BaseSparkSuite
-import xenon.clickhouse.Logging
-import xenon.clickhouse.base.ClickHouseClusterMixIn
-
-abstract class BaseClusterWriteSuite extends BaseSparkSuite
-    with ClickHouseClusterMixIn
-    with SparkClickHouseClusterMixin
-    with SparkClickHouseClusterTestHelper
-    with Logging {
+abstract class BaseClusterWriteSuite extends SparkClickHouseClusterTest {
 
   test("clickhouse write cluster") {
     withSimpleDistTable("single_replica", "db_w", "t_dist", true) { (_, db, tbl_dist, tbl_local) =>
@@ -68,8 +61,22 @@ abstract class BaseClusterWriteSuite extends BaseSparkSuite
         spark.table(s"clickhouse_s2r2.$db.$tbl_local"),
         Row(Timestamp.valueOf("2023-03-03 10:10:10"), 2023, 3, 3L, "3") :: Nil
       )
-
-    // infiniteLoop()
     }
   }
+}
+
+class ClusterNodesWriteSuite extends BaseClusterWriteSuite {
+
+  override protected def sparkConf: SparkConf = super.sparkConf
+    .set("spark.clickhouse.write.write.repartitionNum", "0")
+    .set("spark.clickhouse.write.distributed.useClusterNodes", "true")
+    .set("spark.clickhouse.write.distributed.convertLocal", "false")
+}
+
+class ConvertDistToLocalWriteSuite extends BaseClusterWriteSuite {
+
+  override protected def sparkConf: SparkConf = super.sparkConf
+    .set("spark.clickhouse.write.write.repartitionNum", "0")
+    .set("spark.clickhouse.write.distributed.useClusterNodes", "true")
+    .set("spark.clickhouse.write.distributed.convertLocal", "true")
 }

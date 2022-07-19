@@ -14,20 +14,14 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
-import xenon.clickhouse.base.ClickHouseClusterMixIn
-import xenon.clickhouse.Logging
-
-import java.lang.{Long => JLong}
-import org.apache.spark.sql.clickhouse.BaseSparkSuite
 import org.apache.spark.sql.clickhouse.TestUtils.om
 
-class ClickHouseClusterUDFSuite extends BaseSparkSuite
-    with ClickHouseClusterMixIn
-    with SparkClickHouseClusterMixin
-    with Logging {
+import java.lang.{Long => JLong}
+
+class ClickHouseClusterUDFSuite extends SparkClickHouseClusterTest {
 
   test("UDF ck_xx_hash64") {
-    def assertHashFuncEquals(stringVal: String): Unit = {
+    Seq("spark-clickhouse-connector", "Apache Spark", "ClickHouse", "Yandex", "热爱", "🇨🇳").foreach { stringVal =>
       val sparkResult = spark.sql(
         s"""SELECT
            |  ck_xx_hash64('$stringVal')                         AS hash_value,
@@ -51,15 +45,5 @@ class ClickHouseClusterUDFSuite extends BaseSparkSuite
       assert(sparkHashVal == clickhouseHashVal)
       assert(sparkShardNum == clickhouseShardNum + 1)
     }
-    (
-      "spark-clickhouse-connector" ::
-        "Spark on ClickHouse" ::
-        "Apache Spark" ::
-        "ClickHouse" ::
-        "Yandex" ::
-        "热爱" ::
-        "🇨🇳" ::
-        Nil
-    ).foreach(assertHashFuncEquals)
   }
 }

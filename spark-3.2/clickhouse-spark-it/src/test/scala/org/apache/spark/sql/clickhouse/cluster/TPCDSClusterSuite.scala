@@ -14,47 +14,42 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
-import org.apache.spark.sql.clickhouse.{BaseSparkSuite, TPCDSHelper}
+import org.apache.spark.SparkConf
+import org.apache.spark.sql.clickhouse.TPCDSTestUtils
 import org.scalatest.tags.Slow
-import xenon.clickhouse.base.ClickHouseClusterMixIn
-import xenon.clickhouse.Logging
 
 @Slow
-class TPCDSClusterSuite extends BaseSparkSuite
-    with ClickHouseClusterMixIn
-    with SparkClickHouseClusterMixin
-    with SparkClickHouseClusterTestHelper
-    with TPCDSHelper
-    with Logging {
+class TPCDSClusterSuite extends SparkClickHouseClusterTest {
 
-  override def sparkOptions: Map[String, String] = super.sparkOptions + (
-    "spark.sql.catalog.tpcds" -> "org.apache.kyuubi.spark.connector.tpcds.TPCDSCatalog",
-    "spark.clickhouse.write.batchSize" -> "100000",
-    "spark.clickhouse.write.distributed.convertLocal" -> "true",
-    "spark.clickhouse.write.compression.codec" -> "lz4"
-  )
+  override protected def sparkConf: SparkConf = super.sparkConf
+    .set("spark.sql.catalog.tpcds", "org.apache.kyuubi.spark.connector.tpcds.TPCDSCatalog")
+    .set("spark.clickhouse.write.batchSize", "100000")
+    .set("spark.clickhouse.write.distributed.convertLocal", "true")
+    .set("spark.clickhouse.write.compression.codec", "lz4")
 
   test("Cluster: TPC-DS tiny write and count(*)") {
-    spark.sql("CREATE DATABASE tpcds_tiny_cluster WITH DBPROPERTIES (cluster = 'single_replica');")
+    withDatabase("tpcds_tiny_cluster") {
+      spark.sql("CREATE DATABASE tpcds_tiny_cluster WITH DBPROPERTIES (cluster = 'single_replica')")
 
-    tablePrimaryKeys.foreach { case (table, primaryKeys) =>
-      spark.sql(
-        s"""
-           |CREATE TABLE tpcds_tiny_cluster.$table
-           |USING clickhouse
-           |TBLPROPERTIES (
-           |    cluster = 'single_replica',
-           |    engine = 'distributed',
-           |    'local.order_by' = '${primaryKeys.mkString(",")}',
-           |    'local.settings.allow_nullable_key' = 1
-           |)
-           |SELECT * FROM tpcds.tiny.$table;
-           |""".stripMargin
-      )
-    }
+      TPCDSTestUtils.tablePrimaryKeys.foreach { case (table, primaryKeys) =>
+        spark.sql(
+          s"""
+             |CREATE TABLE tpcds_tiny_cluster.$table
+             |USING clickhouse
+             |TBLPROPERTIES (
+             |    cluster = 'single_replica',
+             |    engine = 'distributed',
+             |    'local.order_by' = '${primaryKeys.mkString(",")}',
+             |    'local.settings.allow_nullable_key' = 1
+             |)
+             |SELECT * FROM tpcds.tiny.$table;
+             |""".stripMargin
+        )
+      }
 
-    tablePrimaryKeys.keys.foreach { table =>
-      assert(spark.table(s"tpcds.tiny.$table").count === spark.table(s"tpcds_tiny_cluster.$table").count)
+      TPCDSTestUtils.tablePrimaryKeys.keys.foreach { table =>
+        assert(spark.table(s"tpcds.tiny.$table").count === spark.table(s"tpcds_tiny_cluster.$table").count)
+      }
     }
   }
 }

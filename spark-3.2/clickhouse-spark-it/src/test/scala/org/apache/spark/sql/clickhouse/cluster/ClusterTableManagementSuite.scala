@@ -14,18 +14,10 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
-import org.apache.spark.sql.clickhouse.BaseSparkSuite
-import xenon.clickhouse.Logging
-import xenon.clickhouse.base.ClickHouseClusterMixIn
-
-class ClusterTableManagementSuite extends BaseSparkSuite
-    with ClickHouseClusterMixIn
-    with SparkClickHouseClusterMixin
-    with SparkClickHouseClusterTestHelper
-    with Logging {
+class ClusterTableManagementSuite extends SparkClickHouseClusterTest {
 
   test("create or replace distribute table") {
-    autoCleanupDistTable("single_replica", "db_cor", "tbl_cor_dist") { (cluster, db, tbl_dist, tbl_local) =>
+    autoCleanupDistTable("single_replica", "db_cor", "tbl_cor_dist") { (cluster, db, _, tbl_local) =>
       def createLocalTable(): Unit = spark.sql(
         s"""CREATE TABLE $db.$tbl_local (
            |  id Long NOT NULL
