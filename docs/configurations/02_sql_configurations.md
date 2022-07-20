@@ -110,6 +110,16 @@ SQL Configurations
 
     Description: If `true`, do local sort by sort keys before writing.
 
+!!! tip "Since 0.4.0 - spark.clickhouse.ignoreUnsupportedTransform"
+
+    Default Value: false
+
+    Description: ClickHouse supports using complex expressions as sharding keys or partition values,
+                 e.g. `cityHash64(col_1, col_2)`, and those can not be supported by Spark now. If `true`,
+                 ignore the unsupported expressions, otherwise fail fast w/ an exception. Note: when
+                 `spark.clickhouse.write.distributed.convertLocal` is enabled, ignore unsupported sharding keys
+                 may corrupt the data.
+
 !!! tip "Since 0.3.0 - spark.clickhouse.write.compression.codec"
 
     Default Value: lz4

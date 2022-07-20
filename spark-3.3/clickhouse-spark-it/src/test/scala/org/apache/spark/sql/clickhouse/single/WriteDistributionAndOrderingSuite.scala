@@ -26,90 +26,80 @@ class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTest {
 
   import testImplicits._
 
-  test("write repartitionByPartition") {
-    autoCleanupTable("db_repartitionByPartition", "tbl_repartitionByPartition") { (db, tbl) =>
-      runClickHouseSQL(
-        s"""CREATE TABLE `$db`.`$tbl` (
-           |    `id` String,
-           |    `load_date` Date
-           |) ENGINE = MergeTree
-           |ORDER BY load_date
-           |PARTITION BY xxHash64(id)
-           |""".stripMargin
-      )
-      import org.apache.spark.sql.functions._
+  private val db = "db_distribution_and_ordering"
+  private val tbl = "tbl_distribution_and_ordering"
 
-      withSQLConf(WRITE_REPARTITION_BY_PARTITION.key -> "true") {
-        intercept[AnalysisException] {
-          spark.range(3)
-            .toDF("id")
-            .withColumn("id", $"id".cast(StringType))
-            .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
-            .writeTo(s"$db.$tbl")
-            .append
-        }
-      }
+  private def write(): Unit = spark.range(3)
+    .toDF("id")
+    .withColumn("id", $"id".cast(StringType))
+    .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
+    .writeTo(s"$db.$tbl")
+    .append
 
-      withSQLConf(WRITE_REPARTITION_BY_PARTITION.key -> "false") {
-        spark.range(3)
-          .toDF("id")
-          .withColumn("id", $"id".cast(StringType))
-          .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
-          .writeTo(s"$db.$tbl")
-          .append
+  private def check(): Unit = checkAnswer(
+    spark.sql(s"SELECT id, load_date FROM $db.$tbl"),
+    Seq(
+      Row("0", Date.valueOf("2022-05-27")),
+      Row("1", Date.valueOf("2022-05-27")),
+      Row("2", Date.valueOf("2022-05-27"))
+    )
+  )
 
-        checkAnswer(
-          spark.sql(s"SELECT id, load_date FROM $db.$tbl"),
-          Seq(
-            Row("0", Date.valueOf("2022-05-27")),
-            Row("1", Date.valueOf("2022-05-27")),
-            Row("2", Date.valueOf("2022-05-27"))
-          )
-        )
-        spark.sessionState.conf.unsetConf(WRITE_REPARTITION_BY_PARTITION)
-      }
+  override protected def beforeAll(): Unit = {
+    super.beforeAll()
+    sql(s"CREATE DATABASE IF NOT EXISTS `$db`")
+    runClickHouseSQL(
+      s"""CREATE TABLE `$db`.`$tbl` (
+         |  `id` String,
+         |  `load_date` Date
+         |) ENGINE = MergeTree
+         |ORDER BY load_date
+         |PARTITION BY xxHash64(id)
+         |""".stripMargin
+    )
+  }
+
+  override protected def afterAll(): Unit = {
+    sql(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
+    sql(s"DROP DATABASE IF EXISTS `$db`")
+    super.afterAll()
+  }
+
+  override protected def beforeEach(): Unit = {
+    sql(s"TRUNCATE TABLE `$db`.`$tbl`")
+    super.beforeEach()
+  }
+
+  def writeDataToTablesContainsUnsupportedPartitions(
+    ignoreUnsupportedTransform: Boolean,
+    repartitionByPartition: Boolean,
+    localSortByKey: Boolean
+  ): Unit = withSQLConf(
+    IGNORE_UNSUPPORTED_TRANSFORM.key -> ignoreUnsupportedTransform.toString,
+    WRITE_REPARTITION_BY_PARTITION.key -> repartitionByPartition.toString,
+    WRITE_LOCAL_SORT_BY_KEY.key -> localSortByKey.toString
+  ) {
+    if (!ignoreUnsupportedTransform && repartitionByPartition) {
+      intercept[AnalysisException](write())
+    } else {
+      write()
+      check()
     }
   }
 
-  test("write localSortByKey") {
-    autoCleanupTable("db_localSortByKey", "tbl_localSortByKey") { (db, tbl) =>
-      runClickHouseSQL(
-        s"""CREATE TABLE `$db`.`$tbl` (
-           |    `id` String,
-           |    `load_date` Date
-           |) ENGINE = MergeTree
-           |ORDER BY xxHash64(id)
-           |PARTITION BY load_date
-           |""".stripMargin
-      )
-
-      withSQLConf(WRITE_LOCAL_SORT_BY_KEY.key -> "true") {
-        intercept[AnalysisException] {
-          spark.range(3)
-            .toDF("id")
-            .withColumn("id", $"id".cast(StringType))
-            .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
-            .writeTo(s"$db.$tbl")
-            .append
-        }
-      }
-
-      withSQLConf(WRITE_LOCAL_SORT_BY_KEY.key -> "false") {
-        spark.range(3)
-          .toDF("id")
-          .withColumn("id", $"id".cast(StringType))
-          .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
-          .writeTo(s"$db.$tbl")
-          .append
-
-        checkAnswer(
-          spark.sql(s"SELECT id, load_date FROM $db.$tbl"),
-          Seq(
-            Row("0", Date.valueOf("2022-05-27")),
-            Row("1", Date.valueOf("2022-05-27")),
-            Row("2", Date.valueOf("2022-05-27"))
+  Seq(true, false).foreach { ignoreUnsupportedTransform =>
+    Seq(true, false).foreach { repartitionByPartition =>
+      Seq(true, false).foreach { localSortByKey =>
+        test("write data to table contains unsupported partitions - " +
+          s"ignoreUnsupportedTransform=$ignoreUnsupportedTransform " +
+          s"repartitionByPartition=$repartitionByPartition " +
+          s"localSortByKey=$localSortByKey") {
+          writeDataToTablesContainsUnsupportedPartitions(
+            ignoreUnsupportedTransform,
+            repartitionByPartition,
+            localSortByKey
           )
-        )
+        }
       }
     }
   }

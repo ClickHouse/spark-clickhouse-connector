@@ -14,7 +14,10 @@
 
 package org.apache.spark.sql.clickhouse
 
+import org.apache.spark.sql.AnalysisException
+import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.IGNORE_UNSUPPORTED_TRANSFORM
 import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions.{Expression => V2Expression, _}
 import org.apache.spark.sql.types.{IntegerType, LongType, StructField, StructType}
@@ -22,14 +25,15 @@ import xenon.clickhouse.exception.ClickHouseClientException
 import xenon.clickhouse.expr._
 
 import scala.annotation.tailrec
+import scala.util.{Failure, Success, Try}
 
-object ExprUtils {
+object ExprUtils extends SQLConfHelper {
 
   def toSparkPartitions(partitionKey: Option[List[Expr]]): Array[Transform] =
-    partitionKey.seq.flatten.map(toSparkTransform).toArray
+    partitionKey.seq.flatten.flatten(toSparkTransformOpt).toArray
 
   def toSparkSplits(shardingKey: Option[Expr], partitionKey: Option[List[Expr]]): Array[Transform] =
-    (shardingKey.seq ++ partitionKey.seq.flatten).map(toSparkTransform).toArray
+    (shardingKey.seq ++ partitionKey.seq.flatten).flatten(toSparkTransformOpt).toArray
 
   def toSparkSortOrders(
     shardingKeyIgnoreRand: Option[Expr],
@@ -37,10 +41,10 @@ object ExprUtils {
     sortingKey: Option[List[OrderExpr]]
   ): Array[SortOrder] =
     toSparkSplits(shardingKeyIgnoreRand, partitionKey).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
-      sortingKey.seq.flatten.map { case OrderExpr(expr, asc, nullFirst) =>
+      sortingKey.seq.flatten.flatten { case OrderExpr(expr, asc, nullFirst) =>
         val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
         val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
-        Expressions.sort(toSparkTransform(expr), direction, nullOrder)
+        toSparkTransformOpt(expr).map(trans => Expressions.sort(trans, direction, nullOrder))
       }.toArray
 
   @tailrec
@@ -58,6 +62,12 @@ object ExprUtils {
         )
     }
 
+  def toSparkTransformOpt(expr: Expr): Option[Transform] = Try(toSparkTransform(expr)) match {
+    case Success(t) => Some(t)
+    case Failure(_) if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) => None
+    case Failure(rethrow) => throw new AnalysisException(rethrow.getMessage, cause = Some(rethrow))
+  }
+
   // Some functions of ClickHouse which match Spark pre-defined Transforms
   //
   // toYear, YEAR - Converts a date or date with time to a UInt16 (AD)
@@ -74,7 +84,7 @@ object ExprUtils {
     case FuncExpr("toHour", List(FieldRef(col))) => hours(col)
     case FuncExpr("HOUR", List(FieldRef(col))) => hours(col)
     // TODO support arbitrary functions
-    case FuncExpr("xxHash64", List(FieldRef(col))) => apply("ck_xx_hash64", column(col))
+    // case FuncExpr("xxHash64", List(FieldRef(col))) => apply("ck_xx_hash64", column(col))
     case FuncExpr("rand", Nil) => apply("rand")
     case FuncExpr("toYYYYMMDD", List(FuncExpr("toDate", List(FieldRef(col))))) => identity(col)
     case unsupported => throw ClickHouseClientException(s"Unsupported ClickHouse expression: $unsupported")
