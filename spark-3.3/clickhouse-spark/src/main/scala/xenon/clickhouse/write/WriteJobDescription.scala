@@ -56,7 +56,7 @@ case class WriteJobDescription(
   }
 
   def sparkShardExpr: Option[Expression] = shardingKeyIgnoreRand match {
-    case Some(expr) => Some(ExprUtils.toSparkTransform(expr))
+    case Some(expr) => ExprUtils.toSparkTransformOpt(expr)
     case _ => None
   }
 

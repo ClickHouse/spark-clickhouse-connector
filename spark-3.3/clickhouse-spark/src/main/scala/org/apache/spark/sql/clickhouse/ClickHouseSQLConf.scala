@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
-import org.apache.spark.internal.config.{ConfigEntry, OptionalConfigEntry}
+import org.apache.spark.internal.config.ConfigEntry
 import org.apache.spark.sql.internal.SQLConf._
 import xenon.clickhouse.exception.ClickHouseErrCode._
 
@@ -133,6 +133,17 @@ object ClickHouseSQLConf {
       .version("0.3.0")
       .booleanConf
       .createWithDefault(true)
+
+  val IGNORE_UNSUPPORTED_TRANSFORM: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.ignoreUnsupportedTransform")
+      .doc("ClickHouse supports using complex expressions as sharding keys or partition values, " +
+        "e.g. `cityHash64(col_1, col_2)`, and those can not be supported by Spark now. If `true`, " +
+        "ignore the unsupported expressions, otherwise fail fast w/ an exception. Note: when " +
+        s"`${WRITE_DISTRIBUTED_CONVERT_LOCAL.key}` is enabled, ignore unsupported sharding keys " +
+        "may corrupt the data.")
+      .version("0.4.0")
+      .booleanConf
+      .createWithDefault(false)
 
   val WRITE_COMPRESSION_CODEC: ConfigEntry[String] =
     buildConf("spark.clickhouse.write.compression.codec")
