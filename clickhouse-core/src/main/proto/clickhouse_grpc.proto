@@ -140,8 +140,6 @@ message QueryInfo {
   // `next_query_info` is allowed to be set only if a method with streaming input (i.e. ExecuteQueryWithStreamInput() or ExecuteQueryWithStreamIO()) is used.
   bool next_query_info = 16;
 
-
-
   // Compression type for `input_data`.
   // Supported compression types: none, gzip(gz), deflate, brotli(br), lzma(xz), zstd(zst), lz4, bz2.
   // The client is responsible to compress data before putting it into `input_data`.
