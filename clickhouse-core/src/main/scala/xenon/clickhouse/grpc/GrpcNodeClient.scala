@@ -242,12 +242,12 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
 
   def onReceiveResult(result: Result, throwException: Boolean = true): Unit = {
     result.getLogsList.asScala.foreach { le: LogEntry =>
-      val logTime = Instant.ofEpochSecond(le.getTime.toLong, le.getTimeMicroseconds * 1000)
+      lazy val logTime = Instant.ofEpochSecond(le.getTime.toLong, le.getTimeMicroseconds * 1000)
         .atZone(ZoneOffset.UTC)
         .withZoneSameInstant(ZoneId.systemDefault())
         .format(Utils.dateTimeFmt)
 
-      val message = s"$logTime [${le.getQueryId}] ${le.getText}"
+      lazy val message = s"$logTime [${le.getQueryId}] ${le.getText}"
       le.getLevel match {
         case UNRECOGNIZED | LOG_NONE | LOG_FATAL | LOG_CRITICAL | LOG_ERROR => log.error(message)
         case LOG_WARNING | LOG_NOTICE => log.warn(message)
