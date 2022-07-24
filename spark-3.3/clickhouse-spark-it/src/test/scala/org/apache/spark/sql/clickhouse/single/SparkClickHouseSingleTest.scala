@@ -33,6 +33,8 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
     .set("spark.sql.catalog.clickhouse", "xenon.clickhouse.ClickHouseCatalog")
     .set("spark.sql.catalog.clickhouse.host", clickhouseHost)
     .set("spark.sql.catalog.clickhouse.grpc_port", clickhouseGrpcPort.toString)
+    .set("spark.sql.catalog.clickhouse.http_port", clickhouseHttpPort.toString)
+    .set("spark.sql.catalog.clickhouse.protocol", "http")
     .set("spark.sql.catalog.clickhouse.user", CLICKHOUSE_USER)
     .set("spark.sql.catalog.clickhouse.password", CLICKHOUSE_PASSWORD)
     .set("spark.sql.catalog.clickhouse.database", CLICKHOUSE_DB)
@@ -47,6 +49,8 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
   override def cmdRunnerOptions: Map[String, String] = Map(
     "host" -> clickhouseHost,
     "grpc_port" -> clickhouseGrpcPort.toString,
+    "http_port" -> clickhouseHttpPort.toString,
+    "protocol" -> "http",
     "user" -> CLICKHOUSE_USER,
     "password" -> CLICKHOUSE_PASSWORD,
     "database" -> CLICKHOUSE_DB

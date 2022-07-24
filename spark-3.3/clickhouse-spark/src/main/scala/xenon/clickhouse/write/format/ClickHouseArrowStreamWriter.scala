@@ -14,7 +14,6 @@
 
 package xenon.clickhouse.write.format
 
-import com.google.protobuf.ByteString
 import org.apache.arrow.memory.BufferAllocator
 import org.apache.arrow.vector.VectorSchemaRoot
 import org.apache.arrow.vector.ipc.ArrowStreamWriter
@@ -35,14 +34,14 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
 
   override def writeRow(record: InternalRow): Unit = arrowWriter.write(record)
 
-  override def doSerialize(): ByteString = {
+  override def doSerialize(): Array[Byte] = {
     arrowWriter.finish()
     val arrowStreamWriter = new ArrowStreamWriter(root, null, output)
     arrowStreamWriter.writeBatch()
     arrowStreamWriter.end()
     output.flush()
     output.close()
-    serializedBuffer.toByteString
+    serializedBuffer.toByteArray
   }
 
   override def reset(): Unit = {
