@@ -14,6 +14,7 @@
 
 package xenon.clickhouse.grpc
 
+import java.io.InputStream
 import java.time.{Instant, ZoneId, ZoneOffset}
 import java.util.UUID
 import java.util.concurrent.TimeUnit
@@ -133,7 +134,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     inputCompressionType: String,
     data: ByteString,
     outputFormat: String,
-    deserializer: ByteString => SimpleOutput[OUT],
+    deserializer: InputStream => SimpleOutput[OUT],
     settings: Map[String, String]
   ): Either[GRPCException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
@@ -153,7 +154,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   def syncQuery[OUT](
     sql: String,
     outputFormat: String,
-    deserializer: ByteString => SimpleOutput[OUT],
+    deserializer: InputStream => SimpleOutput[OUT],
     settings: Map[String, String]
   ): Either[GRPCException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
@@ -170,7 +171,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   def syncQueryAndCheck[OUT](
     sql: String,
     outputFormat: String,
-    deserializer: ByteString => SimpleOutput[OUT],
+    deserializer: InputStream => SimpleOutput[OUT],
     settings: Map[String, String]
   ): SimpleOutput[OUT] = syncQuery[OUT](sql, outputFormat, deserializer, settings) match {
     case Left(exception) => throw new ClickHouseServerException(exception, Some(node))
@@ -179,12 +180,12 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
 
   private def executeQuery[OUT](
     request: QueryInfo,
-    deserializer: ByteString => SimpleOutput[OUT]
+    deserializer: InputStream => SimpleOutput[OUT]
   ): Either[GRPCException, SimpleOutput[OUT]] =
     Some(blockingStub.executeQuery(request))
       .map { result => onReceiveResult(result, false); result }
       .get match {
-      case result: Result if result.getException.getCode == OK.code => Right(deserializer(result.getOutput))
+      case result: Result if result.getException.getCode == OK.code => Right(deserializer(result.getOutput.newInput()))
       case result: Result => Left(result.getException)
     }
 
@@ -206,7 +207,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   def syncStreamQueryAndCheck[OUT](
     sql: String,
     outputFormat: String,
-    outputStreamDeserializer: Iterator[ByteString] => StreamOutput[OUT],
+    outputStreamDeserializer: Iterator[InputStream] => StreamOutput[OUT],
     settings: Map[String, String]
   ): StreamOutput[OUT] = {
     val queryId = nextQueryId()
@@ -225,7 +226,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       }
       .map {
         case Left(gRPCException) => throw new ClickHouseServerException(gRPCException, Some(node))
-        case Right(output) => output
+        case Right(output) => output.newInput()
       }
     outputStreamDeserializer(outputIterator)
   }
