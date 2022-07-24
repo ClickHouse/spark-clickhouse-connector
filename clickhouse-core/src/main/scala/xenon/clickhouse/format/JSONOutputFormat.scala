@@ -22,7 +22,7 @@ import scala.collection.JavaConverters._
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import xenon.clickhouse.JsonProtocol.om
-import xenon.clickhouse.exception.ClickHouseClientException
+import xenon.clickhouse.exception.CHClientException
 
 ///////////////////////////////////////////////////////////////////////////////
 /////////////////////////////////// Simple ////////////////////////////////////
@@ -58,7 +58,7 @@ class JSONCompactEachRowWithNamesAndTypesSimpleOutput(
 
   private val _namesAndTypes: ListMap[String, String] = namesAndTypesData.take(2).toList match {
     case names :: types :: Nil => ListMap.empty ++ (names.map(_.asText) zip types.map(_.asText))
-    case _ => throw ClickHouseClientException("Corrupt data of output format JSONCompactEachRowWithNamesAndTypes")
+    case _ => throw CHClientException("Corrupt data of output format JSONCompactEachRowWithNamesAndTypes")
   }
 
   private val _records: Seq[Array[JsonNode]] = namesAndTypesData.drop(2)

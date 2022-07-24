@@ -23,7 +23,7 @@ import org.apache.spark.sql.connector.read.partitioning.{Partitioning, UnknownPa
 import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.vectorized.ColumnarBatch
-import xenon.clickhouse.exception.ClickHouseClientException
+import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
 import xenon.clickhouse.{ClickHouseHelper, Logging, SQLHelper, Utils}
@@ -147,7 +147,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
         }
       }
     case _: DistributedEngineSpec if scanJob.readOptions.useClusterNodesForDistributed =>
-      throw ClickHouseClientException(
+      throw CHClientException(
         s"${READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
       )
     case _: DistributedEngineSpec =>

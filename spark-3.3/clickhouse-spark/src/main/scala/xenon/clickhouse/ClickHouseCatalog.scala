@@ -14,7 +14,7 @@
 
 package xenon.clickhouse
 
-import org.apache.spark.sql.catalyst.analysis.{NoSuchTableException, _}
+import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.clickhouse.{ExprUtils, SchemaUtils}
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.functions.UnboundFunction
@@ -23,7 +23,7 @@ import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
 import xenon.clickhouse.exception.ClickHouseErrCode._
-import xenon.clickhouse.exception.{ClickHouseClientException, ClickHouseServerException}
+import xenon.clickhouse.exception.{CHClientException, CHServerException}
 import xenon.clickhouse.func.{ClickHouseXxHash64, ClickHouseXxHash64Shard}
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
@@ -186,7 +186,7 @@ class ClickHouseCatalog extends TableCatalog
   ): ClickHouseTable = {
     val (db, tbl) = unwrap(ident) match {
       case Some((d, t)) => (d, t)
-      case None => throw ClickHouseClientException(s"Invalid table identifier: $ident")
+      case None => throw CHClientException(s"Invalid table identifier: $ident")
     }
     val props = properties.asScala
 
@@ -307,7 +307,7 @@ class ClickHouseCatalog extends TableCatalog
           case Left(exception) => throw NoSuchTableException(exception.getMessage, Some(exception))
           case Right(_) =>
         }
-      case _ => throw ClickHouseClientException("Invalid table identifier")
+      case _ => throw CHClientException("Invalid table identifier")
     }
 
   override def defaultNamespace(): Array[String] = Array(currentDb)

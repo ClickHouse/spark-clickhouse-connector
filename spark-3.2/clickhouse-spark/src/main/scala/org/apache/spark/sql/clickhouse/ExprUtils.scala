@@ -21,7 +21,7 @@ import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.IGNORE_UNSUPPORTED_TRAN
 import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions.{Expression => V2Expression, _}
 import org.apache.spark.sql.types.{IntegerType, LongType, StructField, StructType}
-import xenon.clickhouse.exception.ClickHouseClientException
+import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.expr._
 
 import scala.annotation.tailrec
@@ -55,9 +55,9 @@ object ExprUtils extends SQLConfHelper {
         val (field, ordinal) = fields
           .zipWithIndex
           .find { case (field, _) => field.name == ref.fieldNames.head }
-          .getOrElse(throw ClickHouseClientException(s"Invalid field reference: $ref"))
+          .getOrElse(throw CHClientException(s"Invalid field reference: $ref"))
         BoundReference(ordinal, field.dataType, field.nullable)
-      case _ => throw ClickHouseClientException(
+      case _ => throw CHClientException(
           s"Unsupported V2 expression: $v2Expr, SPARK-33779: Spark 3.2 only support IdentityTransform"
         )
     }
@@ -86,7 +86,7 @@ object ExprUtils extends SQLConfHelper {
     // TODO support arbitrary functions
     // case FuncExpr("xxHash64", List(FieldRef(col))) => apply("ck_xx_hash64", column(col))
     case FuncExpr("rand", Nil) => apply("rand")
-    case unsupported => throw ClickHouseClientException(s"Unsupported ClickHouse expression: $unsupported")
+    case unsupported => throw CHClientException(s"Unsupported ClickHouse expression: $unsupported")
   }
 
   def toClickHouse(transform: Transform): Expr = transform match {
@@ -96,8 +96,8 @@ object ExprUtils extends SQLConfHelper {
     case HoursTransform(FieldReference(Seq(col))) => FuncExpr("toHour", List(FieldRef(col)))
     case IdentityTransform(fieldRefs) => FieldRef(fieldRefs.describe)
     case ApplyTransform(name, args) => FuncExpr(name, args.map(arg => SQLExpr(arg.describe())).toList)
-    case bucket: BucketTransform => throw ClickHouseClientException(s"Bucket transform not support yet: $bucket")
-    case other: Transform => throw ClickHouseClientException(s"Unsupported transform: $other")
+    case bucket: BucketTransform => throw CHClientException(s"Bucket transform not support yet: $bucket")
+    case other: Transform => throw CHClientException(s"Unsupported transform: $other")
   }
 
   def inferTransformSchema(
@@ -111,9 +111,9 @@ object ExprUtils extends SQLConfHelper {
     case hours: HoursTransform => StructField(hours.toString, IntegerType)
     case IdentityTransform(FieldReference(Seq(col))) => primarySchema.find(_.name == col)
         .orElse(secondarySchema.find(_.name == col))
-        .getOrElse(throw ClickHouseClientException(s"Invalid partition column: $col"))
+        .getOrElse(throw CHClientException(s"Invalid partition column: $col"))
     case ckXxhHash64 @ ApplyTransform("ck_xx_hash64", _) => StructField(ckXxhHash64.toString, LongType)
-    case bucket: BucketTransform => throw ClickHouseClientException(s"Bucket transform not support yet: $bucket")
-    case other: Transform => throw ClickHouseClientException(s"Unsupported transform: $other")
+    case bucket: BucketTransform => throw CHClientException(s"Bucket transform not support yet: $bucket")
+    case other: Transform => throw CHClientException(s"Unsupported transform: $other")
   }
 }

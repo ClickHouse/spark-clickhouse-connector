@@ -17,7 +17,7 @@ package org.apache.spark.sql.clickhouse
 import scala.util.matching.Regex
 
 import org.apache.spark.sql.types._
-import xenon.clickhouse.exception.ClickHouseClientException
+import xenon.clickhouse.exception.CHClientException
 
 object SchemaUtils {
 
@@ -43,7 +43,7 @@ object SchemaUtils {
       case "UInt16" | "Int32" => IntegerType
       case "UInt32" | "Int64" | "UInt64" | "IPv4" => LongType
       case "Int128" | "Int256" | "UInt256" =>
-        throw ClickHouseClientException(s"unsupported type: $chType") // not support
+        throw CHClientException(s"unsupported type: $chType") // not support
       case "Float32" => FloatType
       case "Float64" => DoubleType
       case dateTypePattern() => DateType
@@ -63,7 +63,7 @@ object SchemaUtils {
         require(!_keyNullable, s"Illegal type: $keyChType, the key type of Map should not be nullable")
         val (_valueType, _valueNullable) = fromClickHouseType(valueChType)
         MapType(_keyType, _valueType, _valueNullable)
-      case _ => throw ClickHouseClientException(s"Unsupported type: $chType")
+      case _ => throw CHClientException(s"Unsupported type: $chType")
     }
     (catalystType, nullable)
   }
@@ -87,7 +87,7 @@ object SchemaUtils {
       // TODO currently only support String as key
       case MapType(keyType, valueType, nullable) if keyType.isInstanceOf[StringType] =>
         s"Map(${toClickHouseType(keyType)},${maybeNullable(toClickHouseType(valueType), nullable)})"
-      case _ => throw ClickHouseClientException(s"Unsupported type: $catalystType")
+      case _ => throw CHClientException(s"Unsupported type: $catalystType")
     }
 
   def fromClickHouseSchema(chSchema: Seq[(String, String)]): StructType = {

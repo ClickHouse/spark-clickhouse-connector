@@ -27,7 +27,7 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import com.google.protobuf.ByteString
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
 import xenon.clickhouse.{Logging, Utils}
-import xenon.clickhouse.exception.{ClickHouseException, ClickHouseServerException}
+import xenon.clickhouse.exception.{CHException, CHServerException}
 import xenon.clickhouse.exception.ClickHouseErrCode._
 import xenon.clickhouse.format._
 import xenon.clickhouse.spec.NodeSpec
@@ -88,7 +88,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   def syncQueryOutputJSONEachRow(
     sql: String,
     settings: Map[String, String] = Map.empty
-  ): Either[ClickHouseException, SimpleOutput[ObjectNode]] =
+  ): Either[CHException, SimpleOutput[ObjectNode]] =
     syncQuery(sql, "JSONEachRow", JSONEachRowSimpleOutput.deserialize, settings)
 
   def syncQueryAndCheckOutputJSONEachRow(
@@ -104,7 +104,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     inputCompressionType: String = "none",
     data: ByteString,
     settings: Map[String, String] = Map.empty
-  ): Either[ClickHouseException, SimpleOutput[ObjectNode]] =
+  ): Either[CHException, SimpleOutput[ObjectNode]] =
     syncInsert(
       database,
       table,
@@ -136,7 +136,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     outputFormat: String,
     deserializer: InputStream => SimpleOutput[OUT],
     settings: Map[String, String]
-  ): Either[ClickHouseException, SimpleOutput[OUT]] = {
+  ): Either[CHException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecuteQuery(queryId, sql)
@@ -156,7 +156,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     outputFormat: String,
     deserializer: InputStream => SimpleOutput[OUT],
     settings: Map[String, String]
-  ): Either[ClickHouseException, SimpleOutput[OUT]] = {
+  ): Either[CHException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
@@ -181,12 +181,12 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   private def executeQuery[OUT](
     request: QueryInfo,
     deserializer: InputStream => SimpleOutput[OUT]
-  ): Either[ClickHouseException, SimpleOutput[OUT]] =
+  ): Either[CHException, SimpleOutput[OUT]] =
     Some(blockingStub.executeQuery(request))
       .map { result => onReceiveResult(result, false); result }
       .get match {
       case result: Result if result.getException.getCode == OK.code => Right(deserializer(result.getOutput.newInput()))
-      case result: Result => Left(new ClickHouseServerException(result.getException, Some(node)))
+      case result: Result => Left(new CHServerException(result.getException, Some(node)))
     }
 
   // //////////////////////////////////////////////////////////////////////////////
@@ -223,7 +223,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       .map { result => onReceiveResult(result, false); result }
       .map { result =>
         if (result.getException.getCode == OK.code) Right(result.getOutput)
-        else Left(throw new ClickHouseServerException(result.getException, Some(node)))
+        else Left(throw new CHServerException(result.getException, Some(node)))
       }
       .map {
         case Left(rethrow) => throw rethrow
@@ -259,6 +259,6 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       }
     }
     if (throwException && result.getException.getCode != OK.code)
-      throw new ClickHouseServerException(result.getException, Some(node))
+      throw new CHServerException(result.getException, Some(node))
   }
 }
