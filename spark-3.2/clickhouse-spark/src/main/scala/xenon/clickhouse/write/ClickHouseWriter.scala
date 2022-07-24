@@ -164,9 +164,9 @@ class ClickHouseWriter(writeJob: WriteJobDescription)
         data
       ) match {
         case Right(_) => buf.clear
-        case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.getCode) =>
-          throw new RetryableClickHouseException(retryable, Some(client.node))
-        case Left(rethrow) => throw new ClickHouseServerException(rethrow, Some(client.node))
+        case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.code) =>
+          throw RetryableClickHouseException(retryable.code, retryable.reason, Some(client.node))
+        case Left(rethrow) => throw rethrow
       }
     } match {
       case Success(_) => log.info(s"Job[${writeJob.queryId}]: flush batch completed")

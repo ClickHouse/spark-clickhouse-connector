@@ -27,11 +27,11 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 import com.google.protobuf.ByteString
 import io.grpc.{ManagedChannel, ManagedChannelBuilder}
 import xenon.clickhouse.{Logging, Utils}
+import xenon.clickhouse.exception.{ClickHouseException, ClickHouseServerException}
 import xenon.clickhouse.exception.ClickHouseErrCode._
-import xenon.clickhouse.exception.ClickHouseServerException
 import xenon.clickhouse.format._
 import xenon.clickhouse.spec.NodeSpec
-import xenon.protocol.grpc.{ClickHouseGrpc, Exception => GRPCException, LogEntry, QueryInfo, Result}
+import xenon.protocol.grpc.{ClickHouseGrpc, LogEntry, QueryInfo, Result}
 import xenon.protocol.grpc.LogsLevel._
 
 object GrpcNodeClient {
@@ -88,7 +88,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
   def syncQueryOutputJSONEachRow(
     sql: String,
     settings: Map[String, String] = Map.empty
-  ): Either[GRPCException, SimpleOutput[ObjectNode]] =
+  ): Either[ClickHouseException, SimpleOutput[ObjectNode]] =
     syncQuery(sql, "JSONEachRow", JSONEachRowSimpleOutput.deserialize, settings)
 
   def syncQueryAndCheckOutputJSONEachRow(
@@ -104,7 +104,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     inputCompressionType: String = "none",
     data: ByteString,
     settings: Map[String, String] = Map.empty
-  ): Either[GRPCException, SimpleOutput[ObjectNode]] =
+  ): Either[ClickHouseException, SimpleOutput[ObjectNode]] =
     syncInsert(
       database,
       table,
@@ -136,7 +136,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     outputFormat: String,
     deserializer: InputStream => SimpleOutput[OUT],
     settings: Map[String, String]
-  ): Either[GRPCException, SimpleOutput[OUT]] = {
+  ): Either[ClickHouseException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecuteQuery(queryId, sql)
@@ -156,7 +156,7 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     outputFormat: String,
     deserializer: InputStream => SimpleOutput[OUT],
     settings: Map[String, String]
-  ): Either[GRPCException, SimpleOutput[OUT]] = {
+  ): Either[ClickHouseException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
     val queryInfo = QueryInfo.newBuilder(baseQueryInfo)
@@ -174,19 +174,19 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
     deserializer: InputStream => SimpleOutput[OUT],
     settings: Map[String, String]
   ): SimpleOutput[OUT] = syncQuery[OUT](sql, outputFormat, deserializer, settings) match {
-    case Left(exception) => throw new ClickHouseServerException(exception, Some(node))
+    case Left(rethrow) => throw rethrow
     case Right(output) => output
   }
 
   private def executeQuery[OUT](
     request: QueryInfo,
     deserializer: InputStream => SimpleOutput[OUT]
-  ): Either[GRPCException, SimpleOutput[OUT]] =
+  ): Either[ClickHouseException, SimpleOutput[OUT]] =
     Some(blockingStub.executeQuery(request))
       .map { result => onReceiveResult(result, false); result }
       .get match {
       case result: Result if result.getException.getCode == OK.code => Right(deserializer(result.getOutput.newInput()))
-      case result: Result => Left(result.getException)
+      case result: Result => Left(new ClickHouseServerException(result.getException, Some(node)))
     }
 
   // //////////////////////////////////////////////////////////////////////////////
@@ -222,10 +222,11 @@ class GrpcNodeClient(val node: NodeSpec) extends AutoCloseable with Logging {
       .asScala
       .map { result => onReceiveResult(result, false); result }
       .map { result =>
-        if (result.getException.getCode == OK.code) Right(result.getOutput) else Left(result.getException)
+        if (result.getException.getCode == OK.code) Right(result.getOutput)
+        else Left(throw new ClickHouseServerException(result.getException, Some(node)))
       }
       .map {
-        case Left(gRPCException) => throw new ClickHouseServerException(gRPCException, Some(node))
+        case Left(rethrow) => throw rethrow
         case Right(output) => output.newInput()
       }
     outputStreamDeserializer(outputIterator)

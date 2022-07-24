@@ -90,10 +90,10 @@ class ClickHouseCatalog extends TableCatalog
   override def listTables(namespace: Array[String]): Array[Identifier] = namespace match {
     case Array(database) =>
       grpcNodeClient.syncQueryOutputJSONEachRow(s"SHOW TABLES IN ${quoted(database)}") match {
-        case Left(exception) if exception.getCode == UNKNOWN_DATABASE.code =>
+        case Left(exception) if exception.code == UNKNOWN_DATABASE.code =>
           throw new NoSuchNamespaceException(namespace.mkString("."))
-        case Left(exception) =>
-          throw new ClickHouseServerException(exception)
+        case Left(rethrow) =>
+          throw rethrow
         case Right(output) =>
           output.records
             .map(row => row.get("name").asText)
@@ -109,13 +109,13 @@ class ClickHouseCatalog extends TableCatalog
       case None => throw new NoSuchTableException(ident)
       case Some((db, tbl)) =>
         grpcNodeClient.syncQueryOutputJSONEachRow(s"SELECT * FROM `$db`.`$tbl` WHERE 1=0") match {
-          case Left(exception) if exception.getCode == UNKNOWN_TABLE.code =>
+          case Left(exception) if exception.code == UNKNOWN_TABLE.code =>
             throw new NoSuchTableException(ident)
           // not sure if this check is necessary
-          case Left(exception) if exception.getCode == UNKNOWN_DATABASE.code =>
+          case Left(exception) if exception.code == UNKNOWN_DATABASE.code =>
             throw new NoSuchTableException(s"Database $db does not exist")
-          case Left(exception) =>
-            throw new ClickHouseServerException(exception)
+          case Left(rethrow) =>
+            throw rethrow
           case Right(_) => (db, tbl)
         }
     }
@@ -304,7 +304,7 @@ class ClickHouseCatalog extends TableCatalog
     (unwrap(oldIdent), unwrap(newIdent)) match {
       case (Some((oldDb, oldTbl)), Some((newDb, newTbl))) =>
         grpcNodeClient.syncQueryOutputJSONEachRow(s"RENAME TABLE `$oldDb`.`$oldTbl` to `$newDb`.`$newTbl`") match {
-          case Left(exception) => throw new NoSuchTableException(exception.getDisplayText)
+          case Left(exception) => throw new NoSuchTableException(exception.getMessage, Some(exception))
           case Right(_) =>
         }
       case _ => throw ClickHouseClientException("Invalid table identifier")

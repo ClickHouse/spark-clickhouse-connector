@@ -15,7 +15,9 @@
 package xenon.clickhouse
 
 import java.time.{LocalDateTime, ZoneId}
+
 import scala.collection.JavaConverters._
+
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
@@ -25,6 +27,7 @@ import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
 import xenon.clickhouse.Utils.dateTimeFmt
+import xenon.clickhouse.exception.ClickHouseException
 import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
 import xenon.protocol.grpc.{Exception => GRPCException}
@@ -288,8 +291,8 @@ trait ClickHouseHelper extends Logging {
       s"ALTER TABLE `$database`.`$table` ${cluster.map(c => s"ON CLUSTER $c").getOrElse("")} DROP PARTITION $partitionExpr"
     ) match {
       case Right(_) => true
-      case Left(ge: GRPCException) =>
-        log.error(s"[${ge.getCode}]: ${ge.getDisplayText}")
+      case Left(ex: ClickHouseException) =>
+        log.error(s"[${ex.code}]: ${ex.getMessage}")
         false
     }
 
@@ -307,8 +310,8 @@ trait ClickHouseHelper extends Logging {
       Map("mutations_sync" -> "2")
     ) match {
       case Right(_) => true
-      case Left(ge: GRPCException) =>
-        log.error(s"[${ge.getCode}]: ${ge.getDisplayText}")
+      case Left(ex: ClickHouseException) =>
+        log.error(s"[${ex.code}]: ${ex.getMessage}")
         false
     }
 
@@ -322,8 +325,8 @@ trait ClickHouseHelper extends Logging {
     s"TRUNCATE TABLE `$database`.`$table` ${cluster.map(c => s"ON CLUSTER $c").getOrElse("")}"
   ) match {
     case Right(_) => true
-    case Left(ge: GRPCException) =>
-      log.error(s"[${ge.getCode}]: ${ge.getDisplayText}")
+    case Left(ex: ClickHouseException) =>
+      log.error(s"[${ex.code}]: ${ex.getMessage}")
       false
   }
 }
