@@ -26,7 +26,7 @@ import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 import xenon.clickhouse.{ClickHouseHelper, Logging}
 import xenon.clickhouse.Utils._
-import xenon.clickhouse.exception.ClickHouseClientException
+import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.format.StreamOutput
 import xenon.clickhouse.grpc.{GrpcNodeClient, GrpcNodesClient}
 
@@ -112,7 +112,7 @@ class ClickHouseReader(
         }.toMap
         ArrayBasedMapData(mapData)
       case _ =>
-        throw ClickHouseClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
+        throw CHClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
     }
   }
 

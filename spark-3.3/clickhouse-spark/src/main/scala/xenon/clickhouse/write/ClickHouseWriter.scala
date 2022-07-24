@@ -66,7 +66,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
               || dataType.isInstanceOf[LongType] =>
           Some(catalystExpr)
         case BoundReference(_, dataType, _) =>
-          throw ClickHouseClientException(s"Invalid data type of sharding field: $dataType")
+          throw CHClientException(s"Invalid data type of sharding field: $dataType")
         case unsupported: Expression =>
           log.warn(s"Unsupported expression of sharding field: $unsupported")
           None
@@ -167,7 +167,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
         bufferedForwardingOutput.updateDelegate(zstdOutput)
         bufferedForwardingOutput
       case unsupported =>
-        throw ClickHouseClientException(s"unsupported compression codec: $unsupported")
+        throw CHClientException(s"unsupported compression codec: $unsupported")
     }
     compressedForwardingOutput.updateDelegate(compressedOutput)
   }
@@ -228,7 +228,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     val client = grpcNodeClient(shardNum)
     val data = serialize()
     var writeTime = 0L
-    Utils.retry[Unit, RetryableClickHouseException](
+    Utils.retry[Unit, RetryableCHException](
       writeJob.writeOptions.maxRetry,
       writeJob.writeOptions.retryInterval
     ) {
@@ -240,7 +240,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
           _totalRecordsWritten.add(currentBufferedRows)
         case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.code) =>
           startWriteTime = System.currentTimeMillis
-          throw RetryableClickHouseException(retryable.code, retryable.reason, Some(client.node))
+          throw RetryableCHException(retryable.code, retryable.reason, Some(client.node))
         case Left(rethrow) => throw rethrow
       }
     } match {

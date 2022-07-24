@@ -14,7 +14,7 @@
 
 package xenon.clickhouse.spec
 
-import xenon.clickhouse.exception.ClickHouseClientException
+import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.parse.{ParseException, ParseUtils}
 import xenon.clickhouse.Logging
 
@@ -31,5 +31,5 @@ object TableEngineUtils extends Logging {
 
   def resolveTableCluster(distributedEngineSpec: DistributedEngineSpec, clusterSpecs: Seq[ClusterSpec]): ClusterSpec =
     clusterSpecs.find(_.name == distributedEngineSpec.cluster)
-      .getOrElse(throw ClickHouseClientException(s"Unknown cluster: ${distributedEngineSpec.cluster}"))
+      .getOrElse(throw CHClientException(s"Unknown cluster: ${distributedEngineSpec.cluster}"))
 }
