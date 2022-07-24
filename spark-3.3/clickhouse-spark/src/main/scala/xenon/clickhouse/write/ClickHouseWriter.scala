@@ -238,10 +238,10 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
           writeTime = System.currentTimeMillis - startWriteTime
           _totalWrittenTime.add(writeTime)
           _totalRecordsWritten.add(currentBufferedRows)
-        case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.getCode) =>
+        case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.code) =>
           startWriteTime = System.currentTimeMillis
-          throw new RetryableClickHouseException(retryable, Some(client.node))
-        case Left(rethrow) => throw new ClickHouseServerException(rethrow, Some(client.node))
+          throw RetryableClickHouseException(retryable.code, retryable.reason, Some(client.node))
+        case Left(rethrow) => throw rethrow
       }
     } match {
       case Success(_) =>
