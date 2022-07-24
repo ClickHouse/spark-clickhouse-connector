@@ -18,6 +18,7 @@ import java.time.{LocalDateTime, ZoneId}
 
 import scala.collection.JavaConverters._
 
+import com.clickhouse.client.ClickHouseProtocol
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
@@ -27,10 +28,9 @@ import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
 import xenon.clickhouse.Utils.dateTimeFmt
+import xenon.clickhouse.client.NodeClient
 import xenon.clickhouse.exception.CHException
-import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
-import xenon.protocol.grpc.{Exception => GRPCException}
 
 trait ClickHouseHelper extends Logging {
 
@@ -45,17 +45,18 @@ trait ClickHouseHelper extends Logging {
     case _ => None
   }
 
-  def buildNodeSpec(options: CaseInsensitiveStringMap): NodeSpec = {
-    val host = options.getOrDefault(CATALOG_PROP_HOST, "localhost")
-    val port = options.getInt(CATALOG_PROP_GRPC_PORT, 9100)
-    val user = options.getOrDefault(CATALOG_PROP_USER, "default")
-    val password = options.getOrDefault(CATALOG_PROP_PASSWORD, "")
-    val database = options.getOrDefault(CATALOG_PROP_DATABASE, "default")
-    NodeSpec(_host = host, _grpc_port = Some(port), username = user, password = password, database = database)
-  }
+  def buildNodeSpec(options: CaseInsensitiveStringMap): NodeSpec = NodeSpec(
+    _host = options.getOrDefault(CATALOG_PROP_HOST, "localhost"),
+    _grpc_port = Some(options.getInt(CATALOG_PROP_GRPC_PORT, 9100)),
+    _http_port = Some(options.getInt(CATALOG_PROP_HTTP_PORT, 8123)),
+    protocol = ClickHouseProtocol.fromUriScheme(options.getOrDefault(CATALOG_PROP_PROTOCOL, "grpc")),
+    username = options.getOrDefault(CATALOG_PROP_USER, "default"),
+    password = options.getOrDefault(CATALOG_PROP_PASSWORD, ""),
+    database = options.getOrDefault(CATALOG_PROP_DATABASE, "default")
+  )
 
-  def queryClusterSpecs(nodeSpec: NodeSpec)(implicit grpcNodeClient: GrpcNodeClient): Seq[ClusterSpec] = {
-    val clustersOutput = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
+  def queryClusterSpecs(nodeSpec: NodeSpec)(implicit nodeClient: NodeClient): Seq[ClusterSpec] = {
+    val clustersOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
       """ SELECT
         |   `cluster`,                 -- String
         |   `shard_num`,               -- UInt32
@@ -86,7 +87,8 @@ trait ClickHouseHelper extends Logging {
                 // host_address is not works for testcontainers
                 _host = row.get("host_name").asText,
                 _tcp_port = Some(row.get("port").asInt),
-                _grpc_port = if (Utils.isTesting) Some(9100) else nodeSpec.grpc_port
+                _grpc_port = if (Utils.isTesting) Some(9100) else nodeSpec.grpc_port,
+                _http_port = if (Utils.isTesting) Some(8123) else nodeSpec.http_port
               )
               ReplicaSpec(replicaNum, clickhouseNode)
             }.toArray
@@ -99,8 +101,8 @@ trait ClickHouseHelper extends Logging {
   def queryDatabaseSpec(
     database: String,
     actionIfNoSuchDatabase: String => Unit = DEFAULT_ACTION_IF_NO_SUCH_DATABASE
-  )(implicit grpcNodeClient: GrpcNodeClient): DatabaseSpec = {
-    val output = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
+  )(implicit nodeClient: NodeClient): DatabaseSpec = {
+    val output = nodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  `name`,          -- String
          |  `engine`,        -- String
@@ -129,10 +131,10 @@ trait ClickHouseHelper extends Logging {
     table: String,
     actionIfNoSuchTable: (String, String) => Unit = DEFAULT_ACTION_IF_NO_SUCH_TABLE
   )(implicit
-    grpcNodeClient: GrpcNodeClient,
+    nodeClient: NodeClient,
     tz: ZoneId
   ): TableSpec = {
-    val tableOutput = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
+    val tableOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  `database`,                   -- String
          |  `name`,                       -- String
@@ -207,8 +209,8 @@ trait ClickHouseHelper extends Logging {
     database: String,
     table: String,
     actionIfNoSuchTable: (String, String) => Unit = DEFAULT_ACTION_IF_NO_SUCH_TABLE
-  )(implicit grpcNodeClient: GrpcNodeClient): StructType = {
-    val columnOutput = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
+  )(implicit nodeClient: NodeClient): StructType = {
+    val columnOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  `database`,                -- String
          |  `table`,                   -- String
@@ -244,8 +246,8 @@ trait ClickHouseHelper extends Logging {
   def queryPartitionSpec(
     database: String,
     table: String
-  )(implicit grpcNodeClient: GrpcNodeClient): Seq[PartitionSpec] = {
-    val partOutput = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
+  )(implicit nodeClient: NodeClient): Seq[PartitionSpec] = {
+    val partOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  partition,                           -- String
          |  partition_id,                        -- String
@@ -274,8 +276,8 @@ trait ClickHouseHelper extends Logging {
    * This method is considered as lightweight. Typically `sql` should contains `where 1=0` to avoid running the query on
    * ClickHouse.
    */
-  def getQueryOutputSchema(sql: String)(implicit grpcNodeClient: GrpcNodeClient): StructType = {
-    val namesAndTypes = grpcNodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql).namesAndTypes
+  def getQueryOutputSchema(sql: String)(implicit nodeClient: NodeClient): StructType = {
+    val namesAndTypes = nodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql).namesAndTypes
     SchemaUtils.fromClickHouseSchema(namesAndTypes.toSeq)
   }
 
@@ -285,9 +287,9 @@ trait ClickHouseHelper extends Logging {
     partitionExpr: String,
     cluster: Option[String] = None
   )(implicit
-    grpcNodeClient: GrpcNodeClient
+    nodeClient: NodeClient
   ): Boolean =
-    grpcNodeClient.syncQueryOutputJSONEachRow(
+    nodeClient.syncQueryOutputJSONEachRow(
       s"ALTER TABLE `$database`.`$table` ${cluster.map(c => s"ON CLUSTER $c").getOrElse("")} DROP PARTITION $partitionExpr"
     ) match {
       case Right(_) => true
@@ -302,9 +304,9 @@ trait ClickHouseHelper extends Logging {
     deleteExpr: String,
     cluster: Option[String] = None
   )(implicit
-    grpcNodeClient: GrpcNodeClient
+    nodeClient: NodeClient
   ): Boolean =
-    grpcNodeClient.syncQueryOutputJSONEachRow(
+    nodeClient.syncQueryOutputJSONEachRow(
       s"ALTER TABLE `$database`.`$table` ${cluster.map(c => s"ON CLUSTER $c").getOrElse("")} DELETE WHERE $deleteExpr",
       // https://clickhouse.com/docs/en/sql-reference/statements/alter/#synchronicity-of-alter-queries
       Map("mutations_sync" -> "2")
@@ -320,8 +322,8 @@ trait ClickHouseHelper extends Logging {
     table: String,
     cluster: Option[String] = None
   )(implicit
-    grpcNodeClient: GrpcNodeClient
-  ): Boolean = grpcNodeClient.syncQueryOutputJSONEachRow(
+    nodeClient: NodeClient
+  ): Boolean = nodeClient.syncQueryOutputJSONEachRow(
     s"TRUNCATE TABLE `$database`.`$table` ${cluster.map(c => s"ON CLUSTER $c").getOrElse("")}"
   ) match {
     case Right(_) => true

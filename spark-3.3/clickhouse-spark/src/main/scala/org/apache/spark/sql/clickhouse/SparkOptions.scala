@@ -14,6 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
+import com.clickhouse.client.ClickHouseCompression
 import org.apache.spark.internal.config.ConfigEntry
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
@@ -76,8 +77,8 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
   def localSortByKey: Boolean =
     eval(WRITE_LOCAL_SORT_BY_KEY.key, WRITE_LOCAL_SORT_BY_KEY)
 
-  def compressionCodec: String =
-    eval(WRITE_COMPRESSION_CODEC.key, WRITE_COMPRESSION_CODEC)
+  def compressionCodec: ClickHouseCompression =
+    ClickHouseCompression.fromEncoding(eval(WRITE_COMPRESSION_CODEC.key, WRITE_COMPRESSION_CODEC))
 
   def format: String =
     eval(WRITE_FORMAT.key, WRITE_FORMAT)
