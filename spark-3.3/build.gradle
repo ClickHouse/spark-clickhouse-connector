@@ -50,15 +50,8 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
         zip64 true
         classifier null
 
-        exclude "google/**/*.proto"
-        exclude "META-INF/native/**"
-        exclude "META-INF/native-image/**"
-
         relocate "com.fasterxml.jackson", "xenon.relocated.com.fasterxml.jackson"
-        relocate "com.google", "xenon.relocated.com.google"
         relocate "com.thoughtworks.paranamer", "xenon.relocated.com.thoughtworks.paranamer"
-        relocate "io.grpc", "xenon.relocated.io.grpc"
-        relocate "io.perfmark", "xenon.relocated.io.perfmark"
 
         mergeServiceFiles()
     }

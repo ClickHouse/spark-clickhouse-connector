@@ -15,7 +15,6 @@
 package xenon.clickhouse.exception
 
 import xenon.clickhouse.spec.NodeSpec
-import xenon.protocol.grpc.{Exception => GRPCException}
 
 abstract class CHException(val code: Int, val reason: String, val node: Option[NodeSpec])
     extends RuntimeException(s"${node.getOrElse("")} [$code] $reason")
@@ -24,11 +23,7 @@ case class CHServerException(
   override val code: Int,
   override val reason: String,
   override val node: Option[NodeSpec]
-) extends CHException(code, reason, node) {
-
-  def this(exception: GRPCException, node: Option[NodeSpec] = None) =
-    this(exception.getCode, exception.getDisplayText, node)
-}
+) extends CHException(code, reason, node)
 
 case class CHClientException(override val reason: String, override val node: Option[NodeSpec] = None)
     extends CHException(ClickHouseErrCode.CLIENT_ERROR.code(), reason, node)
@@ -37,7 +32,4 @@ case class RetryableCHException(
   override val code: Int,
   override val reason: String,
   override val node: Option[NodeSpec]
-) extends CHException(code, reason, node) {
-
-  def this(exception: GRPCException, node: Option[NodeSpec]) = this(exception.getCode, exception.getDisplayText, node)
-}
+) extends CHException(code, reason, node)
