@@ -14,6 +14,8 @@
 
 package xenon.clickhouse.spec
 
+import com.clickhouse.client.ClickHouseProtocol
+import com.clickhouse.client.ClickHouseProtocol._
 import com.fasterxml.jackson.annotation.{JsonIgnore, JsonProperty}
 import xenon.clickhouse.ToJson
 import xenon.clickhouse.Utils._
@@ -27,6 +29,7 @@ case class NodeSpec(
   @JsonIgnore private val _http_port: Option[Int] = None,
   @JsonIgnore private val _tcp_port: Option[Int] = None,
   @JsonIgnore private val _grpc_port: Option[Int] = None,
+  @JsonProperty("protocol") protocol: ClickHouseProtocol = GRPC,
   @JsonProperty("username") username: String = "default",
   @JsonProperty("password") password: String = "",
   @JsonProperty("database") database: String = "default"
@@ -48,7 +51,14 @@ case class NodeSpec(
       source.map(p => sys.props.get(s"${PREFIX}_HOST_${_host}_PORT_$p").map(_.toInt).getOrElse(p))
     } else source
 
-  override def toString: String = s"$username@${_host}${grpc_port.map(p => s":$p").getOrElse("")}/$database"
+  def port: Int = protocol match {
+    case GRPC => grpc_port.get
+    case HTTP => http_port.get
+    case TCP => tcp_port.get
+    case unsupported => throw new IllegalArgumentException(s"Unsupported protocol: $unsupported")
+  }
+
+  override def toString: String = s"[$protocol]$username@$host:$port}/$database"
 
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = Array(this)
 }
