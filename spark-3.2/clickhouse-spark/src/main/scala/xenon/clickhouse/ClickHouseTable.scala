@@ -29,15 +29,16 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.apache.spark.unsafe.types.UTF8String
 import xenon.clickhouse.Utils._
 import xenon.clickhouse.expr.{Expr, OrderExpr}
-import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.read.{ClickHouseMetadataColumn, ClickHouseScanBuilder, ScanJobDescription}
 import xenon.clickhouse.spec._
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDescription}
-
 import java.lang.{Integer => JInt, Long => JLong}
 import java.time.{LocalDate, ZoneId}
 import java.util
+
 import scala.collection.JavaConverters._
+
+import xenon.clickhouse.client.NodeClient
 
 case class ClickHouseTable(
   node: NodeSpec,
@@ -67,7 +68,7 @@ case class ClickHouseTable(
 
   lazy val (localTableSpec, localTableEngineSpec): (Option[TableSpec], Option[MergeTreeFamilyEngineSpec]) =
     engineSpec match {
-      case distSpec: DistributedEngineSpec => Utils.tryWithResource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+      case distSpec: DistributedEngineSpec => Utils.tryWithResource(NodeClient(node)) { implicit NodeClient =>
           val _localTableSpec = queryTableSpec(distSpec.local_db, distSpec.local_table)
           val _localTableEngineSpec =
             TableEngineUtils.resolveTableEngine(_localTableSpec).asInstanceOf[MergeTreeFamilyEngineSpec]
@@ -103,7 +104,7 @@ case class ClickHouseTable(
       ACCEPT_ANY_SCHEMA // TODO check schema and handle extra columns before writing
     ).asJava
 
-  override lazy val schema: StructType = Utils.tryWithResource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+  override lazy val schema: StructType = Utils.tryWithResource(NodeClient(node)) { implicit NodeClient =>
     queryTableSchema(database, table)
   }
 
@@ -185,7 +186,7 @@ case class ClickHouseTable(
       }
     }.mkString("(", ",", ")")
 
-    Utils.tryWithResource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+    Utils.tryWithResource(NodeClient(node)) { implicit NodeClient =>
       engineSpec match {
         case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
           dropPartition(local_db, local_table, partitionExpr, Some(cluster))
@@ -228,12 +229,12 @@ case class ClickHouseTable(
     val partitionSpecs: Seq[PartitionSpec] = engineSpec match {
       case DistributedEngineSpec(_, _, local_db, local_table, _, _) =>
         cluster.get.shards.flatMap { shardSpec =>
-          Utils.tryWithResource(GrpcNodeClient(shardSpec.nodes.head)) { implicit grpcNodeClient: GrpcNodeClient =>
+          Utils.tryWithResource(NodeClient(shardSpec.nodes.head)) { implicit nodeClient: NodeClient =>
             queryPartitionSpec(local_db, local_table)
           }
         }
       case _ =>
-        Utils.tryWithResource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+        Utils.tryWithResource(NodeClient(node)) { implicit NodeClient =>
           queryPartitionSpec(database, table)
         }
     }
@@ -267,7 +268,7 @@ case class ClickHouseTable(
 
   override def deleteWhere(filters: Array[Filter]): Unit = {
     val deleteExpr = compileFilters(AlwaysTrue :: filters.toList)
-    Utils.tryWithResource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+    Utils.tryWithResource(NodeClient(node)) { implicit NodeClient =>
       engineSpec match {
         case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
           delete(local_db, local_table, deleteExpr, Some(cluster))
@@ -278,7 +279,7 @@ case class ClickHouseTable(
   }
 
   override def truncateTable(): Boolean =
-    Utils.tryWithResource(GrpcNodeClient(node)) { implicit grpcNodeClient =>
+    Utils.tryWithResource(NodeClient(node)) { implicit NodeClient =>
       engineSpec match {
         case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
           truncateTable(local_db, local_table, Some(cluster))

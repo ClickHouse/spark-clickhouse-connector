@@ -16,12 +16,12 @@ package xenon.clickhouse
 
 import org.apache.spark.sql.connector.ExternalCommandRunner
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
-import xenon.clickhouse.grpc.GrpcNodeClient
+import xenon.clickhouse.client.NodeClient
 
 class ClickHouseCommandRunner extends ExternalCommandRunner with ClickHouseHelper {
 
   override def executeCommand(sql: String, options: CaseInsensitiveStringMap): Array[String] =
-    Utils.tryWithResource(GrpcNodeClient(buildNodeSpec(options))) { grpcNodeClient =>
-      grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(sql).records.map(_.toString).toArray
+    Utils.tryWithResource(NodeClient(buildNodeSpec(options))) { nodeClient =>
+      nodeClient.syncQueryAndCheckOutputJSONEachRow(sql).records.map(_.toString).toArray
     }
 }

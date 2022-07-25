@@ -42,6 +42,7 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
             exclude group: "org.scala-lang", module: "scala-library"
             exclude group: "org.slf4j", module: "slf4j-api"
             exclude group: "org.apache.commons", module: "commons-lang3"
+            exclude group: "com.clickhouse", module: "clickhouse-jdbc"
         }
     }
 
@@ -89,6 +90,8 @@ project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version") {
         testImplementation "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
         testImplementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
         testImplementation "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
+
+        testImplementation("com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version:all") { transitive = false }
 
         if (scala_binary_version == "2.12") {
             testImplementation "org.apache.kyuubi:kyuubi-spark-connector-tpcds_${scala_binary_version}:1.6.0-SNAPSHOT"

@@ -14,9 +14,11 @@
 
 package xenon.clickhouse.read
 
-import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
+import java.time.{LocalDate, ZonedDateTime, ZoneOffset}
+
 import scala.collection.JavaConverters._
 import scala.math.BigDecimal.RoundingMode
+
 import com.fasterxml.jackson.databind.JsonNode
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData}
@@ -26,9 +28,9 @@ import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 import xenon.clickhouse.{ClickHouseHelper, Logging}
 import xenon.clickhouse.Utils._
+import xenon.clickhouse.client.{NodeClient, NodesClient}
 import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.format.StreamOutput
-import xenon.clickhouse.grpc.{GrpcNodeClient, GrpcNodesClient}
 
 class ClickHouseReader(
   scanJob: ScanJobDescription,
@@ -46,9 +48,9 @@ class ClickHouseReader(
 
   def readSchema: StructType = scanJob.readSchema
 
-  private lazy val grpcClient: GrpcNodesClient = GrpcNodesClient(part.candidateNodes)
+  private lazy val nodesClient: NodesClient = NodesClient(part.candidateNodes)
 
-  def grpcNodeClient: GrpcNodeClient = grpcClient.node
+  def nodeClient: NodeClient = nodesClient.node
 
   lazy val streamOutput: StreamOutput[Array[JsonNode]] = {
     val selectItems =
@@ -59,7 +61,7 @@ class ClickHouseReader(
           field => if (scanJob.groupByClause.isDefined) field.name else s"`${field.name}`"
         }.mkString(", ")
       }
-    grpcNodeClient.syncStreamQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(
+    nodeClient.syncStreamQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(
       s"""SELECT $selectItems
          |FROM `$database`.`$table`
          |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
@@ -116,7 +118,7 @@ class ClickHouseReader(
     }
   }
 
-  override def close(): Unit = grpcClient.close()
+  override def close(): Unit = nodesClient.close()
 }
 
 class ClickHouseColumnarReader {}
