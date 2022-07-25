@@ -14,6 +14,10 @@
 
 package xenon.clickhouse.read
 
+import java.time.ZoneId
+
+import scala.util.control.NonFatal
+
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -23,13 +27,10 @@ import org.apache.spark.sql.connector.read.partitioning.Partitioning
 import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.vectorized.ColumnarBatch
-import xenon.clickhouse.exception.CHClientException
-import xenon.clickhouse.grpc.GrpcNodeClient
-import xenon.clickhouse.spec._
 import xenon.clickhouse.{ClickHouseHelper, Logging, SQLHelper, Utils}
-
-import java.time.ZoneId
-import scala.util.control.NonFatal
+import xenon.clickhouse.client.NodeClient
+import xenon.clickhouse.exception.CHClientException
+import xenon.clickhouse.spec._
 
 class ClickHouseScanBuilder(
   scanJob: ScanJobDescription,
@@ -88,7 +89,7 @@ class ClickHouseScanBuilder(
          |$groupByClause
          |""".stripMargin
     try {
-      _readSchema = Utils.tryWithResource(GrpcNodeClient(scanJob.node)) { implicit grpcNodeClient: GrpcNodeClient =>
+      _readSchema = Utils.tryWithResource(NodeClient(scanJob.node)) { implicit nodeClient: NodeClient =>
         val fields = (getQueryOutputSchema(aggQuery) zip compiledSelectItems)
           .map { case (structField, colExpr) => structField.copy(name = colExpr) }
         StructType(fields)
@@ -126,7 +127,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
   lazy val inputPartitions: Array[ClickHouseInputPartition] = scanJob.tableEngineSpec match {
     case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
       scanJob.cluster.get.shards.flatMap { shardSpec =>
-        Utils.tryWithResource(GrpcNodeClient(shardSpec.nodes.head)) { implicit grpcNodeClient: GrpcNodeClient =>
+        Utils.tryWithResource(NodeClient(shardSpec.nodes.head)) { implicit nodeClient: NodeClient =>
           queryPartitionSpec(local_db, local_table).map { partitionSpec =>
             ClickHouseInputPartition(
               scanJob.localTableSpec.get,
@@ -150,7 +151,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
         scanJob.node
       ))
     case _: TableEngineSpec =>
-      Utils.tryWithResource(GrpcNodeClient(scanJob.node)) { implicit grpcNodeClient: GrpcNodeClient =>
+      Utils.tryWithResource(NodeClient(scanJob.node)) { implicit nodeClient: NodeClient =>
         queryPartitionSpec(database, table).map { partitionSpec =>
           ClickHouseInputPartition(
             scanJob.tableSpec,

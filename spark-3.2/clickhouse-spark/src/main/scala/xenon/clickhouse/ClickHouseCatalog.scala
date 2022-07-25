@@ -14,6 +14,11 @@
 
 package xenon.clickhouse
 
+import java.time.ZoneId
+import java.util
+
+import scala.collection.JavaConverters._
+
 import org.apache.spark.sql.catalyst.analysis.{NoSuchTableException, _}
 import org.apache.spark.sql.clickhouse.{ExprUtils, SchemaUtils}
 import org.apache.spark.sql.connector.catalog._
@@ -22,15 +27,11 @@ import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import xenon.clickhouse.Constants._
+import xenon.clickhouse.client.NodeClient
+import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.exception.ClickHouseErrCode._
-import xenon.clickhouse.exception.{CHClientException, CHServerException}
 import xenon.clickhouse.func.{ClickHouseXxHash64, ClickHouseXxHash64Shard}
-import xenon.clickhouse.grpc.GrpcNodeClient
 import xenon.clickhouse.spec._
-
-import java.time.ZoneId
-import java.util
-import scala.collection.JavaConverters._
 
 class ClickHouseCatalog extends TableCatalog
     with SupportsNamespaces
@@ -46,7 +47,7 @@ class ClickHouseCatalog extends TableCatalog
   // ///////////////////////////////////////////////////
   private var nodeSpec: NodeSpec = _
 
-  implicit private var grpcNodeClient: GrpcNodeClient = _
+  implicit private var nodeClient: NodeClient = _
 
   // case Left  => server timezone
   // case Right => client timezone or user specific timezone
@@ -63,13 +64,13 @@ class ClickHouseCatalog extends TableCatalog
     this.catalogName = name
     this.nodeSpec = buildNodeSpec(options)
     this.currentDb = nodeSpec.database
-    this.grpcNodeClient = GrpcNodeClient(nodeSpec)
+    this.nodeClient = NodeClient(nodeSpec)
 
-    this.grpcNodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT 1")
+    this.nodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT 1")
 
     this.tz = options.get(CATALOG_PROP_TZ) match {
       case tz if tz == null || tz.isEmpty || tz.toLowerCase == "server" =>
-        val timezoneOutput = this.grpcNodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT timezone() AS tz")
+        val timezoneOutput = this.nodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT timezone() AS tz")
         assert(timezoneOutput.rows == 1)
         val serverTz = ZoneId.of(timezoneOutput.records.head.get("tz").asText)
         log.info(s"Detect ClickHouse server timezone: $serverTz")
@@ -89,7 +90,7 @@ class ClickHouseCatalog extends TableCatalog
   @throws[NoSuchNamespaceException]
   override def listTables(namespace: Array[String]): Array[Identifier] = namespace match {
     case Array(database) =>
-      grpcNodeClient.syncQueryOutputJSONEachRow(s"SHOW TABLES IN ${quoted(database)}") match {
+      nodeClient.syncQueryOutputJSONEachRow(s"SHOW TABLES IN ${quoted(database)}") match {
         case Left(exception) if exception.code == UNKNOWN_DATABASE.code =>
           throw new NoSuchNamespaceException(namespace.mkString("."))
         case Left(rethrow) =>
@@ -108,7 +109,7 @@ class ClickHouseCatalog extends TableCatalog
     val (database, table) = unwrap(ident) match {
       case None => throw new NoSuchTableException(ident)
       case Some((db, tbl)) =>
-        grpcNodeClient.syncQueryOutputJSONEachRow(s"SELECT * FROM `$db`.`$tbl` WHERE 1=0") match {
+        nodeClient.syncQueryOutputJSONEachRow(s"SELECT * FROM `$db`.`$tbl` WHERE 1=0") match {
           case Left(exception) if exception.code == UNKNOWN_TABLE.code =>
             throw new NoSuchTableException(ident)
           // not sure if this check is necessary
@@ -228,7 +229,7 @@ class ClickHouseCatalog extends TableCatalog
       settingsClause: String
     ): Unit = {
       val clusterClause = clusterOpt.map(c => s"ON CLUSTER $c").getOrElse("")
-      grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
+      nodeClient.syncQueryAndCheckOutputJSONEachRow(
         s"""CREATE TABLE `$database`.`$table` $clusterClause (
            |$fieldsClause
            |) ENGINE = $engineExpr
@@ -250,7 +251,7 @@ class ClickHouseCatalog extends TableCatalog
       distributedDatabase: String,
       distributedTable: String,
       settingsClause: String
-    ): Unit = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow(
+    ): Unit = nodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""CREATE TABLE `$distributedDatabase`.`$distributedTable` ON CLUSTER $cluster
          |AS `$localDatabase`.`$localTable`
          |ENGINE = Distributed($cluster, '$localDatabase', '$localTable', ($shardExpr))
@@ -294,7 +295,7 @@ class ClickHouseCatalog extends TableCatalog
         val syncClause = if (isAtomic) "SYNC" else ""
         // limitation: only support Distribute table, can not handle cases such as drop local table on cluster nodes
         val clusterClause = cluster.map(c => s"ON CLUSTER ${c.name}").getOrElse("")
-        grpcNodeClient.syncQueryOutputJSONEachRow(s"DROP TABLE `$db`.`$tbl` $clusterClause $syncClause").isRight
+        nodeClient.syncQueryOutputJSONEachRow(s"DROP TABLE `$db`.`$tbl` $clusterClause $syncClause").isRight
     }
   }
 
@@ -303,7 +304,7 @@ class ClickHouseCatalog extends TableCatalog
   override def renameTable(oldIdent: Identifier, newIdent: Identifier): Unit =
     (unwrap(oldIdent), unwrap(newIdent)) match {
       case (Some((oldDb, oldTbl)), Some((newDb, newTbl))) =>
-        grpcNodeClient.syncQueryOutputJSONEachRow(s"RENAME TABLE `$oldDb`.`$oldTbl` to `$newDb`.`$newTbl`") match {
+        nodeClient.syncQueryOutputJSONEachRow(s"RENAME TABLE `$oldDb`.`$oldTbl` to `$newDb`.`$newTbl`") match {
           case Left(exception) => throw new NoSuchTableException(exception.getMessage, Some(exception))
           case Right(_) =>
         }
@@ -314,7 +315,7 @@ class ClickHouseCatalog extends TableCatalog
 
   @throws[NoSuchNamespaceException]
   override def listNamespaces(): Array[Array[String]] = {
-    val output = grpcNodeClient.syncQueryAndCheckOutputJSONEachRow("SHOW DATABASES")
+    val output = nodeClient.syncQueryAndCheckOutputJSONEachRow("SHOW DATABASES")
     output.records.map(row => Array(row.get("name").asText)).toArray
   }
 
@@ -337,7 +338,7 @@ class ClickHouseCatalog extends TableCatalog
   override def createNamespace(namespace: Array[String], metadata: util.Map[String, String]): Unit = namespace match {
     case Array(database) =>
       val onClusterClause = metadata.asScala.get("cluster").map(c => s"ON CLUSTER $c").getOrElse("")
-      grpcNodeClient.syncQueryOutputJSONEachRow(s"CREATE DATABASE ${quoted(database)} $onClusterClause")
+      nodeClient.syncQueryOutputJSONEachRow(s"CREATE DATABASE ${quoted(database)} $onClusterClause")
   }
 
   @throws[NoSuchNamespaceException]
@@ -347,7 +348,7 @@ class ClickHouseCatalog extends TableCatalog
   @throws[NoSuchNamespaceException]
   override def dropNamespace(namespace: Array[String]): Boolean = namespace match {
     case Array(database) =>
-      grpcNodeClient.syncQueryOutputJSONEachRow(s"DROP DATABASE ${quoted(database)}").isRight
+      nodeClient.syncQueryOutputJSONEachRow(s"DROP DATABASE ${quoted(database)}").isRight
     case _ => false
   }
 
