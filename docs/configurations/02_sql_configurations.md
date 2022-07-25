@@ -124,22 +124,9 @@ SQL Configurations
 
     Default Value: lz4
 
-    Description: The codec used to compress data for writing. Supported codecs: none, gzip, lz4, zstd.
+    Description: The codec used to compress data for writing. Supported codecs: none, gzip, lz4.
                  This feature requires ClickHouse Server v22.2+, more details at
                  https://github.com/ClickHouse/ClickHouse/pull/34408
-
-!!! tip "Since 0.4.0 - spark.clickhouse.write.compression.zstd.level"
-
-    Default Value: 3
-
-    Description: Zstd compression level.
-
-!!! tip "Since 0.4.0 - spark.clickhouse.write.compression.zstd.thread"
-
-    Default Value: 0
-
-    Description: Zstd worker pool size. Default value is `0`, aka 'single-threaded mode': no worker is spawned.
-                 Spawn worker threads and trigger asynchronous mode when value equals or greater than 1.
 
 !!! tip "Since 0.4.0 - spark.clickhouse.write.format"
 
