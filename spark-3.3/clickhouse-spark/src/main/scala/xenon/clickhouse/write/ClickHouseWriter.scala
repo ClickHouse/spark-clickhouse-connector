@@ -14,7 +14,6 @@
 
 package xenon.clickhouse.write
 
-import com.github.luben.zstd.{RecyclingBufferPool, ZstdOutputStreamNoFinalizer}
 import com.google.protobuf.ByteString
 import net.jpountz.lz4.LZ4FrameOutputStream
 import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE
@@ -130,9 +129,6 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   val _totalWrittenTime = new LongAdder
   def totalWrittenTime: Long = _totalWrittenTime.longValue
 
-  // zstd only
-  private lazy val bufferedForwardingOutput = new ForwardingOutputStream()
-
   val serializedBuffer: ByteString.Output = ByteString.newOutput(16 * 1024 * 1024)
 
   private val observableSerializedOutput = new ObservableOutputStream(
@@ -160,12 +156,6 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
         new GZIPOutputStream(observableSerializedOutput, 4 * 1024 * 1024)
       case "lz4" =>
         new LZ4FrameOutputStream(observableSerializedOutput, BLOCKSIZE.SIZE_4MB)
-      case "zstd" =>
-        val zstdOutput = new ZstdOutputStreamNoFinalizer(observableSerializedOutput, RecyclingBufferPool.INSTANCE)
-          .setLevel(writeJob.writeOptions.zstdLevel)
-          .setWorkers(writeJob.writeOptions.zstdThread)
-        bufferedForwardingOutput.updateDelegate(zstdOutput)
-        bufferedForwardingOutput
       case unsupported =>
         throw CHClientException(s"unsupported compression codec: $unsupported")
     }
