@@ -23,8 +23,9 @@ class TPCDSSuite extends SparkClickHouseSingleTest {
 
   override protected def sparkConf: SparkConf = super.sparkConf
     .set("spark.sql.catalog.tpcds", "org.apache.kyuubi.spark.connector.tpcds.TPCDSCatalog")
+    .set("spark.sql.catalog.clickhouse.protocol", "grpc")
     .set("spark.clickhouse.write.batchSize", "100000")
-    .set("spark.clickhouse.write.compression.codec", "gzip")
+    .set("spark.clickhouse.write.compression.codec", "none")
 
   test("TPC-DS tiny write and count(*)") {
     withDatabase("tpcds_tiny") {
