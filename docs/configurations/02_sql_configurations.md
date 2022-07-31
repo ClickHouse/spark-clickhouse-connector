@@ -124,9 +124,7 @@ SQL Configurations
 
     Default Value: lz4
 
-    Description: The codec used to compress data for writing. Supported codecs: none, gzip, lz4.
-                 This feature requires ClickHouse Server v22.2+, more details at
-                 https://github.com/ClickHouse/ClickHouse/pull/34408
+    Description: The codec used to compress data for writing. Supported codecs: none, lz4.
 
 !!! tip "Since 0.4.0 - spark.clickhouse.write.format"
 
