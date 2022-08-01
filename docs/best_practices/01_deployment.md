@@ -30,14 +30,16 @@ Persist catalog configurations into `$SPARK_HOME/conf/spark-defaults.conf`, then
 ```
 spark.sql.catalog.ck_01=xenon.clickhouse.ClickHouseCatalog
 spark.sql.catalog.ck_01.host=10.0.0.1
-spark.sql.catalog.ck_01.grpc_port=9100
+spark.sql.catalog.ck_01.protocol=http
+spark.sql.catalog.ck_01.http_port=8123
 spark.sql.catalog.ck_01.user=app
 spark.sql.catalog.ck_01.password=pwd
 spark.sql.catalog.ck_01.database=default
 
 spark.sql.catalog.ck_02=xenon.clickhouse.ClickHouseCatalog
 spark.sql.catalog.ck_02.host=10.0.0.2
-spark.sql.catalog.ck_02.grpc_port=9100
+spark.sql.catalog.ck_02.protocol=http
+spark.sql.catalog.ck_02.http_port=8123
 spark.sql.catalog.ck_02.user=app
 spark.sql.catalog.ck_02.password=pwd
 spark.sql.catalog.ck_02.database=default

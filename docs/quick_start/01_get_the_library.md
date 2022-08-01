@@ -22,11 +22,6 @@ The name pattern of binary jar is `clickhouse-spark-runtime-${spark_binary_versi
 you can find all available released jars under [Maven Central Repository](https://repo1.maven.org/maven2/com/github/housepower)
 and all daily build snapshot jars under [Sonatype OSS Snapshots Repository](https://oss.sonatype.org/content/repositories/snapshots/com/github/housepower/).
 
-!!! tip
-
-    The runtime jar contains and relocates all required classes, you do not need to worry about transitive dependencies
-    management and potential class conflictions.
-
 ## Import as Dependency
 
 ### Gradle
@@ -34,6 +29,7 @@ and all daily build snapshot jars under [Sonatype OSS Snapshots Repository](http
 ```
 dependencies {
   implementation("com.github.housepower:clickhouse-spark-runtime-3.3_2.12:${version}")
+  implementation("com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version:all") { transitive = false }
 }
 ```
 
@@ -52,6 +48,12 @@ repositries {
   <groupId>com.github.housepower</groupId>
   <artifactId>clickhouse-spark-runtime-3.3_2.12</artifactId>
   <version>${version}</version>
+</dependency>
+<dependency>
+  <groupId>com.clickhouse</groupId>
+  <artifactId>clickhouse-jdbc</artifactId>
+  <classifier>all</classifier>
+  <version>${clickhouse_jdbc_version}</version>
 </dependency>
 ```
 

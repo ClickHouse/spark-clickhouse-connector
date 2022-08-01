@@ -16,12 +16,12 @@ See the [documentation](https://housepower.github.io/spark-clickhouse-connector/
 - Java 8 or 11
 - Scala 2.12 or 2.13
 - Apache Spark 3.2 or 3.3
-- ClickHouse 21.1.2.15 or newer
 
 Notes:
-1. Currently, only support gRPC protocol, and ClickHouse support gRPC since
-   [v21.1.2.15-stable](https://github.com/ClickHouse/ClickHouse/blob/master/CHANGELOG.md#clickhouse-release-v211215-stable-2021-01-18),
-   but we only do test on v22.3.3.44-lts.
+1. As of 0.5.0, this connector switches from ClickHouse raw gRPC Client to 
+   [ClickHouse Official Java Client](https://github.com/ClickHouse/clickhouse-jdbc), which brings HTTP protocol support,
+   extending the range of supported versions of ClickHouse Server.
+
 2. Due to lack of developer resources, the project is currently only focusing on Spark 3.3 support, which means you
    may find something it documents but does not work in Spark 3.2, or has significantly worse performance comparing
    to Spark 3.3. When you come into such a situation, send a PR to backport the patch from Spark 3.3 module to
@@ -56,8 +56,8 @@ Run single test
 ### ARM Platform
 
 For developers/users who use ARM platform, e.g. [Apple Silicon](https://developer.apple.com/documentation/apple-silicon)
-chips, [Kunpeng](https://www.hikunpeng.com/) chips, you may not run integrations test in local directly, because 
-[ClickHouse does not provide gRPC support in official ARM image](https://github.com/ClickHouse/ClickHouse/pull/36754).
+chips, [Kunpeng](https://www.hikunpeng.com/) chips, you may not run TPC-DS integrations test using gRPC in local directly,
+because [ClickHouse does not provide gRPC support in official ARM image](https://github.com/ClickHouse/ClickHouse/pull/36754).
 
 As a workaround, you can set the environment variable `CLICKHOUSE_IMAGE` to use a custom image which supports gRPC
 on ARM platform for testing.
