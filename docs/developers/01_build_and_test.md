@@ -30,7 +30,8 @@ Build w/o test
 ./gradlew clean build -x test
 ```
 
-Go to `spark-3.3/clickhouse-spark-runtime/build/libs/` to find the output jar `clickhouse-spark-runtime-3.3_2.12-${version}.jar`.
+Go to `spark-{{ spark_binary_version }}/clickhouse-spark-runtime/build/libs/` to find the output jar
+`clickhouse-spark-runtime-{{ spark_binary_version }}_{{ scala_binary_version }}-{{ version }}.jar`.
 
 ## Test
 
@@ -50,7 +51,7 @@ Run single test
 ### ARM Platform
 
 For developers/users who use ARM platform, e.g. [Apple Silicon](https://developer.apple.com/documentation/apple-silicon)
-chips, [Kunpeng](https://www.hikunpeng.com/) chips, you may not run TPC-DS integrations test using gRPC in local directly,
+chips, [Kunpeng](https://www.hikunpeng.com/) chips, you may not able to run TPC-DS integrations test using gRPC in local directly,
 because [ClickHouse does not provide gRPC support in official ARM image](https://github.com/ClickHouse/ClickHouse/pull/36754).
 
 As a workaround, you can set the environment variable `CLICKHOUSE_IMAGE` to use a custom image which supports gRPC

@@ -18,9 +18,10 @@ Deployment
 
 ## Jar
 
-Put `clickhouse-spark-runtime-3.3_2.12-{version}.jar` into `$SPARK_HOME/jars/`, then you don't need to bundle the jar
+Put `clickhouse-spark-runtime-{{ spark_binary_version }}_{{ scala_binary_version }}-{{ stable_version }}.jar` and
+`clickhouse-jdbc-{{ clickhouse_jdbc_version }}-all.jar` into `$SPARK_HOME/jars/`, then you don't need to bundle the jar
 into your Spark application, and `--jar` is not required when using `spark-shell` or `spark-sql`(again, for SQL-only
-use cases, [Apache Kyuubi(Incubating)](https://github.com/apache/incubator-kyuubi) is recommended for Production).
+use cases, [Apache Kyuubi (Incubating)](https://github.com/apache/incubator-kyuubi) is recommended for Production).
 
 ## Configuration
 

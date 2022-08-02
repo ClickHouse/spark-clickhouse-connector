@@ -15,6 +15,10 @@ site_author: Cheng Pan
 repo_name: housepower/spark-clickhouse-connector
 repo_url: https://github.com/housepower/spark-clickhouse-connector
 
+plugins:
+  - search
+  - macros
+
 theme:
   name: material
   language: en
@@ -31,6 +35,13 @@ markdown_extensions:
   - md_in_html
 
 extra:
+  version: 0.5.0-SNAPSHOT
+  stable_version: 0.4.0
+  clickhouse_version: 22.3.3.44
+  clickhouse_jdbc_version: 0.3.2-patch11
+  scala_binary_version: 2.12
+  spark_binary_version: 3.3
+  spark_version: 3.3.0
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/pan3793
