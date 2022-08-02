@@ -17,7 +17,7 @@ package xenon.clickhouse.base
 import com.dimafeng.testcontainers.{ForAllTestContainer, JdbcDatabaseContainer, SingleContainer}
 import org.scalatest.funsuite.AnyFunSuite
 import org.testcontainers.containers.ClickHouseContainer
-import org.testcontainers.utility.{DockerImageName, MountableFile}
+import org.testcontainers.utility.MountableFile
 import xenon.clickhouse.Utils
 
 trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
@@ -33,11 +33,8 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   // format: on
   override val container: SingleContainer[ClickHouseContainer] with JdbcDatabaseContainer =
     new SingleContainer[ClickHouseContainer] with JdbcDatabaseContainer {
-      override val container: ClickHouseContainer = new ClickHouseContainer(
-        // TODO: remove this workaround after https://github.com/testcontainers/testcontainers-java/pull/4925
-        DockerImageName.parse(CLICKHOUSE_IMAGE).asCompatibleSubstituteFor("yandex/clickhouse-server")
-      ) {
-        // TODO: remove this workaround after https://github.com/testcontainers/testcontainers-java/pull/4925
+      override val container: ClickHouseContainer = new ClickHouseContainer(CLICKHOUSE_IMAGE) {
+        // TODO: remove this workaround after https://github.com/testcontainers/testcontainers-java/pull/5666
         override def getDriverClassName: String = "com.clickhouse.jdbc.ClickHouseDriver"
       }
         .withEnv("CLICKHOUSE_USER", CLICKHOUSE_USER)
