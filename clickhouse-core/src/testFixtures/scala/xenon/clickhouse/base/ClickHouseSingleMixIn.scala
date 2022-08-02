@@ -33,13 +33,7 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   // format: on
   override val container: SingleContainer[ClickHouseContainer] with JdbcDatabaseContainer =
     new SingleContainer[ClickHouseContainer] with JdbcDatabaseContainer {
-      override val container: ClickHouseContainer = new ClickHouseContainer(
-        // TODO: remove this workaround after https://github.com/testcontainers/testcontainers-java/pull/4925
-        DockerImageName.parse(CLICKHOUSE_IMAGE).asCompatibleSubstituteFor("yandex/clickhouse-server")
-      ) {
-        // TODO: remove this workaround after https://github.com/testcontainers/testcontainers-java/pull/4925
-        override def getDriverClassName: String = "com.clickhouse.jdbc.ClickHouseDriver"
-      }
+      override val container: ClickHouseContainer = new ClickHouseContainer(CLICKHOUSE_IMAGE)
         .withEnv("CLICKHOUSE_USER", CLICKHOUSE_USER)
         .withEnv("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
         .withEnv("CLICKHOUSE_DB", CLICKHOUSE_DB)
