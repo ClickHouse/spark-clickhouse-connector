@@ -17,7 +17,7 @@ package xenon.clickhouse.base
 import com.dimafeng.testcontainers.{ForAllTestContainer, JdbcDatabaseContainer, SingleContainer}
 import org.scalatest.funsuite.AnyFunSuite
 import org.testcontainers.containers.ClickHouseContainer
-import org.testcontainers.utility.{DockerImageName, MountableFile}
+import org.testcontainers.utility.MountableFile
 import xenon.clickhouse.Utils
 
 trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
