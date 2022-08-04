@@ -28,7 +28,7 @@ class TPCDSClusterSuite extends SparkClickHouseClusterTest {
     .set("spark.sql.catalog.clickhouse_s2r1.protocol", "grpc")
     .set("spark.sql.catalog.clickhouse_s2r2.protocol", "grpc")
     .set("spark.clickhouse.write.batchSize", "100000")
-    .set("spark.clickhouse.write.compression.codec", "none")
+    .set("spark.clickhouse.write.compression.codec", "lz4")
     .set("spark.clickhouse.write.distributed.convertLocal", "true")
 
   test("Cluster: TPC-DS tiny write and count(*)") {

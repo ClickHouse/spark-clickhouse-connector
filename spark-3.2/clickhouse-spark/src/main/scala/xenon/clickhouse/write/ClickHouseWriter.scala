@@ -14,8 +14,11 @@
 
 package xenon.clickhouse.write
 
+import com.clickhouse.client.{ClickHouseCompression, ClickHouseProtocol}
+import net.jpountz.lz4.LZ4FrameOutputStream
+import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
-import org.apache.spark.sql.catalyst.{InternalRow, expressions}
+import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.clickhouse.{ExprUtils, JsonWriter}
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types.{ByteType, IntegerType, LongType, ShortType}
@@ -33,6 +36,8 @@ class ClickHouseWriter(writeJob: WriteJobDescription)
 
   val database: String = writeJob.targetDatabase(writeJob.writeOptions.convertDistributedToLocal)
   val table: String = writeJob.targetTable(writeJob.writeOptions.convertDistributedToLocal)
+  val codec: ClickHouseCompression = writeJob.writeOptions.compressionCodec
+  val protocol: ClickHouseProtocol = writeJob.node.protocol
 
   private lazy val shardExpr: Option[Expression] = writeJob.sparkShardExpr match {
     case None => None
@@ -117,7 +122,17 @@ class ClickHouseWriter(writeJob: WriteJobDescription)
   private val reusedByteArray = new ByteArrayOutputStream(64 * 1024 * 1024)
 
   private def assembleData(buf: ArrayBuffer[Array[Byte]]): Array[Byte] = {
-    val out = reusedByteArray
+    val out = (codec, protocol) match {
+      case (ClickHouseCompression.NONE, _) =>
+        reusedByteArray
+      case (ClickHouseCompression.LZ4, ClickHouseProtocol.GRPC) =>
+        new LZ4FrameOutputStream(reusedByteArray, BLOCKSIZE.SIZE_4MB)
+      case (ClickHouseCompression.LZ4, ClickHouseProtocol.HTTP) =>
+        // clickhouse http client forces compressed output stream
+        reusedByteArray
+      case unsupported =>
+        throw CHClientException(s"unsupported compression codec: $unsupported")
+    }
     buf.foreach(out.write)
     out.flush()
     out.close()
@@ -132,7 +147,6 @@ class ClickHouseWriter(writeJob: WriteJobDescription)
       writeJob.writeOptions.maxRetry,
       writeJob.writeOptions.retryInterval
     ) {
-      val codec = writeJob.writeOptions.compressionCodec
       val uncompressedSize = buf.map(_.length).sum
       val startTime = System.currentTimeMillis
       val data = assembleData(buf)
