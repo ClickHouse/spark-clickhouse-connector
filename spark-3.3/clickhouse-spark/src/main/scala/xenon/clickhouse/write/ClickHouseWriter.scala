@@ -14,7 +14,9 @@
 
 package xenon.clickhouse.write
 
-import com.clickhouse.client.ClickHouseCompression
+import com.clickhouse.client.{ClickHouseCompression, ClickHouseProtocol}
+import net.jpountz.lz4.LZ4FrameOutputStream
+import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE
 import org.apache.commons.io.IOUtils
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
 import org.apache.spark.sql.catalyst.{InternalRow, expressions}
@@ -25,7 +27,7 @@ import org.apache.spark.sql.types._
 import xenon.clickhouse._
 import xenon.clickhouse.client.{ClusterClient, NodeClient}
 import xenon.clickhouse.exception._
-import xenon.clickhouse.io.ObservableOutputStream
+import xenon.clickhouse.io.{ForwardingOutputStream, ObservableOutputStream}
 import xenon.clickhouse.spec.{DistributedEngineSpec, ShardUtils}
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, OutputStream}
@@ -38,6 +40,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   val database: String = writeJob.targetDatabase(writeJob.writeOptions.convertDistributedToLocal)
   val table: String = writeJob.targetTable(writeJob.writeOptions.convertDistributedToLocal)
   val codec: ClickHouseCompression = writeJob.writeOptions.compressionCodec
+  val protocol: ClickHouseProtocol = writeJob.node.protocol
 
   // ClickHouse is nullable sensitive, if the table column is not nullable, we need to cast the column
   // to be non-nullable forcibly.
@@ -123,13 +126,23 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   def lastSerializeTime: Long = _lastSerializeTime.longValue
   val _totalSerializeTime = new LongAdder
   def totalSerializeTime: Long = _totalSerializeTime.longValue
-  val _totalWrittenTime = new LongAdder
-  def totalWrittenTime: Long = _totalWrittenTime.longValue
+  val _totalWriteTime = new LongAdder
+  def totalWriteTime: Long = _totalWriteTime.longValue
 
   val serializedBuffer = new ByteArrayOutputStream(64 * 1024 * 1024)
 
-  private val observableCompressedOutput = new ObservableOutputStream(
+  // it is not accurate when using http protocol, because we delegate compression to
+  // clickhouse http client
+  private val observableSerializedOutput = new ObservableOutputStream(
     serializedBuffer,
+    Some(_lastSerializedBytesWritten),
+    Some(_totalSerializedBytesWritten)
+  )
+
+  private val compressedForwardingOutput = new ForwardingOutputStream()
+
+  private val observableCompressedOutput = new ObservableOutputStream(
+    compressedForwardingOutput,
     Some(_currentRawBytesWritten),
     Some(_totalRawBytesWritten),
     Some(_lastSerializeTime),
@@ -138,12 +151,29 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   def output: OutputStream = observableCompressedOutput
 
+  private def renewCompressedOutput(): Unit = {
+    val compressedOutput = (codec, protocol) match {
+      case (ClickHouseCompression.NONE, _) => observableSerializedOutput
+      case (ClickHouseCompression.LZ4, ClickHouseProtocol.GRPC) =>
+        new LZ4FrameOutputStream(observableSerializedOutput, BLOCKSIZE.SIZE_4MB)
+      case (ClickHouseCompression.LZ4, ClickHouseProtocol.HTTP) =>
+        // clickhouse http client forces compressed output stream
+        // new Lz4OutputStream(observableSerializedOutput, 4 * 1024 * 1024, null)
+        observableSerializedOutput
+      case unsupported =>
+        throw CHClientException(s"unsupported compression codec: $unsupported")
+    }
+    compressedForwardingOutput.updateDelegate(compressedOutput)
+  }
+
+  renewCompressedOutput()
+
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
     WriteTaskMetric("recordsWritten", totalRecordsWritten),
     WriteTaskMetric("bytesWritten", totalSerializedBytesWritten),
     WriteTaskMetric("rawBytesWritten", totalRawBytesWritten),
     WriteTaskMetric("serializeTime", totalSerializeTime),
-    WriteTaskMetric("writtenTime", totalWrittenTime)
+    WriteTaskMetric("writtenTime", totalWriteTime)
   )
 
   def format: String
@@ -179,6 +209,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     _lastSerializeTime.reset()
     currentShardNum = None
     serializedBuffer.reset()
+    renewCompressedOutput()
   }
 
   def flush(force: Boolean, shardNum: Option[Int]): Unit =
@@ -200,7 +231,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
       client.syncInsertOutputJSONEachRow(database, table, format, codec, new ByteArrayInputStream(data)) match {
         case Right(_) =>
           writeTime = System.currentTimeMillis - startWriteTime
-          _totalWrittenTime.add(writeTime)
+          _totalWriteTime.add(writeTime)
           _totalRecordsWritten.add(currentBufferedRows)
         case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.code) =>
           startWriteTime = System.currentTimeMillis
