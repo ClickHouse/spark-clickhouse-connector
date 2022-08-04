@@ -19,11 +19,12 @@ import net.jpountz.lz4.LZ4FrameOutputStream
 import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE
 import org.apache.commons.io.IOUtils
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
-import org.apache.spark.sql.catalyst.{InternalRow, expressions}
+import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types._
+import xenon.clickhouse.Metrics._
 import xenon.clickhouse._
 import xenon.clickhouse.client.{ClusterClient, NodeClient}
 import xenon.clickhouse.exception._
@@ -169,11 +170,10 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   renewCompressedOutput()
 
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
-    WriteTaskMetric("recordsWritten", totalRecordsWritten),
-    WriteTaskMetric("bytesWritten", totalSerializedBytesWritten),
-    WriteTaskMetric("rawBytesWritten", totalRawBytesWritten),
-    WriteTaskMetric("serializeTime", totalSerializeTime),
-    WriteTaskMetric("writtenTime", totalWriteTime)
+    TaskMetric(RECORDS_WRITTEN, totalRecordsWritten),
+    TaskMetric(BYTES_WRITTEN, totalSerializedBytesWritten),
+    TaskMetric(SERIALIZE_TIME, totalSerializeTime),
+    TaskMetric(WRITE_TIME, totalWriteTime)
   )
 
   def format: String

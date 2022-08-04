@@ -18,9 +18,11 @@ import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.distributions.{Distribution, Distributions}
 import org.apache.spark.sql.connector.expressions.SortOrder
+import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.write._
 import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.write.format.{ClickHouseArrowStreamWriter, ClickHouseJsonEachRowWriter}
+import xenon.clickhouse._
 
 class ClickHouseWriteBuilder(writeJob: WriteJobDescription) extends WriteBuilder {
 
@@ -36,6 +38,9 @@ class ClickHouseWrite(
   // for SPARK-37523
   def distributionStrictlyRequired: Boolean = writeJob.writeOptions.repartitionStrictly
 
+  override def description: String =
+    s"ClickHouseWrite(database=${writeJob.targetDatabase(false)}, table=${writeJob.targetTable(false)})})"
+
   override def requiredDistribution(): Distribution = Distributions.clustered(writeJob.sparkSplits.toArray)
 
   override def requiredNumPartitions(): Int = conf.getConf(WRITE_REPARTITION_NUM)
@@ -43,6 +48,13 @@ class ClickHouseWrite(
   override def requiredOrdering(): Array[SortOrder] = writeJob.sparkSortOrders
 
   override def toBatch: BatchWrite = new ClickHouseBatchWrite(writeJob)
+
+  override def supportedCustomMetrics(): Array[CustomMetric] = Array(
+    RecordsWrittenMetric(),
+    BytesWrittenMetric(),
+    SerializeTimeMetric(),
+    WriteTimeMetric()
+  )
 }
 
 class ClickHouseBatchWrite(
