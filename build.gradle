@@ -24,6 +24,8 @@ plugins {
 project.ext {
     scala_binary_version = System.getProperty("scala_binary_version")
     scala_version = scala_binary_version == "2.12" ? project.getProperty("scala_212_version") : project.getProperty("scala_213_version")
+    spark_binary_version = System.getProperty("spark_binary_version")
+    jackson_version = spark_binary_version == "3.2" ? project.getProperty("spark_32_jackson_version") : project.getProperty("spark_33_jackson_version")
 }
 
 repositories {
@@ -65,17 +67,6 @@ subprojects {
     }
 
     version = getProjectVersion()
-
-    configurations.all {
-        resolutionStrategy {
-            force "com.fasterxml.jackson.core:jackson-annotations:$jackson_version"
-            force "com.fasterxml.jackson.core:jackson-core:$jackson_version"
-            force "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
-            force "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
-            force "com.fasterxml.jackson.module:jackson-module-paranamer:$jackson_version"
-            force "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
-        }
-    }
 
     java {
         sourceCompatibility = JavaVersion.VERSION_1_8
@@ -176,12 +167,5 @@ String getProjectVersion() {
     return getVersionFromFile()
 }
 
-if (System.getProperty("spark_binary_versions").split(",").contains("3.2")) {
-    apply from: file("spark-3.2/build.gradle")
-}
-
-if (System.getProperty("spark_binary_versions").split(",").contains("3.3")) {
-    apply from: file("spark-3.3/build.gradle")
-}
-
+apply from: file("spark-$spark_binary_version/build.gradle")
 apply from: "deploy.gradle"

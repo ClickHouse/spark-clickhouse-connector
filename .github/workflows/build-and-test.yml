@@ -40,5 +40,5 @@ jobs:
       - run: >-
           ./gradlew clean test --no-daemon --refresh-dependencies
           -Dscala_binary_version=${{ matrix.scala }}
-          -Dspark_binary_versions=${{ matrix.spark }}
+          -Dspark_binary_version=${{ matrix.spark }}
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
