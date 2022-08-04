@@ -120,6 +120,12 @@ SQL Configurations
                  `spark.clickhouse.write.distributed.convertLocal` is enabled, ignore unsupported sharding keys
                  may corrupt the data.
 
+!!! tip "Since 0.5.0 - spark.clickhouse.read.compression.codec"
+
+    Default Value: lz4
+
+    Description: The codec used to decompress data for reading. Supported codecs: none, lz4.
+
 !!! tip "Since 0.3.0 - spark.clickhouse.write.compression.codec"
 
     Default Value: lz4
