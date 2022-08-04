@@ -14,23 +14,23 @@
 
 package xenon.clickhouse.read
 
-import java.time.{LocalDate, ZonedDateTime, ZoneOffset}
-
-import scala.collection.JavaConverters._
-import scala.math.BigDecimal.RoundingMode
-
+import com.clickhouse.client.ClickHouseCompression
 import com.fasterxml.jackson.databind.JsonNode
-import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData}
+import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
-import xenon.clickhouse.{ClickHouseHelper, Logging}
 import xenon.clickhouse.Utils._
 import xenon.clickhouse.client.{NodeClient, NodesClient}
 import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.format.StreamOutput
+import xenon.clickhouse.{ClickHouseHelper, Logging}
+
+import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
+import scala.collection.JavaConverters._
+import scala.math.BigDecimal.RoundingMode
 
 class ClickHouseReader(
   scanJob: ScanJobDescription,
@@ -45,6 +45,7 @@ class ClickHouseReader(
 
   val database: String = part.table.database
   val table: String = part.table.name
+  val codec: ClickHouseCompression = scanJob.readOptions.compressionCodec
 
   def readSchema: StructType = scanJob.readSchema
 
@@ -67,7 +68,8 @@ class ClickHouseReader(
          |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
          |${scanJob.groupByClause.getOrElse("")}
          |${scanJob.limit.map(n => s"LIMIT $n").getOrElse("")}
-         |""".stripMargin
+         |""".stripMargin,
+      codec
     )
   }
 
