@@ -47,7 +47,7 @@ Run all test
 
 Run all test w/ Spark 3.2 and Scala 2.13
 
-`./gradlew clean test -Dspark_binary_versions=3.2 -Dscala_binary_version=2.13`
+`./gradlew clean test -Dspark_binary_version=3.2 -Dscala_binary_version=2.13`
 
 Run single test
 

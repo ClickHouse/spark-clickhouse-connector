@@ -36,5 +36,5 @@ jobs:
           java-version: 8
       - run: >-
           ./gradlew rat --no-daemon
-          -Dspark_binary_versions=${{ matrix.spark }}
+          -Dspark_binary_version=${{ matrix.spark }}
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
