@@ -74,8 +74,6 @@ subprojects {
             force "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
             force "com.fasterxml.jackson.module:jackson-module-paranamer:$jackson_version"
             force "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
-
-            force "org.scala-lang.modules:scala-xml_$scala_binary_version:$scala_xml_version"
         }
     }
 
