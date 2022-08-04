@@ -31,7 +31,7 @@ import xenon.clickhouse.exception.CHClientException
 object JSONEachRowSimpleOutput {
   def deserialize(input: InputStream): SimpleOutput[ObjectNode] = {
     val records = om.readerFor[ObjectNode]
-      .readValues(input)
+      .readValues[ObjectNode](input)
       .asScala.toSeq
     new JSONEachRowSimpleOutput(records)
   }
@@ -73,11 +73,9 @@ class JSONCompactEachRowWithNamesAndTypesSimpleOutput(
 ///////////////////////////////////////////////////////////////////////////////
 
 object JSONCompactEachRowWithNamesAndTypesStreamOutput {
-  def deserializeStream(inputIterator: Iterator[InputStream]): StreamOutput[Array[JsonNode]] = {
-    val stream = inputIterator.flatMap { output =>
-      val jsonParser = om.getFactory.createParser(output)
-      om.readValues[Array[JsonNode]](jsonParser).asScala
-    }
+  def deserializeStream(input: InputStream): StreamOutput[Array[JsonNode]] = {
+    val jsonParser = om.getFactory.createParser(input)
+    val stream = om.readValues[Array[JsonNode]](jsonParser).asScala
     new JSONCompactEachRowWithNamesAndTypesStreamOutput(stream)
   }
 }

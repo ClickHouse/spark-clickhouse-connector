@@ -172,7 +172,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     sql: String,
     outputFormat: String,
     outputCompressionType: ClickHouseCompression,
-    outputStreamDeserializer: Iterator[InputStream] => StreamOutput[OUT],
+    outputStreamDeserializer: InputStream => StreamOutput[OUT],
     settings: Map[String, String]
   ): StreamOutput[OUT] = {
     val queryId = nextQueryId()
@@ -184,7 +184,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
       .format(ClickHouseFormat.valueOf(outputFormat)).asInstanceOf[ClickHouseRequest[_]]
     settings.foreach { case (k, v) => req.set(k, v).asInstanceOf[ClickHouseRequest[_]] }
     Try(req.executeAndWait()) match {
-      case Success(resp) => outputStreamDeserializer(Seq(resp.getInputStream).iterator)
+      case Success(resp) => outputStreamDeserializer(resp.getInputStream)
       case Failure(ex: ClickHouseException) => throw CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec))
       case Failure(ex) => throw CHClientException(ex.getMessage, Some(nodeSpec))
     }
