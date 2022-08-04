@@ -157,11 +157,13 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
 
   def syncStreamQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(
     sql: String,
+    outputCompressionType: ClickHouseCompression = ClickHouseCompression.NONE,
     settings: Map[String, String] = Map.empty
   ): StreamOutput[Array[JsonNode]] =
     syncStreamQueryAndCheck(
       sql,
       "JSONCompactEachRowWithNamesAndTypes",
+      outputCompressionType,
       JSONCompactEachRowWithNamesAndTypesStreamOutput.deserializeStream,
       settings
     )
@@ -169,6 +171,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   def syncStreamQueryAndCheck[OUT](
     sql: String,
     outputFormat: String,
+    outputCompressionType: ClickHouseCompression,
     outputStreamDeserializer: Iterator[InputStream] => StreamOutput[OUT],
     settings: Map[String, String]
   ): StreamOutput[OUT] = {
@@ -177,6 +180,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
 
     val req = client.connect(node)
       .query(sql, queryId).asInstanceOf[ClickHouseRequest[_]]
+      .compressServerResponse(outputCompressionType).asInstanceOf[ClickHouseRequest[_]]
       .format(ClickHouseFormat.valueOf(outputFormat)).asInstanceOf[ClickHouseRequest[_]]
     settings.foreach { case (k, v) => req.set(k, v).asInstanceOf[ClickHouseRequest[_]] }
     Try(req.executeAndWait()) match {
