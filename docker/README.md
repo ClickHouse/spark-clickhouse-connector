@@ -56,7 +56,7 @@ In addition to play with the pre-build images, developers may want to build the 
 
 ### Setup
 
-1. Launch dev compose services `docker compose --env-file .env-dev up`;
+1. Launch dev compose services `docker compose --file compose-dev.yml --env-file .env-dev up`;
 
 ## For Maintainers
 
