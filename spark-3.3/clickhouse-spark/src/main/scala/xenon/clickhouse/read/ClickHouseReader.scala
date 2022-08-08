@@ -99,7 +99,7 @@ class ClickHouseReader(
       case LongType => jsonNode.asLong
       case FloatType => jsonNode.asDouble.floatValue
       case DoubleType => jsonNode.asDouble
-      case d: DecimalType => jsonNode.decimalValue.setScale(d.scale, RoundingMode.HALF_UP)
+      case d: DecimalType => Decimal(jsonNode.decimalValue.setScale(d.scale, RoundingMode.HALF_UP))
       case TimestampType =>
         ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(scanJob.tz))
           .withZoneSameInstant(ZoneOffset.UTC)
