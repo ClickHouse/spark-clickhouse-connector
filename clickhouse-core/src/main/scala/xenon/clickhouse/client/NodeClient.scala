@@ -14,19 +14,18 @@
 
 package xenon.clickhouse.client
 
-import java.io.InputStream
-import java.util.UUID
-
-import scala.util.{Failure, Success, Try}
-
 import com.clickhouse.client._
 import com.clickhouse.client.config.ClickHouseClientOption
-import com.fasterxml.jackson.databind.node.ObjectNode
 import com.fasterxml.jackson.databind.JsonNode
-import xenon.clickhouse.spec.NodeSpec
+import com.fasterxml.jackson.databind.node.ObjectNode
 import xenon.clickhouse.Logging
 import xenon.clickhouse.exception.{CHClientException, CHException, CHServerException}
 import xenon.clickhouse.format._
+import xenon.clickhouse.spec.NodeSpec
+
+import java.io.InputStream
+import java.util.UUID
+import scala.util.{Failure, Success, Try}
 
 object NodeClient {
   def apply(node: NodeSpec): NodeClient = new NodeClient(node)
@@ -117,8 +116,9 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     settings.foreach { case (k, v) => req.set(k, v) }
     Try(req.data(data).executeAndWait()) match {
       case Success(resp) => Right(deserializer(resp.getInputStream))
-      case Failure(ex: ClickHouseException) => Left(CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec)))
-      case Failure(ex) => Left(CHClientException(ex.getMessage, Some(nodeSpec)))
+      case Failure(ex: ClickHouseException) =>
+        Left(CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec), Some(ex)))
+      case Failure(ex) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
     }
   }
 
@@ -136,8 +136,9 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     settings.foreach { case (k, v) => req.set(k, v).asInstanceOf[ClickHouseRequest[_]] }
     Try(req.executeAndWait()) match {
       case Success(resp) => Right(deserializer(resp.getInputStream))
-      case Failure(ex: ClickHouseException) => Left(CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec)))
-      case Failure(ex) => Left(CHClientException(ex.getMessage, Some(nodeSpec)))
+      case Failure(ex: ClickHouseException) =>
+        Left(CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec), Some(ex)))
+      case Failure(ex) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
     }
   }
 
@@ -185,8 +186,9 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     settings.foreach { case (k, v) => req.set(k, v).asInstanceOf[ClickHouseRequest[_]] }
     Try(req.executeAndWait()) match {
       case Success(resp) => outputStreamDeserializer(resp.getInputStream)
-      case Failure(ex: ClickHouseException) => throw CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec))
-      case Failure(ex) => throw CHClientException(ex.getMessage, Some(nodeSpec))
+      case Failure(ex: ClickHouseException) =>
+        throw CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec), Some(ex))
+      case Failure(ex) => throw CHClientException(ex.getMessage, Some(nodeSpec), Some(ex))
     }
   }
 

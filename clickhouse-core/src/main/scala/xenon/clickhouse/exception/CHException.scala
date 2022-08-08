@@ -16,20 +16,29 @@ package xenon.clickhouse.exception
 
 import xenon.clickhouse.spec.NodeSpec
 
-abstract class CHException(val code: Int, val reason: String, val node: Option[NodeSpec])
-    extends RuntimeException(s"${node.getOrElse("")} [$code] $reason")
+abstract class CHException(
+  val code: Int,
+  val reason: String,
+  val node: Option[NodeSpec],
+  val cause: Option[Throwable]
+) extends RuntimeException(s"${node.getOrElse("")} [$code] $reason", cause.orNull)
 
 case class CHServerException(
   override val code: Int,
   override val reason: String,
-  override val node: Option[NodeSpec]
-) extends CHException(code, reason, node)
+  override val node: Option[NodeSpec],
+  override val cause: Option[Throwable]
+) extends CHException(code, reason, node, cause)
 
-case class CHClientException(override val reason: String, override val node: Option[NodeSpec] = None)
-    extends CHException(ClickHouseErrCode.CLIENT_ERROR.code(), reason, node)
+case class CHClientException(
+  override val reason: String,
+  override val node: Option[NodeSpec] = None,
+  override val cause: Option[Throwable] = None
+) extends CHException(ClickHouseErrCode.CLIENT_ERROR.code(), reason, node, cause)
 
 case class RetryableCHException(
   override val code: Int,
   override val reason: String,
-  override val node: Option[NodeSpec]
-) extends CHException(code, reason, node)
+  override val node: Option[NodeSpec],
+  override val cause: Option[Throwable] = None
+) extends CHException(code, reason, node, cause)
