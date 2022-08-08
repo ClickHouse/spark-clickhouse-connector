@@ -208,7 +208,7 @@ class ClickHouseCatalog extends TableCatalog
 
     val fieldsClause = SchemaUtils
       .toClickHouseSchema(schema)
-      .map { case (fieldName, ckType) => s"${quoted(fieldName)} $ckType" }
+      .map { case (fieldName, ckType, comment) => s"${quoted(fieldName)} $ckType$comment" }
       .mkString(",\n ")
 
     val clusterOpt = props.get("cluster")

@@ -15,6 +15,7 @@
 package org.apache.spark.sql.clickhouse
 
 import org.apache.spark.sql.clickhouse.SchemaUtils._
+import org.apache.spark.sql.types.StructType
 import org.scalatest.funsuite.AnyFunSuite
 
 class SchemaUtilsSuite extends AnyFunSuite {
@@ -178,5 +179,49 @@ class SchemaUtilsSuite extends AnyFunSuite {
     assert(("String", true) == unwrapNullable("Nullable(String)"))
     assert(("nullable(String)", false) == unwrapNullable("nullable(String)"))
     assert(("String", false) == unwrapNullable("String"))
+  }
+
+  test("testToClickHouseSchema") {
+    val catalystSchema = StructType.fromString(
+      """{
+        |    "fields": [
+        |        {
+        |            "name": "id",
+        |            "type": "integer",
+        |            "nullable": false,
+        |            "metadata": {}
+        |        },
+        |        {
+        |            "name": "food",
+        |            "type": "string",
+        |            "nullable": false,
+        |            "metadata": {
+        |                "comment": "food"
+        |            }
+        |        },
+        |        {
+        |            "name": "price",
+        |            "type": "decimal(2,1)",
+        |            "nullable": false,
+        |            "metadata": {
+        |                "comment": "price usd"
+        |            }
+        |        },
+        |        {
+        |            "name": "remark",
+        |            "type": "string",
+        |            "nullable": true,
+        |            "metadata": {}
+        |        }
+        |    ],
+        |    "type": "struct"
+        |}""".stripMargin
+    )
+    assert(Seq(
+      ("id", "Int32", ""),
+      ("food", "String", " COMMENT 'food'"),
+      ("price", "Decimal(2, 1)", " COMMENT 'price usd'"),
+      ("remark", "Nullable(String)", "")
+    ) == toClickHouseSchema(catalystSchema))
   }
 }

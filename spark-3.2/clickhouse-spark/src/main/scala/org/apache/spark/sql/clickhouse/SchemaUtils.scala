@@ -99,11 +99,11 @@ object SchemaUtils {
     StructType(structFields)
   }
 
-  def toClickHouseSchema(catalystSchema: StructType): Seq[(String, String)] =
+  def toClickHouseSchema(catalystSchema: StructType): Seq[(String, String, String)] =
     catalystSchema.fields
       .map { field =>
         val chType = toClickHouseType(field.dataType)
-        (field.name, maybeNullable(chType, field.nullable))
+        (field.name, maybeNullable(chType, field.nullable), field.getComment().map(c => s" COMMENT '$c'").getOrElse(""))
       }
 
   private[clickhouse] def maybeNullable(chType: String, nullable: Boolean): String =
