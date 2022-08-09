@@ -66,5 +66,5 @@ nav:
   - Internals:
     - internals/index.md
     - Catalog: internals/01_catalog.md
-    - Query Table: internals/02_read.md
-    - Write Data: internals/03_write.md
+    - Reading: internals/02_read.md
+    - Writing: internals/03_write.md
