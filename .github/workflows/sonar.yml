@@ -17,7 +17,7 @@ on:
   - cron: '0 0 * * *'
 
 jobs:
-  publish-snapshot:
+  sonar-report:
     if: ${{ startsWith(github.repository, 'housepower/') }}
     runs-on: ubuntu-20.04
     steps:
