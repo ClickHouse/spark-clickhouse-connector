@@ -54,7 +54,7 @@ The default catalog has a fixed name `spark_catalog`, and typically, a table is 
   ![Overview](../imgs/spark_multi_catalog.drawio.png)
 </figure>
 
-For example, we can register a PostgreSQL database as Spark catalog, and access it using Spark SQL.
+For example, we can register a PostgreSQL database as Spark catalog named `pg`, and access it using Spark SQL.
 
 ```properties
 # spark-defaults.conf
