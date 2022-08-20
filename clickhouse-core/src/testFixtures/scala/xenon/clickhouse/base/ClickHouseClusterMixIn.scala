@@ -130,9 +130,11 @@ trait ClickHouseClusterMixIn extends AnyFunSuite with ForAllTestContainer {
     sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r2_PORT_$CLICKHOUSE_HTTP_PORT", clickhouse_s2r2_http_port.toString))
     sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r2_PORT_$CLICKHOUSE_TCP_PORT", clickhouse_s2r2_tcp_port.toString))
     // all grpc
-    sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r1_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s1r1_grpc_port.toString))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r2_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s1r2_grpc_port.toString))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r1_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s2r1_grpc_port.toString))
-    sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r2_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s2r2_grpc_port.toString))
+    if (grpcEnabled) {
+      sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r1_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s1r1_grpc_port.toString))
+      sys.props += ((s"${PREFIX}_HOST_clickhouse-s1r2_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s1r2_grpc_port.toString))
+      sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r1_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s2r1_grpc_port.toString))
+      sys.props += ((s"${PREFIX}_HOST_clickhouse-s2r2_PORT_$CLICKHOUSE_GRPC_PORT", clickhouse_s2r2_grpc_port.toString))
+    }
   }
 }
