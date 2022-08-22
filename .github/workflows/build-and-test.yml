@@ -42,3 +42,22 @@ jobs:
           -Dscala_binary_version=${{ matrix.scala }}
           -Dspark_binary_version=${{ matrix.spark }}
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+
+  run-tests-with-specific-clickhouse:
+    runs-on: ubuntu-20.04
+    strategy:
+      fail-fast: false
+      matrix:
+        clickhouse: [ 21.3, 21.8, 22.3, 22.8 ]
+    env:
+      CLICKHOUSE_IMAGE: clickhouse/clickhouse-server:${{ matrix.clickhouse }}
+    steps:
+      - uses: actions/checkout@v2
+      - uses: actions/setup-java@v2
+        with:
+          distribution: zulu
+          java-version: 8
+          cache: gradle
+      - run: >-
+          ./gradlew clean test --no-daemon --refresh-dependencies
+          -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
