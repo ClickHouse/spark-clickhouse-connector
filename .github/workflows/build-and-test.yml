@@ -30,7 +30,7 @@ jobs:
         java: [ 8, 11 ]
         scala: [ 2.12, 2.13 ]
         spark: [ 3.2, 3.3 ]
-        clickhouse: [ 21.3, 21.9, 22.3, 22.8 ]
+        clickhouse: [ 21.3, 21.8, 22.3, 22.8 ]
     env:
       CLICKHOUSE_IMAGE: CLICKHOUSE_IMAGE=clickhouse/clickhouse-server:{{ matrix.clickhouse }}
     if: |
