@@ -23,65 +23,72 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
 
   import testImplicits._
 
-  override protected def sparkConf: SparkConf = super.sparkConf
-    .setMaster("local[4]")
-    .setAppName("spark-clickhouse-cluster-ut")
-    .set("spark.sql.shuffle.partitions", "4")
-    // catalog
-    .set("spark.sql.defaultCatalog", "clickhouse_s1r1")
-    .set("spark.sql.catalog.clickhouse_s1r1", "xenon.clickhouse.ClickHouseCatalog")
-    .set("spark.sql.catalog.clickhouse_s1r1.host", clickhouse_s1r1_host)
-    .set("spark.sql.catalog.clickhouse_s1r1.grpc_port", clickhouse_s1r1_grpc_port.toString)
-    .set("spark.sql.catalog.clickhouse_s1r1.http_port", clickhouse_s1r1_http_port.toString)
-    .set("spark.sql.catalog.clickhouse_s1r1.protocol", "http")
-    .set("spark.sql.catalog.clickhouse_s1r1.user", "default")
-    .set("spark.sql.catalog.clickhouse_s1r1.password", "")
-    .set("spark.sql.catalog.clickhouse_s1r1.database", "default")
-    .set("spark.sql.catalog.clickhouse_s1r2", "xenon.clickhouse.ClickHouseCatalog")
-    .set("spark.sql.catalog.clickhouse_s1r2.host", clickhouse_s1r2_host)
-    .set("spark.sql.catalog.clickhouse_s1r2.grpc_port", clickhouse_s1r2_grpc_port.toString)
-    .set("spark.sql.catalog.clickhouse_s1r2.http_port", clickhouse_s1r2_http_port.toString)
-    .set("spark.sql.catalog.clickhouse_s1r2.protocol", "http")
-    .set("spark.sql.catalog.clickhouse_s1r2.user", "default")
-    .set("spark.sql.catalog.clickhouse_s1r2.password", "")
-    .set("spark.sql.catalog.clickhouse_s1r2.database", "default")
-    .set("spark.sql.catalog.clickhouse_s2r1", "xenon.clickhouse.ClickHouseCatalog")
-    .set("spark.sql.catalog.clickhouse_s2r1.host", clickhouse_s2r1_host)
-    .set("spark.sql.catalog.clickhouse_s2r1.grpc_port", clickhouse_s2r1_grpc_port.toString)
-    .set("spark.sql.catalog.clickhouse_s2r1.http_port", clickhouse_s2r1_http_port.toString)
-    .set("spark.sql.catalog.clickhouse_s2r1.protocol", "http")
-    .set("spark.sql.catalog.clickhouse_s2r1.user", "default")
-    .set("spark.sql.catalog.clickhouse_s2r1.password", "")
-    .set("spark.sql.catalog.clickhouse_s2r1.database", "default")
-    .set("spark.sql.catalog.clickhouse_s2r2", "xenon.clickhouse.ClickHouseCatalog")
-    .set("spark.sql.catalog.clickhouse_s2r2.host", clickhouse_s2r2_host)
-    .set("spark.sql.catalog.clickhouse_s2r2.grpc_port", clickhouse_s2r2_grpc_port.toString)
-    .set("spark.sql.catalog.clickhouse_s2r2.http_port", clickhouse_s2r2_http_port.toString)
-    .set("spark.sql.catalog.clickhouse_s2r2.protocol", "http")
-    .set("spark.sql.catalog.clickhouse_s2r2.user", "default")
-    .set("spark.sql.catalog.clickhouse_s2r2.password", "")
-    .set("spark.sql.catalog.clickhouse_s2r2.database", "default")
-    // extended configurations
-    .set("spark.clickhouse.write.batchSize", "2")
-    .set("spark.clickhouse.write.maxRetry", "2")
-    .set("spark.clickhouse.write.retryInterval", "1")
-    .set("spark.clickhouse.write.retryableErrorCodes", "241")
-    .set("spark.clickhouse.write.write.repartitionNum", "0")
-    .set("spark.clickhouse.write.distributed.useClusterNodes", "true")
-    .set("spark.clickhouse.read.distributed.useClusterNodes", "false")
-    .set("spark.clickhouse.write.distributed.convertLocal", "false")
-    .set("spark.clickhouse.read.distributed.convertLocal", "true")
-    .set("spark.clickhouse.write.format", "ArrowStream")
+  override protected def sparkConf: SparkConf = {
+    val _conf = super.sparkConf
+      .setMaster("local[4]")
+      .setAppName("spark-clickhouse-cluster-ut")
+      .set("spark.sql.shuffle.partitions", "4")
+      // catalog
+      .set("spark.sql.defaultCatalog", "clickhouse_s1r1")
+      .set("spark.sql.catalog.clickhouse_s1r1", "xenon.clickhouse.ClickHouseCatalog")
+      .set("spark.sql.catalog.clickhouse_s1r1.host", clickhouse_s1r1_host)
+      .set("spark.sql.catalog.clickhouse_s1r1.http_port", clickhouse_s1r1_http_port.toString)
+      .set("spark.sql.catalog.clickhouse_s1r1.protocol", "http")
+      .set("spark.sql.catalog.clickhouse_s1r1.user", "default")
+      .set("spark.sql.catalog.clickhouse_s1r1.password", "")
+      .set("spark.sql.catalog.clickhouse_s1r1.database", "default")
+      .set("spark.sql.catalog.clickhouse_s1r2", "xenon.clickhouse.ClickHouseCatalog")
+      .set("spark.sql.catalog.clickhouse_s1r2.host", clickhouse_s1r2_host)
+      .set("spark.sql.catalog.clickhouse_s1r2.http_port", clickhouse_s1r2_http_port.toString)
+      .set("spark.sql.catalog.clickhouse_s1r2.protocol", "http")
+      .set("spark.sql.catalog.clickhouse_s1r2.user", "default")
+      .set("spark.sql.catalog.clickhouse_s1r2.password", "")
+      .set("spark.sql.catalog.clickhouse_s1r2.database", "default")
+      .set("spark.sql.catalog.clickhouse_s2r1", "xenon.clickhouse.ClickHouseCatalog")
+      .set("spark.sql.catalog.clickhouse_s2r1.host", clickhouse_s2r1_host)
+      .set("spark.sql.catalog.clickhouse_s2r1.http_port", clickhouse_s2r1_http_port.toString)
+      .set("spark.sql.catalog.clickhouse_s2r1.protocol", "http")
+      .set("spark.sql.catalog.clickhouse_s2r1.user", "default")
+      .set("spark.sql.catalog.clickhouse_s2r1.password", "")
+      .set("spark.sql.catalog.clickhouse_s2r1.database", "default")
+      .set("spark.sql.catalog.clickhouse_s2r2", "xenon.clickhouse.ClickHouseCatalog")
+      .set("spark.sql.catalog.clickhouse_s2r2.host", clickhouse_s2r2_host)
+      .set("spark.sql.catalog.clickhouse_s2r2.http_port", clickhouse_s2r2_http_port.toString)
+      .set("spark.sql.catalog.clickhouse_s2r2.protocol", "http")
+      .set("spark.sql.catalog.clickhouse_s2r2.user", "default")
+      .set("spark.sql.catalog.clickhouse_s2r2.password", "")
+      .set("spark.sql.catalog.clickhouse_s2r2.database", "default")
+      // extended configurations
+      .set("spark.clickhouse.write.batchSize", "2")
+      .set("spark.clickhouse.write.maxRetry", "2")
+      .set("spark.clickhouse.write.retryInterval", "1")
+      .set("spark.clickhouse.write.retryableErrorCodes", "241")
+      .set("spark.clickhouse.write.write.repartitionNum", "0")
+      .set("spark.clickhouse.write.distributed.useClusterNodes", "true")
+      .set("spark.clickhouse.read.distributed.useClusterNodes", "false")
+      .set("spark.clickhouse.write.distributed.convertLocal", "false")
+      .set("spark.clickhouse.read.distributed.convertLocal", "true")
+      .set("spark.clickhouse.write.format", "ArrowStream")
+    if (grpcEnabled) {
+      _conf.set("spark.sql.catalog.clickhouse_s1r1.grpc_port", clickhouse_s1r1_grpc_port.toString)
+        .set("spark.sql.catalog.clickhouse_s1r2.grpc_port", clickhouse_s1r2_grpc_port.toString)
+        .set("spark.sql.catalog.clickhouse_s2r1.grpc_port", clickhouse_s2r1_grpc_port.toString)
+        .set("spark.sql.catalog.clickhouse_s2r2.grpc_port", clickhouse_s2r2_grpc_port.toString)
+    }
+    _conf
+  }
 
-  override def cmdRunnerOptions: Map[String, String] = Map(
-    "host" -> clickhouse_s1r1_host,
-    "grpc_port" -> clickhouse_s1r1_grpc_port.toString,
-    "http_port" -> clickhouse_s1r1_http_port.toString,
-    "protocol" -> "http",
-    "user" -> "default",
-    "password" -> "",
-    "database" -> "default"
-  )
+  override def cmdRunnerOptions: Map[String, String] = {
+    val _options = Map(
+      "host" -> clickhouse_s1r1_host,
+      "http_port" -> clickhouse_s1r1_http_port.toString,
+      "protocol" -> "http",
+      "user" -> "default",
+      "password" -> "",
+      "database" -> "default"
+    )
+    if (grpcEnabled) _options + ("grpc_port" -> clickhouse_s1r1_grpc_port.toString) else _options
+  }
 
   def autoCleanupDistTable(
     cluster: String,
