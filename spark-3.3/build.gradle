@@ -85,7 +85,7 @@ project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version") {
         testImplementation("com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version:all") { transitive = false }
 
         if (scala_binary_version == "2.12") {
-            testImplementation "org.apache.kyuubi:kyuubi-spark-connector-tpcds_${scala_binary_version}:1.6.0-SNAPSHOT"
+            testImplementation "org.apache.kyuubi:kyuubi-spark-connector-tpcds_${scala_binary_version}:1.6.0-incubating"
         }
     }
 
