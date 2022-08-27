@@ -30,7 +30,6 @@ project.ext {
 
 repositories {
     maven { url = "$mavenCentralMirror" }
-    maven { url = "https://repository.apache.org/content/repositories/orgapachekyuubi-1021/" }
 }
 
 rat {
@@ -65,6 +64,7 @@ subprojects {
 
     repositories {
         maven { url = "$mavenCentralMirror" }
+        maven { url = "https://repository.apache.org/content/repositories/orgapachekyuubi-1021/" }
     }
 
     version = getProjectVersion()
