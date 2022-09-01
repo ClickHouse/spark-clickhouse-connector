@@ -56,3 +56,4 @@ derby.log
 python/.mypy_cache/
 
 *.patch
+**/*.drawio.bkp
