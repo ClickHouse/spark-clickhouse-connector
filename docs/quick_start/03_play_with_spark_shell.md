@@ -102,3 +102,40 @@ scala> spark.table("test_db.tbl").show
 |2022-02-02 10:10:10|  2|  2|    2|
 +-------------------+---+---+-----+
 ```
+
+Execute Native ClickHouse SQL.
+
+```
+scala> val options = Map(
+     |     "host" -> "clickhouse",
+     |     "protocol" -> "grpc",
+     |     "grpc_port" -> "9100",
+     |     "user" -> "default",
+     |     "password" -> ""
+     | )
+
+scala> val sql = """
+     | |CREATE TABLE test_db.person (
+     | |  id    Int64,
+     | |  name  String,
+     | |  age Nullable(Int32)
+     | |)
+     | |ENGINE = MergeTree()
+     | |ORDER BY id
+     | """.stripMargin
+
+scala> spark.executeCommand("xenon.clickhouse.ClickHouseCommandRunner", sql, options) 
+
+scala> spark.sql("show tables in clickhouse_s1r1.test_db").show
++---------+---------+-----------+
+|namespace|tableName|isTemporary|
++---------+---------+-----------+
+|  test_db|   person|      false|
++---------+---------+-----------+
+
+scala> spark.table("clickhouse_s1r1.test_db.person").printSchema
+root
+ |-- id: long (nullable = false)
+ |-- name: string (nullable = false)
+ |-- age: integer (nullable = true)
+```
