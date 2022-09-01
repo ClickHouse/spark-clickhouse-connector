@@ -6,7 +6,7 @@ Playground
 ### Setup
 
 1. Install [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/);
-2. Start compose services `cd docker && docker-compose up`;
+2. Start compose services `cd docker && docker compose up`;
 
 ### Play
 
