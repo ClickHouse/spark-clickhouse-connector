@@ -103,8 +103,7 @@ scala> spark.table("test_db.tbl").show
 +-------------------+---+---+-----+
 ```
 
-Execute Native ClickHouse SQL.
-
+Execute ClickHouse native SQL.
 ```
 scala> val options = Map(
      |     "host" -> "clickhouse",
