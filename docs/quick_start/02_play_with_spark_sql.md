@@ -30,20 +30,17 @@ $SPARK_HOME/bin/spark-sql \
   --conf spark.sql.catalog.clickhouse.user=${CLICKHOUSE_USER:-default} \
   --conf spark.sql.catalog.clickhouse.password=${CLICKHOUSE_PASSWORD:-} \
   --conf spark.sql.catalog.clickhouse.database=default \
-  --jars /path/clickhouse-spark-runtime-{{ spark_binary_version }}_{{ scala_binary_version }}:{{ stable_version }}.jar \
-  --jars /path/clickhouse-jdbc-{{ clickhouse_jdbc_version }}-all.jar
+  --jars /path/clickhouse-spark-runtime-{{ spark_binary_version }}_{{ scala_binary_version }}:{{ stable_version }}.jar,/path/clickhouse-jdbc-{{ clickhouse_jdbc_version }}-all.jar
 ```
 
 The following argument
 ```
-  --jars /path/clickhouse-spark-runtime-{{ spark_binary_version }}_{{ scala_binary_version }}:{{ stable_version }}.jar \
-  --jars /path/clickhouse-jdbc-{{ clickhouse_jdbc_version }}-all.jar
+  --jars /path/clickhouse-spark-runtime-{{ spark_binary_version }}_{{ scala_binary_version }}:{{ stable_version }}.jar,/path/clickhouse-jdbc-{{ clickhouse_jdbc_version }}-all.jar
 ```
 can be replaced by
 ```
   --repositories https://{maven-cental-mirror or private-nexus-repo} \
-  --packages com.github.housepower:clickhouse-spark-runtime-{{ spark_binary_version }}_{{ scala_binary_version }}:{{ stable_version }} \
-  --packages com.clickhouse:clickhouse-jdbc:{{ clickhouse_jdbc_version }}:all
+  --packages com.github.housepower:clickhouse-spark-runtime-{{ spark_binary_version }}_{{ scala_binary_version }}:{{ stable_version }},com.clickhouse:clickhouse-jdbc:{{ clickhouse_jdbc_version }}:all
 ```
 to avoid copying jar to your Spark client node.
 
