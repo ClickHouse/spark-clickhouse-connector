@@ -10,11 +10,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-FROM openjdk:8-bullseye
+FROM eclipse-temurin:8-focal
 LABEL org.opencontainers.image.authors="Cheng Pan<chengpan@apache.com>"
 
-RUN apt-get update -q && \
-    apt-get install -yq retry && \
-    retry --times=3 --delay=1 -- apt-get install -yq vim less net-tools wget curl && \
-    retry --times=3 --delay=1 -- apt-get install -yq python-is-python3 python3-pip && \
-    rm -rf /var/lib/apt/lists/*
+RUN set -x && \
+    ln -snf /usr/bin/bash /usr/bin/sh && \
+    apt-get update -q && \
+    apt-get install -yq retry busybox python-is-python3 python3-pip && \
+    rm -rf /var/lib/apt/lists/* && \
+    mkdir /opt/busybox && \
+    busybox --install /opt/busybox
+
+ENV PATH=/opt/java/openjdk/bin:/usr/local/sbin:/usr/local/bin:/usr/sbin:/usr/bin:/sbin:/bin:/opt/busybox
