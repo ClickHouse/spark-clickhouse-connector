@@ -17,6 +17,7 @@ FROM pan3793/scc-base:${PROJECT_VERSION}
 ARG AWS_JAVA_SDK_VERSION
 ARG CLICKHOUSE_JDBC_VERSION
 ARG ICEBERG_VERSION
+ARG KYUUBI_VERSION
 ARG SPARK_HADOOP_VERSION
 ARG POSTGRES_JDBC_VERSION
 ARG PROJECT_VERSION
@@ -50,10 +51,10 @@ RUN set -x && \
     POSTGRES_JDBC_JAR_NAME=postgresql && \
     wget -q ${MAVEN_MIRROR}/org/postgresql/${POSTGRES_JDBC_JAR_NAME}/${POSTGRES_JDBC_VERSION}/${POSTGRES_JDBC_JAR_NAME}-${POSTGRES_JDBC_VERSION}.jar -P ${SPARK_HOME}/jars && \
     TPCDS_CONNECTOR_JAR_NAME=kyuubi-spark-connector-tpcds_${SCALA_BINARY_VERSION} && \
-    wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/${TPCDS_CONNECTOR_JAR_NAME}/1.6.0-SNAPSHOT/${TPCDS_CONNECTOR_JAR_NAME}-1.6.0-20220808.001722-227.jar -P ${SPARK_HOME}/jars && \
+    wget -q ${MAVEN_MIRROR}/org/apache/kyuubi/${TPCDS_CONNECTOR_JAR_NAME}/${KYUUBI_VERSION}/${TPCDS_CONNECTOR_JAR_NAME}-${KYUUBI_VERSION}.jar -P ${SPARK_HOME}/jars && \
     TPCH_CONNECTOR_JAR_NAME=kyuubi-spark-connector-tpch_${SCALA_BINARY_VERSION} && \
-    wget -q https://repository.apache.org/content/repositories/snapshots/org/apache/kyuubi/${TPCH_CONNECTOR_JAR_NAME}/1.6.0-SNAPSHOT/${TPCH_CONNECTOR_JAR_NAME}-1.6.0-20220808.001722-190.jar -P ${SPARK_HOME}/jars && \
+    wget -q ${MAVEN_MIRROR}/org/apache/kyuubi/${TPCH_CONNECTOR_JAR_NAME}/${KYUUBI_VERSION}/${TPCH_CONNECTOR_JAR_NAME}-${KYUUBI_VERSION}.jar -P ${SPARK_HOME}/jars && \
     CLICKHOUSE_JDBC_JAR_NAME=clickhouse-jdbc && \
-    wget -q https://repo1.maven.org/maven2/com/clickhouse/${CLICKHOUSE_JDBC_JAR_NAME}/${CLICKHOUSE_JDBC_VERSION}/${CLICKHOUSE_JDBC_JAR_NAME}-${CLICKHOUSE_JDBC_VERSION}-all.jar -P ${SPARK_HOME}/jars && \
+    wget -q ${MAVEN_MIRROR}/com/clickhouse/${CLICKHOUSE_JDBC_JAR_NAME}/${CLICKHOUSE_JDBC_VERSION}/${CLICKHOUSE_JDBC_JAR_NAME}-${CLICKHOUSE_JDBC_VERSION}-all.jar -P ${SPARK_HOME}/jars && \
     SCC_JAR_NAME=clickhouse-spark-runtime-${SPARK_BINARY_VERSION}_${SCALA_BINARY_VERSION} && \
     if [ "$(echo ${PROJECT_VERSION} | grep SNAPSHOT)" = "" ]; then wget -q ${MAVEN_MIRROR}/com/github/housepower/${SCC_JAR_NAME}/${PROJECT_VERSION}/${SCC_JAR_NAME}-${PROJECT_VERSION}.jar -P ${SPARK_HOME}/jars; fi
