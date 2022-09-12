@@ -16,7 +16,7 @@ LABEL org.opencontainers.image.authors="Cheng Pan<chengpan@apache.com>"
 RUN set -x && \
     ln -snf /usr/bin/bash /usr/bin/sh && \
     apt-get update -q && \
-    apt-get install -yq retry busybox python-is-python3 python3-pip && \
+    apt-get install -yq retry busybox && \
     rm -rf /var/lib/apt/lists/* && \
     mkdir /opt/busybox && \
     busybox --install /opt/busybox
