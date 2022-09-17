@@ -28,10 +28,23 @@ abstract class DurationSumMetric extends CustomMetric {
 }
 
 object Metrics {
+  val BLOCKS_READ = "blocksRead"
+  val BYTES_READ = "bytesRead"
+
   val RECORDS_WRITTEN = "recordsWritten"
   val BYTES_WRITTEN = "bytesWritten"
   val SERIALIZE_TIME = "serializeTime"
   val WRITE_TIME = "writeTime"
+}
+
+case class BlocksReadMetric() extends CustomSumMetric {
+  override def name: String = BLOCKS_READ
+  override def description: String = "number of blocks"
+}
+
+case class BytesReadMetric() extends SizeSumMetric {
+  override def name: String = BYTES_READ
+  override def description: String = "data size"
 }
 
 case class RecordsWrittenMetric() extends CustomSumMetric {

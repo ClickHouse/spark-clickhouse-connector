@@ -153,39 +153,24 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   }
 
   // //////////////////////////////////////////////////////////////////////////////
-  // ///////////////////////// Synchronized Stream API ////////////////////////////
+  // ///////////////////////// ret ClickHouseResponse /////////////////////////////
   // //////////////////////////////////////////////////////////////////////////////
 
-  def syncStreamQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(
-    sql: String,
-    outputCompressionType: ClickHouseCompression = ClickHouseCompression.NONE,
-    settings: Map[String, String] = Map.empty
-  ): StreamOutput[Array[JsonNode]] =
-    syncStreamQueryAndCheck(
-      sql,
-      "JSONCompactEachRowWithNamesAndTypes",
-      outputCompressionType,
-      JSONCompactEachRowWithNamesAndTypesStreamOutput.deserializeStream,
-      settings
-    )
-
-  def syncStreamQueryAndCheck[OUT](
+  def queryAndCheck(
     sql: String,
     outputFormat: String,
     outputCompressionType: ClickHouseCompression,
-    outputStreamDeserializer: InputStream => StreamOutput[OUT],
-    settings: Map[String, String]
-  ): StreamOutput[OUT] = {
+    settings: Map[String, String] = Map.empty
+  ): ClickHouseResponse = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
-
     val req = client.connect(node)
       .query(sql, queryId).asInstanceOf[ClickHouseRequest[_]]
       .compressServerResponse(outputCompressionType).asInstanceOf[ClickHouseRequest[_]]
       .format(ClickHouseFormat.valueOf(outputFormat)).asInstanceOf[ClickHouseRequest[_]]
     settings.foreach { case (k, v) => req.set(k, v).asInstanceOf[ClickHouseRequest[_]] }
     Try(req.executeAndWait()) match {
-      case Success(resp) => outputStreamDeserializer(resp.getInputStream)
+      case Success(resp) => resp
       case Failure(ex: ClickHouseException) =>
         throw CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec), Some(ex))
       case Failure(ex) => throw CHClientException(ex.getMessage, Some(nodeSpec), Some(ex))
