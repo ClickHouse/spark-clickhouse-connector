@@ -49,7 +49,7 @@ trait ClickHouseHelper extends Logging {
     _host = options.getOrDefault(CATALOG_PROP_HOST, "localhost"),
     _grpc_port = Some(options.getInt(CATALOG_PROP_GRPC_PORT, 9100)),
     _http_port = Some(options.getInt(CATALOG_PROP_HTTP_PORT, 8123)),
-    protocol = ClickHouseProtocol.fromUriScheme(options.getOrDefault(CATALOG_PROP_PROTOCOL, "grpc")),
+    protocol = ClickHouseProtocol.fromUriScheme(options.getOrDefault(CATALOG_PROP_PROTOCOL, "http")),
     username = options.getOrDefault(CATALOG_PROP_USER, "default"),
     password = options.getOrDefault(CATALOG_PROP_PASSWORD, ""),
     database = options.getOrDefault(CATALOG_PROP_DATABASE, "default")
