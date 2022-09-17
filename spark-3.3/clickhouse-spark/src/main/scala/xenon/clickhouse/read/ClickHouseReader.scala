@@ -15,24 +15,19 @@
 package xenon.clickhouse.read
 
 import com.clickhouse.client.ClickHouseCompression
-import com.fasterxml.jackson.databind.JsonNode
-import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData}
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
+import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
-import org.apache.spark.unsafe.types.UTF8String
-import xenon.clickhouse.Utils._
+import xenon.clickhouse.Metrics.{BYTES_READ, BLOCKS_READ}
 import xenon.clickhouse.client.{NodeClient, NodesClient}
-import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.format.StreamOutput
-import xenon.clickhouse.{ClickHouseHelper, Logging}
+import xenon.clickhouse.{ClickHouseHelper, Logging, TaskMetric}
 
-import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
-import scala.collection.JavaConverters._
-import scala.math.BigDecimal.RoundingMode
+import java.util.concurrent.atomic.LongAdder
 
-class ClickHouseReader(
+abstract class ClickHouseReader[Record](
   scanJob: ScanJobDescription,
   part: ClickHouseInputPartition
 ) extends PartitionReader[InternalRow]
@@ -46,14 +41,13 @@ class ClickHouseReader(
   val database: String = part.table.database
   val table: String = part.table.name
   val codec: ClickHouseCompression = scanJob.readOptions.compressionCodec
-
-  def readSchema: StructType = scanJob.readSchema
+  val readSchema: StructType = scanJob.readSchema
 
   private lazy val nodesClient = NodesClient(part.candidateNodes)
 
   def nodeClient: NodeClient = nodesClient.node
 
-  lazy val streamOutput: StreamOutput[Array[JsonNode]] = {
+  lazy val scanQuery: String = {
     val selectItems =
       if (readSchema.isEmpty) {
         "1" // for case like COUNT(*) which prunes all columns
@@ -62,66 +56,35 @@ class ClickHouseReader(
           field => if (scanJob.groupByClause.isDefined) field.name else s"`${field.name}`"
         }.mkString(", ")
       }
-    nodeClient.syncStreamQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(
-      s"""SELECT $selectItems
-         |FROM `$database`.`$table`
-         |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
-         |${scanJob.groupByClause.getOrElse("")}
-         |${scanJob.limit.map(n => s"LIMIT $n").getOrElse("")}
-         |""".stripMargin,
-      codec
-    )
+    s"""SELECT $selectItems
+       |FROM `$database`.`$table`
+       |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
+       |${scanJob.groupByClause.getOrElse("")}
+       |${scanJob.limit.map(n => s"LIMIT $n").getOrElse("")}
+       |""".stripMargin
   }
 
-  private var currentRow: Array[JsonNode] = _
+  def totalBlocksRead: Long
+  def totalBytesRead: Long
+
+  override def currentMetricsValues: Array[CustomTaskMetric] = Array(
+    TaskMetric(BLOCKS_READ, totalBlocksRead),
+    TaskMetric(BYTES_READ, totalBytesRead)
+  )
+
+  def streamOutput: StreamOutput[Record]
+
+  private var currentRecord: Record = _
 
   override def next(): Boolean = {
     val hasNext = streamOutput.hasNext
-    if (hasNext) currentRow = streamOutput.next
+    if (hasNext) currentRecord = streamOutput.next
     hasNext
   }
 
-  override def get(): InternalRow = InternalRow.fromSeq(
-    (currentRow zip readSchema).map { case (jsonNode, structField) => decode(jsonNode, structField) }
-  )
+  override def get: InternalRow = decode(currentRecord)
 
-  private def decode(jsonNode: JsonNode, structField: StructField): Any = {
-    if (jsonNode == null || jsonNode.isNull) {
-      // should we check `structField.nullable`?
-      return null
-    }
-
-    structField.dataType match {
-      case BooleanType => jsonNode.asBoolean
-      case ByteType => jsonNode.asInt.byteValue
-      case ShortType => jsonNode.asInt.shortValue
-      case IntegerType => jsonNode.asInt
-      case LongType => jsonNode.asLong
-      case FloatType => jsonNode.asDouble.floatValue
-      case DoubleType => jsonNode.asDouble
-      case d: DecimalType => Decimal(jsonNode.decimalValue.setScale(d.scale, RoundingMode.HALF_UP))
-      case TimestampType =>
-        ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(scanJob.tz))
-          .withZoneSameInstant(ZoneOffset.UTC)
-          .toEpochSecond * 1000 * 1000
-      case StringType => UTF8String.fromString(jsonNode.asText)
-      case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay.toInt
-      case BinaryType => jsonNode.binaryValue
-      case ArrayType(_dataType, _nullable) =>
-        val _structField = StructField(s"${structField.name}__array_element__", _dataType, _nullable)
-        new GenericArrayData(jsonNode.asScala.map(decode(_, _structField)))
-      case MapType(StringType, _valueType, _valueNullable) =>
-        val mapData = jsonNode.fields.asScala.map { entry =>
-          val _structField = StructField(s"${structField.name}__map_value__", _valueType, _valueNullable)
-          UTF8String.fromString(entry.getKey) -> decode(entry.getValue, _structField)
-        }.toMap
-        ArrayBasedMapData(mapData)
-      case _ =>
-        throw CHClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
-    }
-  }
+  def decode(record: Record): InternalRow
 
   override def close(): Unit = nodesClient.close()
 }
-
-class ClickHouseColumnarReader {}

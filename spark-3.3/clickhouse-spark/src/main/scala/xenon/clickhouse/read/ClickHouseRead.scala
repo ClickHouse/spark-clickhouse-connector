@@ -18,19 +18,20 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
+import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.connector.read.partitioning.{Partitioning, UnknownPartitioning}
 import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.vectorized.ColumnarBatch
-import xenon.clickhouse.exception.CHClientException
-import xenon.clickhouse.spec._
-import xenon.clickhouse.{ClickHouseHelper, Logging, SQLHelper, Utils}
-import java.time.ZoneId
-
-import scala.util.control.NonFatal
-
+import xenon.clickhouse._
 import xenon.clickhouse.client.NodeClient
+import xenon.clickhouse.exception.CHClientException
+import xenon.clickhouse.read.format.ClickHouseJSONCompactEachRowReader
+import xenon.clickhouse.spec._
+
+import java.time.ZoneId
+import scala.util.control.NonFatal
 
 class ClickHouseScanBuilder(
   scanJob: ScanJobDescription,
@@ -185,10 +186,15 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
   override def createReaderFactory: PartitionReaderFactory = this
 
   override def createReader(partition: InputPartition): PartitionReader[InternalRow] =
-    new ClickHouseReader(scanJob, partition.asInstanceOf[ClickHouseInputPartition])
+    new ClickHouseJSONCompactEachRowReader(scanJob, partition.asInstanceOf[ClickHouseInputPartition])
 
   override def supportColumnarReads(partition: InputPartition): Boolean = false
 
   override def createColumnarReader(partition: InputPartition): PartitionReader[ColumnarBatch] =
     super.createColumnarReader(partition)
+
+  override def supportedCustomMetrics(): Array[CustomMetric] = Array(
+    BlocksReadMetric(),
+    BytesReadMetric()
+  )
 }
