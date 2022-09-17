@@ -15,18 +15,12 @@ See the [documentation](https://housepower.github.io/spark-clickhouse-connector/
 
 - Java 8 or 11
 - Scala 2.12 or 2.13
-- Apache Spark 3.2 or 3.3
+- Apache Spark 3.3
 
 Notes:
 1. As of 0.5.0, this connector switches from ClickHouse raw gRPC Client to 
    [ClickHouse Official Java Client](https://github.com/ClickHouse/clickhouse-jdbc), which brings HTTP protocol support,
    extending the range of supported versions of ClickHouse Server.
-
-2. Due to lack of developer resources, the project is currently only focusing on Spark 3.3 support, which means you
-   may find something it documents but does not work in Spark 3.2, or has significantly worse performance comparing
-   to Spark 3.3. When you come into such a situation, send a PR to backport the patch from Spark 3.3 module to
-   Spark 3.2 is first choice. Also, open an issue to request a backport is fine, I will check the issue list and
-   fix some of important ones if I have time.
 
 ## Build
 
@@ -45,9 +39,9 @@ Run all test
 
 `./gradlew clean test`
 
-Run all test w/ Spark 3.2 and Scala 2.13
+Run all test w/ Spark 3.3 and Scala 2.13
 
-`./gradlew clean test -Dspark_binary_version=3.2 -Dscala_binary_version=2.13`
+`./gradlew clean test -Dspark_binary_version=3.3 -Dscala_binary_version=2.13`
 
 Run single test
 

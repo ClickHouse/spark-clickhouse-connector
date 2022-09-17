@@ -100,7 +100,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
     try {
       runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
 
-      // SPARK-33779: Spark 3.2 only support IdentityTransform
+      // SPARK-33779: Spark 3.3 only support IdentityTransform
       spark.sql(
         s"""CREATE TABLE $db.$tbl (
            |  id          BIGINT    NOT NULL COMMENT 'sort key',

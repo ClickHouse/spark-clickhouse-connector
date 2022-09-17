@@ -27,7 +27,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        spark: [ 3.2, 3.3 ]
+        spark: [ 3.3 ]
     steps:
       - uses: actions/checkout@v2
       - uses: actions/setup-java@v2
