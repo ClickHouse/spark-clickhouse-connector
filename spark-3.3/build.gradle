@@ -62,10 +62,6 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
 }
 
 project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version") {
-    repositories {
-        maven { url = "https://repository.apache.org/content/repositories/snapshots" }
-    }
-
     dependencies {
         implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
 
