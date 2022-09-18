@@ -45,6 +45,9 @@ class ReadOptions(_options: JMap[String, String]) extends SparkOptions {
 
   def compressionCodec: ClickHouseCompression =
     ClickHouseCompression.fromEncoding(eval(READ_COMPRESSION_CODEC.key, READ_COMPRESSION_CODEC))
+
+  def format: String =
+    eval(READ_FORMAT.key, READ_FORMAT)
 }
 
 class WriteOptions(_options: JMap[String, String]) extends SparkOptions {

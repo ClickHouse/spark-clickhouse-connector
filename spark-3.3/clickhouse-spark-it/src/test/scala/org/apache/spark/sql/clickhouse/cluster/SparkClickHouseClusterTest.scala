@@ -68,6 +68,7 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
       .set("spark.clickhouse.read.distributed.useClusterNodes", "false")
       .set("spark.clickhouse.write.distributed.convertLocal", "false")
       .set("spark.clickhouse.read.distributed.convertLocal", "true")
+      .set("spark.clickhouse.read.format", "binary")
       .set("spark.clickhouse.write.format", "ArrowStream")
     if (grpcEnabled) {
       _conf.set("spark.sql.catalog.clickhouse_s1r1.grpc_port", clickhouse_s1r1_grpc_port.toString)

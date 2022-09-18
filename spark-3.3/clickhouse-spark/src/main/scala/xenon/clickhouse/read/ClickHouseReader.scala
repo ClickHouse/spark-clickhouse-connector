@@ -14,18 +14,16 @@
 
 package xenon.clickhouse.read
 
-import com.clickhouse.client.ClickHouseCompression
+import com.clickhouse.client.{ClickHouseCompression, ClickHouseResponse}
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
-import xenon.clickhouse.Metrics.{BYTES_READ, BLOCKS_READ}
+import xenon.clickhouse.Metrics.{BLOCKS_READ, BYTES_READ}
 import xenon.clickhouse.client.{NodeClient, NodesClient}
 import xenon.clickhouse.format.StreamOutput
 import xenon.clickhouse.{ClickHouseHelper, Logging, TaskMetric}
-
-import java.util.concurrent.atomic.LongAdder
 
 abstract class ClickHouseReader[Record](
   scanJob: ScanJobDescription,
@@ -64,15 +62,20 @@ abstract class ClickHouseReader[Record](
        |""".stripMargin
   }
 
-  def totalBlocksRead: Long
-  def totalBytesRead: Long
+  def format: String
+
+  lazy val resp: ClickHouseResponse = nodeClient.queryAndCheck(scanQuery, format, codec)
+
+  def totalBlocksRead: Long = resp.getSummary.getStatistics.getBlocks
+
+  def totalBytesRead: Long = resp.getSummary.getReadBytes
 
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
     TaskMetric(BLOCKS_READ, totalBlocksRead),
     TaskMetric(BYTES_READ, totalBytesRead)
   )
 
-  def streamOutput: StreamOutput[Record]
+  def streamOutput: Iterator[Record]
 
   private var currentRecord: Record = _
 

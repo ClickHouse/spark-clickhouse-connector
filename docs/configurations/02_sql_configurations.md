@@ -132,6 +132,12 @@ SQL Configurations
 
     Description: The codec used to compress data for writing. Supported codecs: none, lz4.
 
+!!! tip "Since 0.6.0 - spark.clickhouse.read.format"
+
+    Default Value: json
+
+    Description: Serialize format for reading. Supported formats: json, binary.
+
 !!! tip "Since 0.4.0 - spark.clickhouse.write.format"
 
     Default Value: ArrowStream

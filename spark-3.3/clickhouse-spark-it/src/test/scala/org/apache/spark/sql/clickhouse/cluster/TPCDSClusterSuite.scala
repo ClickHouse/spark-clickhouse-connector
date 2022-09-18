@@ -27,18 +27,19 @@ class TPCDSClusterSuite extends SparkClickHouseClusterTest {
     .set("spark.sql.catalog.clickhouse_s1r2.protocol", if (grpcEnabled) "grpc" else "http")
     .set("spark.sql.catalog.clickhouse_s2r1.protocol", if (grpcEnabled) "grpc" else "http")
     .set("spark.sql.catalog.clickhouse_s2r2.protocol", if (grpcEnabled) "grpc" else "http")
+    .set("spark.clickhouse.read.compression.codec", "lz4")
     .set("spark.clickhouse.write.batchSize", "100000")
     .set("spark.clickhouse.write.compression.codec", "lz4")
     .set("spark.clickhouse.write.distributed.convertLocal", "true")
 
-  test("Cluster: TPC-DS tiny write and count(*)") {
-    withDatabase("tpcds_tiny_cluster") {
-      spark.sql("CREATE DATABASE tpcds_tiny_cluster WITH DBPROPERTIES (cluster = 'single_replica')")
+  test("Cluster: TPC-DS sf1 write and count(*)") {
+    withDatabase("tpcds_sf1_cluster") {
+      spark.sql("CREATE DATABASE tpcds_sf1_cluster WITH DBPROPERTIES (cluster = 'single_replica')")
 
       TPCDSTestUtils.tablePrimaryKeys.foreach { case (table, primaryKeys) =>
         spark.sql(
           s"""
-             |CREATE TABLE tpcds_tiny_cluster.$table
+             |CREATE TABLE tpcds_sf1_cluster.$table
              |USING clickhouse
              |TBLPROPERTIES (
              |    cluster = 'single_replica',
@@ -46,13 +47,13 @@ class TPCDSClusterSuite extends SparkClickHouseClusterTest {
              |    'local.order_by' = '${primaryKeys.mkString(",")}',
              |    'local.settings.allow_nullable_key' = 1
              |)
-             |SELECT * FROM tpcds.tiny.$table;
+             |SELECT * FROM tpcds.sf1.$table;
              |""".stripMargin
         )
       }
 
       TPCDSTestUtils.tablePrimaryKeys.keys.foreach { table =>
-        assert(spark.table(s"tpcds.tiny.$table").count === spark.table(s"tpcds_tiny_cluster.$table").count)
+        assert(spark.table(s"tpcds.sf1.$table").count === spark.table(s"tpcds_sf1_cluster.$table").count)
       }
     }
   }

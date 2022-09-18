@@ -159,6 +159,14 @@ object ClickHouseSQLConf {
       .stringConf
       .createWithDefault("lz4")
 
+  val READ_FORMAT: ConfigEntry[String] =
+    buildConf("spark.clickhouse.read.format")
+      .doc("Serialize format for reading. Supported formats: json, binary")
+      .version("0.6.0")
+      .stringConf
+      .transform(_.toLowerCase)
+      .createWithDefault("json")
+
   val WRITE_FORMAT: ConfigEntry[String] =
     buildConf("spark.clickhouse.write.format")
       .doc("Serialize format for writing. Supported formats: JSONEachRow, ArrowStream")
