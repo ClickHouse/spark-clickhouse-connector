@@ -14,6 +14,7 @@
 
 package xenon.clickhouse.read.format
 
+import com.clickhouse.client.data.ClickHouseStringValue
 import com.clickhouse.client.{ClickHouseRecord, ClickHouseValue}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
@@ -60,6 +61,7 @@ class ClickHouseBinaryReader(
       case DoubleType => value.asDouble
       case d: DecimalType => Decimal(value.asBigDecimal(d.scale))
       case TimestampType => value.asZonedDateTime.toEpochSecond * 1000 * 1000 // TODO consider scanJob.tz
+      case StringType if value.isInstanceOf[ClickHouseStringValue] => UTF8String.fromBytes(value.asBinary)
       case StringType => UTF8String.fromString(value.asString)
       case DateType => value.asDate.toEpochDay.toInt
       case BinaryType => value.asBinary
