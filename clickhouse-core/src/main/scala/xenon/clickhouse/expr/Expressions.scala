@@ -37,7 +37,10 @@ case class FuncExpr(name: String, args: List[Expr]) extends Expr {
   override def sql: String = s"$name(${args.map(_.sql).mkString(",")})"
 }
 
-case class OrderExpr(expr: Expr, asc: Boolean = true, nullFirst: Boolean = true) extends Expr {
+// If the direction is not specified, ASC is assumed ...
+// By default or with the NULLS LAST modifier: first the values, then NaN, then NULL ...
+// https://clickhouse.com/docs/en/sql-reference/statements/select/order-by
+case class OrderExpr(expr: Expr, asc: Boolean = true, nullFirst: Boolean = false) extends Expr {
   override def sql: String = s"$expr ${if (asc) "ASC" else "DESC"} NULLS ${if (nullFirst) "FIRST" else "LAST"}"
 }
 
