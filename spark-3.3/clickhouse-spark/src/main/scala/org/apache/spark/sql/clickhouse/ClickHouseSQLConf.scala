@@ -35,7 +35,7 @@ object ClickHouseSQLConf {
       .doc("The maximum number of write we will retry for a single batch write failed with retryable codes.")
       .version("0.1.0")
       .intConf
-      .checkValue(_ >= 0, "Should be 0 or positive value. 0 means disable retry.")
+      .checkValue(_ >= 0, "Should be 0 or positive. 0 means disable retry.")
       .createWithDefault(3)
 
   val WRITE_RETRY_INTERVAL: ConfigEntry[Long] =
@@ -43,7 +43,7 @@ object ClickHouseSQLConf {
       .doc("The interval in seconds between write retry.")
       .version("0.1.0")
       .timeConf(TimeUnit.SECONDS)
-      .createWithDefault(10)
+      .createWithDefaultString("10s")
 
   val WRITE_RETRYABLE_ERROR_CODES: ConfigEntry[Seq[Int]] =
     buildConf("spark.clickhouse.write.retryableErrorCodes")
@@ -72,7 +72,7 @@ object ClickHouseSQLConf {
 
   val WRITE_REPARTITION_STRICTLY: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.write.repartitionStrictly")
-      .doc("If true, Spark will strictly distribute incoming records across partitions to satisfy " +
+      .doc("If `true`, Spark will strictly distribute incoming records across partitions to satisfy " +
         "the required distribution before passing the records to the data source table on write. " +
         "Otherwise, Spark may apply certain optimizations to speed up the query but break the " +
         "distribution requirement. Note, this configuration requires SPARK-37523, w/o this patch, " +
@@ -91,6 +91,7 @@ object ClickHouseSQLConf {
   val READ_DISTRIBUTED_USE_CLUSTER_NODES: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.read.distributed.useClusterNodes")
       .doc("Read from all nodes of cluster when reading Distributed table.")
+      .internal
       .version("0.1.0")
       .booleanConf
       .checkValue(_ == false, s"`spark.clickhouse.read.distributed.useClusterNodes` is not support yet.")
@@ -123,7 +124,8 @@ object ClickHouseSQLConf {
 
   val WRITE_LOCAL_SORT_BY_PARTITION: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.write.localSortByPartition")
-      .doc("If `true`, do local sort by partition before writing.")
+      .doc(s"If `true`, do local sort by partition before writing. If not set, it equals to " +
+        s"`${WRITE_REPARTITION_BY_PARTITION.key}`.")
       .version("0.3.0")
       .fallbackConf(WRITE_REPARTITION_BY_PARTITION)
 
