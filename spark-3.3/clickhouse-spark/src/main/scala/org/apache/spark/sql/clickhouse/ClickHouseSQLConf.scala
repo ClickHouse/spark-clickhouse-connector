@@ -169,8 +169,13 @@ object ClickHouseSQLConf {
 
   val WRITE_FORMAT: ConfigEntry[String] =
     buildConf("spark.clickhouse.write.format")
-      .doc("Serialize format for writing. Supported formats: JSONEachRow, ArrowStream")
-      .version("0.3.0")
+      .doc("Serialize format for writing. Supported formats: json, arrow")
+      .version("0.4.0")
       .stringConf
-      .createWithDefault("ArrowStream")
+      .transform {
+        case s if s equalsIgnoreCase "JSONEachRow" => "json"
+        case s if s equalsIgnoreCase "ArrowStream" => "arrow"
+        case s => s.toLowerCase
+      }
+      .createWithDefault("arrow")
 }

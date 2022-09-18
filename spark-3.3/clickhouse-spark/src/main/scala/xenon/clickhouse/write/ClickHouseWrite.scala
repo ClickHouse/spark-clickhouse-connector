@@ -20,9 +20,9 @@ import org.apache.spark.sql.connector.distributions.{Distribution, Distributions
 import org.apache.spark.sql.connector.expressions.SortOrder
 import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.write._
+import xenon.clickhouse._
 import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.write.format.{ClickHouseArrowStreamWriter, ClickHouseJsonEachRowWriter}
-import xenon.clickhouse._
 
 class ClickHouseWriteBuilder(writeJob: WriteJobDescription) extends WriteBuilder {
 
@@ -69,8 +69,10 @@ class ClickHouseBatchWrite(
 
   override def createWriter(partitionId: Int, taskId: Long): DataWriter[InternalRow] = {
     val format = writeJob.writeOptions.format
-    if (format equalsIgnoreCase "JSONEachRow") new ClickHouseJsonEachRowWriter(writeJob)
-    else if (format equalsIgnoreCase "ArrowStream") new ClickHouseArrowStreamWriter(writeJob)
-    else throw CHClientException(s"Unsupported write format: $format")
+    format match {
+      case "json" => new ClickHouseJsonEachRowWriter(writeJob)
+      case "arrow" => new ClickHouseArrowStreamWriter(writeJob)
+      case unsupported => throw CHClientException(s"Unsupported write format: $unsupported")
+    }
   }
 }

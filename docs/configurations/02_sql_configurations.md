@@ -140,6 +140,6 @@ SQL Configurations
 
 !!! tip "Since 0.4.0 - spark.clickhouse.write.format"
 
-    Default Value: ArrowStream
+    Default Value: arrow
 
-    Description: Serialize format for writing. Supported formats: JSONEachRow, ArrowStream.
+    Description: Serialize format for writing. Supported formats: json, arrow.
