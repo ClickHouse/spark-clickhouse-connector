@@ -16,8 +16,9 @@ package xenon.clickhouse.read
 
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
-import org.apache.spark.sql.connector.expressions.Transform
+import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
+import org.apache.spark.sql.connector.expressions.{SortOrder, Transform}
 import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.connector.read.partitioning.{Partitioning, UnknownPartitioning}
@@ -38,6 +39,7 @@ class ClickHouseScanBuilder(
   metadataSchema: StructType,
   partitionTransforms: Array[Transform]
 ) extends ScanBuilder
+    with SupportsPushDownTopN
     with SupportsPushDownLimit
     with SupportsPushDownFilters
     with SupportsPushDownAggregates
@@ -56,9 +58,21 @@ class ClickHouseScanBuilder(
     physicalSchema.fields ++ reservedMetadataSchema.fields
   )
 
+  private var _orders: Option[String] = None
+
   private var _limit: Option[Int] = None
 
   override def pushLimit(limit: Int): Boolean = {
+    this._limit = Some(limit)
+    true
+  }
+
+  override def pushTopN(orders: Array[SortOrder], limit: Int): Boolean = {
+    val translated = orders.map(sortOrder => ExprUtils.toClickHouseOpt(sortOrder))
+    if (translated.exists(_.isEmpty)) {
+      return false
+    }
+    this._orders = Some(translated.flatten.mkString(" "))
     this._limit = Some(limit)
     true
   }
@@ -121,6 +135,7 @@ class ClickHouseScanBuilder(
     readSchema = _readSchema,
     filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
     groupByClause = _groupByClause,
+    orderByClause = _orders.map(_.mkString("ORDER BY", " ", "")),
     limit = _limit
   ))
 }

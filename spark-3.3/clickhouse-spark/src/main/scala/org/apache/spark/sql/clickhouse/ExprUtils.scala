@@ -90,7 +90,15 @@ object ExprUtils extends SQLConfHelper {
     case unsupported => throw CHClientException(s"Unsupported ClickHouse expression: $unsupported")
   }
 
-  def toClickHouse(transform: Transform): Expr = transform match {
+  def toClickHouseOpt(v2Expr: V2Expression): Option[Expr] = Try(toClickHouse(v2Expr)).toOption
+
+  def toClickHouse(v2Expr: V2Expression): Expr = v2Expr match {
+    // sort order
+    case sortOrder: SortOrder =>
+      val asc = sortOrder.direction == SortDirection.ASCENDING
+      val nullFirst = sortOrder.nullOrdering == NullOrdering.NULLS_FIRST
+      OrderExpr(toClickHouse(sortOrder.expression), asc, nullFirst)
+    // transform
     case YearsTransform(FieldReference(Seq(col))) => FuncExpr("toYear", List(FieldRef(col)))
     case MonthsTransform(FieldReference(Seq(col))) => FuncExpr("toYYYYMM", List(FieldRef(col)))
     case DaysTransform(FieldReference(Seq(col))) => FuncExpr("toYYYYMMDD", List(FieldRef(col)))
@@ -98,7 +106,12 @@ object ExprUtils extends SQLConfHelper {
     case IdentityTransform(fieldRefs) => FieldRef(fieldRefs.describe)
     case ApplyTransform(name, args) => FuncExpr(name, args.map(arg => SQLExpr(arg.describe())).toList)
     case bucket: BucketTransform => throw CHClientException(s"Bucket transform not support yet: $bucket")
-    case other: Transform => throw CHClientException(s"Unsupported transform: $other")
+    // others
+    case l: Literal[_] => SQLExpr(l.toString)
+    case FieldReference(Seq(col)) => FieldRef(col)
+    case gse: GeneralScalarExpression => SQLExpr(gse.toString) // TODO: excluding unsupported
+    // unsupported
+    case unsupported: V2Expression => throw CHClientException(s"Unsupported expression: $unsupported")
   }
 
   def inferTransformSchema(
