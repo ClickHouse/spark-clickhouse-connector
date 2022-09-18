@@ -23,11 +23,10 @@ import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.connector.read.partitioning.{Partitioning, UnknownPartitioning}
 import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.vectorized.ColumnarBatch
 import xenon.clickhouse._
 import xenon.clickhouse.client.NodeClient
 import xenon.clickhouse.exception.CHClientException
-import xenon.clickhouse.read.format.ClickHouseJSONCompactEachRowReader
+import xenon.clickhouse.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
 import xenon.clickhouse.spec._
 
 import java.time.ZoneId
@@ -185,13 +184,15 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
 
   override def createReaderFactory: PartitionReaderFactory = this
 
-  override def createReader(partition: InputPartition): PartitionReader[InternalRow] =
-    new ClickHouseJSONCompactEachRowReader(scanJob, partition.asInstanceOf[ClickHouseInputPartition])
-
-  override def supportColumnarReads(partition: InputPartition): Boolean = false
-
-  override def createColumnarReader(partition: InputPartition): PartitionReader[ColumnarBatch] =
-    super.createColumnarReader(partition)
+  override def createReader(_partition: InputPartition): PartitionReader[InternalRow] = {
+    val format = scanJob.readOptions.format
+    val partition = _partition.asInstanceOf[ClickHouseInputPartition]
+    format match {
+      case "json" => new ClickHouseJsonReader(scanJob, partition)
+      case "binary" => new ClickHouseBinaryReader(scanJob, partition)
+      case unsupported => throw CHClientException(s"Unsupported read format: $unsupported")
+    }
+  }
 
   override def supportedCustomMetrics(): Array[CustomMetric] = Array(
     BlocksReadMetric(),

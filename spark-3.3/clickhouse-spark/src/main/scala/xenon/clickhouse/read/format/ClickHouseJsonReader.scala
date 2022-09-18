@@ -14,7 +14,6 @@
 
 package xenon.clickhouse.read.format
 
-import com.clickhouse.client.ClickHouseResponse
 import com.fasterxml.jackson.databind.JsonNode
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
@@ -30,25 +29,15 @@ import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
 import scala.collection.JavaConverters._
 import scala.math.BigDecimal.RoundingMode
 
-class ClickHouseJSONCompactEachRowReader(
+class ClickHouseJsonReader(
   scanJob: ScanJobDescription,
   part: ClickHouseInputPartition
 ) extends ClickHouseReader[Array[JsonNode]](scanJob, part) {
 
-  @volatile private var resp: Option[ClickHouseResponse] = None
-
-  override def totalBlocksRead: Long = resp.map(_.getSummary.getStatistics.getBlocks).getOrElse(0)
-
-  override def totalBytesRead: Long = resp.map(_.getSummary.getReadBytes).getOrElse(0)
+  override val format: String = "JSONCompactEachRowWithNamesAndTypes"
 
   lazy val streamOutput: StreamOutput[Array[JsonNode]] = {
-    val _resp = nodeClient.queryAndCheck(
-      scanQuery,
-      "JSONCompactEachRowWithNamesAndTypes",
-      codec
-    )
-    resp = Some(_resp)
-    JSONCompactEachRowWithNamesAndTypesStreamOutput.deserializeStream(_resp.getInputStream)
+    JSONCompactEachRowWithNamesAndTypesStreamOutput.deserializeStream(resp.getInputStream)
   }
 
   override def decode(record: Array[JsonNode]): InternalRow = {

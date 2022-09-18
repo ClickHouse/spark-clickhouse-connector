@@ -44,6 +44,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
       .set("spark.clickhouse.write.retryInterval", "1")
       .set("spark.clickhouse.write.retryableErrorCodes", "241")
       .set("spark.clickhouse.write.write.repartitionNum", "0")
+      .set("spark.clickhouse.read.format", "json")
       .set("spark.clickhouse.write.format", "JSONEachRow")
     if (grpcEnabled) {
       _conf.set("spark.sql.catalog.clickhouse.grpc_port", clickhouseGrpcPort.toString)
