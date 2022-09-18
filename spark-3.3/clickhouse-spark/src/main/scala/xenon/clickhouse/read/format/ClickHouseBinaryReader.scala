@@ -30,7 +30,7 @@ class ClickHouseBinaryReader(
   part: ClickHouseInputPartition
 ) extends ClickHouseReader[ClickHouseRecord](scanJob, part) {
 
-  override val format: String = "RowBinary"
+  override val format: String = "RowBinaryWithNamesAndTypes"
 
   lazy val streamOutput: Iterator[ClickHouseRecord] = resp.records().asScala.iterator
 
