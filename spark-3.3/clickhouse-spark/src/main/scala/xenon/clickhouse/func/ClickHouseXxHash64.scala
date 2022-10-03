@@ -28,7 +28,7 @@ import xenon.clickhouse.spec.{ClusterSpec, ShardUtils}
  */
 object ClickHouseXxHash64 extends UnboundFunction with ScalarFunction[Long] {
 
-  override def name: String = "ck_xx_hash64"
+  override def name: String = "clickhouse_xxHash64"
 
   override def canonicalName: String = s"clickhouse.$name"
 
@@ -66,7 +66,7 @@ class ClickHouseXxHash64Shard(clusters: Seq[ClusterSpec]) extends UnboundFunctio
   @transient private lazy val indexedClusters =
     clusters.map(cluster => UTF8String.fromString(cluster.name) -> cluster).toMap
 
-  override def name: String = "ck_xx_hash64_shard"
+  override def name: String = "clickhouse_shard_xxHash64"
 
   override def canonicalName: String = s"clickhouse.$name"
 

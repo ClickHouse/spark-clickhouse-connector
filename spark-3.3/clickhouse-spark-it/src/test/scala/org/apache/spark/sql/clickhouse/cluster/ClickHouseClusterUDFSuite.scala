@@ -24,13 +24,19 @@ class ClickHouseClusterUDFSuite extends SparkClickHouseClusterTest {
     Seq("spark-clickhouse-connector", "Apache Spark", "ClickHouse", "Yandex", "热爱", "🇨🇳").foreach { stringVal =>
       val sparkResult = spark.sql(
         s"""SELECT
-           |  ck_xx_hash64('$stringVal')                         AS hash_value,
-           |  ck_xx_hash64_shard('single_replica', '$stringVal') AS shard_num -- one based ordinal defined in `remote_servers.xml`
+           |  ck_xx_hash64('$stringVal')                                AS hash_value_legacy,
+           |  clickhouse_xxHash64('$stringVal')                         AS hash_value,
+           |  ck_xx_hash64_shard('single_replica', '$stringVal')        AS shard_num_legacy, -- one based ordinal defined in `remote_servers.xml`
+           |  clickhouse_shard_xxHash64('single_replica', '$stringVal') AS shard_num         -- one based ordinal defined in `remote_servers.xml`
            |""".stripMargin
       ).collect
       assert(sparkResult.length == 1)
+      val sparkHashValLegacy = sparkResult.head.getAs[Long]("hash_value_legacy")
       val sparkHashVal = sparkResult.head.getAs[Long]("hash_value")
+      assert(sparkHashValLegacy === sparkHashVal)
+      val sparkShardNumLegacy = sparkResult.head.getAs[Int]("shard_num_legacy")
       val sparkShardNum = sparkResult.head.getAs[Int]("shard_num")
+      assert(sparkShardNumLegacy === sparkShardNum)
 
       val clickhouseResultJsonStr = runClickHouseSQL(
         s"""SELECT
