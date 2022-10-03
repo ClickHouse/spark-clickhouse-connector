@@ -14,11 +14,6 @@
 
 package xenon.clickhouse
 
-import java.time.ZoneId
-import java.util
-
-import scala.collection.JavaConverters._
-
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.clickhouse.{ExprUtils, SchemaUtils}
 import org.apache.spark.sql.connector.catalog._
@@ -30,8 +25,12 @@ import xenon.clickhouse.Constants._
 import xenon.clickhouse.client.NodeClient
 import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.exception.ClickHouseErrCode._
-import xenon.clickhouse.func.{ClickHouseXxHash64, ClickHouseXxHash64Shard}
+import xenon.clickhouse.func.{FunctionRegistry, _}
 import xenon.clickhouse.spec._
+
+import java.time.ZoneId
+import java.util
+import scala.collection.JavaConverters._
 
 class ClickHouseCatalog extends TableCatalog
     with SupportsNamespaces
@@ -60,6 +59,8 @@ class ClickHouseCatalog extends TableCatalog
   // ///////////////////////////////////////////////////
   private var clusterSpecs: Seq[ClusterSpec] = Nil
 
+  private var functionRegistry: FunctionRegistry = _
+
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.catalogName = name
     this.nodeSpec = buildNodeSpec(options)
@@ -80,6 +81,12 @@ class ClickHouseCatalog extends TableCatalog
     }
 
     this.clusterSpecs = queryClusterSpecs(nodeSpec)
+
+    val dynamicFunctionRegistry = new DynamicFunctionRegistry
+    val xxHash64ShardFunc = new ClickHouseXxHash64Shard(clusterSpecs)
+    dynamicFunctionRegistry.register("ck_xx_hash64_shard", xxHash64ShardFunc) // for compatible
+    dynamicFunctionRegistry.register("clickhouse_shard_xxHash64", xxHash64ShardFunc)
+    this.functionRegistry = new CompositeFunctionRegistry(Array(StaticFunctionRegistry, dynamicFunctionRegistry))
 
     log.info(s"Detect ${clusterSpecs.size} ClickHouse clusters: ${clusterSpecs.map(_.name).mkString(",")}")
     log.info(s"ClickHouse clusters' detail: $clusterSpecs")
@@ -357,15 +364,10 @@ class ClickHouseCatalog extends TableCatalog
   }
 
   @throws[NoSuchNamespaceException]
-  override def listFunctions(namespace: Array[String]): Array[Identifier] = Array(
-    Identifier.of(Array.empty, "ck_xx_hash64"),
-    Identifier.of(Array.empty, "ck_xx_hash64_shard")
-  )
+  override def listFunctions(namespace: Array[String]): Array[Identifier] =
+    functionRegistry.list.map(name => Identifier.of(Array.empty, name))
 
   @throws[NoSuchFunctionException]
-  override def loadFunction(ident: Identifier): UnboundFunction = ident.name() match {
-    case "ck_xx_hash64" => ClickHouseXxHash64
-    case "ck_xx_hash64_shard" => new ClickHouseXxHash64Shard(clusterSpecs)
-    case _ => throw new NoSuchFunctionException(ident)
-  }
+  override def loadFunction(ident: Identifier): UnboundFunction =
+    functionRegistry.load(ident.name).getOrElse(throw new NoSuchFunctionException(ident))
 }
