@@ -13,11 +13,18 @@
  */
 
 project.ext {
-    spark_version = "3.3.0"
+    spark_version = "3.3.1"
     spark_binary_version = "3.3"
 }
 
 project(":clickhouse-spark-${spark_binary_version}_$scala_binary_version") {
+    configurations.all {
+        resolutionStrategy {
+            // https://github.com/FasterXML/jackson-databind/issues/3627
+            force "com.fasterxml.jackson:jackson-bom:$jackson_version"
+        }
+    }
+
     dependencies {
         api project(":clickhouse-core")
 
@@ -62,6 +69,13 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
 }
 
 project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version") {
+    configurations.all {
+        resolutionStrategy {
+            // https://github.com/FasterXML/jackson-databind/issues/3627
+            force "com.fasterxml.jackson:jackson-bom:$jackson_version"
+        }
+    }
+
     dependencies {
         implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
 
