@@ -38,6 +38,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
       .set("spark.sql.catalog.clickhouse.user", CLICKHOUSE_USER)
       .set("spark.sql.catalog.clickhouse.password", CLICKHOUSE_PASSWORD)
       .set("spark.sql.catalog.clickhouse.database", CLICKHOUSE_DB)
+      .set("spark.sql.catalog.clickhouse.option.async", "false")
       // extended configurations
       .set("spark.clickhouse.write.batchSize", "2")
       .set("spark.clickhouse.write.maxRetry", "2")

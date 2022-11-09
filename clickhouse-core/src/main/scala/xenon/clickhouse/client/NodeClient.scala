@@ -34,6 +34,7 @@ object NodeClient {
 class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
 
   private val node: ClickHouseNode = ClickHouseNode.builder()
+    .options(nodeSpec.options)
     .host(nodeSpec.host)
     .port(nodeSpec.protocol, nodeSpec.port)
     .database(nodeSpec.database)
@@ -41,7 +42,6 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     .build()
 
   private val client: ClickHouseClient = ClickHouseClient.builder()
-    .option(ClickHouseClientOption.ASYNC, false)
     .option(ClickHouseClientOption.FORMAT, ClickHouseFormat.RowBinary)
     .nodeSelector(ClickHouseNodeSelector.of(node.getProtocol))
     .build()
