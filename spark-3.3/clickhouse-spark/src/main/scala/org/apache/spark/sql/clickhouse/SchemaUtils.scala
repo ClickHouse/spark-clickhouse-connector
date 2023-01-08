@@ -38,6 +38,7 @@ object SchemaUtils {
     val (unwrappedChType, nullable) = unwrapNullable(unwrapLowCardinalityTypePattern(chType))
     val catalystType = unwrappedChType match {
       case "String" | "UUID" | fixedStringTypePattern() | enumTypePattern(_) => StringType
+      case "Bool" => BooleanType
       case "Int8" => ByteType
       case "UInt8" | "Int16" => ShortType
       case "UInt16" | "Int32" => IntegerType
