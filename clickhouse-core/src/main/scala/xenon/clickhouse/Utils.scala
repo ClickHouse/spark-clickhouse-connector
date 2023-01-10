@@ -47,9 +47,8 @@ object Utils extends Logging {
 
   def classpathResourceAsStream(name: String): InputStream = defaultClassLoader.getResourceAsStream(name)
 
-  def getCodeSourceLocation(clazz: Class[_]): String = {
+  def getCodeSourceLocation(clazz: Class[_]): String =
     new File(clazz.getProtectionDomain.getCodeSource.getLocation.toURI).getPath
-  }
 
   @transient lazy val tmpDirPath: Path = Files.createTempDirectory("classpath_res_")
 
@@ -113,7 +112,7 @@ object Utils extends Logging {
       // The number is too large, show it in scientific notation.
       BigDecimal(size, new MathContext(3, RoundingMode.HALF_UP)).toString() + " B"
     } else {
-      val (value, unit) = {
+      val (value, unit) =
         if (size >= 2 * EiB) {
           (BigDecimal(size) / EiB, "EiB")
         } else if (size >= 2 * PiB) {
@@ -129,7 +128,6 @@ object Utils extends Logging {
         } else {
           (BigDecimal(size), "B")
         }
-      }
       "%.1f %s".formatLocal(Locale.US, value, unit)
     }
   }

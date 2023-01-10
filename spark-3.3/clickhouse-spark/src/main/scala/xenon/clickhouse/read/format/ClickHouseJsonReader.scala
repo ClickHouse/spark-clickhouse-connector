@@ -36,9 +36,8 @@ class ClickHouseJsonReader(
 
   override val format: String = "JSONCompactEachRowWithNamesAndTypes"
 
-  lazy val streamOutput: StreamOutput[Array[JsonNode]] = {
+  lazy val streamOutput: StreamOutput[Array[JsonNode]] =
     JSONCompactEachRowWithNamesAndTypesStreamOutput.deserializeStream(resp.getInputStream)
-  }
 
   override def decode(record: Array[JsonNode]): InternalRow = {
     val values: Array[Any] = new Array[Any](record.length)

@@ -46,12 +46,11 @@ case class ClickHouseInputPartition(
   }
 
   // TODO improve and test
-  def compilePartitionFilterValue(partitionValue: String): String = {
+  def compilePartitionFilterValue(partitionValue: String): String =
     (partitionValue.contains("-"), partitionValue.contains("(")) match {
       // quote when partition by a single Date Type column to avoid illegal types of arguments (Date, Int64)
       case (true, false) => s"'$partitionValue'"
       // Date type column is quoted if there are multi partition columns
       case _ => s"$partitionValue"
     }
-  }
 }

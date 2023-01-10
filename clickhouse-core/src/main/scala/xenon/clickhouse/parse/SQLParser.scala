@@ -42,20 +42,22 @@ class SQLParser(astVisitor: AstVisitor) extends Logging {
     parser.removeErrorListeners()
     parser.addErrorListener(ParseErrorListener)
 
-    try try {
-      // first, try parsing with potentially faster SLL mode
-      parser.getInterpreter.setPredictionMode(PredictionMode.SLL)
-      toResult(parser)
-    } catch {
-      case _: ParseCancellationException =>
-        // if we fail, parse with LL mode
-        tokenStream.seek(0) // rewind input stream
-        parser.reset()
-
-        // Try Again.
-        parser.getInterpreter.setPredictionMode(PredictionMode.LL)
+    try
+      try {
+        // first, try parsing with potentially faster SLL mode
+        parser.getInterpreter.setPredictionMode(PredictionMode.SLL)
         toResult(parser)
-    } catch {
+      } catch {
+        case _: ParseCancellationException =>
+          // if we fail, parse with LL mode
+          tokenStream.seek(0) // rewind input stream
+          parser.reset()
+
+          // Try Again.
+          parser.getInterpreter.setPredictionMode(PredictionMode.LL)
+          toResult(parser)
+      }
+    catch {
       case rethrow: ParseException => throw rethrow
     }
   }

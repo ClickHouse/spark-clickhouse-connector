@@ -15,7 +15,6 @@
 package xenon.clickhouse
 
 import com.clickhouse.client.ClickHouseProtocol
-import com.clickhouse.client.config.ClickHouseClientOption
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}

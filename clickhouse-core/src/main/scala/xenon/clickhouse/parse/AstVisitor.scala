@@ -169,19 +169,21 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
     TupleExpr(visitColumnExprList(ctx.columnExprList))
 
   override def visitColumnExprPrecedence1(ctx: ColumnExprPrecedence1Context): FuncExpr = {
-    val funcName = if (ctx.PERCENT != null) "remainder"
-    else if (ctx.SLASH != null) "divide"
-    else if (ctx.ASTERISK != null) "multiply"
-    else throw new IllegalArgumentException(s"Invalid [ColumnExprPrecedence1] ${ctx.getText}")
+    val funcName =
+      if (ctx.PERCENT != null) "remainder"
+      else if (ctx.SLASH != null) "divide"
+      else if (ctx.ASTERISK != null) "multiply"
+      else throw new IllegalArgumentException(s"Invalid [ColumnExprPrecedence1] ${ctx.getText}")
     val funArgs = List(visitColumnExpr(ctx.columnExpr(0)), visitColumnExpr(ctx.columnExpr(1)))
     FuncExpr(funcName, funArgs)
   }
 
   override def visitColumnExprPrecedence2(ctx: ColumnExprPrecedence2Context): FuncExpr = {
-    val funcName = if (ctx.PLUS != null) "add"
-    else if (ctx.DASH != null) "subtract"
-    else if (ctx.CONCAT != null) "concat"
-    else throw new IllegalArgumentException(s"Invalid [ColumnExprPrecedence2] ${ctx.getText}")
+    val funcName =
+      if (ctx.PLUS != null) "add"
+      else if (ctx.DASH != null) "subtract"
+      else if (ctx.CONCAT != null) "concat"
+      else throw new IllegalArgumentException(s"Invalid [ColumnExprPrecedence2] ${ctx.getText}")
     val funArgs = List(visitColumnExpr(ctx.columnExpr(0)), visitColumnExpr(ctx.columnExpr(1)))
     FuncExpr(funcName, funArgs)
   }

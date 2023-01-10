@@ -42,8 +42,8 @@ class ClusterClient(cluster: ClusterSpec) extends AutoCloseable with Logging {
         val replicaSpec = shuffle(shardSpec.replicas.toSeq).head
         (shardSpec.num, replicaSpec.num)
       case _ => throw CHClientException(
-        s"Invalid shard[${shard.orNull}] replica[${replica.orNull}] of cluster ${cluster.name}"
-      )
+          s"Invalid shard[${shard.orNull}] replica[${replica.orNull}] of cluster ${cluster.name}"
+        )
     }
 
     cache.computeIfAbsent(
