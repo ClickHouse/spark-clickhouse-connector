@@ -47,9 +47,8 @@ object Utils extends Logging {
 
   def classpathResourceAsStream(name: String): InputStream = defaultClassLoader.getResourceAsStream(name)
 
-  def getCodeSourceLocation(clazz: Class[_]): String = {
+  def getCodeSourceLocation(clazz: Class[_]): String =
     new File(clazz.getProtectionDomain.getCodeSource.getLocation.toURI).getPath
-  }
 
   @transient lazy val tmpDirPath: Path = Files.createTempDirectory("classpath_res_")
 
