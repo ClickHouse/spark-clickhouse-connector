@@ -107,9 +107,10 @@ class ConfigurationSuite extends AnyFunSuite {
         StandardOpenOption.CREATE
       )
       try newOutput.foreach { line =>
-        writer.write(line)
-        writer.newLine()
-      } finally writer.close()
+          writer.write(line)
+          writer.newLine()
+        }
+      finally writer.close()
     } else {
       val expected = Files.readAllLines(goldenFile).asScala
       val hint = s"$goldenFile is out of date, please update the golden file with " +

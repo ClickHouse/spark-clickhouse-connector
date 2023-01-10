@@ -104,7 +104,7 @@ subprojects {
 
     spotless {
         scala {
-            scalafmt("3.1.2")
+            scalafmt("3.6.1")
                     .configFile("${rootProject.projectDir}/.scalafmt.conf")
                     .scalaMajorVersion("2.12")
         }

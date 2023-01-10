@@ -45,9 +45,9 @@ trait SparkTest extends QueryTest with SharedSparkSession {
       spark.sql(s"CREATE DATABASE IF NOT EXISTS `$database`")
       block(database, table)
     } finally if (cleanup) {
-      spark.sql(s"DROP TABLE IF EXISTS `$database`.`$table`")
-      spark.sql(s"DROP DATABASE IF EXISTS `$database` CASCADE")
-    }
+        spark.sql(s"DROP TABLE IF EXISTS `$database`.`$table`")
+        spark.sql(s"DROP DATABASE IF EXISTS `$database` CASCADE")
+      }
 
   def withClickHouseSingleIdTable(
     database: String,
