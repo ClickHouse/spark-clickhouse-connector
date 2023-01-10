@@ -14,8 +14,6 @@
 
 package xenon.clickhouse
 
-import java.time.{LocalDateTime, ZoneId}
-import scala.collection.JavaConverters._
 import com.clickhouse.client.ClickHouseProtocol
 import com.clickhouse.client.config.ClickHouseClientOption
 import com.fasterxml.jackson.databind.JsonNode
@@ -31,6 +29,9 @@ import xenon.clickhouse.client.NodeClient
 import xenon.clickhouse.exception.CHException
 import xenon.clickhouse.spec._
 
+import java.time.{LocalDateTime, ZoneId}
+import scala.collection.JavaConverters._
+
 trait ClickHouseHelper extends Logging {
 
   @volatile lazy val DEFAULT_ACTION_IF_NO_SUCH_DATABASE: String => Unit =
@@ -45,9 +46,16 @@ trait ClickHouseHelper extends Logging {
   }
 
   def buildNodeSpec(options: CaseInsensitiveStringMap): NodeSpec = {
-    val clientOpts = options.asScala.filterKeys(_ startsWith CATALOG_PROP_OPTION_PREFIX).toMap
-    clientOpts
-    clientOpts.getOrElse(ClickHouseClientOption.DATABASE.getKey, ClickHouseClientOption.DATABASE.getDefaultValue)
+    val clientOpts = options.asScala
+      .filterKeys(_.startsWith(CATALOG_PROP_OPTION_PREFIX))
+      .filterKeys { key =>
+        val clientOpt = key.substring(CATALOG_PROP_OPTION_PREFIX.length)
+        val ignore = CATALOG_PROP_IGNORE_OPTIONS.contains(clientOpt)
+        if (ignore) {
+          log.warn(s"Ignore configuration $key.")
+        }
+        !ignore
+      }.toMap
     NodeSpec(
       _host = options.getOrDefault(CATALOG_PROP_HOST, "localhost"),
       _grpc_port = Some(options.getInt(CATALOG_PROP_GRPC_PORT, 9100)),
