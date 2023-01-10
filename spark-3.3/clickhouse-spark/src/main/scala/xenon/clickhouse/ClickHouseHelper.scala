@@ -14,11 +14,8 @@
 
 package xenon.clickhouse
 
-import java.time.{LocalDateTime, ZoneId}
-
-import scala.collection.JavaConverters._
-
 import com.clickhouse.client.ClickHouseProtocol
+import com.clickhouse.client.config.ClickHouseClientOption
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
@@ -32,28 +29,44 @@ import xenon.clickhouse.client.NodeClient
 import xenon.clickhouse.exception.CHException
 import xenon.clickhouse.spec._
 
+import java.time.{LocalDateTime, ZoneId}
+import scala.collection.JavaConverters._
+
 trait ClickHouseHelper extends Logging {
 
   @volatile lazy val DEFAULT_ACTION_IF_NO_SUCH_DATABASE: String => Unit =
-    (db: String) => throw new NoSuchNamespaceException(db)
+    (db: String) => throw NoSuchNamespaceException(db)
 
   @volatile lazy val DEFAULT_ACTION_IF_NO_SUCH_TABLE: (String, String) => Unit =
-    (database, table) => throw new NoSuchTableException(s"$database.$table")
+    (database, table) => throw NoSuchTableException(s"$database.$table")
 
   def unwrap(ident: Identifier): Option[(String, String)] = ident.namespace() match {
     case Array(database) => Some((database, ident.name()))
     case _ => None
   }
 
-  def buildNodeSpec(options: CaseInsensitiveStringMap): NodeSpec = NodeSpec(
-    _host = options.getOrDefault(CATALOG_PROP_HOST, "localhost"),
-    _grpc_port = Some(options.getInt(CATALOG_PROP_GRPC_PORT, 9100)),
-    _http_port = Some(options.getInt(CATALOG_PROP_HTTP_PORT, 8123)),
-    protocol = ClickHouseProtocol.fromUriScheme(options.getOrDefault(CATALOG_PROP_PROTOCOL, "http")),
-    username = options.getOrDefault(CATALOG_PROP_USER, "default"),
-    password = options.getOrDefault(CATALOG_PROP_PASSWORD, ""),
-    database = options.getOrDefault(CATALOG_PROP_DATABASE, "default")
-  )
+  def buildNodeSpec(options: CaseInsensitiveStringMap): NodeSpec = {
+    val clientOpts = options.asScala
+      .filterKeys(_.startsWith(CATALOG_PROP_OPTION_PREFIX))
+      .filterKeys { key =>
+        val clientOpt = key.substring(CATALOG_PROP_OPTION_PREFIX.length)
+        val ignore = CATALOG_PROP_IGNORE_OPTIONS.contains(clientOpt)
+        if (ignore) {
+          log.warn(s"Ignore configuration $key.")
+        }
+        !ignore
+      }.toMap
+    NodeSpec(
+      _host = options.getOrDefault(CATALOG_PROP_HOST, "localhost"),
+      _grpc_port = Some(options.getInt(CATALOG_PROP_GRPC_PORT, 9100)),
+      _http_port = Some(options.getInt(CATALOG_PROP_HTTP_PORT, 8123)),
+      protocol = ClickHouseProtocol.fromUriScheme(options.getOrDefault(CATALOG_PROP_PROTOCOL, "http")),
+      username = options.getOrDefault(CATALOG_PROP_USER, "default"),
+      password = options.getOrDefault(CATALOG_PROP_PASSWORD, ""),
+      database = options.getOrDefault(CATALOG_PROP_DATABASE, "default"),
+      options = clientOpts.asJava
+    )
+  }
 
   def queryClusterSpecs(nodeSpec: NodeSpec)(implicit nodeClient: NodeClient): Seq[ClusterSpec] = {
     val clustersOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(

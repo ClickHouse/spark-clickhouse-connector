@@ -21,13 +21,20 @@ Suppose you have one ClickHouse instance which installed on `10.0.0.1` and expos
 Edit `$SPARK_HOME/conf/spark-defaults.conf`.
 
 ```
-spark.sql.catalog.clickhouse            xenon.clickhouse.ClickHouseCatalog
-spark.sql.catalog.clickhouse.host       10.0.0.1
-spark.sql.catalog.clickhouse.protocol   http
-spark.sql.catalog.clickhouse.http_port  8123
-spark.sql.catalog.clickhouse.user       default
+# register a catalog named "clickhouse"
+spark.sql.catalog.clickhouse                      xenon.clickhouse.ClickHouseCatalog
+
+# basic configurations for "clickhouse" catalog
+spark.sql.catalog.clickhouse.host                 10.0.0.1
+spark.sql.catalog.clickhouse.protocol             http
+spark.sql.catalog.clickhouse.http_port            8123
+spark.sql.catalog.clickhouse.user                 default
 spark.sql.catalog.clickhouse.password
-spark.sql.catalog.clickhouse.database   default
+spark.sql.catalog.clickhouse.database             default
+
+# custom options of clickhouse-client for "clickhouse" catalog
+spark.sql.catalog.clickhouse.option.async         false
+spark.sql.catalog.clickhouse.option.client_name   spark
 ```
 
 Then you can access ClickHouse table `<ck_db>.<ck_table>` from Spark SQL by using `clickhouse.<ck_db>.<ck_table>`.
@@ -42,21 +49,23 @@ clickhouse1, and another installed on `10.0.0.2` and exposes gRPC on port `9100`
 Edit `$SPARK_HOME/conf/spark-defaults.conf`.
 
 ```
-spark.sql.catalog.clickhouse1            xenon.clickhouse.ClickHouseCatalog
-spark.sql.catalog.clickhouse1.host       10.0.0.1
-spark.sql.catalog.clickhouse1.protocol   grpc
-spark.sql.catalog.clickhouse1.grpc_port  9100
-spark.sql.catalog.clickhouse1.user       default
+spark.sql.catalog.clickhouse1                xenon.clickhouse.ClickHouseCatalog
+spark.sql.catalog.clickhouse1.host           10.0.0.1
+spark.sql.catalog.clickhouse1.protocol       grpc
+spark.sql.catalog.clickhouse1.grpc_port      9100
+spark.sql.catalog.clickhouse1.user           default
 spark.sql.catalog.clickhouse1.password
-spark.sql.catalog.clickhouse1.database   default
+spark.sql.catalog.clickhouse1.database       default
+spark.sql.catalog.clickhouse1.option.async   false
 
-spark.sql.catalog.clickhouse2            xenon.clickhouse.ClickHouseCatalog
-spark.sql.catalog.clickhouse2.host       10.0.0.2
-spark.sql.catalog.clickhouse2.protocol   grpc
-spark.sql.catalog.clickhouse2.grpc_port  9100
-spark.sql.catalog.clickhouse2.user       default
+spark.sql.catalog.clickhouse2                xenon.clickhouse.ClickHouseCatalog
+spark.sql.catalog.clickhouse2.host           10.0.0.2
+spark.sql.catalog.clickhouse2.protocol       grpc
+spark.sql.catalog.clickhouse2.grpc_port      9100
+spark.sql.catalog.clickhouse2.user           default
 spark.sql.catalog.clickhouse2.password
-spark.sql.catalog.clickhouse2.database   default
+spark.sql.catalog.clickhouse2.database       default
+spark.sql.catalog.clickhouse2.option.async   false
 ```
 
 Then you can access clickhouse1 table `<ck_db>.<ck_table>` from Spark SQL by `clickhouse1.<ck_db>.<ck_table>`,

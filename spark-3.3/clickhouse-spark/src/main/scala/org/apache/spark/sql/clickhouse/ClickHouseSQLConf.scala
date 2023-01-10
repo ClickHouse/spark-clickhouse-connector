@@ -20,6 +20,10 @@ import xenon.clickhouse.exception.ClickHouseErrCode._
 
 import java.util.concurrent.TimeUnit
 
+/**
+ * Run the following command to update the configuration docs.
+ *   UPDATE=1 ./gradlew test --tests=ConfigurationSuite
+ */
 object ClickHouseSQLConf {
 
   val WRITE_BATCH_SIZE: ConfigEntry[Int] =

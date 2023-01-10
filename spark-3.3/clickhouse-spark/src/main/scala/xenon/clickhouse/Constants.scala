@@ -14,19 +14,25 @@
 
 package xenon.clickhouse
 
+import com.clickhouse.client.config.ClickHouseClientOption._
+
 object Constants {
   // format: off
   //////////////////////////////////////////////////////////
   //////// clickhouse datasource catalog properties ////////
   //////////////////////////////////////////////////////////
-  final val CATALOG_PROP_HOST      = "host"
-  final val CATALOG_PROP_GRPC_PORT = "grpc_port"
-  final val CATALOG_PROP_HTTP_PORT = "http_port"
-  final val CATALOG_PROP_PROTOCOL  = "protocol"
-  final val CATALOG_PROP_USER      = "user"
-  final val CATALOG_PROP_PASSWORD  = "password"
-  final val CATALOG_PROP_DATABASE  = "database"
-  final val CATALOG_PROP_TZ        = "timezone" // server(default), client, UTC+3, Asia/Shanghai, etc.
+  final val CATALOG_PROP_HOST           = "host"
+  final val CATALOG_PROP_GRPC_PORT      = "grpc_port"
+  final val CATALOG_PROP_HTTP_PORT      = "http_port"
+  final val CATALOG_PROP_PROTOCOL       = "protocol"
+  final val CATALOG_PROP_USER           = "user"
+  final val CATALOG_PROP_PASSWORD       = "password"
+  final val CATALOG_PROP_DATABASE       = "database"
+  final val CATALOG_PROP_TZ             = "timezone" // server(default), client, UTC+3, Asia/Shanghai, etc.
+  final val CATALOG_PROP_OPTION_PREFIX  = "option."
+  final val CATALOG_PROP_IGNORE_OPTIONS = Seq(
+    DATABASE.getKey, COMPRESS.getKey, DECOMPRESS.getKey, FORMAT.getKey, RETRY.getKey,
+    USE_SERVER_TIME_ZONE.getKey, USE_SERVER_TIME_ZONE_FOR_DATES.getKey, SERVER_TIME_ZONE.getKey, USE_TIME_ZONE.getKey)
 
   //////////////////////////////////////////////////////////
   ////////// clickhouse datasource read properties /////////
