@@ -10,7 +10,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-name: "Style Check"
+name: "Check Style"
 
 on:
   push:
@@ -21,7 +21,7 @@ on:
       - "master"
 
 jobs:
-  style-check:
+  check-style:
     runs-on: ubuntu-20.04
     steps:
       - uses: actions/checkout@v2

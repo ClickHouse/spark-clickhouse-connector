@@ -21,7 +21,7 @@ on:
       - "master"
 
 jobs:
-  tpcds-tests:
+  run-tpcds-sf1:
     runs-on: ubuntu-20.04
     strategy:
       fail-fast: false
