@@ -16,7 +16,7 @@ license: |
 Play with Spark SQL
 ===
 
-Note: For SQL-only use cases, [Apache Kyuubi(Incubating)](https://github.com/apache/incubator-kyuubi) is recommended
+Note: For SQL-only use cases, [Apache Kyuubi](https://github.com/apache/kyuubi) is recommended
 for Production.
 
 ## Launch Spark SQL CLI
