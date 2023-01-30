@@ -18,8 +18,9 @@ Catalog Management
 
 One important end user facing feature of DataSource V2 is supporting of multi-catalogs.
 
-In the early stage of Spark, it does have catalog concept, usually, user use Hive Metastore or Glue to manage table
-metadata, hence user must register external DataSource tables in centralized metastore before using it.
+In the early stage of Spark, it does not have catalog concept, usually, user uses Hive Metastore or Glue to
+manage table metadata, hence user must register external DataSource tables in the centralized metastore before
+accessing.
 
 In the centralized metastore model, a table is identified by `<database>.<table>`.
 
@@ -27,7 +28,7 @@ In the centralized metastore model, a table is identified by `<database>.<table>
   ![Overview](../imgs/spark_centralized_metastore.drawio.png)
 </figure>
 
-For example, we can register a MySQL table into metastore, then access it using Spark SQL.
+For example, register a MySQL table into metastore, then access it using Spark SQL.
 
 ```sparksql
 CREATE TABLE <db>.<tbl>
@@ -45,8 +46,8 @@ SELECT * FROM <db>.<tbl>;
 INSERT INTO <db>.<tbl> SELECT ...
 ```
 
-Things changed in DataSource V2, starting from Spark 3.0, catalog concept is introduced to allow Spark discovering
-tables automatically by registered catalog plugins.
+Things changed in DataSource V2, starting from Spark 3.0, catalog concept is introduced to allow Spark to discover
+tables automatically by registering catalog plugins.
 
 The default catalog has a fixed name `spark_catalog`, and typically, a table is identified by `<catalog>.<database>.<table>`.
 
