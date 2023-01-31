@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
-import com.clickhouse.client.ClickHouseColumn
+import com.clickhouse.data.ClickHouseColumn
 import org.apache.spark.sql.clickhouse.SchemaUtils._
 import org.apache.spark.sql.types._
 import org.scalatest.funsuite.AnyFunSuite

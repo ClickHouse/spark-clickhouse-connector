@@ -14,7 +14,7 @@
 
 package xenon.clickhouse.base
 
-import com.clickhouse.client.ClickHouseVersion
+import com.clickhouse.data.ClickHouseVersion
 import com.dimafeng.testcontainers.{ForAllTestContainer, JdbcDatabaseContainer, SingleContainer}
 import org.scalatest.funsuite.AnyFunSuite
 import org.testcontainers.containers.ClickHouseContainer

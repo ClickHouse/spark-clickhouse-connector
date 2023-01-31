@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
-import com.clickhouse.client.ClickHouseCompression
+import com.clickhouse.data.ClickHouseCompression
 import org.apache.spark.internal.config.ConfigEntry
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._

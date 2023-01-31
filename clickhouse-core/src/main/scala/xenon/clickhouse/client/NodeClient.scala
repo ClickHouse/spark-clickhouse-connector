@@ -16,6 +16,7 @@ package xenon.clickhouse.client
 
 import com.clickhouse.client._
 import com.clickhouse.client.config.ClickHouseClientOption
+import com.clickhouse.data.{ClickHouseCompression, ClickHouseFormat}
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import xenon.clickhouse.Logging

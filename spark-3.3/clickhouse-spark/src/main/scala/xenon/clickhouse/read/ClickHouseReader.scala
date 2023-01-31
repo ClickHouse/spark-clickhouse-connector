@@ -14,7 +14,8 @@
 
 package xenon.clickhouse.read
 
-import com.clickhouse.client.{ClickHouseCompression, ClickHouseResponse}
+import com.clickhouse.client.ClickHouseResponse
+import com.clickhouse.data.ClickHouseCompression
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.metric.CustomTaskMetric

@@ -14,7 +14,7 @@
 
 package xenon.clickhouse.base
 
-import com.clickhouse.client.ClickHouseVersion
+import com.clickhouse.data.ClickHouseVersion
 import com.dimafeng.testcontainers.{DockerComposeContainer, ExposedService, ForAllTestContainer}
 import org.scalatest.funsuite.AnyFunSuite
 import xenon.clickhouse.Utils
