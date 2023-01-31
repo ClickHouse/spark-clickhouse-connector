@@ -16,7 +16,7 @@ name: "Publish Snapshot"
 
 on:
   schedule:
-  - cron: '0 0 * * *'
+    - cron: '0 0 * * *'
 
 jobs:
   publish-snapshot:
@@ -31,19 +31,19 @@ jobs:
         scala: [ 2.12, 2.13 ]
         spark: [ 3.3 ]
     steps:
-    - uses: actions/checkout@v3
-      with:
-        ref: ${{ matrix.branch }}
-    - uses: actions/setup-java@v3
-      with:
-        distribution: zulu
-        java-version: 8
-        cache: gradle
-    - name: Publish Snapshot - ${{ matrix.branch }}
-      run: >-
-        ./gradlew clean publish --no-daemon --refresh-dependencies
-        -Dscala_binary_version=${{ matrix.scala }}
-        -Dspark_binary_version=${{ matrix.spark }}
-        -PmavenUser='${{ secrets.NEXUS_USER }}'
-        -PmavenPassword='${{ secrets.NEXUS_PW }}'
-        -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+      - uses: actions/setup-java@v3
+        with:
+          distribution: zulu
+          java-version: 8
+          cache: gradle
+      - name: Publish Snapshot - ${{ matrix.branch }}
+        run: >-
+          ./gradlew clean publish --no-daemon --refresh-dependencies
+          -Dscala_binary_version=${{ matrix.scala }}
+          -Dspark_binary_version=${{ matrix.spark }}
+          -PmavenUser='${{ secrets.NEXUS_USER }}'
+          -PmavenPassword='${{ secrets.NEXUS_PW }}'
+          -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
