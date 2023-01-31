@@ -19,8 +19,10 @@
 
 set -e
 
-BUILD_CMD="docker build"
+APACHE_MIRROR=${APACHE_MIRROR:-https://dlcdn.apache.org}
+MAVEN_MIRROR=${MAVEN_MIRROR:-https://repo1.maven.org/maven2}
 
+BUILD_CMD="docker build"
 if [ $BUILDX ]; then
   echo "Using buildx to build cross-platform images"
   BUILD_CMD="docker buildx build --platform=linux/amd64,linux/arm64 --push"
@@ -28,23 +30,13 @@ fi
 
 SELF_DIR="$(cd "$(dirname "$0")"; pwd)"
 
-PROJECT_VERSION="$(cat "${SELF_DIR}/../version.txt")"
-
-APACHE_MIRROR=${APACHE_MIRROR:-https://dlcdn.apache.org}
-MAVEN_MIRROR=${MAVEN_MIRROR:-https://repo1.maven.org/maven2}
-
-AWS_JAVA_SDK_VERSION=1.12.239
-CLICKHOUSE_JDBC_VERSION=0.3.2-patch11
-HADOOP_VERSION=3.3.1
-HIVE_VERSION=2.3.9
-ICEBERG_VERSION=0.14.0
-KYUUBI_VERSION=1.6.0-incubating
-KYUUBI_HADOOP_VERSION=3.3.4
-POSTGRES_JDBC_VERSION=42.3.4
-SCALA_BINARY_VERSION=2.12
-SPARK_VERSION=3.3.0
-SPARK_BINARY_VERSION=3.3
-SPARK_HADOOP_VERSION=3.3.2
+if [ $DEV ]; then
+  echo "Loading .env-dev"
+  source "${SELF_DIR}/.env-dev"
+else
+  echo "Loading .env"
+  source "${SELF_DIR}/.env"
+fi
 
 ${BUILD_CMD} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \

@@ -34,8 +34,8 @@ services:
     ports:
       - 5432
     volumes:
-      - ./image/hive-schema-2.3.0.postgres.sql:/docker-entrypoint-initdb.d/hive-schema-2.3.0.postgres.sql
-      - ./image/hive-txn-schema-2.3.0.postgres.sql:/docker-entrypoint-initdb.d/hive-txn-schema-2.3.0.postgres.sql
+      - ./script/hive-schema-2.3.0.postgres.sql:/docker-entrypoint-initdb.d/hive-schema-2.3.0.postgres.sql
+      - ./script/hive-txn-schema-2.3.0.postgres.sql:/docker-entrypoint-initdb.d/hive-txn-schema-2.3.0.postgres.sql
 
   zookeeper:
     image: zookeeper:${ZOOKEEPER_VERSION}
@@ -123,8 +123,8 @@ services:
     ports:
       - 9083
     volumes:
-      - ./image/core-site.xml:/etc/hadoop/conf/core-site.xml
-      - ./image/hive-site.xml:/etc/hive/conf/hive-site.xml
+      - ./conf/core-site.xml:/etc/hadoop/conf/core-site.xml
+      - ./conf/hive-site.xml:/etc/hive/conf/hive-site.xml
     depends_on:
       - postgres
 
@@ -136,10 +136,10 @@ services:
       - 4040-4050:4040-4050
       - 10009:10009
     volumes:
-      - ./image/core-site.xml:/etc/hadoop/conf/core-site.xml
-      - ./image/hive-site.xml:/etc/hive/conf/hive-site.xml
-      - ./image/spark-defaults.conf:/etc/spark/conf/spark-defaults.conf
-      - ./image/kyuubi-defaults.conf:/etc/kyuubi/conf/kyuubi-defaults.conf
+      - ./conf/core-site.xml:/etc/hadoop/conf/core-site.xml
+      - ./conf/hive-site.xml:/etc/hive/conf/hive-site.xml
+      - ./conf/spark-defaults.conf:/etc/spark/conf/spark-defaults.conf
+      - ./conf/kyuubi-defaults.conf:/etc/kyuubi/conf/kyuubi-defaults.conf
     depends_on:
       - clickhouse-s1r1
       - clickhouse-s1r2
@@ -161,9 +161,9 @@ services:
     ports:
       - 8978:8978
     volumes:
-      - ./image/cloudbeaver-conf/cloudbeaver.conf:/opt/cloudbeaver/conf/cloudbeaver.conf
-      - ./image/cloudbeaver-conf/initial-data.conf:/opt/cloudbeaver/conf/initial-data.conf
-      - ./image/cloudbeaver-conf/initial-data-sources.conf:/opt/cloudbeaver/conf/initial-data-sources.conf
-      - ./image/cloudbeaver-conf/product.conf:/opt/cloudbeaver/conf/product.conf
+      - ./conf/cloudbeaver-conf/cloudbeaver.conf:/opt/cloudbeaver/conf/cloudbeaver.conf
+      - ./conf/cloudbeaver-conf/initial-data.conf:/opt/cloudbeaver/conf/initial-data.conf
+      - ./conf/cloudbeaver-conf/initial-data-sources.conf:/opt/cloudbeaver/conf/initial-data-sources.conf
+      - ./conf/cloudbeaver-conf/product.conf:/opt/cloudbeaver/conf/product.conf
     depends_on:
       - postgres
