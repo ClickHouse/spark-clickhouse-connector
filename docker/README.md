@@ -6,7 +6,7 @@ Playground
 ### Setup
 
 1. Install [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/);
-2. Start compose services `docker compose up --file docker/compose.yml`;
+2. Start compose services `docker compose --file docker/compose.yml up`;
 
 ### Play
 
@@ -42,7 +42,7 @@ Add a new Hive or Spark SQL or Kyuubi datasource with
 ### Shutdown
 
 1. Stop the compose services by pressing `CTRL+C`; 
-2. Remove the stopped containers `docker compose rm`;
+2. Remove the stopped containers `docker compose --file docker/compose.yml rm`;
 
 ## For Developers
 
