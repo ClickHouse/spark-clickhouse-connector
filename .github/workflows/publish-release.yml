@@ -22,46 +22,46 @@ on:
 jobs:
   publish-release:
     if: ${{ startsWith(github.repository, 'housepower/') }}
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
       matrix:
         scala: [ 2.12, 2.13 ]
         spark: [ 3.3 ]
     steps:
-    - uses: actions/checkout@v2
-      with:
-        ref: ${{ matrix.branch }}
-    - uses: actions/setup-java@v2
-      with:
-        distribution: zulu
-        java-version: 8
-        cache: gradle
-    - name: Import GPG key
-      uses: crazy-max/ghaction-import-gpg@v4
-      with:
-        gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
-    - name: Publish Release
-      run: >-
-        ./gradlew clean publish --no-daemon
-        -Dscala_binary_version=${{ matrix.scala }}
-        -Dspark_binary_version=${{ matrix.spark }}
-        -PmavenUser='${{ secrets.NEXUS_USER }}'
-        -PmavenPassword='${{ secrets.NEXUS_PW }}'
-        -Prelease
-        -Psigning.gnupg.keyName='Cheng Pan'
-        -Psigning.gnupg.executable=gpg
-        -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+      - uses: actions/checkout@v3
+        with:
+          ref: ${{ matrix.branch }}
+      - uses: actions/setup-java@v3
+        with:
+          distribution: zulu
+          java-version: 8
+          cache: gradle
+      - name: Import GPG key
+        uses: crazy-max/ghaction-import-gpg@v5
+        with:
+          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
+      - name: Publish Release
+        run: >-
+          ./gradlew clean publish --no-daemon
+          -Dscala_binary_version=${{ matrix.scala }}
+          -Dspark_binary_version=${{ matrix.spark }}
+          -PmavenUser='${{ secrets.NEXUS_USER }}'
+          -PmavenPassword='${{ secrets.NEXUS_PW }}'
+          -Prelease
+          -Psigning.gnupg.keyName='Cheng Pan'
+          -Psigning.gnupg.executable=gpg
+          -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
 
   create-github-release:
     if: ${{ startsWith(github.repository, 'housepower/') }}
-    runs-on: ubuntu-20.04
+    runs-on: ubuntu-22.04
     needs: publish-release
     steps:
-    - name: Create Draft Release
-      uses: softprops/action-gh-release@v1
-      with:
-        draft: true
-        token: ${{ secrets.GITHUB_TOKEN }}
-      env:
-        GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+      - name: Create Draft Release
+        uses: softprops/action-gh-release@v1
+        with:
+          draft: true
+          token: ${{ secrets.GITHUB_TOKEN }}
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
