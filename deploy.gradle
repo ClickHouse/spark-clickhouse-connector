@@ -18,14 +18,16 @@ subprojects {
     afterEvaluate {
         publishing {
             if (project.name.contains("-runtime")) {
-                task sourceJar(type: Jar, dependsOn: classes) {
-                    classifier = 'sources'
+                tasks.register('sourceJar', Jar) {
+                    dependsOn classes
+                    archiveClassifier.set('sources')
                     from sourceSets.main.allSource
                     group 'build'
                 }
 
-                task javadocJar(type: Jar, dependsOn: javadoc) {
-                    classifier = 'javadoc'
+                tasks.register('javadocJar', Jar) {
+                    dependsOn javadoc
+                    archiveClassifier.set('javadoc')
                     from javadoc.destinationDir
                     group 'build'
                 }

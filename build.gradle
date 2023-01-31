@@ -88,7 +88,7 @@ subprojects {
         }
     }
 
-    task slowTest(type: Test) {
+    tasks.register('slowTest', Test) {
         maxParallelForks = 1
         tags {
             include 'org.scalatest.tags.Slow'

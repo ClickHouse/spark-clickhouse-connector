@@ -18,7 +18,7 @@ project.ext {
 }
 
 project(":clickhouse-spark-${spark_binary_version}_$scala_binary_version") {
-    configurations.all {
+    configurations.configureEach {
         resolutionStrategy {
             // https://github.com/FasterXML/jackson-databind/issues/3627
             force "com.fasterxml.jackson:jackson-bom:$jackson_version"
@@ -69,7 +69,7 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
 }
 
 project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version") {
-    configurations.all {
+    configurations.configureEach {
         resolutionStrategy {
             // https://github.com/FasterXML/jackson-databind/issues/3627
             force "com.fasterxml.jackson:jackson-bom:$jackson_version"
