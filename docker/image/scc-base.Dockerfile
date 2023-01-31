@@ -11,7 +11,7 @@
 # limitations under the License.
 
 FROM eclipse-temurin:8-focal
-LABEL org.opencontainers.image.authors="Cheng Pan<chengpan@apache.com>"
+LABEL org.opencontainers.image.authors="Cheng Pan<chengpan@apache.org>"
 
 RUN set -x && \
     ln -snf /usr/bin/bash /usr/bin/sh && \

@@ -30,7 +30,13 @@ fi
 
 SELF_DIR="$(cd "$(dirname "$0")"; pwd)"
 
-source "${SELF_DIR}/.env"
+if [ $DEV ]; then
+  echo "Loading .env-dev"
+  source "${SELF_DIR}/.env-dev"
+else
+  echo "Loading .env"
+  source "${SELF_DIR}/.env"
+fi
 
 ${BUILD_CMD} \
   --build-arg APACHE_MIRROR=${APACHE_MIRROR} \

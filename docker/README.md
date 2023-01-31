@@ -6,7 +6,7 @@ Playground
 ### Setup
 
 1. Install [Docker](https://docs.docker.com/get-docker/) and [Docker Compose](https://docs.docker.com/compose/);
-2. Start compose services `cd docker && docker compose up`;
+2. Start compose services `docker compose up --file docker/compose.yml`;
 
 ### Play
 
@@ -51,12 +51,13 @@ In addition to play with the pre-build images, developers may want to build the 
 ### Build
 
 1. Follow [README](../README.md#build) to build the project;
-2. Build images `docker/build-image.sh`;
-3. Optional to use buildx to build cross-platform images `BUILDX=1 docker/build-image.sh`;
+2. Build images for release `docker/build-image.sh`;
+3. Build images for dev `DEV=1 docker/build-image.sh`;
+4. Optional to use buildx to build cross-platform images `BUILDX=1 docker/build-image.sh`;
 
 ### Setup
 
-1. Launch dev compose services `docker compose --file compose-dev.yml --env-file .env-dev up`;
+1. Launch dev compose services `docker compose --file docker/compose-dev.yml --env-file docker/.env-dev up`;
 
 ## For Maintainers
 
