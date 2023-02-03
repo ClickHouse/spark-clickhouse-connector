@@ -16,7 +16,7 @@ package org.apache.spark.sql.clickhouse.cluster
 
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.clickhouse.SparkTest
-import org.apache.spark.sql.functions.{month, to_timestamp, year}
+import org.apache.spark.sql.functions.{month, year}
 import xenon.clickhouse.base.ClickHouseClusterMixIn
 
 trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
@@ -143,12 +143,11 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
       if (writeData) {
         val tblSchema = spark.table(s"$db.$tbl_dist").schema
         val dataDF = spark.createDataFrame(Seq(
-          ("2021-01-01 10:10:10", 1L, "1"),
-          ("2022-02-02 10:10:10", 2L, "2"),
-          ("2023-03-03 10:10:10", 3L, "3"),
-          ("2024-04-04 10:10:10", 4L, "4")
+          (timestamp("2021-01-01T10:10:10Z"), 1L, "1"),
+          (timestamp("2022-02-02T10:10:10Z"), 2L, "2"),
+          (timestamp("2023-03-03T10:10:10Z"), 3L, "3"),
+          (timestamp("2024-04-04T10:10:10Z"), 4L, "4")
         )).toDF("create_time", "id", "value")
-          .withColumn("create_time", to_timestamp($"create_time"))
           .withColumn("y", year($"create_time"))
           .withColumn("m", month($"create_time"))
           .select($"create_time", $"y", $"m", $"id", $"value")

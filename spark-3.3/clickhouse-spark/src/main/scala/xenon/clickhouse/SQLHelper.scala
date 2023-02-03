@@ -15,8 +15,7 @@
 package xenon.clickhouse
 
 import java.sql.{Date, Timestamp}
-import java.time.{Instant, LocalDate, ZoneId}
-
+import java.time.{Instant, LocalDate, LocalDateTime, ZoneId}
 import org.apache.commons.lang3.StringUtils
 import org.apache.spark.sql.connector.expressions.aggregate._
 import org.apache.spark.sql.connector.expressions.NamedReference
@@ -32,13 +31,14 @@ trait SQLHelper {
   def escapeSql(value: String): String = StringUtils.replace(value, "'", "''")
 
   def compileValue(value: Any)(implicit tz: ZoneId): Any = value match {
-    case stringValue: String => s"'${escapeSql(stringValue)}'"
+    case string: String => s"'${escapeSql(string)}'"
     case utf8: UTF8String => s"'${escapeSql(utf8.toString)}'"
-    case timestampValue: Timestamp => "'" + timestampValue + "'"
-    case timestampValue: Instant => s"'${dateTimeFmt.withZone(tz).format(timestampValue)}'"
-    case dateValue: Date => "'" + dateValue + "'"
-    case dateValue: LocalDate => s"'${dateFmt.format(dateValue)}'"
-    case arrayValue: Array[Any] => arrayValue.map(compileValue).mkString(", ")
+    case instant: Instant => s"'${dateTimeFmt.withZone(tz).format(instant)}'"
+    case timestamp: Timestamp => s"'${legacyDateTimeFmt.format(timestamp)}'"
+    case localDateTime: LocalDateTime => s"'${dateTimeFmt.format(localDateTime)}'"
+    case legacyDate: Date => s"'${legacyDateFmt.format(legacyDate)}'"
+    case localDate: LocalDate => s"'${dateFmt.format(localDate)}'"
+    case array: Array[Any] => array.map(compileValue).mkString(",")
     case _ => value
   }
 

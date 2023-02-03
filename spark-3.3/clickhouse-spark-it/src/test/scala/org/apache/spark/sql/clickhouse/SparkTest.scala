@@ -19,9 +19,24 @@ import org.apache.spark.sql.test.SharedSparkSession
 import org.apache.spark.sql.{DataFrame, QueryTest}
 import xenon.clickhouse.ClickHouseCommandRunner
 
+import java.sql.{Date, Timestamp}
+import java.time.Instant
+
 trait SparkTest extends QueryTest with SharedSparkSession {
 
   def cmdRunnerOptions: Map[String, String]
+
+  /**
+   * @param text format yyyy-[m]m-[d]d
+   * @return A SQL Date
+   */
+  def date(text: String): Date = Date.valueOf(text)
+
+  /**
+   * @param text format 2007-12-03T10:15:30.00Z
+   * @return A SQL Timestamp
+   */
+  def timestamp(text: String): Timestamp = Timestamp.from(Instant.parse(text))
 
   override protected def sparkConf: SparkConf = super.sparkConf
     .setMaster("local[2]")

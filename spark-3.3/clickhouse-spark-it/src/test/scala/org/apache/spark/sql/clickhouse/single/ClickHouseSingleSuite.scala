@@ -17,8 +17,6 @@ package org.apache.spark.sql.clickhouse.single
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
 
-import java.sql.{Date, Timestamp}
-
 class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
 
   import testImplicits._
@@ -124,18 +122,18 @@ class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
       spark.createDataFrame(Seq(
-        (21L, Date.valueOf("2022-04-21")),
-        (22L, Date.valueOf("2022-04-22"))
+        (21L, date("2022-04-21")),
+        (22L, date("2022-04-22"))
       ))
         .toDF("id", "date")
         .writeTo(s"$db.$tbl").append
 
       checkAnswer(
         spark.table(s"$db.$tbl").orderBy($"id"),
-        Row(11L, Date.valueOf("2022-04-11")) ::
-          Row(12L, Date.valueOf("2022-04-12")) ::
-          Row(21L, Date.valueOf("2022-04-21")) ::
-          Row(22L, Date.valueOf("2022-04-22")) :: Nil
+        Row(11L, date("2022-04-11")) ::
+          Row(12L, date("2022-04-12")) ::
+          Row(21L, date("2022-04-21")) ::
+          Row(22L, date("2022-04-22")) :: Nil
       )
 
       checkAnswer(
@@ -221,10 +219,10 @@ class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
 
       checkAnswer(
         spark.table(s"$db.$tbl").orderBy($"id"),
-        Row(11L, Date.valueOf("2022-04-11"), 1) ::
-          Row(12L, Date.valueOf("2022-04-12"), 2) ::
-          Row(21L, Date.valueOf("2022-04-21"), 1) ::
-          Row(22L, Date.valueOf("2022-04-22"), 2) :: Nil
+        Row(11L, date("2022-04-11"), 1) ::
+          Row(12L, date("2022-04-12"), 2) ::
+          Row(21L, date("2022-04-21"), 1) ::
+          Row(22L, date("2022-04-22"), 2) :: Nil
       )
 
       checkAnswer(
@@ -345,14 +343,14 @@ class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
       checkAnswer(
         spark.table(s"$db.$tbl").sort("m"),
         Seq(
-          Row(1L, "1", Timestamp.valueOf("2021-01-01 10:10:10"), 1),
-          Row(2L, "2", Timestamp.valueOf("2022-02-02 10:10:10"), 2)
+          Row(1L, "1", timestamp("2021-01-01T10:10:10Z"), 1),
+          Row(2L, "2", timestamp("2022-02-02T10:10:10Z"), 2)
         )
       )
 
       checkAnswer(
         spark.table(s"$db.$tbl").filter($"id" > 1),
-        Row(2L, "2", Timestamp.valueOf("2022-02-02 10:10:10"), 2) :: Nil
+        Row(2L, "2", timestamp("2022-02-02T10:10:10Z"), 2) :: Nil
       )
 
       assert(spark.table(s"$db.$tbl").filter($"id" > 1).count === 1)

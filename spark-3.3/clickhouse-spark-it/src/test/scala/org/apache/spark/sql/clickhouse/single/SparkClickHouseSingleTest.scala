@@ -16,7 +16,7 @@ package org.apache.spark.sql.clickhouse.single
 
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.clickhouse.SparkTest
-import org.apache.spark.sql.functions.{month, to_timestamp}
+import org.apache.spark.sql.functions.month
 import org.apache.spark.sql.types.StructType
 import xenon.clickhouse.base.ClickHouseSingleMixIn
 
@@ -94,6 +94,28 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
       runClickHouseSQL(s"DROP DATABASE IF EXISTS $db")
     }
 
+  def withKVTable(
+    db: String,
+    tbl: String,
+    keyColDef: String = "Int32",
+    valueColDef: String
+  )(f: => Unit): Unit =
+    try {
+      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
+      runClickHouseSQL(
+        s"""CREATE TABLE $db.$tbl (
+           |  key   $keyColDef,
+           |  value $valueColDef
+           |) ENGINE = MergeTree()
+           |ORDER BY key
+           |""".stripMargin
+      )
+      f
+    } finally {
+      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
+      runClickHouseSQL(s"DROP DATABASE IF EXISTS $db")
+    }
+
   def withSimpleTable(
     db: String,
     tbl: String,
@@ -121,10 +143,9 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
       if (writeData) {
         val tblSchema = spark.table(s"$db.$tbl").schema
         val dataDF = spark.createDataFrame(Seq(
-          (1L, "1", "2021-01-01 10:10:10"),
-          (2L, "2", "2022-02-02 10:10:10")
+          (1L, "1", timestamp("2021-01-01T10:10:10Z")),
+          (2L, "2", timestamp("2022-02-02T10:10:10Z"))
         )).toDF("id", "value", "create_time")
-          .withColumn("create_time", to_timestamp($"create_time"))
           .withColumn("m", month($"create_time"))
           .select($"id", $"value", $"create_time", $"m")
 
