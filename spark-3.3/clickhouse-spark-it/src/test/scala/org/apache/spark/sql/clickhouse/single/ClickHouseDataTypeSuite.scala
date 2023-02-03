@@ -53,9 +53,7 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     }
   }
 
-  test("write unsupported data types") {}
-
-  test("read supported data types") {
+  test("DateType - DateTime") {
     val db = "t_r_s_db"
     val tbl = "t_r_s_tbl"
     withKVTable(db, tbl, valueColDef = "DateTime") {
@@ -78,10 +76,4 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
       )
     }
   }
-
-  test("read unsupported data types") {}
-
-  test("spark to clickhouse data type mappings") {}
-
-  test("clickhouse to spark data type mappings") {}
 }
