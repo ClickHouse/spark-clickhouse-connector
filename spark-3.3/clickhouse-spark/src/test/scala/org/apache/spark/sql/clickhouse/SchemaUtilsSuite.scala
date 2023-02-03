@@ -177,7 +177,7 @@ class SchemaUtilsSuite extends AnyFunSuite {
       "LowCardinality(Int32)", // illegal actually
       IntegerType,
       nullable = false
-    ),
+    )
   )
 
   assertNegative("fixedString(5)")
