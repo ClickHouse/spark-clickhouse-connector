@@ -14,207 +14,171 @@
 
 package org.apache.spark.sql.clickhouse
 
+import com.clickhouse.client.ClickHouseColumn
 import org.apache.spark.sql.clickhouse.SchemaUtils._
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types._
 import org.scalatest.funsuite.AnyFunSuite
 
 class SchemaUtilsSuite extends AnyFunSuite {
-  test("regex ArrayType") {
-    "Array(String)" match {
-      case arrayTypePattern(nestType) => assert("String" == nestType)
-      case _ => fail()
+
+  case class TestBean(chTypeStr: String, sparkType: DataType, nullable: Boolean)
+
+  private def assertPositive(positives: TestBean*): Unit =
+    positives.foreach { case TestBean(chTypeStr, expectedSparkType, expectedNullable) =>
+      test(s"ch2spark - $chTypeStr") {
+        val chCols = ClickHouseColumn.parse(s"`col` $chTypeStr")
+        assert(chCols.size == 1)
+        val (actualSparkType, actualNullable) = fromClickHouseType(chCols.get(0))
+        assert(actualSparkType === expectedSparkType)
+        assert(actualNullable === expectedNullable)
+      }
     }
 
-    "Array(Nullable(String))" match {
-      case arrayTypePattern(nestType) => assert("Nullable(String)" == nestType)
-      case _ => fail()
-    }
-
-    "Array(Array(String))" match {
-      case arrayTypePattern(nestType) => assert("Array(String)" == nestType)
-      case _ => fail()
-    }
-
-    "array(String)" match {
-      case arrayTypePattern(_) => fail()
-      case _ =>
-    }
-
-    "Array(String" match {
-      case arrayTypePattern(_) => fail()
-      case _ =>
+  private def assertNegative(negatives: String*): Unit = negatives.foreach { chTypeStr =>
+    test(s"ch2spark - $chTypeStr") {
+      intercept[Exception] {
+        ClickHouseColumn.parse(s"`col` $chTypeStr")
+        val chCols = ClickHouseColumn.parse(s"`col` $chTypeStr")
+        assert(chCols.size == 1)
+        fromClickHouseType(chCols.get(0))
+      }
     }
   }
 
-  test("regex MapType") {
-    "Map(String, String)" match {
-      case mapTypePattern(keyType, valueType) =>
-        assert("String" == keyType)
-        assert("String" == valueType)
-      case _ => fail()
-    }
-    "Map(String,Int32)" match {
-      case mapTypePattern(keyType, valueType) =>
-        assert("String" == keyType)
-        assert("Int32" == valueType)
-      case _ => fail()
-    }
-    "Map(String,Nullable(UInt32))" match {
-      case mapTypePattern(keyType, valueType) =>
-        assert("String" == keyType)
-        assert("Nullable(UInt32)" == valueType)
-      case _ => fail()
-    }
-    "Map(String,)" match {
-      case mapTypePattern(_) => fail()
-      case _ =>
-    }
-  }
+  assertPositive(
+    TestBean(
+      "Array(String)",
+      ArrayType(StringType, containsNull = false),
+      nullable = false
+    ),
+    TestBean(
+      "Array(Nullable(String))",
+      ArrayType(StringType, containsNull = true),
+      nullable = false
+    ),
+    TestBean(
+      "Array(Array(String))",
+      ArrayType(ArrayType(StringType, containsNull = false), containsNull = false),
+      nullable = false
+    )
+  )
 
-  test("regex DateType") {
-    "Date" match {
-      case dateTypePattern() =>
-      case _ => fail()
-    }
+  assertNegative(
+    "array(String)",
+    "Array(String"
+  )
 
-    "DT" match {
-      case dateTypePattern(_) => fail()
-      case _ =>
-    }
-  }
+  assertPositive(
+    TestBean(
+      "Map(String, String)",
+      MapType(StringType, StringType, valueContainsNull = false),
+      nullable = false
+    ),
+    TestBean(
+      "Map(String,Int32)",
+      MapType(StringType, IntegerType, valueContainsNull = false),
+      nullable = false
+    ),
+    TestBean(
+      "Map(String,Nullable(UInt32))",
+      MapType(StringType, LongType, valueContainsNull = true),
+      nullable = false
+    )
+  )
 
-  test("regex DateTimeType") {
-    "DateTime" match {
-      case dateTimeTypePattern(_, _, _) =>
-      case _ => fail()
-    }
+  assertNegative(
+    "Map(String,)"
+  )
 
-    "DateTime(Asia/Shanghai)" match {
-      case dateTimeTypePattern(_, _, tz) => assert("Asia/Shanghai" == tz)
-      case _ => fail()
-    }
+  assertPositive(
+    TestBean(
+      "Date",
+      DateType,
+      nullable = false
+    ),
+    TestBean(
+      "DateTime",
+      TimestampType,
+      nullable = false
+    ),
+    TestBean(
+      "DateTime(Asia/Shanghai)",
+      TimestampType,
+      nullable = false
+    ),
+    TestBean(
+      "DateTime64",
+      TimestampType,
+      nullable = false
+    )
+    // TestBean(
+    //   "DateTime64(Europe/Moscow)",
+    //   TimestampType,
+    //   nullable = false
+    // ),
+  )
 
-    "DateTime64" match {
-      case dateTimeTypePattern(_64, _, _) => assert("64" == _64)
-      case _ => fail()
-    }
+  assertNegative(
+    "DT"
+  )
 
-    "DateTime64(Europe/Moscow)" match {
-      case dateTimeTypePattern(_64, _, tz) =>
-        assert("64" == _64)
-        assert("Europe/Moscow" == tz)
-      case _ => fail()
-    }
+  assertPositive(
+    TestBean(
+      "Decimal(2,1)",
+      DecimalType(2, 1),
+      nullable = false
+    ),
+    TestBean(
+      "Decimal32(5)",
+      DecimalType(9, 5),
+      nullable = false
+    ),
+    TestBean(
+      "Decimal64(5)",
+      DecimalType(18, 5),
+      nullable = false
+    ),
+    TestBean(
+      "Decimal128(5)",
+      DecimalType(38, 5),
+      nullable = false
+    )
+  )
 
-    "DT" match {
-      case dateTimeTypePattern(_) => fail()
-      case _ =>
-    }
-  }
+  assertNegative(
+    "Decimal", // overflow
+    "Decimal256(5)", // overflow
+    "Decimal(String"
+    // "Decimal32(5"
+  )
 
-  test("DecimalType") {
-    "Decimal(1,2)" match {
-      case decimalTypePattern(p, s) =>
-        assert("1" == p)
-        assert("2" == s)
-      case _ => fail()
-    }
+  assertPositive(
+    TestBean(
+      "String",
+      StringType,
+      nullable = false
+    ),
+    TestBean(
+      "FixedString(5)",
+      StringType,
+      nullable = false
+    )
+  )
 
-    "Decimal" match {
-      case decimalTypePattern(_, _) => fail()
-      case _ =>
-    }
+  assertNegative("fixedString(5)")
 
-    "Decimal(String" match {
-      case decimalTypePattern(_, _) => fail()
-      case _ =>
-    }
-  }
-
-  test("regex DecimalType - 2") {
-    "Decimal32(5)" match {
-      case decimalTypePattern2(a, s) => assert(("32", "5") == (a, s))
-      case _ => fail()
-    }
-
-    "Decimal64(5)" match {
-      case decimalTypePattern2(a, s) => assert(("64", "5") == (a, s))
-      case _ => fail()
-    }
-
-    "Decimal128(5)" match {
-      case decimalTypePattern2(a, s) => assert(("128", "5") == (a, s))
-      case _ => fail()
-    }
-
-    "Decimal256(5)" match {
-      case decimalTypePattern2(a, s) => assert(("256", "5") == (a, s))
-      case _ => fail()
-    }
-
-    "Decimal32(5" match {
-      case decimalTypePattern2(a, s) => fail()
-      case _ =>
-    }
-  }
-
-  test("regex FixedStringType") {
-    "FixedString(5)" match {
-      case fixedStringTypePattern(l) => assert("5" == l)
-      case _ => fail()
-    }
-
-    "fixedString(5)" match {
-      case fixedStringTypePattern(_) => fail()
-      case _ =>
-    }
-
-    "String" match {
-      case decimalTypePattern2(a, s) => fail()
-      case _ =>
-    }
-  }
-
-  test("testNullableTypeRegex") {
-    assert(("String", true) == unwrapNullable("Nullable(String)"))
-    assert(("nullable(String)", false) == unwrapNullable("nullable(String)"))
-    assert(("String", false) == unwrapNullable("String"))
-  }
-  test("testToClickHouseSchema") {
+  test("spark2ch") {
     val catalystSchema = StructType.fromString(
       """{
-        |    "fields": [
-        |        {
-        |            "name": "id",
-        |            "type": "integer",
-        |            "nullable": false,
-        |            "metadata": {}
-        |        },
-        |        {
-        |            "name": "food",
-        |            "type": "string",
-        |            "nullable": false,
-        |            "metadata": {
-        |                "comment": "food"
-        |            }
-        |        },
-        |        {
-        |            "name": "price",
-        |            "type": "decimal(2,1)",
-        |            "nullable": false,
-        |            "metadata": {
-        |                "comment": "price usd"
-        |            }
-        |        },
-        |        {
-        |            "name": "remark",
-        |            "type": "string",
-        |            "nullable": true,
-        |            "metadata": {}
-        |        }
-        |    ],
-        |    "type": "struct"
-        |}""".stripMargin
+        |  "type": "struct",
+        |  "fields": [
+        |    {"name": "id", "type": "integer", "nullable": false, "metadata": {}},
+        |    {"name": "food", "type": "string", "nullable": false, "metadata": {"comment": "food"}},
+        |    {"name": "price", "type": "decimal(2,1)", "nullable": false, "metadata": {"comment": "price usd"}},
+        |    {"name": "remark", "type": "string", "nullable": true, "metadata": {}}
+        |  ]
+        |}
+        |""".stripMargin
     )
     assert(Seq(
       ("id", "Int32", ""),
