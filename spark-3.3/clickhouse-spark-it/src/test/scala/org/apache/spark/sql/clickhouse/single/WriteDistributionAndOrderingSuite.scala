@@ -19,7 +19,6 @@ import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.StringType
 import org.apache.spark.sql.{AnalysisException, Row}
 
-import java.sql.Date
 import java.time.LocalDate
 
 class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTest {
@@ -32,16 +31,16 @@ class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTest {
   private def write(): Unit = spark.range(3)
     .toDF("id")
     .withColumn("id", $"id".cast(StringType))
-    .withColumn("load_date", lit(LocalDate.of(2022, 5, 27)))
+    .withColumn("load_date", lit(date("2022-05-27")))
     .writeTo(s"$db.$tbl")
     .append
 
   private def check(): Unit = checkAnswer(
     spark.sql(s"SELECT id, load_date FROM $db.$tbl"),
     Seq(
-      Row("0", Date.valueOf("2022-05-27")),
-      Row("1", Date.valueOf("2022-05-27")),
-      Row("2", Date.valueOf("2022-05-27"))
+      Row("0", date("2022-05-27")),
+      Row("1", date("2022-05-27")),
+      Row("2", date("2022-05-27"))
     )
   )
 

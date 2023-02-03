@@ -18,8 +18,6 @@ import org.apache.spark.sql.Row
 import org.apache.spark.sql.types.DataTypes.{createArrayType, createMapType}
 import org.apache.spark.sql.types._
 
-import java.sql.Date
-
 class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
 
   test("write supported data types") {
@@ -28,7 +26,7 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
         StructField("col_string", StringType, false) ::
         StructField("col_date", DateType, false) ::
         StructField("col_array_string", createArrayType(StringType, false), false) ::
-        StructField("col_map_string", createMapType(StringType, StringType, false), false) ::
+        StructField("col_map_string_string", createMapType(StringType, StringType, false), false) ::
         Nil
     )
     val db = "t_w_s_db"
@@ -39,9 +37,9 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
       // assert(StructType(structFields) === tblSchema)
 
       val dataDF = spark.createDataFrame(Seq(
-        (1L, "a", Date.valueOf("1996-06-06"), Seq("a", "b", "c"), Map("a" -> "x")),
-        (2L, "A", Date.valueOf("2022-04-12"), Seq("A", "B", "C"), Map("A" -> "X"))
-      )).toDF("id", "col_string", "col_date", "col_array_string", "col_map_string")
+        (1L, "a", date("1996-06-06"), Seq("a", "b", "c"), Map("a" -> "x")),
+        (2L, "A", date("2022-04-12"), Seq("A", "B", "C"), Map("A" -> "X"))
+      )).toDF("id", "col_string", "col_date", "col_array_string", "col_map_string_string")
 
       spark.createDataFrame(dataDF.rdd, tblSchema)
         .writeTo(s"$db.$tbl")
@@ -49,15 +47,37 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
 
       checkAnswer(
         spark.table(s"$db.$tbl").sort("id"),
-        Row(1L, "a", Date.valueOf("1996-06-06"), Seq("a", "b", "c"), Map("a" -> "x")) ::
-          Row(2L, "A", Date.valueOf("2022-04-12"), Seq("A", "B", "C"), Map("A" -> "X")) :: Nil
+        Row(1L, "a", date("1996-06-06"), Seq("a", "b", "c"), Map("a" -> "x")) ::
+          Row(2L, "A", date("2022-04-12"), Seq("A", "B", "C"), Map("A" -> "X")) :: Nil
       )
     }
   }
 
   test("write unsupported data types") {}
 
-  test("read supported data types") {}
+  test("read supported data types") {
+    val db = "t_r_s_db"
+    val tbl = "t_r_s_tbl"
+    withKVTable(db, tbl, valueColDef = "DateTime") {
+      runClickHouseSQL(
+        s"""INSERT INTO $db.$tbl VALUES
+           |(1, '2021-01-01 01:01:01'),
+           |(2, '2022-02-02 02:02:02')
+           |""".stripMargin
+      )
+
+      val data = spark.sql(s"SELECT key, value FROM $db.$tbl ORDER BY key")
+      checkAnswer(
+        data,
+        Row(1, timestamp("2021-01-01T01:01:01Z")) ::
+          Row(2, timestamp("2022-02-02T02:02:02Z")) :: Nil
+      )
+      checkAnswer(
+        data.filter("value > '2022-01-01 01:01:01'"),
+        Row(2, timestamp("2022-02-02T02:02:02Z")) :: Nil
+      )
+    }
+  }
 
   test("read unsupported data types") {}
 

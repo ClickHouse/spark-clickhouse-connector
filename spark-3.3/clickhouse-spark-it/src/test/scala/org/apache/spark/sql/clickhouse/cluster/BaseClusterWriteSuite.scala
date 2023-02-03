@@ -18,8 +18,6 @@ import org.apache.spark.SparkConf
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.types._
 
-import java.sql.Timestamp
-
 abstract class BaseClusterWriteSuite extends SparkClickHouseClusterTest {
 
   test("clickhouse write cluster") {
@@ -38,28 +36,28 @@ abstract class BaseClusterWriteSuite extends SparkClickHouseClusterTest {
           .table(s"$db.$tbl_dist")
           .select("create_time", "y", "m", "id", "value"),
         Seq(
-          Row(Timestamp.valueOf("2021-01-01 10:10:10"), 2021, 1, 1L, "1"),
-          Row(Timestamp.valueOf("2022-02-02 10:10:10"), 2022, 2, 2L, "2"),
-          Row(Timestamp.valueOf("2023-03-03 10:10:10"), 2023, 3, 3L, "3"),
-          Row(Timestamp.valueOf("2024-04-04 10:10:10"), 2024, 4, 4L, "4")
+          Row(timestamp("2021-01-01T10:10:10Z"), 2021, 1, 1L, "1"),
+          Row(timestamp("2022-02-02T10:10:10Z"), 2022, 2, 2L, "2"),
+          Row(timestamp("2023-03-03T10:10:10Z"), 2023, 3, 3L, "3"),
+          Row(timestamp("2024-04-04T10:10:10Z"), 2024, 4, 4L, "4")
         )
       )
 
       checkAnswer(
         spark.table(s"clickhouse_s1r1.$db.$tbl_local"),
-        Row(Timestamp.valueOf("2024-04-04 10:10:10"), 2024, 4, 4L, "4") :: Nil
+        Row(timestamp("2024-04-04T10:10:10Z"), 2024, 4, 4L, "4") :: Nil
       )
       checkAnswer(
         spark.table(s"clickhouse_s1r2.$db.$tbl_local"),
-        Row(Timestamp.valueOf("2021-01-01 10:10:10"), 2021, 1, 1L, "1") :: Nil
+        Row(timestamp("2021-01-01T10:10:10Z"), 2021, 1, 1L, "1") :: Nil
       )
       checkAnswer(
         spark.table(s"clickhouse_s2r1.$db.$tbl_local"),
-        Row(Timestamp.valueOf("2022-02-02 10:10:10"), 2022, 2, 2L, "2") :: Nil
+        Row(timestamp("2022-02-02T10:10:10Z"), 2022, 2, 2L, "2") :: Nil
       )
       checkAnswer(
         spark.table(s"clickhouse_s2r2.$db.$tbl_local"),
-        Row(Timestamp.valueOf("2023-03-03 10:10:10"), 2023, 3, 3L, "3") :: Nil
+        Row(timestamp("2023-03-03T10:10:10Z"), 2023, 3, 3L, "3") :: Nil
       )
     }
   }
