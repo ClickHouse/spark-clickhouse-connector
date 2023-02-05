@@ -162,6 +162,21 @@ class SchemaUtilsSuite extends AnyFunSuite {
       "FixedString(5)",
       StringType,
       nullable = false
+    ),
+    TestBean(
+      "LowCardinality(String)",
+      StringType,
+      nullable = false
+    ),
+    TestBean(
+      "LowCardinality(FixedString(5))",
+      StringType,
+      nullable = false
+    ),
+    TestBean(
+      "LowCardinality(Int32)", // illegal actually
+      IntegerType,
+      nullable = false
     )
   )
 
