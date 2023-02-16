@@ -184,6 +184,7 @@ case class ClickHouseTable(
         case IntegerType => compileValue(ident.getInt(i))
         case LongType => compileValue(ident.getLong(i))
         case StringType => compileValue(ident.getUTF8String(i))
+        case DateType => compileValue(LocalDate.ofEpochDay(ident.getInt(i)))
         case illegal => throw new IllegalArgumentException(s"Illegal partition data type: $illegal")
       }
     }.mkString("(", ",", ")")
