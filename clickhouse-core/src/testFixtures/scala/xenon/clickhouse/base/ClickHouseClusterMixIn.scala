@@ -34,8 +34,8 @@ trait ClickHouseClusterMixIn extends AnyFunSuite with ForAllTestContainer {
     "clickhouse/clickhouse-server:22.3.3.44"
   )
 
-  protected val grpcEnabled: Boolean =
-    ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last).isNewerOrEqualTo("21.1.2.15")
+  protected val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)
+  protected val grpcEnabled: Boolean = clickhouseVersion.isNewerOrEqualTo("21.1.2.15")
 
   test("clickhouse cluster up") {
     assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s1r1").isDefined)

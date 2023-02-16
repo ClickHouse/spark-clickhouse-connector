@@ -33,8 +33,8 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   private val CLICKHOUSE_TPC_PORT  = 9000
   // format: on
 
-  protected val grpcEnabled: Boolean =
-    ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last).isNewerOrEqualTo("21.1.2.15")
+  protected val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)
+  protected val grpcEnabled: Boolean = clickhouseVersion.isNewerOrEqualTo("21.1.2.15")
 
   override val container: SingleContainer[ClickHouseContainer] with JdbcDatabaseContainer =
     new SingleContainer[ClickHouseContainer] with JdbcDatabaseContainer {

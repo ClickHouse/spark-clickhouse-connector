@@ -53,6 +53,10 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     }
   }
 
+  // "allow_experimental_bigint_types" setting is removed since v21.7.1.7020-testing
+  // https://github.com/ClickHouse/ClickHouse/pull/24812
+  val BIGINT_TYPES: Seq[String] = Seq("Int128", "UInt128", "Int256", "UInt256")
+
   // TODO - Supply more test cases
   //     1. data type alias
   //     2. negative cases
@@ -73,6 +77,9 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     ("UInt256", BigDecimal(0), BigDecimal("9" * 38))
   ).foreach { case (dataType, lower, upper) =>
     test(s"DateType - $dataType") {
+      if (BIGINT_TYPES.contains(dataType)) {
+        assume(clickhouseVersion.isNewerOrEqualTo("21.7.1.7020"))
+      }
       testDataType(dataType) { (db, tbl) =>
         runClickHouseSQL(
           s"""INSERT INTO $db.$tbl VALUES
