@@ -25,6 +25,7 @@ import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.format.{JSONCompactEachRowWithNamesAndTypesStreamOutput, StreamOutput}
 import xenon.clickhouse.read.{ClickHouseInputPartition, ClickHouseReader, ScanJobDescription}
 
+import java.math.{MathContext, RoundingMode => RM}
 import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
 import scala.collection.JavaConverters._
 import scala.math.BigDecimal.RoundingMode
@@ -63,7 +64,10 @@ class ClickHouseJsonReader(
       case LongType => jsonNode.asLong
       case FloatType => jsonNode.asDouble.floatValue
       case DoubleType => jsonNode.asDouble
-      case d: DecimalType => Decimal(jsonNode.decimalValue.setScale(d.scale, RoundingMode.HALF_UP))
+      case d: DecimalType if jsonNode.isBigDecimal =>
+        Decimal(jsonNode.decimalValue.setScale(d.scale, RoundingMode.HALF_UP))
+      case d: DecimalType =>
+        Decimal(BigDecimal(jsonNode.asText, new MathContext(d.scale, RM.HALF_UP)))
       case TimestampType =>
         ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(scanJob.tz))
           .withZoneSameInstant(ZoneOffset.UTC)
