@@ -29,10 +29,6 @@ project.ext {
     jackson_version = project.getProperty("spark_33_jackson_version")
 }
 
-repositories {
-    maven { url = "$mavenCentralMirror" }
-}
-
 rat {
     verbose.set(true)
     exclude(
@@ -57,18 +53,20 @@ rat {
     )
 }
 
+allprojects {
+    version = getProjectVersion()
+
+    repositories {
+        maven { url = "$mavenCentralMirror" }
+    }
+}
+
 subprojects {
     apply plugin: "scala"
     apply plugin: "java-library"
     apply plugin: "org.scoverage"
     apply plugin: "com.diffplug.spotless"
     apply plugin: "com.github.maiflai.scalatest"
-
-    repositories {
-        maven { url = "$mavenCentralMirror" }
-    }
-
-    version = getProjectVersion()
 
     java {
         sourceCompatibility = JavaVersion.VERSION_1_8
