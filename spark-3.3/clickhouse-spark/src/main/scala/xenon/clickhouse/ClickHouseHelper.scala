@@ -58,6 +58,7 @@ trait ClickHouseHelper extends Logging {
     NodeSpec(
       _host = options.getOrDefault(CATALOG_PROP_HOST, "localhost"),
       _grpc_port = Some(options.getInt(CATALOG_PROP_GRPC_PORT, 9100)),
+      _tcp_port = Some(options.getInt(CATALOG_PROP_TCP_PORT, 9000)),
       _http_port = Some(options.getInt(CATALOG_PROP_HTTP_PORT, 8123)),
       protocol = ClickHouseProtocol.fromUriScheme(options.getOrDefault(CATALOG_PROP_PROTOCOL, "http")),
       username = options.getOrDefault(CATALOG_PROP_USER, "default"),
