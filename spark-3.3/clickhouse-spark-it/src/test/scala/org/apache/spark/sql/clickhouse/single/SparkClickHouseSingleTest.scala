@@ -48,7 +48,13 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
       .set("spark.clickhouse.read.format", "json")
       .set("spark.clickhouse.write.format", "json")
     if (grpcEnabled) {
-      _conf.set("spark.sql.catalog.clickhouse.grpc_port", clickhouseGrpcPort.toString)
+      _conf.set("spark.sql.catalog.clickhouse-grpc", "xenon.clickhouse.ClickHouseCatalog")
+      _conf.set("spark.sql.catalog.clickhouse-grpc.host", clickhouseHost)
+      _conf.set("spark.sql.catalog.clickhouse-grpc.grpc_port", clickhouseGrpcPort.toString)
+      _conf.set("spark.sql.catalog.clickhouse-grpc.protocol", "grpc")
+      _conf.set("spark.sql.catalog.clickhouse-grpc.user", CLICKHOUSE_USER)
+      _conf.set("spark.sql.catalog.clickhouse-grpc.password", CLICKHOUSE_PASSWORD)
+      _conf.set("spark.sql.catalog.clickhouse-grpc.database", CLICKHOUSE_DB)
     }
     _conf
   }

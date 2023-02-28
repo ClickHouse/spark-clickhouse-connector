@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse.single
 
-import org.apache.spark.sql.Row
+import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.types._
 
 class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
@@ -434,6 +434,32 @@ class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
       )
       createOrReplaceTable()
       createOrReplaceTable()
+    }
+  }
+
+  if (grpcEnabled) {
+    test("create or replace table through grpc") {
+      def set_comment(ori: DataFrame, comments: Map[String, String]): DataFrame = {
+        val newSchema = ori.schema.map { field =>
+          comments.get(field.name).map(comment => field.withComment(comment)).getOrElse(field)
+        }
+        spark.createDataFrame(ori.rdd, StructType(newSchema))
+      }
+
+      val demo = spark.sql(
+        """SELECT * FROM VALUES
+          |  (1, 'rice',      0.8, 'can eat'),
+          |  (2, 'vegetable', 1.2, NULL     ) AS tab(id, food, price, remark)
+          |""".stripMargin
+      )
+      val df = set_comment(demo, Map("food" -> "food", "price" -> "price usd"))
+      spark.sql("create database `clickhouse-grpc`.app")
+      df.writeTo("`clickhouse-grpc`.app.test_schema_nullable")
+        .tableProperty("engine", "MergeTree()")
+        .tableProperty("order_by", "(food,)")
+        .tableProperty("settings.index_granularity", "8192")
+        .tableProperty("settings.allow_nullable_key", "1") // it's known issue
+        .createOrReplace()
     }
   }
 }
