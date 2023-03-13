@@ -12,15 +12,17 @@
 # limitations under the License.
 #
 
-name: "Build and Test"
+name: "TPC-DS"
 
 on:
   push:
     branches:
       - "master"
+      - "branch-*"
   pull_request:
     branches:
       - "master"
+      - "branch-*"
 
 jobs:
   run-tpcds-sf1:

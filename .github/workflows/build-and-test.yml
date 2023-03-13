@@ -17,11 +17,11 @@ on:
   push:
     branches:
       - "master"
-      - "branch-0.5"
+      - "branch-*"
   pull_request:
     branches:
       - "master"
-      - "branch-0.5"
+      - "branch-*"
 
 jobs:
   run-tests:
