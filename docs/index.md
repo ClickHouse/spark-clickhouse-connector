@@ -39,3 +39,16 @@ Spark ClickHouse Connector is a high performance connector build on top of Spark
 
 1. Integration tests based on Java 8&11, Scala 2.12&2.13, Spark {{ spark_binary_version }} and ClickHouse
    v{{ clickhouse_version }}, with both single ClickHouse instance and ClickHouse cluster.
+
+## Compatible Matrix
+
+For old versions, please refer the compatible matrix.
+
+| Verion | Compatiable Spark Versions |
+|--------|----------------------------|
+| 0.6.0  | Spark 3.3                  |
+| 0.5.0  | Spark 3.2, 3.3             |
+| 0.4.0  | Spark 3.2, 3.3             |
+| 0.3.0  | Spark 3.2, 3.3             |
+| 0.2.1  | Spark 3.2                  |
+| 0.1.2  | Spark 3.2                  |

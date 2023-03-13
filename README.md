@@ -23,6 +23,17 @@ Notes:
    extending the range of supported versions of ClickHouse Server.
 2. Since 0.6.0, HTTP becomes the default protocol. 
 
+## Compatible Matrix
+
+| Verion | Compatiable Spark Versions |
+|--------|----------------------------|
+| 0.6.0  | Spark 3.3                  |
+| 0.5.0  | Spark 3.2, 3.3             |
+| 0.4.0  | Spark 3.2, 3.3             |
+| 0.3.0  | Spark 3.2, 3.3             |
+| 0.2.1  | Spark 3.2                  |
+| 0.1.2  | Spark 3.2                  |
+
 ## Build
 
 Build w/o test
