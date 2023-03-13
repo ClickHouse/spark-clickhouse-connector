@@ -21,6 +21,7 @@ Notes:
 1. As of 0.5.0, this connector switches from ClickHouse raw gRPC Client to 
    [ClickHouse Official Java Client](https://github.com/ClickHouse/clickhouse-jdbc), which brings HTTP protocol support,
    extending the range of supported versions of ClickHouse Server.
+2. Since 0.6.0, HTTP becomes the default protocol. 
 
 ## Build
 
