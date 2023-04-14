@@ -99,7 +99,7 @@ class ClickHouseCatalog extends TableCatalog
     case Array(database) =>
       nodeClient.syncQueryOutputJSONEachRow(s"SHOW TABLES IN ${quoted(database)}") match {
         case Left(exception) if exception.code == UNKNOWN_DATABASE.code =>
-          throw NoSuchNamespaceException(namespace.mkString("."))
+          throw new NoSuchNamespaceException(namespace.mkString("."))
         case Left(rethrow) =>
           throw rethrow
         case Right(output) =>
@@ -108,7 +108,7 @@ class ClickHouseCatalog extends TableCatalog
             .map(table => Identifier.of(namespace, table))
             .toArray
       }
-    case _ => throw NoSuchNamespaceException(namespace.mkString("."))
+    case _ => throw new NoSuchNamespaceException(namespace.mkString("."))
   }
 
   @throws[NoSuchTableException]
@@ -121,7 +121,7 @@ class ClickHouseCatalog extends TableCatalog
             throw new NoSuchTableException(ident)
           // not sure if this check is necessary
           case Left(exception) if exception.code == UNKNOWN_DATABASE.code =>
-            throw NoSuchTableException(s"Database $db does not exist")
+            throw new NoSuchTableException(s"Database $db does not exist")
           case Left(rethrow) =>
             throw rethrow
           case Right(_) => (db, tbl)
@@ -312,7 +312,7 @@ class ClickHouseCatalog extends TableCatalog
     (unwrap(oldIdent), unwrap(newIdent)) match {
       case (Some((oldDb, oldTbl)), Some((newDb, newTbl))) =>
         nodeClient.syncQueryOutputJSONEachRow(s"RENAME TABLE `$oldDb`.`$oldTbl` to `$newDb`.`$newTbl`") match {
-          case Left(exception) => throw NoSuchTableException(exception.getMessage, Some(exception))
+          case Left(exception) => throw new NoSuchTableException(exception.getMessage, Some(exception))
           case Right(_) =>
         }
       case _ => throw CHClientException("Invalid table identifier")
@@ -332,13 +332,13 @@ class ClickHouseCatalog extends TableCatalog
     case Array(_) =>
       loadNamespaceMetadata(namespace)
       Array()
-    case _ => throw NoSuchNamespaceException(namespace.map(quoted).mkString("."))
+    case _ => throw new NoSuchNamespaceException(namespace.map(quoted).mkString("."))
   }
 
   @throws[NoSuchNamespaceException]
   override def loadNamespaceMetadata(namespace: Array[String]): util.Map[String, String] = namespace match {
     case Array(database) => queryDatabaseSpec(database).toJavaMap
-    case _ => throw NoSuchNamespaceException(namespace.map(quoted).mkString("."))
+    case _ => throw new NoSuchNamespaceException(namespace.map(quoted).mkString("."))
   }
 
   @throws[NamespaceAlreadyExistsException]

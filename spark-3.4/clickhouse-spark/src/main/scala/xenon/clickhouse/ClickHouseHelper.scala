@@ -34,10 +34,10 @@ import scala.collection.JavaConverters._
 trait ClickHouseHelper extends Logging {
 
   @volatile lazy val DEFAULT_ACTION_IF_NO_SUCH_DATABASE: String => Unit =
-    (db: String) => throw NoSuchNamespaceException(db)
+    (db: String) => throw new NoSuchNamespaceException(db)
 
   @volatile lazy val DEFAULT_ACTION_IF_NO_SUCH_TABLE: (String, String) => Unit =
-    (database, table) => throw NoSuchTableException(s"$database.$table")
+    (database, table) => throw new NoSuchTableException(s"$database.$table")
 
   def unwrap(ident: Identifier): Option[(String, String)] = ident.namespace() match {
     case Array(database) => Some((database, ident.name()))

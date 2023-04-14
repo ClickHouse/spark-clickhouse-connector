@@ -28,6 +28,7 @@ project.ext {
     spark_binary_version = System.getProperty("spark_binary_version")
     antlr_version = spark_binary_version == "3.3" ? project.getProperty("spark_33_antlr_version") : project.getProperty("spark_34_antlr_version")
     jackson_version = spark_binary_version == "3.3" ? project.getProperty("spark_33_jackson_version") : project.getProperty("spark_34_jackson_version")
+    slf4j_version = spark_binary_version == "3.3" ? project.getProperty("spark_33_slf4j_version") : project.getProperty("spark_34_slf4j_version")
 }
 
 rat {

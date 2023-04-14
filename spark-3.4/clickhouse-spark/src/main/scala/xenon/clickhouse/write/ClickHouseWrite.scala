@@ -35,8 +35,7 @@ class ClickHouseWrite(
     with RequiresDistributionAndOrdering
     with SQLConfHelper {
 
-  // for SPARK-37523
-  def distributionStrictlyRequired: Boolean = writeJob.writeOptions.repartitionStrictly
+  override def distributionStrictlyRequired: Boolean = writeJob.writeOptions.repartitionStrictly
 
   override def description: String =
     s"ClickHouseWrite(database=${writeJob.targetDatabase(false)}, table=${writeJob.targetTable(false)})})"
