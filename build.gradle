@@ -26,7 +26,8 @@ project.ext {
     scala_binary_version = System.getProperty("scala_binary_version")
     scala_version = scala_binary_version == "2.12" ? project.getProperty("scala_212_version") : project.getProperty("scala_213_version")
     spark_binary_version = System.getProperty("spark_binary_version")
-    jackson_version = project.getProperty("spark_33_jackson_version")
+    antlr_version = spark_binary_version == "3.3" ? project.getProperty("spark_33_antlr_version") : project.getProperty("spark_34_antlr_version")
+    jackson_version = spark_binary_version == "3.3" ? project.getProperty("spark_33_jackson_version") : project.getProperty("spark_34_jackson_version")
 }
 
 rat {
