@@ -28,8 +28,7 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
         val cause = intercept[AnalysisException] {
           spark.sql(s"SELECT y, _shard_num FROM $db.$tbl_dist")
         }
-        assert(cause.message.contains("cannot resolve '_shard_num' given input columns") ||
-          cause.message.contains("Column '_shard_num' does not exist"))
+        assert(cause.message.contains("`_shard_num` cannot be resolved"))
       }
 
       withSQLConf(READ_DISTRIBUTED_CONVERT_LOCAL.key -> "false") {
