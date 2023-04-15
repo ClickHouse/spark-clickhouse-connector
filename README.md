@@ -15,7 +15,7 @@ See the [documentation](https://housepower.github.io/spark-clickhouse-connector/
 
 - Java 8 or 11
 - Scala 2.12 or 2.13
-- Apache Spark 3.3
+- Apache Spark 3.3 or 3.4
 
 Notes:
 1. As of 0.5.0, this connector switches from ClickHouse raw gRPC Client to 
@@ -27,6 +27,7 @@ Notes:
 
 | Verion | Compatiable Spark Versions |
 |--------|----------------------------|
+| 0.7.0  | Spark 3.3, 3.4             |
 | 0.6.0  | Spark 3.3                  |
 | 0.5.0  | Spark 3.2, 3.3             |
 | 0.4.0  | Spark 3.2, 3.3             |

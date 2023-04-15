@@ -29,7 +29,7 @@ Spark ClickHouse Connector is a high performance connector build on top of Spark
 
 1. Basic knowledge of [Apache Spark](https://spark.apache.org/docs/latest/) and [ClickHouse](https://clickhouse.com/docs/en/).
 2. An available ClickHouse single node or cluster.
-3. An available Spark cluster, and Spark version should be 3.3, because we need the interfaces of Spark DataSource V2
+3. An available Spark cluster, and Spark version should be 3.3 or above, because we need the interfaces of Spark DataSource V2
    added in 3.3.0.
 4. Make sure your network policy satisfies the following requirements, both driver and executor of Spark need to access 
    ClickHouse HTTP/gRPC port. If you are using it to access ClickHouse cluster, ensure the connectivity between driver and
@@ -46,6 +46,7 @@ For old versions, please refer the compatible matrix.
 
 | Verion | Compatiable Spark Versions |
 |--------|----------------------------|
+| 0.7.0  | Spark 3.3, 3.4             |
 | 0.6.0  | Spark 3.3                  |
 | 0.5.0  | Spark 3.2, 3.3             |
 | 0.4.0  | Spark 3.2, 3.3             |
