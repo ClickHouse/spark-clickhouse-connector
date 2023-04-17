@@ -27,7 +27,6 @@ jobs:
       matrix:
         branch:
           - "master"
-          - "branch-0.5"
         scala: [ 2.12, 2.13 ]
         spark: [ 3.3, 3.4 ]
     steps:
