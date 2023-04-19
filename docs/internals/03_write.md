@@ -40,5 +40,5 @@ In some cases, the strict data distribution requirements may lead small parallel
 bad performance. [SPARK-37523](https://issues.apache.org/jira/browse/SPARK-37523)(requires Spark 3.4+) is introduced to
 allow relaxing the data distribution requirements to overcome those shortages.
 
-Also, you can consider disabling some [configurations](../configurations/02_sql_configurations.md) like
+Also, you can consider disabling some [configurations](../configurations/index.md) like
 `spark.clickhouse.write.repartitionByPartition` to avoid such performance degradation.
