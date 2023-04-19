@@ -79,8 +79,8 @@ object ClickHouseSQLConf {
       .doc("If `true`, Spark will strictly distribute incoming records across partitions to satisfy " +
         "the required distribution before passing the records to the data source table on write. " +
         "Otherwise, Spark may apply certain optimizations to speed up the query but break the " +
-        "distribution requirement. Note, this configuration requires SPARK-37523, w/o this patch, " +
-        "it always act as `true`.")
+        "distribution requirement. Note, this configuration requires SPARK-37523(available in " +
+        "Spark 3.4), w/o this patch, it always act as `true`.")
       .version("0.3.0")
       .booleanConf
       .createWithDefault(false)
@@ -144,7 +144,7 @@ object ClickHouseSQLConf {
     buildConf("spark.clickhouse.ignoreUnsupportedTransform")
       .doc("ClickHouse supports using complex expressions as sharding keys or partition values, " +
         "e.g. `cityHash64(col_1, col_2)`, and those can not be supported by Spark now. If `true`, " +
-        "ignore the unsupported expressions, otherwise fail fast w/ an exception. Note: when " +
+        "ignore the unsupported expressions, otherwise fail fast w/ an exception. Note, when " +
         s"`${WRITE_DISTRIBUTED_CONVERT_LOCAL.key}` is enabled, ignore unsupported sharding keys " +
         "may corrupt the data.")
       .version("0.4.0")

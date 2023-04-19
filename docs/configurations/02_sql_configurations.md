@@ -16,7 +16,7 @@ license: |
 <!--begin-include-->
 |Key | Default | Description | Since
 |--- | ------- | ----------- | -----
-spark.clickhouse.ignoreUnsupportedTransform|false|ClickHouse supports using complex expressions as sharding keys or partition values, e.g. `cityHash64(col_1, col_2)`, and those can not be supported by Spark now. If `true`, ignore the unsupported expressions, otherwise fail fast w/ an exception. Note: when `spark.clickhouse.write.distributed.convertLocal` is enabled, ignore unsupported sharding keys may corrupt the data.|0.4.0
+spark.clickhouse.ignoreUnsupportedTransform|false|ClickHouse supports using complex expressions as sharding keys or partition values, e.g. `cityHash64(col_1, col_2)`, and those can not be supported by Spark now. If `true`, ignore the unsupported expressions, otherwise fail fast w/ an exception. Note, when `spark.clickhouse.write.distributed.convertLocal` is enabled, ignore unsupported sharding keys may corrupt the data.|0.4.0
 spark.clickhouse.read.compression.codec|lz4|The codec used to decompress data for reading. Supported codecs: none, lz4.|0.5.0
 spark.clickhouse.read.distributed.convertLocal|true|When reading Distributed table, read local table instead of itself. If `true`, ignore `spark.clickhouse.read.distributed.useClusterNodes`.|0.1.0
 spark.clickhouse.read.format|json|Serialize format for reading. Supported formats: json, binary|0.6.0
@@ -31,7 +31,7 @@ spark.clickhouse.write.localSortByPartition|<value of spark.clickhouse.write.rep
 spark.clickhouse.write.maxRetry|3|The maximum number of write we will retry for a single batch write failed with retryable codes.|0.1.0
 spark.clickhouse.write.repartitionByPartition|true|Whether to repartition data by ClickHouse partition keys to meet the distributions of ClickHouse table before writing.|0.3.0
 spark.clickhouse.write.repartitionNum|0|Repartition data to meet the distributions of ClickHouse table is required before writing, use this conf to specific the repartition number, value less than 1 mean no requirement.|0.1.0
-spark.clickhouse.write.repartitionStrictly|false|If `true`, Spark will strictly distribute incoming records across partitions to satisfy the required distribution before passing the records to the data source table on write. Otherwise, Spark may apply certain optimizations to speed up the query but break the distribution requirement. Note, this configuration requires SPARK-37523, w/o this patch, it always act as `true`.|0.3.0
+spark.clickhouse.write.repartitionStrictly|false|If `true`, Spark will strictly distribute incoming records across partitions to satisfy the required distribution before passing the records to the data source table on write. Otherwise, Spark may apply certain optimizations to speed up the query but break the distribution requirement. Note, this configuration requires SPARK-37523(available in Spark 3.4), w/o this patch, it always act as `true`.|0.3.0
 spark.clickhouse.write.retryInterval|10s|The interval in seconds between write retry.|0.1.0
 spark.clickhouse.write.retryableErrorCodes|241|The retryable error codes returned by ClickHouse server when write failing.|0.1.0
 <!--end-include-->
