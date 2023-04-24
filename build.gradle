@@ -61,6 +61,7 @@ allprojects {
 
     repositories {
         maven { url = "$mavenCentralMirror" }
+        maven { url = "https://s01.oss.sonatype.org/content/repositories/snapshots/" }
     }
 }
 
