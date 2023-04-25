@@ -21,10 +21,14 @@ Suppose you have one ClickHouse instance which installed on `10.0.0.1` and expos
 Edit `$SPARK_HOME/conf/spark-defaults.conf`.
 
 ```
-# register a catalog named "clickhouse"
+########################################
+## register a catalog named "clickhouse"
+########################################
 spark.sql.catalog.clickhouse                      xenon.clickhouse.ClickHouseCatalog
 
-# basic configurations for "clickhouse" catalog
+################################################
+## basic configurations for "clickhouse" catalog
+################################################
 spark.sql.catalog.clickhouse.host                 10.0.0.1
 spark.sql.catalog.clickhouse.protocol             http
 spark.sql.catalog.clickhouse.http_port            8123
@@ -32,7 +36,9 @@ spark.sql.catalog.clickhouse.user                 default
 spark.sql.catalog.clickhouse.password
 spark.sql.catalog.clickhouse.database             default
 
-# custom options of clickhouse-client for "clickhouse" catalog
+###############################################################
+## custom options of clickhouse-client for "clickhouse" catalog
+###############################################################
 spark.sql.catalog.clickhouse.option.async         false
 spark.sql.catalog.clickhouse.option.client_name   spark
 ```
