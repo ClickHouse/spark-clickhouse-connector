@@ -49,6 +49,7 @@ trait ClickHouseHelper extends Logging {
     val clientOpts = options.asScala
       .filterKeys(_.startsWith(CATALOG_PROP_OPTION_PREFIX))
       .map { case (k, v) => k.substring(CATALOG_PROP_OPTION_PREFIX.length) -> v }
+      .toMap
       .filterKeys { key =>
         val ignore = CATALOG_PROP_IGNORE_OPTIONS.contains(key)
         if (ignore) {
@@ -56,6 +57,7 @@ trait ClickHouseHelper extends Logging {
         }
         !ignore
       }
+      .toMap
     NodeSpec(
       _host = options.getOrDefault(CATALOG_PROP_HOST, "localhost"),
       _grpc_port = Some(options.getInt(CATALOG_PROP_GRPC_PORT, 9100)),
