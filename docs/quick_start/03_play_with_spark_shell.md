@@ -22,8 +22,8 @@ Play with Spark Shell
 $SPARK_HOME/bin/spark-shell \
   --conf spark.sql.catalog.clickhouse=xenon.clickhouse.ClickHouseCatalog \
   --conf spark.sql.catalog.clickhouse.host=${CLICKHOUSE_HOST:-127.0.0.1} \
-  --conf spark.sql.catalog.clickhouse.protocol=grpc \
-  --conf spark.sql.catalog.clickhouse.grpc_port=${CLICKHOUSE_GRPC_PORT:-9100} \
+  --conf spark.sql.catalog.clickhouse.protocol=http \
+  --conf spark.sql.catalog.clickhouse.http_port=${CLICKHOUSE_HTTP_PORT:-8123} \
   --conf spark.sql.catalog.clickhouse.user=${CLICKHOUSE_USER:-default} \
   --conf spark.sql.catalog.clickhouse.password=${CLICKHOUSE_PASSWORD:-} \
   --conf spark.sql.catalog.clickhouse.database=default \
@@ -104,8 +104,8 @@ Execute ClickHouse native SQL.
 ```
 scala> val options = Map(
      |     "host" -> "clickhouse",
-     |     "protocol" -> "grpc",
-     |     "grpc_port" -> "9100",
+     |     "protocol" -> "http",
+     |     "http_port" -> "8123",
      |     "user" -> "default",
      |     "password" -> ""
      | )

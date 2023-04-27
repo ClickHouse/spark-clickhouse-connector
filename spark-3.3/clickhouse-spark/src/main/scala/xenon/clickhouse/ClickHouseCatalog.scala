@@ -14,6 +14,7 @@
 
 package xenon.clickhouse
 
+import com.clickhouse.client.ClickHouseProtocol
 import org.apache.spark.sql.catalyst.analysis._
 import org.apache.spark.sql.clickhouse.{ExprUtils, SchemaUtils}
 import org.apache.spark.sql.connector.catalog._
@@ -64,6 +65,9 @@ class ClickHouseCatalog extends TableCatalog
   override def initialize(name: String, options: CaseInsensitiveStringMap): Unit = {
     this.catalogName = name
     this.nodeSpec = buildNodeSpec(options)
+    if (nodeSpec.protocol == ClickHouseProtocol.GRPC) {
+      log.warn("gPRC is deprecated and not recommended since v0.7.0, it may be removed in the future.")
+    }
     this.currentDb = nodeSpec.database
     this.nodeClient = NodeClient(nodeSpec)
 

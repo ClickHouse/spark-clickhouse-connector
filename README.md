@@ -22,6 +22,7 @@ Notes:
    [ClickHouse Official Java Client](https://github.com/ClickHouse/clickhouse-jdbc), which brings HTTP protocol support,
    extends the range of supported versions of ClickHouse Server.
 2. Since 0.6.0, HTTP becomes the default protocol.
+3. Since 0.7.0, gRPC is deprecated and not recommended, it may be removed in the future.
 
 ## Compatible Matrix
 
