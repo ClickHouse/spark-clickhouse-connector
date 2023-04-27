@@ -44,12 +44,12 @@ Spark ClickHouse Connector is a high performance connector build on top of Spark
 
 For old versions, please refer the compatible matrix.
 
-| Verion | Compatiable Spark Versions |
-|--------|----------------------------|
-| 0.7.0  | Spark 3.3, 3.4             |
-| 0.6.0  | Spark 3.3                  |
-| 0.5.0  | Spark 3.2, 3.3             |
-| 0.4.0  | Spark 3.2, 3.3             |
-| 0.3.0  | Spark 3.2, 3.3             |
-| 0.2.1  | Spark 3.2                  |
-| 0.1.2  | Spark 3.2                  |
+| Version | Compatible Spark Versions | ClickHouse JDBC version |
+|---------|---------------------------|-------------------------|
+| 0.7.0   | Spark 3.3, 3.4            | 0.4.5                   |
+| 0.6.0   | Spark 3.3                 | 0.3.2-patch11           |
+| 0.5.0   | Spark 3.2, 3.3            | 0.3.2-patch11           |
+| 0.4.0   | Spark 3.2, 3.3            | Not depend on           |
+| 0.3.0   | Spark 3.2, 3.3            | Not depend on           |
+| 0.2.1   | Spark 3.2                 | Not depend on           |
+| 0.1.2   | Spark 3.2                 | Not depend on           |

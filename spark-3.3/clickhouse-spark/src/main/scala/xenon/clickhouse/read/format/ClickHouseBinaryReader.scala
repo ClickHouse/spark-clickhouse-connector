@@ -14,8 +14,8 @@
 
 package xenon.clickhouse.read.format
 
-import com.clickhouse.client.data.ClickHouseStringValue
-import com.clickhouse.client.{ClickHouseRecord, ClickHouseValue}
+import com.clickhouse.data.value.ClickHouseStringValue
+import com.clickhouse.data.{ClickHouseRecord, ClickHouseValue}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
 import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData}

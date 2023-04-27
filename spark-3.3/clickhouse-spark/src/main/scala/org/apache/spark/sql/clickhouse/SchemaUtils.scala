@@ -14,8 +14,8 @@
 
 package org.apache.spark.sql.clickhouse
 
-import com.clickhouse.client.ClickHouseDataType._
-import com.clickhouse.client.{ClickHouseColumn, ClickHouseDataType}
+import com.clickhouse.data.ClickHouseDataType._
+import com.clickhouse.data.{ClickHouseColumn, ClickHouseDataType}
 import org.apache.spark.sql.types._
 import xenon.clickhouse.exception.CHClientException
 
@@ -25,7 +25,7 @@ object SchemaUtils {
     val catalystType = chColumn.getDataType match {
       case Nothing => NullType
       case Bool => BooleanType
-      case String | FixedString | JSON | UUID | Enum | Enum8 | Enum16 | IPv4 | IPv6 => StringType
+      case String | FixedString | JSON | UUID | Enum8 | Enum16 | IPv4 | IPv6 => StringType
       case Int8 => ByteType
       case UInt8 | Int16 => ShortType
       case UInt16 | Int32 => IntegerType

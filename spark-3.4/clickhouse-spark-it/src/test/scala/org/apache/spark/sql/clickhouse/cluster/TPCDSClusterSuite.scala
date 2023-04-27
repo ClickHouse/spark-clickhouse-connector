@@ -27,9 +27,9 @@ class TPCDSClusterSuite extends SparkClickHouseClusterTest {
     .set("spark.sql.catalog.clickhouse_s1r2.protocol", if (grpcEnabled) "grpc" else "http")
     .set("spark.sql.catalog.clickhouse_s2r1.protocol", if (grpcEnabled) "grpc" else "http")
     .set("spark.sql.catalog.clickhouse_s2r2.protocol", if (grpcEnabled) "grpc" else "http")
-    .set("spark.clickhouse.read.compression.codec", "lz4")
+    .set("spark.clickhouse.read.compression.codec", if (grpcEnabled) "none" else "lz4")
     .set("spark.clickhouse.write.batchSize", "100000")
-    .set("spark.clickhouse.write.compression.codec", "lz4")
+    .set("spark.clickhouse.write.compression.codec", if (grpcEnabled) "none" else "lz4")
     .set("spark.clickhouse.write.distributed.convertLocal", "true")
 
   test("Cluster: TPC-DS sf1 write and count(*)") {

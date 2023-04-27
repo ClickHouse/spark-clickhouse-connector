@@ -14,7 +14,8 @@
 
 package xenon.clickhouse.write
 
-import com.clickhouse.client.{ClickHouseCompression, ClickHouseProtocol}
+import com.clickhouse.client.ClickHouseProtocol
+import com.clickhouse.data.ClickHouseCompression
 import net.jpountz.lz4.LZ4FrameOutputStream
 import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE
 import org.apache.commons.io.IOUtils

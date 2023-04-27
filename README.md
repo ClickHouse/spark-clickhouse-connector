@@ -20,20 +20,20 @@ See the [documentation](https://housepower.github.io/spark-clickhouse-connector/
 Notes:
 1. As of 0.5.0, this connector switches from ClickHouse raw gRPC Client to 
    [ClickHouse Official Java Client](https://github.com/ClickHouse/clickhouse-jdbc), which brings HTTP protocol support,
-   extending the range of supported versions of ClickHouse Server.
-2. Since 0.6.0, HTTP becomes the default protocol. 
+   extends the range of supported versions of ClickHouse Server.
+2. Since 0.6.0, HTTP becomes the default protocol.
 
 ## Compatible Matrix
 
-| Verion | Compatiable Spark Versions |
-|--------|----------------------------|
-| 0.7.0  | Spark 3.3, 3.4             |
-| 0.6.0  | Spark 3.3                  |
-| 0.5.0  | Spark 3.2, 3.3             |
-| 0.4.0  | Spark 3.2, 3.3             |
-| 0.3.0  | Spark 3.2, 3.3             |
-| 0.2.1  | Spark 3.2                  |
-| 0.1.2  | Spark 3.2                  |
+| Version | Compatible Spark Versions | ClickHouse JDBC version |
+|---------|---------------------------|-------------------------|
+| 0.7.0   | Spark 3.3, 3.4            | 0.4.5                   |
+| 0.6.0   | Spark 3.3                 | 0.3.2-patch11           |
+| 0.5.0   | Spark 3.2, 3.3            | 0.3.2-patch11           |
+| 0.4.0   | Spark 3.2, 3.3            | Not depend on           |
+| 0.3.0   | Spark 3.2, 3.3            | Not depend on           |
+| 0.2.1   | Spark 3.2                 | Not depend on           |
+| 0.1.2   | Spark 3.2                 | Not depend on           |
 
 ## Build
 
