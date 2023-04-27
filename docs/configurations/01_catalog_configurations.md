@@ -49,16 +49,16 @@ Then you can access ClickHouse table `<ck_db>.<ck_table>` from Spark SQL by usin
 
 For ClickHouse cluster, give an unique catalog name for each instances.
 
-Suppose you have two ClickHouse instances, one installed on `10.0.0.1` and exposes gRPC on port `9100` named
-clickhouse1, and another installed on `10.0.0.2` and exposes gRPC on port `9100` named clickhouse2.
+Suppose you have two ClickHouse instances, one installed on `10.0.0.1` and exposes HTTP on port `8123` named
+clickhouse1, and another installed on `10.0.0.2` and exposes HTTP on port `8123` named clickhouse2.
 
 Edit `$SPARK_HOME/conf/spark-defaults.conf`.
 
 ```
 spark.sql.catalog.clickhouse1                xenon.clickhouse.ClickHouseCatalog
 spark.sql.catalog.clickhouse1.host           10.0.0.1
-spark.sql.catalog.clickhouse1.protocol       grpc
-spark.sql.catalog.clickhouse1.grpc_port      9100
+spark.sql.catalog.clickhouse1.protocol       http
+spark.sql.catalog.clickhouse1.http_port      8123
 spark.sql.catalog.clickhouse1.user           default
 spark.sql.catalog.clickhouse1.password
 spark.sql.catalog.clickhouse1.database       default
@@ -66,8 +66,8 @@ spark.sql.catalog.clickhouse1.option.async   false
 
 spark.sql.catalog.clickhouse2                xenon.clickhouse.ClickHouseCatalog
 spark.sql.catalog.clickhouse2.host           10.0.0.2
-spark.sql.catalog.clickhouse2.protocol       grpc
-spark.sql.catalog.clickhouse2.grpc_port      9100
+spark.sql.catalog.clickhouse2.protocol       http
+spark.sql.catalog.clickhouse2.http_port      8123
 spark.sql.catalog.clickhouse2.user           default
 spark.sql.catalog.clickhouse2.password
 spark.sql.catalog.clickhouse2.database       default
