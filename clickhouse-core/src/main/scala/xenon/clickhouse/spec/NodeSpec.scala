@@ -21,7 +21,7 @@ import xenon.clickhouse.ToJson
 import xenon.clickhouse.Utils._
 
 import java.util
-import scala.collection.JavaConverters._
+import java.util.Collections
 
 trait Nodes {
   def nodes: Array[NodeSpec]
@@ -36,7 +36,7 @@ case class NodeSpec(
   @JsonProperty("username") username: String = "default",
   @JsonProperty("password") password: String = "",
   @JsonProperty("database") database: String = "default",
-  @JsonProperty("options") options: util.Map[String, String] = Map.empty[String, String].asJava
+  @JsonProperty("options") options: util.Map[String, String] = Collections.emptyMap()
 ) extends Nodes with ToJson with Serializable {
   @JsonProperty("host") def host: String = findHost(_host)
   @JsonProperty("http_port") def http_port: Option[Int] = findPort(_http_port)

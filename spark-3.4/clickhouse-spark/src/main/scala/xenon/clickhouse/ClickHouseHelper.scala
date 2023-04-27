@@ -29,6 +29,7 @@ import xenon.clickhouse.exception.CHException
 import xenon.clickhouse.spec._
 
 import java.time.{LocalDateTime, ZoneId}
+import java.util.{HashMap => JHashMap}
 import scala.collection.JavaConverters._
 
 trait ClickHouseHelper extends Logging {
@@ -54,7 +55,7 @@ trait ClickHouseHelper extends Logging {
           log.warn(s"Ignore configuration $key.")
         }
         !ignore
-      }.toMap
+      }
     NodeSpec(
       _host = options.getOrDefault(CATALOG_PROP_HOST, "localhost"),
       _grpc_port = Some(options.getInt(CATALOG_PROP_GRPC_PORT, 9100)),
@@ -64,7 +65,7 @@ trait ClickHouseHelper extends Logging {
       username = options.getOrDefault(CATALOG_PROP_USER, "default"),
       password = options.getOrDefault(CATALOG_PROP_PASSWORD, ""),
       database = options.getOrDefault(CATALOG_PROP_DATABASE, "default"),
-      options = clientOpts.asJava
+      options = new JHashMap(clientOpts.asJava)
     )
   }
 
