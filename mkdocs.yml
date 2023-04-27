@@ -41,7 +41,7 @@ markdown_extensions:
 
 extra:
   version: 0.7.0-SNAPSHOT
-  stable_version: 0.6.0
+  stable_version: 0.6.1
   clickhouse_version: 22.3.3.44
   clickhouse_jdbc_version: 0.4.5
   scala_binary_version: 2.12
