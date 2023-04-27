@@ -40,7 +40,7 @@ markdown_extensions:
   - md_in_html
 
 extra:
-  version: 0.7.0-SNAPSHOT
+  version: 0.8.0-SNAPSHOT
   stable_version: 0.6.1
   clickhouse_version: 22.3.3.44
   clickhouse_jdbc_version: 0.4.5
