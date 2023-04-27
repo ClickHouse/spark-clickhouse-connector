@@ -47,9 +47,9 @@ trait ClickHouseHelper extends Logging {
   def buildNodeSpec(options: CaseInsensitiveStringMap): NodeSpec = {
     val clientOpts = options.asScala
       .filterKeys(_.startsWith(CATALOG_PROP_OPTION_PREFIX))
+      .map { case (k, v) => k.substring(CATALOG_PROP_OPTION_PREFIX.length) -> v }
       .filterKeys { key =>
-        val clientOpt = key.substring(CATALOG_PROP_OPTION_PREFIX.length)
-        val ignore = CATALOG_PROP_IGNORE_OPTIONS.contains(clientOpt)
+        val ignore = CATALOG_PROP_IGNORE_OPTIONS.contains(key)
         if (ignore) {
           log.warn(s"Ignore configuration $key.")
         }
