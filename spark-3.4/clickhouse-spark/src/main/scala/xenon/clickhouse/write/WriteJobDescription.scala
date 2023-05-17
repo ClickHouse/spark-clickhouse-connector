@@ -15,11 +15,11 @@
 package xenon.clickhouse.write
 
 import java.time.ZoneId
-
 import org.apache.spark.sql.clickhouse.{ExprUtils, WriteOptions}
 import org.apache.spark.sql.connector.expressions.{Expression, SortOrder, Transform}
 import org.apache.spark.sql.types.StructType
 import xenon.clickhouse.expr.{Expr, FuncExpr, OrderExpr}
+import xenon.clickhouse.func.FunctionRegistry
 import xenon.clickhouse.spec._
 
 case class WriteJobDescription(
@@ -37,7 +37,8 @@ case class WriteJobDescription(
   shardingKey: Option[Expr],
   partitionKey: Option[List[Expr]],
   sortingKey: Option[List[OrderExpr]],
-  writeOptions: WriteOptions
+  writeOptions: WriteOptions,
+  functionRegistry: FunctionRegistry
 ) {
 
   def targetDatabase(convert2Local: Boolean): String = tableEngineSpec match {
@@ -56,20 +57,28 @@ case class WriteJobDescription(
   }
 
   def sparkShardExpr: Option[Expression] = shardingKeyIgnoreRand match {
-    case Some(expr) => ExprUtils.toSparkTransformOpt(expr)
+    case Some(expr) => ExprUtils.toSparkTransformOpt(expr, functionRegistry)
     case _ => None
   }
 
   def sparkSplits: Array[Transform] =
     if (writeOptions.repartitionByPartition) {
-      ExprUtils.toSparkSplits(shardingKeyIgnoreRand, partitionKey)
+      ExprUtils.toSparkSplits(
+        shardingKeyIgnoreRand,
+        partitionKey,
+        functionRegistry
+      )
     } else {
-      ExprUtils.toSparkSplits(shardingKeyIgnoreRand, None)
+      ExprUtils.toSparkSplits(
+        shardingKeyIgnoreRand,
+        None,
+        functionRegistry
+      )
     }
 
   def sparkSortOrders: Array[SortOrder] = {
     val _partitionKey = if (writeOptions.localSortByPartition) partitionKey else None
     val _sortingKey = if (writeOptions.localSortByKey) sortingKey else None
-    ExprUtils.toSparkSortOrders(shardingKeyIgnoreRand, _partitionKey, _sortingKey)
+    ExprUtils.toSparkSortOrders(shardingKeyIgnoreRand, _partitionKey, _sortingKey, cluster, functionRegistry)
   }
 }

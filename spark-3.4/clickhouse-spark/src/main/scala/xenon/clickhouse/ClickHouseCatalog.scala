@@ -26,7 +26,7 @@ import xenon.clickhouse.Constants._
 import xenon.clickhouse.client.NodeClient
 import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.exception.ClickHouseErrCode._
-import xenon.clickhouse.func.{FunctionRegistry, _}
+import xenon.clickhouse.func.{ClickHouseXxHash64Shard, FunctionRegistry, _}
 import xenon.clickhouse.spec._
 
 import java.time.ZoneId
@@ -91,6 +91,7 @@ class ClickHouseCatalog extends TableCatalog
 
     log.info(s"Detect ${clusterSpecs.size} ClickHouse clusters: ${clusterSpecs.map(_.name).mkString(",")}")
     log.info(s"ClickHouse clusters' detail: $clusterSpecs")
+    log.info(s"Registered functions: ${this.functionRegistry.list.mkString(",")}")
   }
 
   override def name(): String = catalogName
@@ -141,7 +142,8 @@ class ClickHouseCatalog extends TableCatalog
       tableClusterSpec,
       _tz,
       tableSpec,
-      tableEngineSpec
+      tableEngineSpec,
+      functionRegistry
     )
   }
 
@@ -206,7 +208,7 @@ class ClickHouseCatalog extends TableCatalog
 
     val partitionsClause = partitions match {
       case transforms if transforms.nonEmpty =>
-        transforms.map(ExprUtils.toClickHouse(_).sql).mkString("PARTITION BY (", ", ", ")")
+        transforms.map(ExprUtils.toClickHouse(_, functionRegistry).sql).mkString("PARTITION BY (", ", ", ")")
       case _ => ""
     }
 
@@ -297,7 +299,7 @@ class ClickHouseCatalog extends TableCatalog
       }
     tableOpt match {
       case None => false
-      case Some(ClickHouseTable(_, cluster, _, tableSpec, _)) =>
+      case Some(ClickHouseTable(_, cluster, _, tableSpec, _, _)) =>
         val (db, tbl) = (tableSpec.database, tableSpec.name)
         val isAtomic = loadNamespaceMetadata(Array(db)).get("engine").equalsIgnoreCase("atomic")
         val syncClause = if (isAtomic) "SYNC" else ""

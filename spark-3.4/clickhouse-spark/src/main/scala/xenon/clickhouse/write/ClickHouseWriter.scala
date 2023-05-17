@@ -17,7 +17,8 @@ package xenon.clickhouse.write
 import com.clickhouse.client.ClickHouseProtocol
 import com.clickhouse.data.ClickHouseCompression
 import org.apache.commons.io.IOUtils
-import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
+import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, TransformExpression}
+import org.apache.spark.sql.catalyst.expressions.{Projection, SafeProjection}
 import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
@@ -56,7 +57,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   protected lazy val shardExpr: Option[Expression] = writeJob.sparkShardExpr match {
     case None => None
     case Some(v2Expr) =>
-      val catalystExpr = ExprUtils.toCatalyst(v2Expr, writeJob.dataSetSchema.fields)
+      val catalystExpr = ExprUtils.toCatalyst(v2Expr, writeJob.dataSetSchema.fields, writeJob.functionRegistry)
       catalystExpr match {
         case BoundReference(_, dataType, _)
             if dataType.isInstanceOf[ByteType] // list all integral types here because we can not access `IntegralType`
@@ -66,6 +67,11 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
           Some(catalystExpr)
         case BoundReference(_, dataType, _) =>
           throw CHClientException(s"Invalid data type of sharding field: $dataType")
+        case TransformExpression(function, _, _) =>
+          function.resultType match {
+            case ByteType | ShortType | IntegerType | LongType => Some(catalystExpr)
+            case _ => throw CHClientException(s"Invalid data type of sharding field: ${function.resultType}")
+          }
         case unsupported: Expression =>
           log.warn(s"Unsupported expression of sharding field: $unsupported")
           None
@@ -74,7 +80,21 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   protected lazy val shardProjection: Option[expressions.Projection] = shardExpr
     .filter(_ => writeJob.writeOptions.convertDistributedToLocal)
-    .map(expr => SafeProjection.create(Seq(expr)))
+    .flatMap {
+      case expr: BoundReference =>
+        Some(SafeProjection.create(Seq(expr)))
+      case expr @ TransformExpression(function, _, _) =>
+        // result type must be integer class
+        function.resultType match {
+          case ByteType => classOf[Byte]
+          case ShortType => classOf[Short]
+          case IntegerType => classOf[Int]
+          case LongType => classOf[Long]
+          case _ => throw CHClientException(s"Invalid return data type for function ${function.name()}," +
+              s"sharding field: ${function.resultType}")
+        }
+        Some(SafeProjection.create(Seq(ExprUtils.resolveTransformCatalyst(expr, Some(writeJob.tz.getId)))))
+    }
 
   // put the node select strategy in executor side because we need to calculate shard and don't know the records
   // util DataWriter#write(InternalRow) invoked.
@@ -99,15 +119,21 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   def calcShard(record: InternalRow): Option[Int] = (shardExpr, shardProjection) match {
     case (Some(BoundReference(_, dataType, _)), Some(projection)) =>
-      val shardValue = dataType match {
-        case ByteType => Some(projection(record).getByte(0).toLong)
-        case ShortType => Some(projection(record).getShort(0).toLong)
-        case IntegerType => Some(projection(record).getInt(0).toLong)
-        case LongType => Some(projection(record).getLong(0))
-        case _ => None
-      }
-      shardValue.map(value => ShardUtils.calcShard(writeJob.cluster.get, value).num)
+      doCalcShard(record, dataType, projection)
+    case (Some(TransformExpression(function, _, _)), Some(projection)) =>
+      doCalcShard(record, function.resultType, projection)
     case _ => None
+  }
+
+  private def doCalcShard(record: InternalRow, dataType: DataType, projection: Projection): Option[Int] = {
+    val shardValue = dataType match {
+      case ByteType => Some(projection(record).getByte(0).toLong)
+      case ShortType => Some(projection(record).getShort(0).toLong)
+      case IntegerType => Some(projection(record).getInt(0).toLong)
+      case LongType => Some(projection(record).getLong(0))
+      case _ => None
+    }
+    shardValue.map(value => ShardUtils.calcShard(writeJob.cluster.get, value).num)
   }
 
   val _currentBufferedRows = new LongAdder
