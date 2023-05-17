@@ -26,11 +26,13 @@ import xenon.clickhouse.spec.{ClusterSpec, ShardUtils}
  *   select xxHash64(concat(project_id, toString(seq))
  * }}}
  */
-object ClickHouseXxHash64 extends UnboundFunction with ScalarFunction[Long] {
+object ClickHouseXxHash64 extends UnboundFunction with ScalarFunction[Long] with ClickhouseEquivFunction {
 
   override def name: String = "clickhouse_xxHash64"
 
   override def canonicalName: String = s"clickhouse.$name"
+
+  override val ckFuncNames: Array[String] = Array("xxHash64")
 
   override def description: String = s"$name: (value: string) => hash_value: long"
 

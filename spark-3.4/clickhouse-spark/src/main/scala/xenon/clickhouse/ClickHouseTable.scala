@@ -14,16 +14,12 @@
 
 package xenon.clickhouse
 
-import java.lang.{Integer => JInt, Long => JLong}
-import java.time.{LocalDate, ZoneId}
-import java.util
-import scala.collection.JavaConverters._
-import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
-import org.apache.spark.sql.clickhouse.{ExprUtils, ReadOptions, WriteOptions}
+import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_DISTRIBUTED_CONVERT_LOCAL, USE_NULLABLE_QUERY_SCHEMA}
-import org.apache.spark.sql.connector.catalog._
+import org.apache.spark.sql.clickhouse.{ExprUtils, ReadOptions, WriteOptions}
 import org.apache.spark.sql.connector.catalog.TableCapability._
+import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.connector.read.ScanBuilder
 import org.apache.spark.sql.connector.write.LogicalWriteInfo
@@ -34,16 +30,23 @@ import org.apache.spark.unsafe.types.UTF8String
 import xenon.clickhouse.Utils._
 import xenon.clickhouse.client.NodeClient
 import xenon.clickhouse.expr.{Expr, OrderExpr}
+import xenon.clickhouse.func.FunctionRegistry
 import xenon.clickhouse.read.{ClickHouseMetadataColumn, ClickHouseScanBuilder, ScanJobDescription}
 import xenon.clickhouse.spec._
 import xenon.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDescription}
+
+import java.lang.{Integer => JInt, Long => JLong}
+import java.time.{LocalDate, ZoneId}
+import java.util
+import scala.collection.JavaConverters._
 
 case class ClickHouseTable(
   node: NodeSpec,
   cluster: Option[ClusterSpec],
   implicit val tz: ZoneId,
   spec: TableSpec,
-  engineSpec: TableEngineSpec
+  engineSpec: TableEngineSpec,
+  functionRegistry: FunctionRegistry
 ) extends Table
     with SupportsRead
     with SupportsWrite
@@ -130,10 +133,12 @@ case class ClickHouseTable(
   private lazy val metadataSchema: StructType =
     StructType(metadataColumns.map(_.asInstanceOf[ClickHouseMetadataColumn].toStructField))
 
-  override lazy val partitioning: Array[Transform] = ExprUtils.toSparkPartitions(partitionKey)
+  override lazy val partitioning: Array[Transform] = ExprUtils(functionRegistry).toSparkPartitions(partitionKey)
 
   override lazy val partitionSchema: StructType = StructType(
-    partitioning.map(partTransform => ExprUtils.inferTransformSchema(schema, metadataSchema, partTransform))
+    partitioning.map(partTransform =>
+      ExprUtils(functionRegistry).inferTransformSchema(schema, metadataSchema, partTransform)
+    )
   )
 
   override lazy val properties: util.Map[String, String] = spec.toJavaMap
@@ -170,7 +175,8 @@ case class ClickHouseTable(
       shardingKey = shardingKey,
       partitionKey = partitionKey,
       sortingKey = sortingKey,
-      writeOptions = new WriteOptions(info.options.asCaseSensitiveMap())
+      writeOptions = new WriteOptions(info.options.asCaseSensitiveMap()),
+      functionRegistry = functionRegistry
     )
 
     new ClickHouseWriteBuilder(writeJob)

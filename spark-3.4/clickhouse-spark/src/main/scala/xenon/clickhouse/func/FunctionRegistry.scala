@@ -18,11 +18,19 @@ import org.apache.spark.sql.connector.catalog.functions.UnboundFunction
 
 import scala.collection.mutable
 
-trait FunctionRegistry {
+trait FunctionRegistry extends Serializable {
 
   def list: Array[String]
 
   def load(name: String): Option[UnboundFunction]
+
+  def getFuncMappingBySpark: Map[String, String]
+
+  def getFuncMappingByCk: Map[String, String] = getFuncMappingBySpark.map(_.swap)
+}
+
+trait ClickhouseEquivFunction {
+  val ckFuncNames: Array[String]
 }
 
 class CompositeFunctionRegistry(registries: Array[FunctionRegistry]) extends FunctionRegistry {
@@ -30,6 +38,8 @@ class CompositeFunctionRegistry(registries: Array[FunctionRegistry]) extends Fun
   override def list: Array[String] = registries.flatMap(_.list)
 
   override def load(name: String): Option[UnboundFunction] = registries.flatMap(_.load(name)).headOption
+
+  override def getFuncMappingBySpark: Map[String, String] = registries.flatMap(_.getFuncMappingBySpark).toMap
 }
 
 object StaticFunctionRegistry extends FunctionRegistry {
@@ -42,6 +52,11 @@ object StaticFunctionRegistry extends FunctionRegistry {
   override def list: Array[String] = functions.keys.toArray
 
   override def load(name: String): Option[UnboundFunction] = functions.get(name)
+
+  override val getFuncMappingBySpark: Map[String, String] =
+    functions.filter(_._2.isInstanceOf[ClickhouseEquivFunction]).flatMap { case (k, v) =>
+      v.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.map((k, _))
+    }
 }
 
 class DynamicFunctionRegistry extends FunctionRegistry {
@@ -56,4 +71,9 @@ class DynamicFunctionRegistry extends FunctionRegistry {
   override def list: Array[String] = functions.keys.toArray
 
   override def load(name: String): Option[UnboundFunction] = functions.get(name)
+
+  override def getFuncMappingBySpark: Map[String, String] =
+    functions.filter(_._2.isInstanceOf[ClickhouseEquivFunction]).flatMap { case (k, v) =>
+      v.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.map((k, _))
+    }.toMap
 }

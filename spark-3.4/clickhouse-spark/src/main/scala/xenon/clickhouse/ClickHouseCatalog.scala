@@ -85,12 +85,15 @@ class ClickHouseCatalog extends TableCatalog
 
     val dynamicFunctionRegistry = new DynamicFunctionRegistry
     val xxHash64ShardFunc = new ClickHouseXxHash64Shard(clusterSpecs)
+    val monthsFunc = new Months()
     dynamicFunctionRegistry.register("ck_xx_hash64_shard", xxHash64ShardFunc) // for compatible
     dynamicFunctionRegistry.register("clickhouse_shard_xxHash64", xxHash64ShardFunc)
+    dynamicFunctionRegistry.register("months", monthsFunc)
     this.functionRegistry = new CompositeFunctionRegistry(Array(StaticFunctionRegistry, dynamicFunctionRegistry))
 
     log.info(s"Detect ${clusterSpecs.size} ClickHouse clusters: ${clusterSpecs.map(_.name).mkString(",")}")
     log.info(s"ClickHouse clusters' detail: $clusterSpecs")
+    log.info(s"functionRegistry: ${this.functionRegistry.list.mkString(",")}")
   }
 
   override def name(): String = catalogName
@@ -141,7 +144,8 @@ class ClickHouseCatalog extends TableCatalog
       tableClusterSpec,
       _tz,
       tableSpec,
-      tableEngineSpec
+      tableEngineSpec,
+      functionRegistry
     )
   }
 
@@ -206,7 +210,7 @@ class ClickHouseCatalog extends TableCatalog
 
     val partitionsClause = partitions match {
       case transforms if transforms.nonEmpty =>
-        transforms.map(ExprUtils.toClickHouse(_).sql).mkString("PARTITION BY (", ", ", ")")
+        transforms.map(ExprUtils(functionRegistry).toClickHouse(_).sql).mkString("PARTITION BY (", ", ", ")")
       case _ => ""
     }
 
@@ -297,7 +301,7 @@ class ClickHouseCatalog extends TableCatalog
       }
     tableOpt match {
       case None => false
-      case Some(ClickHouseTable(_, cluster, _, tableSpec, _)) =>
+      case Some(ClickHouseTable(_, cluster, _, tableSpec, _, _)) =>
         val (db, tbl) = (tableSpec.database, tableSpec.name)
         val isAtomic = loadNamespaceMetadata(Array(db)).get("engine").equalsIgnoreCase("atomic")
         val syncClause = if (isAtomic) "SYNC" else ""

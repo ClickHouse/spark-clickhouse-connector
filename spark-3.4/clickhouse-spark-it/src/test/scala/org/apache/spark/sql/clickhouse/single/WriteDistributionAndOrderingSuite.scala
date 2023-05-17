@@ -78,12 +78,8 @@ class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTest {
     WRITE_REPARTITION_BY_PARTITION.key -> repartitionByPartition.toString,
     WRITE_LOCAL_SORT_BY_KEY.key -> localSortByKey.toString
   ) {
-    if (!ignoreUnsupportedTransform && repartitionByPartition) {
-      intercept[AnalysisException](write())
-    } else {
-      write()
-      check()
-    }
+    write()
+    check()
   }
 
   Seq(true, false).foreach { ignoreUnsupportedTransform =>

@@ -16,18 +16,21 @@ package org.apache.spark.sql.clickhouse
 
 import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst.SQLConfHelper
-import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression}
+import org.apache.spark.sql.catalyst.analysis.NoSuchFunctionException
+import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, TransformExpression}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.IGNORE_UNSUPPORTED_TRANSFORM
+import org.apache.spark.sql.connector.catalog.Identifier
+import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFunction, UnboundFunction}
 import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions.{Expression => V2Expression, _}
 import org.apache.spark.sql.types.{IntegerType, LongType, StructField, StructType}
 import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.expr._
+import xenon.clickhouse.func.FunctionRegistry
 
-import scala.annotation.tailrec
 import scala.util.{Failure, Success, Try}
 
-object ExprUtils extends SQLConfHelper {
+class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with Serializable {
 
   def toSparkPartitions(partitionKey: Option[List[Expr]]): Array[Transform] =
     partitionKey.seq.flatten.flatten(toSparkTransformOpt).toArray
@@ -47,7 +50,28 @@ object ExprUtils extends SQLConfHelper {
         toSparkTransformOpt(expr).map(trans => Expressions.sort(trans, direction, nullOrder))
       }.toArray
 
-  @tailrec
+  private def loadV2FunctionOpt(
+    name: String,
+    args: Seq[Expression]
+  ): Option[BoundFunction] = {
+    def loadFunction(ident: Identifier): UnboundFunction =
+      functionRegistry.load(ident.name).getOrElse(throw new NoSuchFunctionException(ident))
+    val inputType = StructType(args.zipWithIndex.map {
+      case (exp, pos) => StructField(s"_$pos", exp.dataType, exp.nullable)
+    })
+    try {
+      val unbound = loadFunction(Identifier.of(Array.empty, name))
+      Some(unbound.bind(inputType))
+    } catch {
+      case e: NoSuchFunctionException =>
+        throw e
+      case _: UnsupportedOperationException if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) =>
+        None
+      case e: UnsupportedOperationException =>
+        throw new AnalysisException(e.getMessage, cause = Some(e))
+    }
+  }
+
   def toCatalyst(v2Expr: V2Expression, fields: Array[StructField]): Expression =
     v2Expr match {
       case IdentityTransform(ref) => toCatalyst(ref, fields)
@@ -57,8 +81,15 @@ object ExprUtils extends SQLConfHelper {
           .find { case (field, _) => field.name == ref.fieldNames.head }
           .getOrElse(throw CHClientException(s"Invalid field reference: $ref"))
         BoundReference(ordinal, field.dataType, field.nullable)
+      case t: Transform =>
+        val catalystArgs = t.arguments().map(toCatalyst(_, fields))
+        loadV2FunctionOpt(t.name(), catalystArgs).map { bound =>
+          TransformExpression(bound, catalystArgs)
+        }.getOrElse {
+          throw CHClientException(s"Unsupported expression: $v2Expr")
+        }
       case _ => throw CHClientException(
-          s"Unsupported V2 expression: $v2Expr, SPARK-33779: Spark 3.3 only support IdentityTransform"
+          s"Unsupported expression: $v2Expr"
         )
     }
 
@@ -83,10 +114,10 @@ object ExprUtils extends SQLConfHelper {
     case FuncExpr("toYYYYMMDD", List(FieldRef(col))) => days(col)
     case FuncExpr("toHour", List(FieldRef(col))) => hours(col)
     case FuncExpr("HOUR", List(FieldRef(col))) => hours(col)
-    // TODO support arbitrary functions
-    // case FuncExpr("xxHash64", List(FieldRef(col))) => apply("ck_xx_hash64", column(col))
     case FuncExpr("rand", Nil) => apply("rand")
     case FuncExpr("toYYYYMMDD", List(FuncExpr("toDate", List(FieldRef(col))))) => identity(col)
+    case FuncExpr(funName, List(FieldRef(col))) if functionRegistry.getFuncMappingByCk.contains(funName) =>
+      apply(functionRegistry.getFuncMappingByCk(funName), column(col))
     case unsupported => throw CHClientException(s"Unsupported ClickHouse expression: $unsupported")
   }
 
@@ -96,7 +127,8 @@ object ExprUtils extends SQLConfHelper {
     case DaysTransform(FieldReference(Seq(col))) => FuncExpr("toYYYYMMDD", List(FieldRef(col)))
     case HoursTransform(FieldReference(Seq(col))) => FuncExpr("toHour", List(FieldRef(col)))
     case IdentityTransform(fieldRefs) => FieldRef(fieldRefs.describe)
-    case ApplyTransform(name, args) => FuncExpr(name, args.map(arg => SQLExpr(arg.describe())).toList)
+    case ApplyTransform(name, args) if functionRegistry.getFuncMappingBySpark.contains(name) =>
+      FuncExpr(functionRegistry.getFuncMappingBySpark(name), args.map(arg => SQLExpr(arg.describe())).toList)
     case bucket: BucketTransform => throw CHClientException(s"Bucket transform not support yet: $bucket")
     case other: Transform => throw CHClientException(s"Unsupported transform: $other")
   }
@@ -113,8 +145,18 @@ object ExprUtils extends SQLConfHelper {
     case IdentityTransform(FieldReference(Seq(col))) => primarySchema.find(_.name == col)
         .orElse(secondarySchema.find(_.name == col))
         .getOrElse(throw CHClientException(s"Invalid partition column: $col"))
-    case ckXxhHash64 @ ApplyTransform("ck_xx_hash64", _) => StructField(ckXxhHash64.toString, LongType)
+    case t @ ApplyTransform(transformName, _) =>
+      val resType =
+        functionRegistry.load(transformName).getOrElse(throw new NoSuchFunctionException(transformName)) match {
+          case f: ScalarFunction[_] => f.resultType()
+          case other => throw CHClientException(s"Unsupported function: $other")
+        }
+      StructField(t.toString, resType)
     case bucket: BucketTransform => throw CHClientException(s"Bucket transform not support yet: $bucket")
     case other: Transform => throw CHClientException(s"Unsupported transform: $other")
   }
+}
+
+object ExprUtils {
+  def apply(functionRegistry: FunctionRegistry): ExprUtils = new ExprUtils(functionRegistry)
 }
