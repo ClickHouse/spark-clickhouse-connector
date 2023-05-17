@@ -53,7 +53,12 @@ object StaticFunctionRegistry extends FunctionRegistry {
     "clickhouse_murmurHash2_64" -> MurmurHash2_64,
     "clickhouse_murmurHash3_32" -> MurmurHash3_32,
     "clickhouse_murmurHash3_64" -> MurmurHash3_64,
-    "clickhouse_cityHash64" -> CityHash64
+    "clickhouse_cityHash64" -> CityHash64,
+    "clickhouse_years" -> Years,
+    "clickhouse_months" -> Months,
+    "clickhouse_days" -> Days,
+    "clickhouse_hours" -> Hours,
+    "sharding_mod" -> Mod
   )
 
   override def list: Array[String] = functions.keys.toArray
