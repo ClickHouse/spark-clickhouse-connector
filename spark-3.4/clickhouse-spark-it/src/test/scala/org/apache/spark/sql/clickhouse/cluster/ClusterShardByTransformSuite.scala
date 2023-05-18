@@ -27,7 +27,7 @@ class ClusterShardByTransformSuite extends SparkClickHouseClusterTest {
   def runTest(func_name: String, func_args: Array[String]): Unit = {
     val func_expr = s"$func_name(${func_args.mkString(",")})"
     val cluster = "single_replica"
-    val db = s"db_${func_name}_shard"
+    val db = s"db_${func_name}_shard_transform"
     val tbl_dist = s"tbl_${func_name}_shard"
     val tbl_local = s"${tbl_dist}_local"
 
@@ -37,6 +37,7 @@ class ClusterShardByTransformSuite extends SparkClickHouseClusterTest {
       spark.sql(
         s"""CREATE TABLE $db.$tbl_local (
            |  create_time TIMESTAMP NOT NULL,
+           |  create_date DATE NOT NULL,
            |  value       STRING NOT NULL
            |) USING ClickHouse
            |TBLPROPERTIES (
@@ -56,10 +57,11 @@ class ClusterShardByTransformSuite extends SparkClickHouseClusterTest {
       spark.sql(
         s"""INSERT INTO `$db`.`$tbl_dist`
            |VALUES
-           |  (timestamp'2021-01-01 10:10:10', '1'),
-           |  (timestamp'2022-02-02 10:10:10', '2'),
-           |  (timestamp'2023-03-03 10:10:10', '3'),
-           |  (timestamp'2024-04-04 10:10:10', '4') AS tab(create_time, value)
+           |  (timestamp'2021-01-01 10:10:10', date'2021-01-01', '1'),
+           |  (timestamp'2022-02-02 11:10:10', date'2022-02-02', '2'),
+           |  (timestamp'2023-03-03 12:10:10', date'2023-03-03', '3'),
+           |  (timestamp'2024-04-04 13:10:10', date'2024-04-04', '4')
+           |  AS tab(create_time, create_date, value)
            |""".stripMargin
       )
       // check that data is indeed written
@@ -72,10 +74,10 @@ class ClusterShardByTransformSuite extends SparkClickHouseClusterTest {
       runClickHouseSQL(
         s"""INSERT INTO `$db`.`$tbl_dist`
            |VALUES
-           |  (timestamp'2021-01-01 10:10:10', '1'),
-           |  (timestamp'2022-02-02 10:10:10', '2'),
-           |  (timestamp'2023-03-03 10:10:10', '3'),
-           |  (timestamp'2024-04-04 10:10:10', '4')
+           |  (timestamp'2021-01-01 10:10:10', date'2021-01-01', '1'),
+           |  (timestamp'2022-02-02 11:10:10', date'2022-02-02', '2'),
+           |  (timestamp'2023-03-03 12:10:10', date'2023-03-03', '3'),
+           |  (timestamp'2024-04-04 13:10:10', date'2024-04-04', '4')
            |""".stripMargin
       )
       checkAnswer(
@@ -91,8 +93,19 @@ class ClusterShardByTransformSuite extends SparkClickHouseClusterTest {
     }
   }
 
-  Seq(("xxHash64", Array("value")), ("toYYYYMM", Array("create_time"))).foreach { case (func_name, func_args) =>
-    test(s"shard by $func_name")(runTest(func_name, func_args))
+  Seq(
+    ("toYear", Array("create_date")),
+    ("toYYYYMM", Array("create_date")),
+    ("toYYYYMMDD", Array("create_date")),
+    ("toHour", Array("create_time")),
+    ("xxHash64", Array("value")),
+    ("murmurHash2_64", Array("value")),
+    ("murmurHash2_32", Array("value")),
+    ("murmurHash3_64", Array("value")),
+    ("murmurHash3_32", Array("value"))
+  ).foreach {
+    case (func_name: String, func_args: Array[String]) =>
+      test(s"shard by $func_name")(runTest(func_name, func_args))
   }
 
 }

@@ -12,36 +12,41 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.func
+package xenon.clickhouse.func.clickhouse
 
 import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFunction, UnboundFunction}
 import org.apache.spark.sql.types._
+import xenon.clickhouse.func.ClickhouseEquivFunction
 
-import java.sql.Timestamp
+import java.time.LocalDate
+import java.time.format.DateTimeFormatter
 
-class Months extends UnboundFunction with ScalarFunction[Int] with ClickhouseEquivFunction {
+object Months extends UnboundFunction with ScalarFunction[Int] with ClickhouseEquivFunction {
 
-  override def name: String = "months"
+  override def name: String = "clickhouse_months"
 
-  override def canonicalName: String = s"months"
+  override def canonicalName: String = s"clickhouse.$name"
 
   override val ckFuncNames: Array[String] = Array("toYYYYMM")
 
-  override def description: String = s"$name: (time: timestamp) => shard_num: int"
+  override def description: String = s"$name: (date: Date) => shard_num: int"
 
   override def bind(inputType: StructType): BoundFunction = inputType.fields match {
+    case Array(StructField(_, DateType, _, _)) => this
     case Array(StructField(_, TimestampType, _, _)) => this
-    case _ => throw new UnsupportedOperationException(s"Expect 1 TIMESTAMP argument. $description")
+    case Array(StructField(_, StringType, _, _)) => this
+    case _ => throw new UnsupportedOperationException(s"Expect 1 DATE argument. $description")
   }
 
-  override def inputTypes: Array[DataType] = Array(TimestampType)
+  override def inputTypes: Array[DataType] = Array(DateType)
 
   override def resultType: DataType = IntegerType
 
   override def isResultNullable: Boolean = false
 
-  def invoke(time: Long): Int = {
-    val ts = new Timestamp(time / 1000).toLocalDateTime
-    ts.getYear * 100 + ts.getMonthValue
+  def invoke(days: Int): Int = {
+    val date = LocalDate.ofEpochDay(days)
+    val formatter = DateTimeFormatter.ofPattern("yyyyMM")
+    date.format(formatter).toInt
   }
 }

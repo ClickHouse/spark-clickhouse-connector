@@ -108,12 +108,6 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
 
   def toSparkTransform(expr: Expr): Transform = expr match {
     case FieldRef(col) => identity(col)
-    case FuncExpr("toYear", List(FieldRef(col))) => years(col)
-    case FuncExpr("YEAR", List(FieldRef(col))) => years(col)
-    case FuncExpr("toYYYYMM", List(FieldRef(col))) => months(col)
-    case FuncExpr("toYYYYMMDD", List(FieldRef(col))) => days(col)
-    case FuncExpr("toHour", List(FieldRef(col))) => hours(col)
-    case FuncExpr("HOUR", List(FieldRef(col))) => hours(col)
     case FuncExpr("rand", Nil) => apply("rand")
     case FuncExpr("toYYYYMMDD", List(FuncExpr("toDate", List(FieldRef(col))))) => identity(col)
     case FuncExpr(funName, List(FieldRef(col))) if functionRegistry.getFuncMappingByCk.contains(funName) =>
@@ -122,10 +116,6 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
   }
 
   def toClickHouse(transform: Transform): Expr = transform match {
-    case YearsTransform(FieldReference(Seq(col))) => FuncExpr("toYear", List(FieldRef(col)))
-    case MonthsTransform(FieldReference(Seq(col))) => FuncExpr("toYYYYMM", List(FieldRef(col)))
-    case DaysTransform(FieldReference(Seq(col))) => FuncExpr("toYYYYMMDD", List(FieldRef(col)))
-    case HoursTransform(FieldReference(Seq(col))) => FuncExpr("toHour", List(FieldRef(col)))
     case IdentityTransform(fieldRefs) => FieldRef(fieldRefs.describe)
     case ApplyTransform(name, args) if functionRegistry.getFuncMappingBySpark.contains(name) =>
       FuncExpr(functionRegistry.getFuncMappingBySpark(name), args.map(arg => SQLExpr(arg.describe())).toList)
@@ -138,10 +128,6 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
     secondarySchema: StructType,
     transform: Transform
   ): StructField = transform match {
-    case years: YearsTransform => StructField(years.toString, IntegerType)
-    case months: MonthsTransform => StructField(months.toString, IntegerType)
-    case days: DaysTransform => StructField(days.toString, IntegerType)
-    case hours: HoursTransform => StructField(hours.toString, IntegerType)
     case IdentityTransform(FieldReference(Seq(col))) => primarySchema.find(_.name == col)
         .orElse(secondarySchema.find(_.name == col))
         .getOrElse(throw CHClientException(s"Invalid partition column: $col"))

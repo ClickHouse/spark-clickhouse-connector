@@ -12,12 +12,13 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.func
+package xenon.clickhouse.func.clickhouse
 
 import org.apache.spark.sql.catalyst.expressions.XxHash64Function
 import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFunction, UnboundFunction}
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
+import xenon.clickhouse.func.ClickhouseEquivFunction
 import xenon.clickhouse.spec.{ClusterSpec, ShardUtils}
 
 /**
@@ -47,6 +48,7 @@ object ClickHouseXxHash64 extends UnboundFunction with ScalarFunction[Long] with
 
   override def isResultNullable: Boolean = false
 
+  // ignore UInt64 vs Int64
   def invoke(value: UTF8String): Long = XxHash64Function.hash(value, StringType, 0L)
 }
 

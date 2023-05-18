@@ -17,8 +17,9 @@ package org.apache.spark.sql.clickhouse
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.scalatest.funsuite.AnyFunSuite
 import xenon.clickhouse.ClickHouseHelper
+import xenon.clickhouse.func.clickhouse.ClickHouseXxHash64
 import xenon.clickhouse.func.{
-  ClickHouseXxHash64,
+  ClickhouseEquivFunction,
   CompositeFunctionRegistry,
   DynamicFunctionRegistry,
   StaticFunctionRegistry
@@ -34,40 +35,31 @@ class FunctionRegistrySuite extends AnyFunSuite {
   dynamicFunctionRegistry.register("clickhouse_xxHash64", ClickHouseXxHash64)
 
   test("check StaticFunctionRegistry mappings") {
-    assert(staticFunctionRegistry.getFuncMappingBySpark === Map(
-      "ck_xx_hash64" -> "xxHash64",
-      "clickhouse_xxHash64" -> "xxHash64"
-    ))
-    assert((staticFunctionRegistry.getFuncMappingByCk === Map(
-      "xxHash64" -> "clickhouse_xxHash64"
-    )) || (staticFunctionRegistry.getFuncMappingByCk === Map(
-      "xxHash64" -> "ck_xx_hash64"
-    )))
+    assert(staticFunctionRegistry.getFuncMappingBySpark.forall { case (k, v) =>
+      staticFunctionRegistry.load(k).get.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.contains(v)
+    })
+    assert(staticFunctionRegistry.getFuncMappingByCk.forall { case (k, v) =>
+      staticFunctionRegistry.load(v).get.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.contains(k)
+    })
   }
 
   test("check DynamicFunctionRegistry mappings") {
-    assert(dynamicFunctionRegistry.getFuncMappingBySpark === Map(
-      "ck_xx_hash64" -> "xxHash64",
-      "clickhouse_xxHash64" -> "xxHash64"
-    ))
-    assert((dynamicFunctionRegistry.getFuncMappingByCk === Map(
-      "xxHash64" -> "clickhouse_xxHash64"
-    )) || (dynamicFunctionRegistry.getFuncMappingByCk === Map(
-      "xxHash64" -> "ck_xx_hash64"
-    )))
+    assert(dynamicFunctionRegistry.getFuncMappingBySpark.forall { case (k, v) =>
+      dynamicFunctionRegistry.load(k).get.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.contains(v)
+    })
+    assert(dynamicFunctionRegistry.getFuncMappingByCk.forall { case (k, v) =>
+      dynamicFunctionRegistry.load(v).get.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.contains(k)
+    })
   }
 
   test("check CompositeFunctionRegistry mappings") {
     val compositeFunctionRegistry =
       new CompositeFunctionRegistry(Array(staticFunctionRegistry, dynamicFunctionRegistry))
-    assert(compositeFunctionRegistry.getFuncMappingBySpark === Map(
-      "ck_xx_hash64" -> "xxHash64",
-      "clickhouse_xxHash64" -> "xxHash64"
-    ))
-    assert((compositeFunctionRegistry.getFuncMappingByCk === Map(
-      "xxHash64" -> "clickhouse_xxHash64"
-    )) || (compositeFunctionRegistry.getFuncMappingByCk === Map(
-      "xxHash64" -> "ck_xx_hash64"
-    )))
+    assert(compositeFunctionRegistry.getFuncMappingBySpark.forall { case (k, v) =>
+      compositeFunctionRegistry.load(k).get.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.contains(v)
+    })
+    assert(compositeFunctionRegistry.getFuncMappingByCk.forall { case (k, v) =>
+      compositeFunctionRegistry.load(v).get.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.contains(k)
+    })
   }
 }

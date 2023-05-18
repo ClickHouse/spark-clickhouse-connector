@@ -17,8 +17,14 @@ package xenon.clickhouse.write
 import com.clickhouse.client.ClickHouseProtocol
 import com.clickhouse.data.ClickHouseCompression
 import org.apache.commons.io.IOUtils
-import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection, TransformExpression, V2ExpressionUtils}
-import org.apache.spark.sql.catalyst.{InternalRow, expressions}
+import org.apache.spark.sql.catalyst.expressions.{
+  BoundReference,
+  Expression,
+  SafeProjection,
+  TransformExpression,
+  V2ExpressionUtils
+}
+import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.catalog.functions.ScalarFunction
 import org.apache.spark.sql.connector.metric.CustomTaskMetric

@@ -15,6 +15,7 @@
 package xenon.clickhouse.func
 
 import org.apache.spark.sql.connector.catalog.functions.UnboundFunction
+import xenon.clickhouse.func.clickhouse._
 
 import scala.collection.mutable
 
@@ -26,7 +27,7 @@ trait FunctionRegistry extends Serializable {
 
   def getFuncMappingBySpark: Map[String, String]
 
-  def getFuncMappingByCk: Map[String, String] = getFuncMappingBySpark.map(_.swap)
+  def getFuncMappingByCk: Map[String, String]
 }
 
 trait ClickhouseEquivFunction {
@@ -40,13 +41,23 @@ class CompositeFunctionRegistry(registries: Array[FunctionRegistry]) extends Fun
   override def load(name: String): Option[UnboundFunction] = registries.flatMap(_.load(name)).headOption
 
   override def getFuncMappingBySpark: Map[String, String] = registries.flatMap(_.getFuncMappingBySpark).toMap
+
+  override def getFuncMappingByCk: Map[String, String] = registries.flatMap(_.getFuncMappingByCk).toMap
 }
 
 object StaticFunctionRegistry extends FunctionRegistry {
 
   private val functions = Map[String, UnboundFunction](
     "ck_xx_hash64" -> ClickHouseXxHash64, // for compatible
-    "clickhouse_xxHash64" -> ClickHouseXxHash64
+    "clickhouse_xxHash64" -> ClickHouseXxHash64,
+    "clickhouse_murmurHash2_32" -> MurmurHash2_32,
+    "clickhouse_murmurHash2_64" -> MurmurHash2_64,
+    "clickhouse_murmurHash3_32" -> MurmurHash3_32,
+    "clickhouse_murmurHash3_64" -> MurmurHash3_64,
+    "clickhouse_years" -> Years,
+    "clickhouse_months" -> Months,
+    "clickhouse_days" -> Days,
+    "clickhouse_hours" -> Hours
   )
 
   override def list: Array[String] = functions.keys.toArray
@@ -56,6 +67,11 @@ object StaticFunctionRegistry extends FunctionRegistry {
   override val getFuncMappingBySpark: Map[String, String] =
     functions.filter(_._2.isInstanceOf[ClickhouseEquivFunction]).flatMap { case (k, v) =>
       v.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.map((k, _))
+    }
+
+  override val getFuncMappingByCk: Map[String, String] =
+    functions.filter(_._2.isInstanceOf[ClickhouseEquivFunction]).flatMap { case (k, v) =>
+      v.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.map((_, k))
     }
 }
 
@@ -75,5 +91,10 @@ class DynamicFunctionRegistry extends FunctionRegistry {
   override def getFuncMappingBySpark: Map[String, String] =
     functions.filter(_._2.isInstanceOf[ClickhouseEquivFunction]).flatMap { case (k, v) =>
       v.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.map((k, _))
+    }.toMap
+
+  override def getFuncMappingByCk: Map[String, String] =
+    functions.filter(_._2.isInstanceOf[ClickhouseEquivFunction]).flatMap { case (k, v) =>
+      v.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.map((_, k))
     }.toMap
 }

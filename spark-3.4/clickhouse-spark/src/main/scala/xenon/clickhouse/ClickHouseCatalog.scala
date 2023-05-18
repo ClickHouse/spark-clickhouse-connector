@@ -26,6 +26,7 @@ import xenon.clickhouse.Constants._
 import xenon.clickhouse.client.NodeClient
 import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.exception.ClickHouseErrCode._
+import xenon.clickhouse.func.clickhouse.ClickHouseXxHash64Shard
 import xenon.clickhouse.func.{FunctionRegistry, _}
 import xenon.clickhouse.spec._
 
@@ -85,10 +86,8 @@ class ClickHouseCatalog extends TableCatalog
 
     val dynamicFunctionRegistry = new DynamicFunctionRegistry
     val xxHash64ShardFunc = new ClickHouseXxHash64Shard(clusterSpecs)
-    val monthsFunc = new Months()
     dynamicFunctionRegistry.register("ck_xx_hash64_shard", xxHash64ShardFunc) // for compatible
     dynamicFunctionRegistry.register("clickhouse_shard_xxHash64", xxHash64ShardFunc)
-    dynamicFunctionRegistry.register("months", monthsFunc)
     this.functionRegistry = new CompositeFunctionRegistry(Array(StaticFunctionRegistry, dynamicFunctionRegistry))
 
     log.info(s"Detect ${clusterSpecs.size} ClickHouse clusters: ${clusterSpecs.map(_.name).mkString(",")}")
