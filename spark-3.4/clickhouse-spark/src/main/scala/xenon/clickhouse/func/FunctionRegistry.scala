@@ -90,12 +90,12 @@ class DynamicFunctionRegistry extends FunctionRegistry {
   override def load(name: String): Option[UnboundFunction] = functions.get(name)
 
   override def getFuncMappingBySpark: Map[String, String] =
-    functions.filter(_._2.isInstanceOf[ClickhouseEquivFunction]).flatMap { case (k, v) =>
+    functions.filter(_._2.isInstanceOf[ClickhouseEquivFunction]).toMap.flatMap { case (k, v) =>
       v.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.map((k, _))
-    }.toMap
+    }
 
   override def getFuncMappingByCk: Map[String, String] =
-    functions.filter(_._2.isInstanceOf[ClickhouseEquivFunction]).flatMap { case (k, v) =>
+    functions.filter(_._2.isInstanceOf[ClickhouseEquivFunction]).toMap.flatMap { case (k, v) =>
       v.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.map((_, k))
-    }.toMap
+    }
 }
