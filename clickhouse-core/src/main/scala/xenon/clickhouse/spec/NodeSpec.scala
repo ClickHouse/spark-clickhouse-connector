@@ -97,4 +97,6 @@ case class ClusterSpec(
   override def toString: String = s"cluster: $name, shards: [${shards.mkString(", ")}]"
 
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = shards.sorted.flatMap(_.nodes)
+
+  def totalWeight: Int = shards.map(_.weight).sum
 }

@@ -23,27 +23,37 @@ import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFunction, UnboundFunction}
 import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions.{Expression => V2Expression, _}
-import org.apache.spark.sql.types.{IntegerType, LongType, StructField, StructType}
+import org.apache.spark.sql.types.{StructField, StructType}
 import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.expr._
 import xenon.clickhouse.func.FunctionRegistry
+import xenon.clickhouse.spec.ClusterSpec
 
 import scala.util.{Failure, Success, Try}
 
 class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with Serializable {
 
+  private def toSplitWithModulo(shardingKey: Expr, cluster: ClusterSpec): FuncExpr =
+    FuncExpr("positiveModulo", List(shardingKey, StringLiteral(cluster.totalWeight.toString)))
+
   def toSparkPartitions(partitionKey: Option[List[Expr]]): Array[Transform] =
     partitionKey.seq.flatten.flatten(toSparkTransformOpt).toArray
 
-  def toSparkSplits(shardingKey: Option[Expr], partitionKey: Option[List[Expr]]): Array[Transform] =
-    (shardingKey.seq ++ partitionKey.seq.flatten).flatten(toSparkTransformOpt).toArray
+  def toSparkSplits(
+    shardingKey: Option[Expr],
+    partitionKey: Option[List[Expr]],
+    cluster: Option[ClusterSpec]
+  ): Array[Transform] =
+    (shardingKey.map(k => toSplitWithModulo(k, cluster.get)).seq ++ partitionKey.seq.flatten)
+      .flatten(toSparkTransformOpt).toArray
 
   def toSparkSortOrders(
     shardingKeyIgnoreRand: Option[Expr],
     partitionKey: Option[List[Expr]],
-    sortingKey: Option[List[OrderExpr]]
+    sortingKey: Option[List[OrderExpr]],
+    cluster: Option[ClusterSpec]
   ): Array[SortOrder] =
-    toSparkSplits(shardingKeyIgnoreRand, partitionKey).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
+    toSparkSplits(shardingKeyIgnoreRand, partitionKey, cluster).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
       sortingKey.seq.flatten.flatten { case OrderExpr(expr, asc, nullFirst) =>
         val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
         val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
@@ -93,25 +103,20 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
         )
     }
 
-  def toSparkTransformOpt(expr: Expr): Option[Transform] = Try(toSparkTransform(expr)) match {
-    case Success(t) => Some(t)
+  def toSparkTransformOpt(expr: Expr): Option[Transform] = Try(toSparkExpression(expr)) match {
+    case Success(t: Transform) => Some(t)
+    case Success(_) => None
     case Failure(_) if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) => None
     case Failure(rethrow) => throw new AnalysisException(rethrow.getMessage, cause = Some(rethrow))
   }
 
-  // Some functions of ClickHouse which match Spark pre-defined Transforms
-  //
-  // toYear, YEAR - Converts a date or date with time to a UInt16 (AD)
-  // toYYYYMM     - Converts a date or date with time to a UInt32 (YYYY*100 + MM)
-  // toYYYYMMDD   - Converts a date or date with time to a UInt32 (YYYY*10000 + MM*100 + DD)
-  // toHour, HOUR - Converts a         date with time to a UInt8  (0-23)
-
-  def toSparkTransform(expr: Expr): Transform = expr match {
+  def toSparkExpression(expr: Expr): V2Expression = expr match {
     case FieldRef(col) => identity(col)
+    case StringLiteral(value) => literal(value)
     case FuncExpr("rand", Nil) => apply("rand")
     case FuncExpr("toYYYYMMDD", List(FuncExpr("toDate", List(FieldRef(col))))) => identity(col)
-    case FuncExpr(funName, List(FieldRef(col))) if functionRegistry.getFuncMappingByCk.contains(funName) =>
-      apply(functionRegistry.getFuncMappingByCk(funName), column(col))
+    case FuncExpr(funName, args) if functionRegistry.getFuncMappingByCk.contains(funName) =>
+      apply(functionRegistry.getFuncMappingByCk(funName), args.map(toSparkExpression): _*)
     case unsupported => throw CHClientException(s"Unsupported ClickHouse expression: $unsupported")
   }
 
@@ -131,7 +136,7 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
     case IdentityTransform(FieldReference(Seq(col))) => primarySchema.find(_.name == col)
         .orElse(secondarySchema.find(_.name == col))
         .getOrElse(throw CHClientException(s"Invalid partition column: $col"))
-    case t @ ApplyTransform(transformName, _) =>
+    case t @ ApplyTransform(transformName, _) if functionRegistry.load(transformName).isDefined =>
       val resType =
         functionRegistry.load(transformName).getOrElse(throw new NoSuchFunctionException(transformName)) match {
           case f: ScalarFunction[_] => f.resultType()

@@ -57,7 +57,8 @@ object StaticFunctionRegistry extends FunctionRegistry {
     "clickhouse_years" -> Years,
     "clickhouse_months" -> Months,
     "clickhouse_days" -> Days,
-    "clickhouse_hours" -> Hours
+    "clickhouse_hours" -> Hours,
+    "sharding_pmod" -> Pmod
   )
 
   override def list: Array[String] = functions.keys.toArray
