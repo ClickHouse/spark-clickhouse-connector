@@ -135,8 +135,8 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
   //   Decimal256(S): P: [39:76]; S: [0:P]
   Seq(
     ("Decimal(38,9)", 38, 9),
-    ("Decimal32(4)", 4, 4),
-    ("Decimal64(4)", 10, 4),
+    ("Decimal32(4)", 9, 4),
+    ("Decimal64(4)", 18, 4),
     ("Decimal128(4)", 38, 4)
   ).foreach { case (dataType, p, s) =>
     test(s"DataType - $dataType") {
