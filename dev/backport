@@ -1,0 +1,60 @@
+#!/bin/bash
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+COMMIT_ID=""
+SPARK_FROM="3.4"
+SPARK_TO="3.3"
+
+function usage {
+  set +x
+  echo "./dev/backport - Tool for back port patch"
+  echo ""
+  echo "Usage:"
+  echo "+--------------------------------------------------------+"
+  echo "| ./dev/backport <commit-id> [<spark-from>] [<spark-to>] |"
+  echo "+--------------------------------------------------------+"
+  echo "commit-id:    -  git commit hash id"
+  echo "spark-from:   -  default value 3.4"
+  echo "spark-to:     -  default value 3.3"
+  echo ""
+}
+
+function exit_with_usage {
+  usage
+  exit 1
+}
+
+if [[ $# -eq 1 ]]; then
+  COMMIT_ID=$1
+elif [[ $# -eq 2 ]]; then
+  COMMIT_ID=$1
+  SPARK_FROM=$2
+elif [[ $# -eq 3 ]]; then
+  COMMIT_ID=$1
+  SPARK_FROM=$2
+  SPARK_TO=$3
+else
+  exit_with_usage
+fi
+
+echo "Backport $COMMIT_ID from spark-$SPARK_FROM to spark-$SPARK_TO - `git log $COMMIT_ID --pretty="%s" -1`"
+
+PROJECT_DIR="$(cd "`dirname "$0"`/.."; pwd)"
+mkdir -p "${PROJECT_DIR}/tmp"
+git format-patch $COMMIT_ID -1 --stdout -- "spark-$SPARK_FROM/" > "${PROJECT_DIR}/tmp/$COMMIT_ID-$SPARK_FROM.patch"
+cp "${PROJECT_DIR}/tmp/$COMMIT_ID-$SPARK_FROM.patch" "${PROJECT_DIR}/tmp/$COMMIT_ID-$SPARK_TO.patch"
+sed -i "s/spark-$SPARK_FROM/spark-$SPARK_TO/g" "${PROJECT_DIR}/tmp/$COMMIT_ID-$SPARK_TO.patch"
+sed -i "s/Spark $SPARK_FROM/Spark $SPARK_TO/g" "${PROJECT_DIR}/tmp/$COMMIT_ID-$SPARK_TO.patch"
+git apply "${PROJECT_DIR}/tmp/$COMMIT_ID-$SPARK_TO.patch"
