@@ -14,11 +14,21 @@
 
 package org.apache.spark.sql.clickhouse.single
 
-import org.apache.spark.sql.{DataFrame, Row}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.USE_NULLABLE_QUERY_SCHEMA
+import org.apache.spark.sql.clickhouse.SparkUtils
 import org.apache.spark.sql.types.DataTypes.{createArrayType, createMapType}
 import org.apache.spark.sql.types._
+import org.apache.spark.sql.{DataFrame, Row}
 
 class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
+
+  val SPARK_43390_ENABLED: Boolean = sys.env.contains("SPARK_43390_ENABLED") || {
+    SparkUtils.MAJOR_MINOR_VERSION match {
+      case (major, _) if major > 3 => true
+      case (3, minor) if minor > 4 => true
+      case _ => false
+    }
+  }
 
   test("write supported data types") {
     val schema = StructType(
@@ -33,8 +43,13 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     val tbl = "t_w_s_tbl"
     withTable(db, tbl, schema) {
       val tblSchema = spark.table(s"$db.$tbl").schema
-      // TODO v2 create table should respect element nullable of array field
-      // assert(StructType(structFields) === tblSchema)
+      val respectNullable = SPARK_43390_ENABLED && !spark.conf.get(USE_NULLABLE_QUERY_SCHEMA)
+      if (respectNullable) {
+        assert(StructType(schema) === tblSchema)
+      } else {
+        val nullableFields = schema.fields.map(structField => structField.copy(dataType = structField.dataType.asNullable))
+        assert(StructType(nullableFields) === tblSchema)
+      }
 
       val dataDF = spark.createDataFrame(Seq(
         (1L, "a", date("1996-06-06"), Seq("a", "b", "c"), Map("a" -> "x")),
