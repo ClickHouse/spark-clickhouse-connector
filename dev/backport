@@ -57,7 +57,7 @@ git format-patch $COMMIT_ID -1 --stdout -- "spark-$SPARK_FROM/" > "${PROJECT_DIR
 cp "${PROJECT_DIR}/tmp/$COMMIT_ID-$SPARK_FROM.patch" "${PROJECT_DIR}/tmp/$COMMIT_ID-$SPARK_TO.patch"
 SED_I="sed -i"
 if [[ $(uname) == 'Darwin' ]]; then
-  SED_I="sed -i ''"
+  SED_I="sed -i .bak"
 fi
 $SED_I "s/spark-$SPARK_FROM/spark-$SPARK_TO/g" "${PROJECT_DIR}/tmp/$COMMIT_ID-$SPARK_TO.patch"
 git apply "${PROJECT_DIR}/tmp/$COMMIT_ID-$SPARK_TO.patch"
