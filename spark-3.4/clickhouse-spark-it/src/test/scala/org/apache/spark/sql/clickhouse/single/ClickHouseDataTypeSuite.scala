@@ -159,7 +159,8 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
       testDataType(dataType) { (db, tbl) =>
         runClickHouseSQL(
           s"""INSERT INTO $db.$tbl VALUES
-             |(1, '11.1')
+             |(1, '11.1'),
+             |(2, '22.2')
              |""".stripMargin
         )
       } { df =>
@@ -167,7 +168,12 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
         assert(df.schema.fields(1).dataType === DecimalType(p, s))
         checkAnswer(
           df,
-          Row(1, BigDecimal("11.1", new MathContext(p))) :: Nil
+          Row(1, BigDecimal("11.1", new MathContext(p))) ::
+            Row(2, BigDecimal("22.2", new MathContext(p))) :: Nil
+        )
+        checkAnswer(
+          df.filter("value > 20"),
+          Row(2, BigDecimal("22.2", new MathContext(p))) :: Nil
         )
       }
     }
