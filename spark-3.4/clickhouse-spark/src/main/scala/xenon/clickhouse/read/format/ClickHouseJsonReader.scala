@@ -65,9 +65,11 @@ class ClickHouseJsonReader(
       case FloatType => jsonNode.asDouble.floatValue
       case DoubleType => jsonNode.asDouble
       case d: DecimalType if jsonNode.isBigDecimal =>
-        Decimal(jsonNode.decimalValue.setScale(d.scale, RoundingMode.HALF_UP))
+        Decimal(jsonNode.decimalValue, d.precision, d.scale)
+      case d: DecimalType if jsonNode.isFloat | jsonNode.isDouble =>
+        Decimal(BigDecimal(jsonNode.doubleValue, new MathContext(d.precision)), d.precision, d.scale)
       case d: DecimalType =>
-        Decimal(BigDecimal(jsonNode.asText, new MathContext(d.scale, RM.HALF_UP)))
+        Decimal(BigDecimal(jsonNode.textValue, new MathContext(d.precision)), d.precision, d.scale)
       case TimestampType =>
         ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(scanJob.tz))
           .withZoneSameInstant(ZoneOffset.UTC)
