@@ -18,6 +18,8 @@ import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.types.DataTypes.{createArrayType, createMapType}
 import org.apache.spark.sql.types._
 
+import java.math.MathContext
+
 class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
 
   test("write supported data types") {
@@ -118,6 +120,40 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
         df.filter("value > '2022-01-01 01:01:01'"),
         Row(2, timestamp("2022-02-02T02:02:02Z")) :: Nil
       )
+    }
+  }
+
+  // Decimal(P, S): P - precision, S - scale, which have different support range in Spark and ClickHouse.
+  //
+  // Spark:
+  //   Decimal(P, S): P: [ 1:38]; S: [0:P]
+  // ClickHouse:
+  //   Decimal(P, S): P: [ 1:76]; S: [0:P]
+  //   Decimal32(S):  P: [ 1: 9]; S: [0:P]
+  //   Decimal64(S):  P: [10:18]; S: [0:P]
+  //   Decimal128(S): P: [19:38]; S: [0:P]
+  //   Decimal256(S): P: [39:76]; S: [0:P]
+  Seq(
+    ("Decimal(38,9)", 38, 9),
+    ("Decimal32(4)", 9, 4),
+    ("Decimal64(4)", 18, 4),
+    ("Decimal128(4)", 38, 4)
+  ).foreach { case (dataType, p, s) =>
+    test(s"DataType - $dataType") {
+      testDataType(dataType) { (db, tbl) =>
+        runClickHouseSQL(
+          s"""INSERT INTO $db.$tbl VALUES
+             |(1, '11.1')
+             |""".stripMargin
+        )
+      } { df =>
+        assert(df.schema.length === 2)
+        assert(df.schema.fields(1).dataType === DecimalType(p, s))
+        checkAnswer(
+          df,
+          Row(1, BigDecimal("11.1", new MathContext(p))) :: Nil
+        )
+      }
     }
   }
 
