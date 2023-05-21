@@ -47,7 +47,8 @@ class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
       if (respectNullable) {
         assert(StructType(schema) === tblSchema)
       } else {
-        val nullableFields = schema.fields.map(structField => structField.copy(dataType = structField.dataType.asNullable))
+        val nullableFields =
+          schema.fields.map(structField => structField.copy(dataType = structField.dataType.asNullable))
         assert(StructType(nullableFields) === tblSchema)
       }
 
