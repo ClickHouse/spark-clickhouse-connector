@@ -31,12 +31,10 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   val CLICKHOUSE_DB:       String = Utils.load("CLICKHOUSE_DB", "")
 
   private val CLICKHOUSE_HTTP_PORT = 8123
-  private val CLICKHOUSE_GRPC_PORT = 9100
   private val CLICKHOUSE_TPC_PORT  = 9000
   // format: on
 
   protected val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)
-  protected val grpcEnabled: Boolean = clickhouseVersion.isNewerOrEqualTo("21.1.2.15")
 
   protected val rootProjectDir: Path = {
     val thisClassURI = this.getClass.getProtectionDomain.getCodeSource.getLocation.toURI
@@ -62,11 +60,7 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
         .withEnv("CLICKHOUSE_USER", CLICKHOUSE_USER)
         .withEnv("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
         .withEnv("CLICKHOUSE_DB", CLICKHOUSE_DB)
-        .withExposedPorts(CLICKHOUSE_HTTP_PORT, CLICKHOUSE_GRPC_PORT, CLICKHOUSE_TPC_PORT)
-        .withCopyFileToContainer(
-          MountableFile.forClasspathResource("clickhouse-single/grpc_config.xml"),
-          "/etc/clickhouse-server/config.d/grpc_config.xml"
-        )
+        .withExposedPorts(CLICKHOUSE_HTTP_PORT, CLICKHOUSE_TPC_PORT)
         .withFileSystemBind(s"${sys.env("ROOT_PROJECT_DIR")}/log/clickhouse-server", "/var/log/clickhouse-server")
         .withCopyFileToContainer(
           MountableFile.forClasspathResource("clickhouse-single/users.xml"),
@@ -77,7 +71,6 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   // format: off
   def clickhouseHost:  String = container.host
   def clickhouseHttpPort: Int = container.mappedPort(CLICKHOUSE_HTTP_PORT)
-  def clickhouseGrpcPort: Int = container.mappedPort(CLICKHOUSE_GRPC_PORT)
   def clickhouseTcpPort:  Int = container.mappedPort(CLICKHOUSE_TPC_PORT)
   // format: on
 }

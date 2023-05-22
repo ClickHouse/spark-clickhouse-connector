@@ -43,29 +43,12 @@
 
     <listen_host>::</listen_host>
     <http_port>8123</http_port>
-    <grpc_port>9100</grpc_port>
     <tcp_port>9000</tcp_port>
     <interserver_http_port>9009</interserver_http_port>
 
     <keep_alive_timeout>300</keep_alive_timeout>
     <max_session_timeout>3600</max_session_timeout>
     <default_session_timeout>60</default_session_timeout>
-
-    <grpc>
-        <enable_ssl>false</enable_ssl>
-
-        <!-- Default compression algorithm (applied if client doesn't specify another algorithm). Supported algorithms: none, deflate, gzip, stream_gzip -->
-        <compression>gzip</compression>
-
-        <!-- Default compression level (applied if client doesn't specify another level). Supported levels: none, low, medium, high -->
-        <compression_level>medium</compression_level>
-
-        <!-- Send/receive message size limits in bytes. -1 means unlimited -->
-        <max_send_message_size>-1</max_send_message_size>
-        <max_receive_message_size>-1</max_receive_message_size>
-
-        <verbose_logs>false</verbose_logs>
-    </grpc>
 
     <max_connections>128</max_connections>
     <max_concurrent_queries>100</max_concurrent_queries>

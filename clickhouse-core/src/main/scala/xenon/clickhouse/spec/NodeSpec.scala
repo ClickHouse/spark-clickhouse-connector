@@ -31,8 +31,7 @@ case class NodeSpec(
   @JsonIgnore private val _host: String,
   @JsonIgnore private val _http_port: Option[Int] = None,
   @JsonIgnore private val _tcp_port: Option[Int] = None,
-  @JsonIgnore private val _grpc_port: Option[Int] = None,
-  @JsonProperty("protocol") protocol: ClickHouseProtocol = GRPC,
+  @JsonProperty("protocol") protocol: ClickHouseProtocol = HTTP,
   @JsonProperty("username") username: String = "default",
   @JsonProperty("password") password: String = "",
   @JsonProperty("database") database: String = "default",
@@ -41,7 +40,6 @@ case class NodeSpec(
   @JsonProperty("host") def host: String = findHost(_host)
   @JsonProperty("http_port") def http_port: Option[Int] = findPort(_http_port)
   @JsonProperty("tcp_port") def tcp_port: Option[Int] = findPort(_tcp_port)
-  @JsonProperty("grpc_port") def grpc_port: Option[Int] = findPort(_grpc_port)
 
   private def findHost(source: String): String =
     if (isTesting) {
@@ -56,7 +54,6 @@ case class NodeSpec(
     } else source
 
   def port: Int = protocol match {
-    case GRPC => grpc_port.get
     case HTTP => http_port.get
     case TCP => tcp_port.get
     case unsupported => throw new IllegalArgumentException(s"Unsupported protocol: $unsupported")

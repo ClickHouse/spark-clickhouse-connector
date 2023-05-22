@@ -59,7 +59,6 @@ trait ClickHouseHelper extends Logging {
       }.toMap
     NodeSpec(
       _host = options.getOrDefault(CATALOG_PROP_HOST, "localhost"),
-      _grpc_port = Some(options.getInt(CATALOG_PROP_GRPC_PORT, 9100)),
       _tcp_port = Some(options.getInt(CATALOG_PROP_TCP_PORT, 9000)),
       _http_port = Some(options.getInt(CATALOG_PROP_HTTP_PORT, 8123)),
       protocol = ClickHouseProtocol.fromUriScheme(options.getOrDefault(CATALOG_PROP_PROTOCOL, "http")),
@@ -102,7 +101,6 @@ trait ClickHouseHelper extends Logging {
                 // host_address is not works for testcontainers
                 _host = row.get("host_name").asText,
                 _tcp_port = Some(row.get("port").asInt),
-                _grpc_port = if (Utils.isTesting) Some(9100) else nodeSpec.grpc_port,
                 _http_port = if (Utils.isTesting) Some(8123) else nodeSpec.http_port
               )
               ReplicaSpec(replicaNum, clickhouseNode)

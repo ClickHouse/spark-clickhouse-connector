@@ -23,6 +23,7 @@ Notes:
    extends the range of supported versions of ClickHouse Server.
 2. Since 0.6.0, HTTP becomes the default protocol.
 3. Since 0.7.0, gRPC is deprecated and not recommended, it may be removed in the future.
+4. Since 0.8.0, gRPC is removed.
 
 ## Compatible Matrix
 
@@ -62,16 +63,6 @@ Run single test
 
 `./gradlew test --tests=ConvertDistToLocalWriteSuite`
 
-### ARM Platform
+Test against custom ClickHouse image
 
-For developers/users who use ARM platform, e.g. [Apple Silicon](https://developer.apple.com/documentation/apple-silicon)
-chips, [Kunpeng](https://www.hikunpeng.com/) chips, you may not able to run TPC-DS integrations test using gRPC in local directly,
-because [ClickHouse does not provide gRPC support in official ARM image](https://github.com/ClickHouse/ClickHouse/pull/36754).
-
-As a workaround, you can set the environment variable `CLICKHOUSE_IMAGE` to use a custom image which supports gRPC
-on ARM platform for testing.
-
-```
-export CLICKHOUSE_IMAGE=pan3793/clickhouse-server:22.5.1-alpine-arm-grpc
-./gradlew clean test
-```
+`CLICKHOUSE_IMAGE=custom-org/clickhouse-server:custom-tag ./gradlew test`

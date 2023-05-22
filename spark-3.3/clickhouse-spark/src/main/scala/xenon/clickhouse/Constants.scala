@@ -22,7 +22,6 @@ object Constants {
   //////// clickhouse datasource catalog properties ////////
   //////////////////////////////////////////////////////////
   final val CATALOG_PROP_HOST           = "host"
-  final val CATALOG_PROP_GRPC_PORT      = "grpc_port"
   final val CATALOG_PROP_TCP_PORT       = "tcp_port"
   final val CATALOG_PROP_HTTP_PORT      = "http_port"
   final val CATALOG_PROP_PROTOCOL       = "protocol"
