@@ -50,14 +50,14 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
     }
 
     shadowJar {
-        zip64 true
-        classifier null
+        zip64=true
+        archiveClassifier=null
 
         mergeServiceFiles()
     }
 
     jar {
-        archiveClassifier.set('empty')
+        archiveClassifier="empty"
     }
 }
 

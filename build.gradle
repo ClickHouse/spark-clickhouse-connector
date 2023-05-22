@@ -139,6 +139,10 @@ project(':clickhouse-core') {
         classpath += files("$projectDir/src/testFixtures/conf")
     }
 
+    sourcesJar {
+        dependsOn generateGrammarSource
+    }
+
     dependencies {
         api "org.scala-lang:scala-library:$scala_version"
 
