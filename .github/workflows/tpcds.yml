@@ -42,3 +42,10 @@ jobs:
           ./gradlew clean slowTest --no-daemon --refresh-dependencies
           -Dspark_binary_version=${{ matrix.spark }}
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: log-tpcds-spark-${{ matrix.spark }}
+          path: |
+            log/**

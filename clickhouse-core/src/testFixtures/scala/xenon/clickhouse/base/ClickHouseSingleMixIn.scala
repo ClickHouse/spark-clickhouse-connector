@@ -21,6 +21,8 @@ import org.testcontainers.containers.ClickHouseContainer
 import org.testcontainers.utility.{DockerImageName, MountableFile}
 import xenon.clickhouse.Utils
 
+import java.nio.file.{Path, Paths}
+
 trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   // format: off
   val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.3")
@@ -35,6 +37,19 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
 
   protected val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)
   protected val grpcEnabled: Boolean = clickhouseVersion.isNewerOrEqualTo("21.1.2.15")
+
+  protected val rootProjectDir: Path = {
+    val thisClassURI = this.getClass.getProtectionDomain.getCodeSource.getLocation.toURI
+    val currentPath = Paths.get(thisClassURI).toAbsolutePath.normalize
+    val coreModuleIndex = currentPath.toString.indexOf("/clickhouse-core")
+    if (coreModuleIndex > 0) {
+      Paths.get(currentPath.toString.substring(0, coreModuleIndex))
+    } else {
+      val sparkModuleIndex = currentPath.toString.indexOf("/clickhouse-spark")
+      require(sparkModuleIndex > 0, s"illegal path: $currentPath")
+      Paths.get(currentPath.toString.substring(0, sparkModuleIndex)).getParent
+    }
+  }
 
   override val container: SingleContainer[ClickHouseContainer] with JdbcDatabaseContainer =
     new SingleContainer[ClickHouseContainer] with JdbcDatabaseContainer {
@@ -52,6 +67,7 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
           MountableFile.forClasspathResource("clickhouse-single/grpc_config.xml"),
           "/etc/clickhouse-server/config.d/grpc_config.xml"
         )
+        .withFileSystemBind(s"${sys.env("ROOT_PROJECT_DIR")}/log/clickhouse-server", "/var/log/clickhouse-server")
         .withCopyFileToContainer(
           MountableFile.forClasspathResource("clickhouse-single/users.xml"),
           "/etc/clickhouse-server/users.xml"
