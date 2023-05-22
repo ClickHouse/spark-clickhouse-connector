@@ -84,6 +84,7 @@ subprojects {
 
     test {
         maxParallelForks = 1
+        environment("ROOT_PROJECT_DIR", rootProject.projectDir)
         tags {
             exclude 'org.scalatest.tags.Slow'
         }
@@ -91,6 +92,7 @@ subprojects {
 
     tasks.register('slowTest', Test) {
         maxParallelForks = 1
+        environment("ROOT_PROJECT_DIR", rootProject.projectDir)
         tags {
             include 'org.scalatest.tags.Slow'
         }
