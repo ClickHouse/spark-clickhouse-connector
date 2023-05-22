@@ -41,11 +41,11 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
 
   def toSparkSplits(
     shardingKey: Option[Expr],
-    partitionKey: Option[List[Expr]],
-    cluster: Option[ClusterSpec]
+    partitionKey: Option[List[Expr]]
   ): Array[Transform] =
-    (shardingKey.map(k => toSplitWithModulo(k, cluster.get)).seq ++ partitionKey.seq.flatten)
-      .flatten(toSparkTransformOpt).toArray
+    // no pmod shard key here, because we want to shuffle it more evenly,
+    // hence spread the load in Spark tasks to multiple Clickhouse nodes
+    (shardingKey.seq ++ partitionKey.seq.flatten).flatten(toSparkTransformOpt).toArray
 
   def toSparkSortOrders(
     shardingKeyIgnoreRand: Option[Expr],
@@ -53,7 +53,11 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
     sortingKey: Option[List[OrderExpr]],
     cluster: Option[ClusterSpec]
   ): Array[SortOrder] =
-    toSparkSplits(shardingKeyIgnoreRand, partitionKey, cluster).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
+    // pmod shard key here, because we need same cluster number but not same hash value
+    // to be sorted together and be written as a batch
+    toSparkSplits(shardingKeyIgnoreRand.map(k => toSplitWithModulo(k, cluster.get)), partitionKey).map(
+      Expressions.sort(_, SortDirection.ASCENDING)
+    ) ++:
       sortingKey.seq.flatten.flatten { case OrderExpr(expr, asc, nullFirst) =>
         val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
         val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
@@ -104,6 +108,7 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
     }
 
   def toSparkTransformOpt(expr: Expr): Option[Transform] = Try(toSparkExpression(expr)) match {
+    // need this function because spark `Table`'s `partitioning` field should be `Transform`
     case Success(t: Transform) => Some(t)
     case Success(_) => None
     case Failure(_) if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) => None
