@@ -41,11 +41,18 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
 
   def toSparkSplits(
     shardingKey: Option[Expr],
-    partitionKey: Option[List[Expr]]
+    partitionKey: Option[List[Expr]],
+    cluster: Option[ClusterSpec]
   ): Array[Transform] =
-    // no pmod shard key here, because we want to shuffle it more evenly,
-    // hence spread the load in Spark tasks to multiple Clickhouse nodes
-    (shardingKey.seq ++ partitionKey.seq.flatten).flatten(toSparkTransformOpt).toArray
+    // Pmod by total weight * constant. Note that this key will be further hashed by spark. Reasons of doing this:
+    //   - Enlarged range of modulo to avoid hash collision of small number of shards, hence mitigate data skew caused
+    //     by this.
+    //   - Still distribute data from one shard to only a subset of executors. If we do not apply modulo (instead we
+    //     need to apply module during sorting in `toSparkSortOrders`), data belongs to shard 1 will be sorted in the
+    //     front for all tasks, resulting in instant high pressure for shard 1 when stage starts.
+    (shardingKey.map(k =>
+      FuncExpr("positiveModulo", List(k, StringLiteral((cluster.get.totalWeight * 10).toString)))
+    ).seq ++ partitionKey.seq.flatten).flatten(toSparkTransformOpt).toArray
 
   def toSparkSortOrders(
     shardingKeyIgnoreRand: Option[Expr],
@@ -53,11 +60,7 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
     sortingKey: Option[List[OrderExpr]],
     cluster: Option[ClusterSpec]
   ): Array[SortOrder] =
-    // pmod shard key here, because we need same cluster number but not same hash value
-    // to be sorted together and be written as a batch
-    toSparkSplits(shardingKeyIgnoreRand.map(k => toSplitWithModulo(k, cluster.get)), partitionKey).map(
-      Expressions.sort(_, SortDirection.ASCENDING)
-    ) ++:
+    toSparkSplits(shardingKeyIgnoreRand, partitionKey, cluster).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
       sortingKey.seq.flatten.flatten { case OrderExpr(expr, asc, nullFirst) =>
         val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
         val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
