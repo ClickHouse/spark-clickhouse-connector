@@ -24,46 +24,37 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
 
   import testImplicits._
 
-  override protected def sparkConf: SparkConf = {
-    val _conf = super.sparkConf
-      .setMaster("local[2]")
-      .setAppName("spark-clickhouse-single-ut")
-      .set("spark.sql.shuffle.partitions", "2")
-      // catalog
-      .set("spark.sql.defaultCatalog", "clickhouse")
-      .set("spark.sql.catalog.clickhouse", "xenon.clickhouse.ClickHouseCatalog")
-      .set("spark.sql.catalog.clickhouse.host", clickhouseHost)
-      .set("spark.sql.catalog.clickhouse.http_port", clickhouseHttpPort.toString)
-      .set("spark.sql.catalog.clickhouse.protocol", "http")
-      .set("spark.sql.catalog.clickhouse.user", CLICKHOUSE_USER)
-      .set("spark.sql.catalog.clickhouse.password", CLICKHOUSE_PASSWORD)
-      .set("spark.sql.catalog.clickhouse.database", CLICKHOUSE_DB)
-      .set("spark.sql.catalog.clickhouse.option.async", "false")
-      // extended configurations
-      .set("spark.clickhouse.write.batchSize", "2")
-      .set("spark.clickhouse.write.maxRetry", "2")
-      .set("spark.clickhouse.write.retryInterval", "1")
-      .set("spark.clickhouse.write.retryableErrorCodes", "241")
-      .set("spark.clickhouse.write.write.repartitionNum", "0")
-      .set("spark.clickhouse.read.format", "json")
-      .set("spark.clickhouse.write.format", "json")
-    if (grpcEnabled) {
-      _conf.set("spark.sql.catalog.clickhouse.grpc_port", clickhouseGrpcPort.toString)
-    }
-    _conf
-  }
+  override protected def sparkConf: SparkConf = super.sparkConf
+    .setMaster("local[2]")
+    .setAppName("spark-clickhouse-single-ut")
+    .set("spark.sql.shuffle.partitions", "2")
+    // catalog
+    .set("spark.sql.defaultCatalog", "clickhouse")
+    .set("spark.sql.catalog.clickhouse", "xenon.clickhouse.ClickHouseCatalog")
+    .set("spark.sql.catalog.clickhouse.host", clickhouseHost)
+    .set("spark.sql.catalog.clickhouse.http_port", clickhouseHttpPort.toString)
+    .set("spark.sql.catalog.clickhouse.protocol", "http")
+    .set("spark.sql.catalog.clickhouse.user", CLICKHOUSE_USER)
+    .set("spark.sql.catalog.clickhouse.password", CLICKHOUSE_PASSWORD)
+    .set("spark.sql.catalog.clickhouse.database", CLICKHOUSE_DB)
+    .set("spark.sql.catalog.clickhouse.option.async", "false")
+    // extended configurations
+    .set("spark.clickhouse.write.batchSize", "2")
+    .set("spark.clickhouse.write.maxRetry", "2")
+    .set("spark.clickhouse.write.retryInterval", "1")
+    .set("spark.clickhouse.write.retryableErrorCodes", "241")
+    .set("spark.clickhouse.write.write.repartitionNum", "0")
+    .set("spark.clickhouse.read.format", "json")
+    .set("spark.clickhouse.write.format", "json")
 
-  override def cmdRunnerOptions: Map[String, String] = {
-    val _options = Map(
-      "host" -> clickhouseHost,
-      "http_port" -> clickhouseHttpPort.toString,
-      "protocol" -> "http",
-      "user" -> CLICKHOUSE_USER,
-      "password" -> CLICKHOUSE_PASSWORD,
-      "database" -> CLICKHOUSE_DB
-    )
-    if (grpcEnabled) _options + ("grpc_port" -> clickhouseGrpcPort.toString) else _options
-  }
+  override def cmdRunnerOptions: Map[String, String] = Map(
+    "host" -> clickhouseHost,
+    "http_port" -> clickhouseHttpPort.toString,
+    "protocol" -> "http",
+    "user" -> CLICKHOUSE_USER,
+    "password" -> CLICKHOUSE_PASSWORD,
+    "database" -> CLICKHOUSE_DB
+  )
 
   def withTable(
     db: String,

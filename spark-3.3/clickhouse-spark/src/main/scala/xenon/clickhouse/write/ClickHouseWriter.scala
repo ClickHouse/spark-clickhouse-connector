@@ -16,8 +16,6 @@ package xenon.clickhouse.write
 
 import com.clickhouse.client.ClickHouseProtocol
 import com.clickhouse.data.ClickHouseCompression
-import net.jpountz.lz4.LZ4FrameOutputStream
-import net.jpountz.lz4.LZ4FrameOutputStream.BLOCKSIZE
 import org.apache.commons.io.IOUtils
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection}
 import org.apache.spark.sql.catalyst.{expressions, InternalRow}
@@ -156,8 +154,6 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   private def renewCompressedOutput(): Unit = {
     val compressedOutput = (codec, protocol) match {
       case (ClickHouseCompression.NONE, _) => observableSerializedOutput
-      case (ClickHouseCompression.LZ4, ClickHouseProtocol.GRPC) =>
-        new LZ4FrameOutputStream(observableSerializedOutput, BLOCKSIZE.SIZE_4MB)
       case (ClickHouseCompression.LZ4, ClickHouseProtocol.HTTP) =>
         // clickhouse http client forces compressed output stream
         // new Lz4OutputStream(observableSerializedOutput, 4 * 1024 * 1024, null)

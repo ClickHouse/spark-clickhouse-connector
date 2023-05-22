@@ -45,7 +45,7 @@ subprojects {
                         pom {
                             name = "Spark ClickHouse Connector"
                             url = "https://github.com/housepower/spark-clickhouse-connector"
-                            description = "Spark ClickHouse Connector build on DataSourceV2 API and gRPC protocol."
+                            description = "Spark ClickHouse Connector build on Apache Spark DataSourceV2 API."
                             developers {
                                 developer {
                                     id = 'pan3793'

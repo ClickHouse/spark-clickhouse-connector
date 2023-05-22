@@ -23,14 +23,15 @@ class TPCDSClusterSuite extends SparkClickHouseClusterTest {
 
   override protected def sparkConf: SparkConf = super.sparkConf
     .set("spark.sql.catalog.tpcds", "org.apache.kyuubi.spark.connector.tpcds.TPCDSCatalog")
-    .set("spark.sql.catalog.clickhouse_s1r1.protocol", if (grpcEnabled) "grpc" else "http")
-    .set("spark.sql.catalog.clickhouse_s1r2.protocol", if (grpcEnabled) "grpc" else "http")
-    .set("spark.sql.catalog.clickhouse_s2r1.protocol", if (grpcEnabled) "grpc" else "http")
-    .set("spark.sql.catalog.clickhouse_s2r2.protocol", if (grpcEnabled) "grpc" else "http")
-    .set("spark.clickhouse.read.compression.codec", if (grpcEnabled) "none" else "lz4")
+    .set("spark.sql.catalog.clickhouse_s1r1.protocol", "http")
+    .set("spark.sql.catalog.clickhouse_s1r2.protocol", "http")
+    .set("spark.sql.catalog.clickhouse_s2r1.protocol", "http")
+    .set("spark.sql.catalog.clickhouse_s2r2.protocol", "http")
+    .set("spark.clickhouse.read.compression.codec", "lz4")
     .set("spark.clickhouse.write.batchSize", "100000")
-    .set("spark.clickhouse.write.compression.codec", if (grpcEnabled) "none" else "lz4")
+    .set("spark.clickhouse.write.compression.codec", "lz4")
     .set("spark.clickhouse.write.distributed.convertLocal", "true")
+    .set("spark.clickhouse.write.format", "json")
 
   test("Cluster: TPC-DS sf1 write and count(*)") {
     withDatabase("tpcds_sf1_cluster") {
