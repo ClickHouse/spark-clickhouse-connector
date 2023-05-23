@@ -30,6 +30,15 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
     new CompositeFunctionRegistry(Array(StaticFunctionRegistry, dynamicFunctionRegistry))
   }
 
+  def product[A](xs: Seq[Seq[A]]): Seq[Seq[A]] =
+    xs.toList match {
+      case Nil => Seq(Seq())
+      case head :: tail => for {
+          h <- head
+          t <- product(tail)
+        } yield h +: t
+    }
+
   def runTest(funcSparkName: String, funcCkName: String, stringVal: String): Unit = {
     val sparkResult = spark.sql(
       s"""SELECT
@@ -60,6 +69,30 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
     test(s"UDF $funcSparkName") {
       Seq("spark-clickhouse-connector", "Apache Spark", "ClickHouse", "Yandex", "热爱", "🇨🇳").foreach { rawStringVal =>
         val stringVal = s"\'$rawStringVal\'"
+        runTest(funcSparkName, funcCkName, stringVal)
+      }
+    }
+  }
+
+  Seq(
+    "clickhouse_murmurHash3_64",
+    "clickhouse_murmurHash3_32",
+    "clickhouse_murmurHash2_64",
+    "clickhouse_murmurHash2_32"
+  ).foreach { funcSparkName =>
+    val funcCkName = dummyRegistry.getFuncMappingBySpark(funcSparkName)
+    test(s"UDF $funcSparkName multiple args") {
+      val strings = Seq(
+        "\'spark-clickhouse-connector\'",
+        "\'Apache Spark\'",
+        "\'ClickHouse\'",
+        "\'Yandex\'",
+        "\'热爱\'",
+        "\'🇨🇳\'"
+      )
+      val test_5 = strings.combinations(5)
+      test_5.foreach { seq =>
+        val stringVal = seq.mkString(", ")
         runTest(funcSparkName, funcCkName, stringVal)
       }
     }

@@ -18,61 +18,35 @@ import org.apache.commons.codec.digest.MurmurHash3
 import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFunction, UnboundFunction}
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
-import xenon.clickhouse.func.ClickhouseEquivFunction
+import xenon.clickhouse.func.{ClickhouseEquivFunction, MultiArgsHash, Util}
 
-object MurmurHash3_64 extends UnboundFunction with ScalarFunction[Long] with ClickhouseEquivFunction {
+object MurmurHash3_64 extends MultiArgsHash {
+  // https://github.com/ClickHouse/ClickHouse/blob/a4fe3fbb1f288b4e066eb3781b2c7b9e238a4aa3/src/Functions/FunctionsHashing.h#L543
 
-  override def name: String = "clickhouse_murmurHash3_64"
-
-  override def canonicalName: String = s"clickhouse.$name"
-
+  override protected def funcName: String = "clickhouse_murmurHash3_64"
   override val ckFuncNames: Array[String] = Array("murmurHash3_64")
 
-  override def description: String = s"$name: (value: string) => hash_value: long"
-
-  override def bind(inputType: StructType): BoundFunction = inputType.fields match {
-    case Array(StructField(_, StringType, _, _)) => this
-    case _ => throw new UnsupportedOperationException(s"Expect 1 STRING argument. $description")
-  }
-
-  override def inputTypes: Array[DataType] = Array(StringType)
-
-  override def resultType: DataType = LongType
-
-  override def isResultNullable: Boolean = false
-
-  def invoke(values: UTF8String): Long = {
+  override def invokeBase(value: UTF8String): Long = {
     // ignore UInt64 vs Int64
-    val data = values.getBytes
+    val data = value.getBytes
     val hashes = MurmurHash3.hash128x64(data, 0, data.length, 0)
     hashes(0) ^ hashes(1)
   }
+
+  override def combineHashes(v1: Long, v2: Long): Long = Util.intHash64Impl(v1) ^ v2
 }
 
-object MurmurHash3_32 extends UnboundFunction with ScalarFunction[Long] with ClickhouseEquivFunction {
+object MurmurHash3_32 extends MultiArgsHash {
+  // https://github.com/ClickHouse/ClickHouse/blob/a4fe3fbb1f288b4e066eb3781b2c7b9e238a4aa3/src/Functions/FunctionsHashing.h#L519
 
-  override def name: String = "clickhouse_murmurHash3_32"
-
-  override def canonicalName: String = s"clickhouse.$name"
-
+  override protected def funcName: String = "clickhouse_murmurHash3_32"
   override val ckFuncNames: Array[String] = Array("murmurHash3_32")
 
-  override def description: String = s"$name: (value: string) => hash_value: long"
-
-  override def bind(inputType: StructType): BoundFunction = inputType.fields match {
-    case Array(StructField(_, StringType, _, _)) => this
-    case _ => throw new UnsupportedOperationException(s"Expect 1 STRING argument. $description")
+  override def invokeBase(value: UTF8String): Long = {
+    val data = value.getBytes
+    val v = MurmurHash3.hash32x86(data, 0, data.length, 0)
+    Util.toUInt32Range(v)
   }
 
-  override def inputTypes: Array[DataType] = Array(StringType)
-
-  override def resultType: DataType = LongType
-
-  override def isResultNullable: Boolean = false
-
-  def invoke(values: UTF8String): Long = {
-    val data = values.getBytes
-    val v = MurmurHash3.hash32x86(data, 0, data.length, 0).toLong
-    if (v < 0) v + (1L << 32) else v
-  }
+  override def combineHashes(v1: Long, v2: Long): Long = Util.toUInt32Range(Util.int32Impl(v1) ^ v2)
 }
