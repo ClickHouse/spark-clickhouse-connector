@@ -25,7 +25,8 @@ object SchemaUtils {
     val catalystType = chColumn.getDataType match {
       case Nothing => NullType
       case Bool => BooleanType
-      case String | FixedString | JSON | UUID | Enum8 | Enum16 | IPv4 | IPv6 => StringType
+      case String | JSON | UUID | Enum8 | Enum16 | IPv4 | IPv6 => StringType
+      case FixedString => BinaryType
       case Int8 => ByteType
       case UInt8 | Int16 => ShortType
       case UInt16 | Int32 => IntegerType
