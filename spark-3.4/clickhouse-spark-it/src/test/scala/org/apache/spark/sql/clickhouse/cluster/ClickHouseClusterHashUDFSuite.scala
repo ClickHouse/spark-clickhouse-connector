@@ -55,7 +55,10 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
     ).head.getString(0)
     val clickhouseResultJson = om.readTree(clickhouseResultJsonStr)
     val clickhouseHashVal = JLong.parseUnsignedLong(clickhouseResultJson.get("hash_value").asText)
-    assert(sparkHashVal == clickhouseHashVal)
+    assert(
+      sparkHashVal == clickhouseHashVal,
+      s"ck_function: $funcCkName, spark_function: $funcSparkName, args: ($stringVal)"
+    )
   }
 
   Seq(
@@ -63,11 +66,20 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
     "clickhouse_murmurHash3_64",
     "clickhouse_murmurHash3_32",
     "clickhouse_murmurHash2_64",
-    "clickhouse_murmurHash2_32"
+    "clickhouse_murmurHash2_32",
+    "clickhouse_cityHash64"
   ).foreach { funcSparkName =>
     val funcCkName = dummyRegistry.getFuncMappingBySpark(funcSparkName)
     test(s"UDF $funcSparkName") {
-      Seq("spark-clickhouse-connector", "Apache Spark", "ClickHouse", "Yandex", "热爱", "🇨🇳").foreach { rawStringVal =>
+      Seq(
+        "spark-clickhouse-connector",
+        "Apache Spark",
+        "ClickHouse",
+        "Yandex",
+        "热爱",
+        "在传统的行式数据库系统中，数据按如下顺序存储：",
+        "🇨🇳"
+      ).foreach { rawStringVal =>
         val stringVal = s"\'$rawStringVal\'"
         runTest(funcSparkName, funcCkName, stringVal)
       }
@@ -78,7 +90,8 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
     "clickhouse_murmurHash3_64",
     "clickhouse_murmurHash3_32",
     "clickhouse_murmurHash2_64",
-    "clickhouse_murmurHash2_32"
+    "clickhouse_murmurHash2_32",
+    "clickhouse_cityHash64"
   ).foreach { funcSparkName =>
     val funcCkName = dummyRegistry.getFuncMappingBySpark(funcSparkName)
     test(s"UDF $funcSparkName multiple args") {
@@ -88,6 +101,7 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
         "\'ClickHouse\'",
         "\'Yandex\'",
         "\'热爱\'",
+        "\'在传统的行式数据库系统中，数据按如下顺序存储：\'",
         "\'🇨🇳\'"
       )
       val test_5 = strings.combinations(5)
