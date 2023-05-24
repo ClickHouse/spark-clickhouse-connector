@@ -160,7 +160,7 @@ class SchemaUtilsSuite extends AnyFunSuite {
     ),
     TestBean(
       "FixedString(5)",
-      StringType,
+      BinaryType,
       nullable = false
     ),
     TestBean(
@@ -170,7 +170,7 @@ class SchemaUtilsSuite extends AnyFunSuite {
     ),
     TestBean(
       "LowCardinality(FixedString(5))",
-      StringType,
+      BinaryType,
       nullable = false
     ),
     TestBean(
