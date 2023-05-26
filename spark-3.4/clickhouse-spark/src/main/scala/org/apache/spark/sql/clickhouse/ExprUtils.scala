@@ -33,26 +33,11 @@ import scala.util.{Failure, Success, Try}
 
 class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with Serializable {
 
-  private def toSplitWithModulo(shardingKey: Expr, cluster: ClusterSpec): FuncExpr =
-    FuncExpr("positiveModulo", List(shardingKey, StringLiteral(cluster.totalWeight.toString)))
-
   def toSparkPartitions(partitionKey: Option[List[Expr]]): Array[Transform] =
     partitionKey.seq.flatten.flatten(toSparkTransformOpt).toArray
 
-  def toSparkSplits(
-    shardingKey: Option[Expr],
-    partitionKey: Option[List[Expr]],
-    cluster: Option[ClusterSpec]
-  ): Array[Transform] =
-    // Pmod by total weight * constant. Note that this key will be further hashed by spark. Reasons of doing this:
-    //   - Enlarged range of modulo to avoid hash collision of small number of shards, hence mitigate data skew caused
-    //     by this.
-    //   - Still distribute data from one shard to only a subset of executors. If we do not apply modulo (instead we
-    //     need to apply module during sorting in `toSparkSortOrders`), data belongs to shard 1 will be sorted in the
-    //     front for all tasks, resulting in instant high pressure for shard 1 when stage starts.
-    (shardingKey.map(k =>
-      FuncExpr("positiveModulo", List(k, StringLiteral((cluster.get.totalWeight * 10).toString)))
-    ).seq ++ partitionKey.seq.flatten).flatten(toSparkTransformOpt).toArray
+  def toSparkSplits(shardingKey: Option[Expr], partitionKey: Option[List[Expr]]): Array[Transform] =
+    (shardingKey.seq ++ partitionKey.seq.flatten).flatten(toSparkTransformOpt).toArray
 
   def toSparkSortOrders(
     shardingKeyIgnoreRand: Option[Expr],
@@ -60,7 +45,10 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
     sortingKey: Option[List[OrderExpr]],
     cluster: Option[ClusterSpec]
   ): Array[SortOrder] =
-    toSparkSplits(shardingKeyIgnoreRand, partitionKey, cluster).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
+    toSparkSplits(
+      shardingKeyIgnoreRand.map(k => ExprUtils.toSplitWithModulo(k, cluster.get.totalWeight)),
+      partitionKey
+    ).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
       sortingKey.seq.flatten.flatten { case OrderExpr(expr, asc, nullFirst) =>
         val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
         val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
@@ -158,4 +146,7 @@ class ExprUtils(functionRegistry: FunctionRegistry) extends SQLConfHelper with S
 
 object ExprUtils {
   def apply(functionRegistry: FunctionRegistry): ExprUtils = new ExprUtils(functionRegistry)
+
+  def toSplitWithModulo(shardingKey: Expr, weight: Int): FuncExpr =
+    FuncExpr("positiveModulo", List(shardingKey, StringLiteral(weight.toString)))
 }

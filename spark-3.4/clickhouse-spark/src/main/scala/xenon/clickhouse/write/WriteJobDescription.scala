@@ -62,10 +62,22 @@ case class WriteJobDescription(
   }
 
   def sparkSplits: Array[Transform] =
+    // Pmod by total weight * constant. Note that this key will be further hashed by spark. Reasons of doing this:
+    //   - Enlarged range of modulo to avoid hash collision of small number of shards, hence mitigate data skew caused
+    //     by this.
+    //   - Still distribute data from one shard to only a subset of executors. If we do not apply modulo (instead we
+    //     need to apply module during sorting in `toSparkSortOrders`), data belongs to shard 1 will be sorted in the
+    //     front for all tasks, resulting in instant high pressure for shard 1 when stage starts.
     if (writeOptions.repartitionByPartition) {
-      ExprUtils(functionRegistry).toSparkSplits(shardingKeyIgnoreRand, partitionKey, cluster)
+      ExprUtils(functionRegistry).toSparkSplits(
+        shardingKeyIgnoreRand.map(k => ExprUtils.toSplitWithModulo(k, cluster.get.totalWeight * 10)),
+        partitionKey
+      )
     } else {
-      ExprUtils(functionRegistry).toSparkSplits(shardingKeyIgnoreRand, None, cluster)
+      ExprUtils(functionRegistry).toSparkSplits(
+        shardingKeyIgnoreRand.map(k => ExprUtils.toSplitWithModulo(k, cluster.get.totalWeight * 10)),
+        None
+      )
     }
 
   def sparkSortOrders: Array[SortOrder] = {
