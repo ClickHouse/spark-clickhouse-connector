@@ -23,7 +23,7 @@ abstract class MultiArgsHash extends UnboundFunction with ClickhouseEquivFunctio
     // must not be private object, nor do it successors, because spark would compile them
     override def canonicalName: String = s"clickhouse.$name"
     override def resultType: DataType = LongType
-    override def isResultNullable: Boolean = false
+    override def toString: String = name
   }
 
   object Arg1 extends Base {

@@ -27,13 +27,14 @@ object Hours extends UnboundFunction with ScalarFunction[Int] with ClickhouseEqu
 
   override def canonicalName: String = s"clickhouse.$name"
 
+  override def toString: String = name
+
   override val ckFuncNames: Array[String] = Array("toHour", "HOUR")
 
   override def description: String = s"$name: (time: timestamp) => shard_num: int"
 
   override def bind(inputType: StructType): BoundFunction = inputType.fields match {
-    case Array(StructField(_, TimestampType, _, _)) => this
-    case Array(StructField(_, StringType, _, _)) => this
+    case Array(StructField(_, TimestampType, _, _)) | Array(StructField(_, TimestampNTZType, _, _)) => this
     case _ => throw new UnsupportedOperationException(s"Expect 1 TIMESTAMP argument. $description")
   }
 

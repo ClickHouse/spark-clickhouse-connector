@@ -33,6 +33,8 @@ object ClickHouseXxHash64 extends UnboundFunction with ScalarFunction[Long] with
 
   override def canonicalName: String = s"clickhouse.$name"
 
+  override def toString: String = name
+
   override val ckFuncNames: Array[String] = Array("xxHash64")
 
   override def description: String = s"$name: (value: string) => hash_value: long"

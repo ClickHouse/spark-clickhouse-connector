@@ -24,6 +24,8 @@ object Pmod extends UnboundFunction with ScalarFunction[Long] with ClickhouseEqu
 
   override def canonicalName: String = s"clickhouse.$name"
 
+  override def toString: String = name
+
   override val ckFuncNames: Array[String] = Array("positiveModulo", "positive_modulo", "pmod")
 
   override def description: String = s"$name: (a: long, b: long) => mod: long"
