@@ -70,12 +70,12 @@ case class WriteJobDescription(
     //     front for all tasks, resulting in instant high pressure for shard 1 when stage starts.
     if (writeOptions.repartitionByPartition) {
       ExprUtils(functionRegistry).toSparkSplits(
-        shardingKeyIgnoreRand.map(k => ExprUtils.toSplitWithModulo(k, cluster.get.totalWeight * 10)),
+        shardingKeyIgnoreRand.map(k => ExprUtils.toSplitWithModulo(k, cluster.get.totalWeight * 5)),
         partitionKey
       )
     } else {
       ExprUtils(functionRegistry).toSparkSplits(
-        shardingKeyIgnoreRand.map(k => ExprUtils.toSplitWithModulo(k, cluster.get.totalWeight * 10)),
+        shardingKeyIgnoreRand.map(k => ExprUtils.toSplitWithModulo(k, cluster.get.totalWeight * 5)),
         None
       )
     }
