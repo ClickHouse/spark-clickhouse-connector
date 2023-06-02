@@ -209,7 +209,7 @@ class ClickHouseCatalog extends TableCatalog
 
     val partitionsClause = partitions match {
       case transforms if transforms.nonEmpty =>
-        transforms.map(ExprUtils(functionRegistry).toClickHouse(_).sql).mkString("PARTITION BY (", ", ", ")")
+        transforms.map(ExprUtils.toClickHouse(_)(functionRegistry).sql).mkString("PARTITION BY (", ", ", ")")
       case _ => ""
     }
 

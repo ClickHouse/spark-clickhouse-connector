@@ -133,11 +133,11 @@ case class ClickHouseTable(
   private lazy val metadataSchema: StructType =
     StructType(metadataColumns.map(_.asInstanceOf[ClickHouseMetadataColumn].toStructField))
 
-  override lazy val partitioning: Array[Transform] = ExprUtils(functionRegistry).toSparkPartitions(partitionKey)
+  override lazy val partitioning: Array[Transform] = ExprUtils.toSparkPartitions(partitionKey)(functionRegistry)
 
   override lazy val partitionSchema: StructType = StructType(
     partitioning.map(partTransform =>
-      ExprUtils(functionRegistry).inferTransformSchema(schema, metadataSchema, partTransform)
+      ExprUtils.inferTransformSchema(schema, metadataSchema, partTransform)(functionRegistry)
     )
   )
 

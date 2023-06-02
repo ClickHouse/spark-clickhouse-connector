@@ -63,7 +63,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   protected lazy val shardExpr: Option[Expression] = writeJob.sparkShardExpr match {
     case None => None
     case Some(v2Expr) =>
-      val catalystExpr = ExprUtils(writeJob.functionRegistry).toCatalyst(v2Expr, writeJob.dataSetSchema.fields)
+      val catalystExpr = ExprUtils.toCatalyst(v2Expr, writeJob.dataSetSchema.fields)(writeJob.functionRegistry)
       catalystExpr match {
         case BoundReference(_, dataType, _)
             if dataType.isInstanceOf[ByteType] // list all integral types here because we can not access `IntegralType`
