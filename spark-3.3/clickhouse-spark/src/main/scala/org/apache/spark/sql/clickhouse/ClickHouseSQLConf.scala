@@ -188,7 +188,7 @@ object ClickHouseSQLConf {
   val USE_NULLABLE_QUERY_SCHEMA: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.useNullableQuerySchema")
       .doc("If `true`, mark all the fields of the query schema as nullable when executing " +
-        "`CREATE/REPLACE TABLE ... AS SELECT ...` and creating the table. Note, this " +
+        "`CREATE/REPLACE TABLE ... AS SELECT ...` on creating the table. Note, this " +
         "configuration requires SPARK-43390(available in Spark 3.5), w/o this patch, " +
         "it always acts as `true`.")
       .version("0.8.0")
