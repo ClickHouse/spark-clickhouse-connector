@@ -16,11 +16,11 @@ package xenon.clickhouse.func
 
 object Util {
   def intHash64Impl(x: Long): Long =
-    // https://github.com/ClickHouse/ClickHouse/blob/f4c73e94d21c6de0b1af7da3c42c2db6bf97fc73/src/Functions/FunctionsHashing.h#L143
+    // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Functions/FunctionsHashing.h#L140
     intHash64(x ^ 0x4cf2d2baae6da887L)
 
   def intHash64(l: Long): Long = {
-    // https://github.com/ClickHouse/ClickHouse/blob/f4c73e94d21c6de0b1af7da3c42c2db6bf97fc73/src/Common/HashTable/Hash.h#L28
+    // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Common/HashTable/Hash.h#L26
     var x = l
     x ^= x >>> 33;
     x *= 0xff51afd7ed558ccdL;
@@ -31,11 +31,11 @@ object Util {
   }
 
   def int32Impl(x: Long): Int =
-    // https://github.com/ClickHouse/ClickHouse/blob/a05088ab731f1e625ce5197829f59b765c94474f/src/Functions/FunctionsHashing.h#L133
+    // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Functions/FunctionsHashing.h#L133
     intHash32(x, 0x75d9543de018bf45L)
 
   def intHash32(l: Long, salt: Long): Int = {
-    // https://github.com/ClickHouse/ClickHouse/blob/a05088ab731f1e625ce5197829f59b765c94474f/src/Common/HashTable/Hash.h#L502
+    // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Common/HashTable/Hash.h#L502
     var x = l
 
     x ^= salt;

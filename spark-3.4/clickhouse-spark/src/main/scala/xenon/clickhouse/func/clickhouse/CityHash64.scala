@@ -20,7 +20,7 @@ import xenon.clickhouse.func.MultiArgsHash
 import xenon.clickhouse.func.clickhouse.cityhash.{CityHash_v1_0_2, UInt128}
 
 object CityHash64 extends MultiArgsHash {
-  // https://github.com/ClickHouse/ClickHouse/blob/a4fe3fbb1f288b4e066eb3781b2c7b9e238a4aa3/src/Functions/FunctionsHashing.h#L694
+  // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Functions/FunctionsHashing.h#L694
 
   override protected def funcName: String = "clickhouse_cityHash64"
   override val ckFuncNames: Array[String] = Array("cityHash64")

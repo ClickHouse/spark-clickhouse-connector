@@ -21,7 +21,7 @@ import org.apache.spark.unsafe.types.UTF8String
 import xenon.clickhouse.func.{ClickhouseEquivFunction, MultiArgsHash, Util}
 
 object MurmurHash2_64 extends MultiArgsHash {
-  // https://github.com/ClickHouse/ClickHouse/blob/a4fe3fbb1f288b4e066eb3781b2c7b9e238a4aa3/src/Functions/FunctionsHashing.h#L460
+  // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Functions/FunctionsHashing.h#L460
 
   override protected def funcName: String = "clickhouse_murmurHash2_64"
   override val ckFuncNames: Array[String] = Array("murmurHash2_64")
@@ -36,7 +36,7 @@ object MurmurHash2_64 extends MultiArgsHash {
 }
 
 object MurmurHash2_32 extends MultiArgsHash {
-  // https://github.com/ClickHouse/ClickHouse/blob/a4fe3fbb1f288b4e066eb3781b2c7b9e238a4aa3/src/Functions/FunctionsHashing.h#L519
+  // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Functions/FunctionsHashing.h#L519
 
   override protected def funcName: String = "clickhouse_murmurHash2_32"
   override val ckFuncNames: Array[String] = Array("murmurHash2_32")
