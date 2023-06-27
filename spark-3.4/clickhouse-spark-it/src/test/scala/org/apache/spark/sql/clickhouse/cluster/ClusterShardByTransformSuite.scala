@@ -94,16 +94,21 @@ class ClusterShardByTransformSuite extends SparkClickHouseClusterTest {
   }
 
   Seq(
+    // wait for SPARK-44180 to be fixed, then add implicit cast test cases
     ("toYear", Array("create_date")),
+//    ("toYear", Array("create_time")),
     ("toYYYYMM", Array("create_date")),
+//    ("toYYYYMM", Array("create_time")),
     ("toYYYYMMDD", Array("create_date")),
+//    ("toYYYYMMDD", Array("create_time")),
     ("toHour", Array("create_time")),
     ("xxHash64", Array("value")),
     ("murmurHash2_64", Array("value")),
     ("murmurHash2_32", Array("value")),
     ("murmurHash3_64", Array("value")),
     ("murmurHash3_32", Array("value")),
-    ("cityHash64", Array("value"))
+    ("cityHash64", Array("value")),
+    ("positiveModulo", Array("toYYYYMM(create_date)", "10"))
   ).foreach {
     case (func_name: String, func_args: Array[String]) =>
       test(s"shard by $func_name(${func_args.mkString(",")})")(runTest(func_name, func_args))

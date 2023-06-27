@@ -15,9 +15,15 @@
 package org.apache.spark.sql.clickhouse
 
 import org.apache.spark.sql.AnalysisException
-import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.NoSuchFunctionException
-import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, TransformExpression}
+import org.apache.spark.sql.catalyst.{expressions, SQLConfHelper}
+import org.apache.spark.sql.catalyst.expressions.{
+  BoundReference,
+  Cast,
+  Expression,
+  TransformExpression,
+  V2ExpressionUtils
+}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.IGNORE_UNSUPPORTED_TRANSFORM
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFunction, UnboundFunction}
@@ -89,6 +95,20 @@ object ExprUtils extends SQLConfHelper with Serializable {
     }
   }
 
+  def resolveTransformCatalyst(
+    catalystExpr: Expression,
+    timeZoneId: Option[String] = None
+  ): Expression = catalystExpr match {
+    case TransformExpression(function: ScalarFunction[_], args, _) =>
+      val resolvedArgs: Seq[Expression] = args.map(resolveTransformCatalyst(_, timeZoneId))
+      val castedArgs: Seq[Expression] = resolvedArgs.zip(function.inputTypes()).map {
+        case (arg, expectedType) if !arg.dataType.sameType(expectedType) => Cast(arg, expectedType, timeZoneId)
+        case (arg, _) => arg
+      }
+      V2ExpressionUtils.resolveScalarFunction(function, castedArgs)
+    case other => other
+  }
+
   def toCatalyst(
     v2Expr: V2Expression,
     fields: Array[StructField],
@@ -108,6 +128,7 @@ object ExprUtils extends SQLConfHelper with Serializable {
           .map(bound => TransformExpression(bound, catalystArgs)).getOrElse {
             throw CHClientException(s"Unsupported expression: $v2Expr")
           }
+      case literal: LiteralValue[Any] => expressions.Literal(literal.value)
       case _ => throw CHClientException(
           s"Unsupported expression: $v2Expr"
         )

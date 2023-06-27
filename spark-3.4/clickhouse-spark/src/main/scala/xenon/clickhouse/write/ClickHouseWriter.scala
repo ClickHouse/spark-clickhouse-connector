@@ -17,16 +17,9 @@ package xenon.clickhouse.write
 import com.clickhouse.client.ClickHouseProtocol
 import com.clickhouse.data.ClickHouseCompression
 import org.apache.commons.io.IOUtils
-import org.apache.spark.sql.catalyst.expressions.{
-  BoundReference,
-  Expression,
-  SafeProjection,
-  TransformExpression,
-  V2ExpressionUtils
-}
+import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, SafeProjection, TransformExpression}
 import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.clickhouse.ExprUtils
-import org.apache.spark.sql.connector.catalog.functions.ScalarFunction
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types._
@@ -86,23 +79,21 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   protected lazy val shardProjection: Option[expressions.Projection] = shardExpr
     .filter(_ => writeJob.writeOptions.convertDistributedToLocal)
-    .flatMap(expr =>
-      expr match {
-        case BoundReference(_, _, _) =>
-          Some(SafeProjection.create(Seq(expr)))
-        case TransformExpression(function, args, _) =>
-          val retType = function.resultType() match {
-            case ByteType => classOf[Byte]
-            case ShortType => classOf[Short]
-            case IntegerType => classOf[Int]
-            case LongType => classOf[Long]
-            case _ => throw CHClientException(s"Invalid return data type for function ${function.name()}," +
-                s"sharding field: ${function.resultType()}")
-          }
-          val expr = V2ExpressionUtils.resolveScalarFunction(function.asInstanceOf[ScalarFunction[retType.type]], args)
-          Some(SafeProjection.create(Seq(expr)))
-      }
-    )
+    .flatMap {
+      case expr: BoundReference =>
+        Some(SafeProjection.create(Seq(expr)))
+      case expr @ TransformExpression(function, _, _) =>
+        // result type must be integer class
+        function.resultType() match {
+          case ByteType => classOf[Byte]
+          case ShortType => classOf[Short]
+          case IntegerType => classOf[Int]
+          case LongType => classOf[Long]
+          case _ => throw CHClientException(s"Invalid return data type for function ${function.name()}," +
+              s"sharding field: ${function.resultType()}")
+        }
+        Some(SafeProjection.create(Seq(ExprUtils.resolveTransformCatalyst(expr, Some(writeJob.tz.getId)))))
+    }
 
   // put the node select strategy in executor side because we need to calculate shard and don't know the records
   // util DataWriter#write(InternalRow) invoked.
