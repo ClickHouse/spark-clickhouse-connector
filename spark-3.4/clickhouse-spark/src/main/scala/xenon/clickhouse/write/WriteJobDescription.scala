@@ -41,8 +41,6 @@ case class WriteJobDescription(
   functionRegistry: FunctionRegistry
 ) {
 
-  implicit val _functionRegistry: FunctionRegistry = functionRegistry
-
   def targetDatabase(convert2Local: Boolean): String = tableEngineSpec match {
     case dist: DistributedEngineSpec if convert2Local => dist.local_db
     case _ => tableSpec.database
@@ -59,7 +57,7 @@ case class WriteJobDescription(
   }
 
   def sparkShardExpr: Option[Expression] = shardingKeyIgnoreRand match {
-    case Some(expr) => ExprUtils.toSparkTransformOpt(expr)
+    case Some(expr) => ExprUtils.toSparkTransformOpt(expr, functionRegistry)
     case _ => None
   }
 
@@ -73,18 +71,20 @@ case class WriteJobDescription(
     if (writeOptions.repartitionByPartition) {
       ExprUtils.toSparkSplits(
         shardingKeyIgnoreRand.map(k => ExprUtils.toSplitWithModulo(k, cluster.get.totalWeight * 5)),
-        partitionKey
+        partitionKey,
+        functionRegistry
       )
     } else {
       ExprUtils.toSparkSplits(
         shardingKeyIgnoreRand.map(k => ExprUtils.toSplitWithModulo(k, cluster.get.totalWeight * 5)),
-        None
+        None,
+        functionRegistry
       )
     }
 
   def sparkSortOrders: Array[SortOrder] = {
     val _partitionKey = if (writeOptions.localSortByPartition) partitionKey else None
     val _sortingKey = if (writeOptions.localSortByKey) sortingKey else None
-    ExprUtils.toSparkSortOrders(shardingKeyIgnoreRand, _partitionKey, _sortingKey, cluster)
+    ExprUtils.toSparkSortOrders(shardingKeyIgnoreRand, _partitionKey, _sortingKey, cluster, functionRegistry)
   }
 }

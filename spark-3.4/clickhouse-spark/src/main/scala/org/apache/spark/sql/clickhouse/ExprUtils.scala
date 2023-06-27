@@ -33,38 +33,44 @@ import scala.util.{Failure, Success, Try}
 
 object ExprUtils extends SQLConfHelper with Serializable {
 
-  def toSparkPartitions(partitionKey: Option[List[Expr]])(implicit
+  def toSparkPartitions(
+    partitionKey: Option[List[Expr]],
     functionRegistry: FunctionRegistry
   ): Array[Transform] =
-    partitionKey.seq.flatten.flatten(toSparkTransformOpt(_)).toArray
+    partitionKey.seq.flatten.flatten(toSparkTransformOpt(_, functionRegistry)).toArray
 
-  def toSparkSplits(shardingKey: Option[Expr], partitionKey: Option[List[Expr]])(implicit
+  def toSparkSplits(
+    shardingKey: Option[Expr],
+    partitionKey: Option[List[Expr]],
     functionRegistry: FunctionRegistry
   ): Array[Transform] =
-    (shardingKey.seq ++ partitionKey.seq.flatten).flatten(toSparkTransformOpt(_)).toArray
+    (shardingKey.seq ++ partitionKey.seq.flatten).flatten(toSparkTransformOpt(_, functionRegistry)).toArray
 
   def toSparkSortOrders(
     shardingKeyIgnoreRand: Option[Expr],
     partitionKey: Option[List[Expr]],
     sortingKey: Option[List[OrderExpr]],
-    cluster: Option[ClusterSpec]
-  )(implicit functionRegistry: FunctionRegistry): Array[SortOrder] =
+    cluster: Option[ClusterSpec],
+    functionRegistry: FunctionRegistry
+  ): Array[SortOrder] =
     toSparkSplits(
       shardingKeyIgnoreRand.map(k => ExprUtils.toSplitWithModulo(k, cluster.get.totalWeight)),
-      partitionKey
+      partitionKey,
+      functionRegistry
     ).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
       sortingKey.seq.flatten.flatten { case OrderExpr(expr, asc, nullFirst) =>
         val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
         val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
-        toSparkTransformOpt(expr).map(trans =>
+        toSparkTransformOpt(expr, functionRegistry).map(trans =>
           Expressions.sort(trans, direction, nullOrder)
         )
       }.toArray
 
   private def loadV2FunctionOpt(
     name: String,
-    args: Seq[Expression]
-  )(implicit functionRegistry: FunctionRegistry): Option[BoundFunction] = {
+    args: Seq[Expression],
+    functionRegistry: FunctionRegistry
+  ): Option[BoundFunction] = {
     def loadFunction(ident: Identifier): UnboundFunction =
       functionRegistry.load(ident.name).getOrElse(throw new NoSuchFunctionException(ident))
     val inputType = StructType(args.zipWithIndex.map {
@@ -85,10 +91,11 @@ object ExprUtils extends SQLConfHelper with Serializable {
 
   def toCatalyst(
     v2Expr: V2Expression,
-    fields: Array[StructField]
-  )(implicit functionRegistry: FunctionRegistry): Expression =
+    fields: Array[StructField],
+    functionRegistry: FunctionRegistry
+  ): Expression =
     v2Expr match {
-      case IdentityTransform(ref) => toCatalyst(ref, fields)
+      case IdentityTransform(ref) => toCatalyst(ref, fields, functionRegistry)
       case ref: NamedReference if ref.fieldNames.length == 1 =>
         val (field, ordinal) = fields
           .zipWithIndex
@@ -96,17 +103,18 @@ object ExprUtils extends SQLConfHelper with Serializable {
           .getOrElse(throw CHClientException(s"Invalid field reference: $ref"))
         BoundReference(ordinal, field.dataType, field.nullable)
       case t: Transform =>
-        val catalystArgs = t.arguments().map(toCatalyst(_, fields))
-        loadV2FunctionOpt(t.name(), catalystArgs).map(bound => TransformExpression(bound, catalystArgs)).getOrElse {
-          throw CHClientException(s"Unsupported expression: $v2Expr")
-        }
+        val catalystArgs = t.arguments().map(toCatalyst(_, fields, functionRegistry))
+        loadV2FunctionOpt(t.name(), catalystArgs, functionRegistry)
+          .map(bound => TransformExpression(bound, catalystArgs)).getOrElse {
+            throw CHClientException(s"Unsupported expression: $v2Expr")
+          }
       case _ => throw CHClientException(
           s"Unsupported expression: $v2Expr"
         )
     }
 
-  def toSparkTransformOpt(expr: Expr)(implicit functionRegistry: FunctionRegistry): Option[Transform] =
-    Try(toSparkExpression(expr)) match {
+  def toSparkTransformOpt(expr: Expr, functionRegistry: FunctionRegistry): Option[Transform] =
+    Try(toSparkExpression(expr, functionRegistry)) match {
       // need this function because spark `Table`'s `partitioning` field should be `Transform`
       case Success(t: Transform) => Some(t)
       case Success(_) => None
@@ -114,18 +122,21 @@ object ExprUtils extends SQLConfHelper with Serializable {
       case Failure(rethrow) => throw new AnalysisException(rethrow.getMessage, cause = Some(rethrow))
     }
 
-  def toSparkExpression(expr: Expr)(implicit functionRegistry: FunctionRegistry): V2Expression =
+  def toSparkExpression(expr: Expr, functionRegistry: FunctionRegistry): V2Expression =
     expr match {
       case FieldRef(col) => identity(col)
       case StringLiteral(value) => literal(value)
       case FuncExpr("rand", Nil) => apply("rand")
       case FuncExpr("toYYYYMMDD", List(FuncExpr("toDate", List(FieldRef(col))))) => identity(col)
       case FuncExpr(funName, args) if functionRegistry.getFuncMappingByCk.contains(funName) =>
-        apply(functionRegistry.getFuncMappingByCk(funName), args.map(toSparkExpression): _*)
+        apply(functionRegistry.getFuncMappingByCk(funName), args.map(toSparkExpression(_, functionRegistry)): _*)
       case unsupported => throw CHClientException(s"Unsupported ClickHouse expression: $unsupported")
     }
 
-  def toClickHouse(transform: Transform)(implicit functionRegistry: FunctionRegistry): Expr = transform match {
+  def toClickHouse(
+    transform: Transform,
+    functionRegistry: FunctionRegistry
+  ): Expr = transform match {
     case IdentityTransform(fieldRefs) => FieldRef(fieldRefs.describe)
     case ApplyTransform(name, args) if functionRegistry.getFuncMappingBySpark.contains(name) =>
       FuncExpr(functionRegistry.getFuncMappingBySpark(name), args.map(arg => SQLExpr(arg.describe())).toList)
@@ -136,8 +147,9 @@ object ExprUtils extends SQLConfHelper with Serializable {
   def inferTransformSchema(
     primarySchema: StructType,
     secondarySchema: StructType,
-    transform: Transform
-  )(implicit functionRegistry: FunctionRegistry): StructField = transform match {
+    transform: Transform,
+    functionRegistry: FunctionRegistry
+  ): StructField = transform match {
     case IdentityTransform(FieldReference(Seq(col))) => primarySchema.find(_.name == col)
         .orElse(secondarySchema.find(_.name == col))
         .getOrElse(throw CHClientException(s"Invalid partition column: $col"))
