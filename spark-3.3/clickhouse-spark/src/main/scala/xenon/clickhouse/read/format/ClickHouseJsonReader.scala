@@ -42,10 +42,12 @@ class ClickHouseJsonReader(
 
   override def decode(record: Array[JsonNode]): InternalRow = {
     val values: Array[Any] = new Array[Any](record.length)
-    var i: Int = 0
-    while (i < record.length) {
-      values(i) = decodeValue(record(i), readSchema.fields(i))
-      i = i + 1
+    if (readSchema.nonEmpty) {
+      var i: Int = 0
+      while (i < record.length) {
+        values(i) = decodeValue(record(i), readSchema.fields(i))
+        i = i + 1
+      }
     }
     new GenericInternalRow(values)
   }

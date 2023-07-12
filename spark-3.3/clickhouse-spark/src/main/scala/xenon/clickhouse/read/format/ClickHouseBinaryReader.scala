@@ -37,10 +37,12 @@ class ClickHouseBinaryReader(
 
   override def decode(record: ClickHouseRecord): InternalRow = {
     val values: Array[Any] = new Array[Any](record.size)
-    var i: Int = 0
-    while (i < record.size) {
-      values(i) = decodeValue(record.getValue(i), readSchema.fields(i))
-      i = i + 1
+    if (readSchema.nonEmpty) {
+      var i: Int = 0
+      while (i < record.size) {
+        values(i) = decodeValue(record.getValue(i), readSchema.fields(i))
+        i = i + 1
+      }
     }
     new GenericInternalRow(values)
   }
