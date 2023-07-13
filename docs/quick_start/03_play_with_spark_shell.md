@@ -98,6 +98,16 @@ scala> spark.table("test_db.tbl").show
 |2021-01-01 10:10:10|  1|  1|    1|
 |2022-02-02 10:10:10|  2|  2|    2|
 +-------------------+---+---+-----+
+
+scala> spark.sql("DELETE FROM test_db.tbl WHERE id=1")
+res3: org.apache.spark.sql.DataFrame = []
+
+scala> spark.table("test_db.tbl").show
++-------------------+---+---+-----+
+|        create_time|  m| id|value|
++-------------------+---+---+-----+
+|2022-02-02 10:10:10|  2|  2|    2|
++-------------------+---+---+-----+
 ```
 
 Execute ClickHouse native SQL.

@@ -103,4 +103,13 @@ spark-sql> select * from test_db.tbl_sql;
 2022-02-02 10:10:10	2	2	2
 2022-02-02 10:10:10	2	2	2
 Time taken: 0.123 seconds, Fetched 6 row(s)
+
+spark-sql> delete from test_db.tbl_sql where id = 1;
+Time taken: 0.129 seconds
+
+spark-sql> select * from test_db.tbl_sql;
+2022-02-02 10:10:10	2	2	2
+2022-02-02 10:10:10	2	2	2
+2022-02-02 10:10:10	2	2	2
+Time taken: 0.101 seconds, Fetched 3 row(s)
 ```
