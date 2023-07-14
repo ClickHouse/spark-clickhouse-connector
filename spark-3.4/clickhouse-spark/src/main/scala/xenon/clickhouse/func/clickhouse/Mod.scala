@@ -26,6 +26,8 @@ object Mod extends UnboundFunction with ScalarFunction[Long] with ClickhouseEqui
 
   override def toString: String = name
 
+  // remainder is not a Clickhouse function, but modulo will be parsed to remainder in the connector.
+  // Added remainder as a synonym.
   override val ckFuncNames: Array[String] = Array("modulo", "remainder")
 
   override def description: String = s"$name: (a: long, b: long) => mod: long"
