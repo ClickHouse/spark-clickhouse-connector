@@ -18,15 +18,15 @@ import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFu
 import org.apache.spark.sql.types._
 import xenon.clickhouse.func.ClickhouseEquivFunction
 
-object Pmod extends UnboundFunction with ScalarFunction[Long] with ClickhouseEquivFunction {
+object Mod extends UnboundFunction with ScalarFunction[Long] with ClickhouseEquivFunction {
 
-  override def name: String = "sharding_pmod"
+  override def name: String = "sharding_mod"
 
   override def canonicalName: String = s"clickhouse.$name"
 
   override def toString: String = name
 
-  override val ckFuncNames: Array[String] = Array("positiveModulo", "positive_modulo", "pmod")
+  override val ckFuncNames: Array[String] = Array("modulo", "remainder")
 
   override def description: String = s"$name: (a: long, b: long) => mod: long"
 
@@ -58,8 +58,5 @@ object Pmod extends UnboundFunction with ScalarFunction[Long] with ClickhouseEqu
 
   override def isResultNullable: Boolean = false
 
-  def invoke(a: Long, b: Long): Long = {
-    val mod = a % b
-    if (mod < 0) mod + b else mod
-  }
+  def invoke(a: Long, b: Long): Long = a % b
 }

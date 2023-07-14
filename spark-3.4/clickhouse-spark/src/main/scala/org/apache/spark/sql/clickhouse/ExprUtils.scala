@@ -186,5 +186,5 @@ object ExprUtils extends SQLConfHelper with Serializable {
   }
 
   def toSplitWithModulo(shardingKey: Expr, weight: Int): FuncExpr =
-    FuncExpr("positiveModulo", List(shardingKey, StringLiteral(weight.toString)))
+    FuncExpr("modulo", List(shardingKey, StringLiteral(weight.toString)))
 }

@@ -108,7 +108,7 @@ class ClusterShardByTransformSuite extends SparkClickHouseClusterTest {
     ("murmurHash3_64", Array("value")),
     ("murmurHash3_32", Array("value")),
     ("cityHash64", Array("value")),
-    ("positiveModulo", Array("toYYYYMM(create_date)", "10"))
+    ("modulo", Array("toYYYYMM(create_date)", "10"))
   ).foreach {
     case (func_name: String, func_args: Array[String]) =>
       test(s"shard by $func_name(${func_args.mkString(",")})")(runTest(func_name, func_args))
