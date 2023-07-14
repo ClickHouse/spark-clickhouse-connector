@@ -21,7 +21,9 @@ import java.math.{MathContext, RoundingMode}
 import java.net.URI
 import java.nio.file.{Files, Path, StandardCopyOption}
 import java.time.Duration
-import java.time.format.DateTimeFormatter
+import java.time.chrono.IsoChronology
+import java.time.format.{DateTimeFormatter, DateTimeFormatterBuilder, ResolverStyle}
+import java.time.temporal.ChronoField
 import java.util.Locale
 import java.util.concurrent.TimeUnit.NANOSECONDS
 import java.util.concurrent.locks.LockSupport
@@ -33,7 +35,18 @@ import scala.util.{Failure, Success, Try}
 object Utils extends Logging {
 
   @transient lazy val dateFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd")
-  @transient lazy val dateTimeFmt: DateTimeFormatter = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss")
+  @transient lazy val dateTimeFmt: DateTimeFormatter = new DateTimeFormatterBuilder()
+    .parseCaseInsensitive()
+    .append(DateTimeFormatter.ISO_LOCAL_DATE)
+    .appendLiteral(' ')
+    .appendValue(ChronoField.HOUR_OF_DAY, 2).appendLiteral(':')
+    .appendValue(ChronoField.MINUTE_OF_HOUR, 2).appendLiteral(':')
+    .appendValue(ChronoField.SECOND_OF_MINUTE, 2)
+    .appendFraction(ChronoField.NANO_OF_SECOND, 0, 9, true)
+    .toFormatter(Locale.US)
+    .withChronology(IsoChronology.INSTANCE)
+    .withResolverStyle(ResolverStyle.STRICT)
+
   @transient lazy val legacyDateFmt: FastDateFormat = FastDateFormat.getInstance("yyyy-MM-dd")
   @transient lazy val legacyDateTimeFmt: FastDateFormat = FastDateFormat.getInstance("yyyy-MM-dd HH:mm:ss")
 
