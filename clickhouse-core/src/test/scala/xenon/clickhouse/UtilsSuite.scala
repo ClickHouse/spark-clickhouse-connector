@@ -17,7 +17,7 @@ package xenon.clickhouse
 import org.scalatest.funsuite.AnyFunSuite
 import xenon.clickhouse.Utils._
 
-import java.time.Duration
+import java.time.{Duration, LocalDateTime}
 
 class UtilsSuite extends AnyFunSuite {
 
@@ -60,5 +60,11 @@ class UtilsSuite extends AnyFunSuite {
       if (counter < 2) throw new OtherException
     }
     assert(counter == 1)
+  }
+
+  test("parsing date") {
+    val actual = LocalDateTime.parse("2023-03-29 15:25:25.977", Utils.dateTimeFmt)
+    val expected = LocalDateTime.of(2023, 3, 29, 15, 25, 25, 977000000)
+    assert(actual === expected)
   }
 }
