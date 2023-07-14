@@ -62,7 +62,7 @@ class UtilsSuite extends AnyFunSuite {
     assert(counter == 1)
   }
 
-  test("parsing date") {
+  test("parse date with nano seconds") {
     val actual = LocalDateTime.parse("2023-03-29 15:25:25.977", Utils.dateTimeFmt)
     val expected = LocalDateTime.of(2023, 3, 29, 15, 25, 25, 977000000)
     assert(actual === expected)
