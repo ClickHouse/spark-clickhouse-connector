@@ -14,12 +14,16 @@
 
 package xenon.clickhouse.base
 
+import com.clickhouse.client.ClickHouseProtocol
+import com.clickhouse.client.ClickHouseProtocol._
 import com.clickhouse.data.ClickHouseVersion
 import com.dimafeng.testcontainers.{ForAllTestContainer, JdbcDatabaseContainer, SingleContainer}
 import org.scalatest.funsuite.AnyFunSuite
 import org.testcontainers.containers.ClickHouseContainer
 import org.testcontainers.utility.{DockerImageName, MountableFile}
 import xenon.clickhouse.Utils
+import xenon.clickhouse.client.NodeClient
+import xenon.clickhouse.spec.NodeSpec
 
 import java.nio.file.{Path, Paths}
 
@@ -73,4 +77,11 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   def clickhouseHttpPort: Int = container.mappedPort(CLICKHOUSE_HTTP_PORT)
   def clickhouseTcpPort:  Int = container.mappedPort(CLICKHOUSE_TPC_PORT)
   // format: on
+
+  def withNodeClient(protocol: ClickHouseProtocol = HTTP)(block: NodeClient => Unit): Unit =
+    Utils.tryWithResource {
+      NodeClient(NodeSpec(clickhouseHost, Some(clickhouseHttpPort), Some(clickhouseTcpPort), protocol))
+    } {
+      client => block(client)
+    }
 }

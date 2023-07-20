@@ -15,6 +15,7 @@
 rootProject.name = 'spark-clickhouse-connector'
 
 include ":clickhouse-core"
+include ":clickhouse-core-it"
 
 List<String> knownScalaBinaryVersions = System.getProperty("known_scala_binary_versions").split(",")
 String scala_binary_version = System.getProperty("scala_binary_version")
