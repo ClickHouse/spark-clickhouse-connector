@@ -170,6 +170,25 @@ project(':clickhouse-core') {
     }
 }
 
+project(":clickhouse-core-it") {
+    dependencies {
+        implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
+
+        testImplementation(testFixtures(project(":clickhouse-core")))
+
+        testImplementation("com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version:all") { transitive = false }
+        testImplementation "org.slf4j:slf4j-log4j12:$slf4j_version"
+    }
+
+    test {
+        classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
+    }
+
+    slowTest {
+        classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
+    }
+}
+
 boolean isVersionFileExists() {
     return file("version.txt").exists()
 }
