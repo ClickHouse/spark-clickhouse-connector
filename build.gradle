@@ -151,6 +151,7 @@ project(':clickhouse-core') {
 
         api "org.slf4j:slf4j-api:$slf4j_version"
         api "org.apache.commons:commons-lang3:$commons_lang3_version"
+        api "commons-codec:commons-codec:$commons_codec_version"
 
         api "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
         api "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"

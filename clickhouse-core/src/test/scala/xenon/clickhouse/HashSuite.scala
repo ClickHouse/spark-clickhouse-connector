@@ -16,7 +16,7 @@ package xenon.clickhouse
 
 import xenon.clickhouse.base.ClickHouseSingleMixIn
 import xenon.clickhouse.client.NodeClient
-import xenon.clickhouse.hash.CityHash64
+import xenon.clickhouse.hash._
 
 import java.time.{LocalDateTime, ZoneId}
 
@@ -45,21 +45,60 @@ class HashSuite extends ClickHouseSingleMixIn with Logging {
     assert(actual === expected)
   }
 
+  val testElement: Array[Any] = Array(
+    "spark-clickhouse-connector",
+    "Apache Spark",
+    "ClickHouse",
+    "Yandex",
+    "热爱",
+    "🇨🇳",
+    "This is a long test text. 在传统的行式数据库系统中，数据按如下顺序存储。🇨🇳" * 5
+  )
+
+  val testInputs: Iterator[Array[Any]] =
+    testElement.combinations(1) ++ testElement.combinations(2) ++ testElement.combinations(3)
+
   test("CityHash64 Java implementation") {
     withNodeClient() { client =>
-      val testElement: Array[Any] = Array(
-        "spark-clickhouse-connector",
-        "Apache Spark",
-        "ClickHouse",
-        "Yandex",
-        "热爱",
-        "🇨🇳",
-        "This is a long test text. 在传统的行式数据库系统中，数据按如下顺序存储。🇨🇳" * 5
-      )
-      val testInputs = testElement.combinations(1) ++ testElement.combinations(2) ++ testElement.combinations(3)
       testInputs.foreach { testInput =>
         val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
         testHash(client, x => CityHash64(x), testInput, "cityHash64", clickhouseInputExpr)
+      }
+    }
+  }
+
+  test("Murmurhash2_32 Java implementation") {
+    withNodeClient() { client =>
+      testInputs.foreach { testInput =>
+        val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
+        testHash(client, x => Murmurhash2_32(x), testInput, "murmurHash2_32", clickhouseInputExpr)
+      }
+    }
+  }
+
+  test("Murmurhash2_64 Java implementation") {
+    withNodeClient() { client =>
+      testInputs.foreach { testInput =>
+        val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
+        testHash(client, x => Murmurhash2_64(x), testInput, "murmurHash2_64", clickhouseInputExpr)
+      }
+    }
+  }
+
+  test("Murmurhash3_32 Java implementation") {
+    withNodeClient() { client =>
+      testInputs.foreach { testInput =>
+        val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
+        testHash(client, x => Murmurhash2_32(x), testInput, "murmurHash3_32", clickhouseInputExpr)
+      }
+    }
+  }
+
+  test("Murmurhash3_64 Java implementation") {
+    withNodeClient() { client =>
+      testInputs.foreach { testInput =>
+        val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
+        testHash(client, x => Murmurhash2_32(x), testInput, "murmurHash3_64", clickhouseInputExpr)
       }
     }
   }
