@@ -24,7 +24,8 @@ abstract class HashFunc[T: ClassTag] {
   final def executeAny(input: Any): T =
     input match {
       // Here Array[Byte] means raw byte array, not Clickhouse's Array[UInt8] or Array[Int8].
-      // This is support for performance issue, as sometimes raw bytes is better than constructing the real type
+      // Note that Array[UInt8] is handled differently in Clickhouse, so passing it here as Array[Byte] will cause different result.
+      // This is left for performance issue, as sometimes raw bytes is better than constructing the real type
       // see https://github.com/housepower/spark-clickhouse-connector/pull/261#discussion_r1271828750
       case bytes: Array[Byte] => applyHash(bytes)
       case string: String => applyHash(string.getBytes(StandardCharsets.UTF_8))
