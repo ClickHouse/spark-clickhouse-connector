@@ -14,6 +14,7 @@
 
 package xenon.clickhouse.hash
 
+import java.nio.charset.StandardCharsets
 import scala.reflect.ClassTag
 
 abstract class HashFunc[T: ClassTag] {
@@ -22,6 +23,9 @@ abstract class HashFunc[T: ClassTag] {
 
   final def executeAny(input: Any): T =
     input match {
+      // Here Array[Byte] means raw byte array, not Clickhouse's Array[UInt8] or Array[Int8].
+      // This is support for performance issue, as sometimes raw bytes is better than constructing the real type
+      // see https://github.com/housepower/spark-clickhouse-connector/pull/261#discussion_r1271828750
       case bytes: Array[Byte] => applyHash(bytes)
       case string: String => applyHash(string.getBytes(StandardCharsets.UTF_8))
       case _ => throw new IllegalArgumentException(s"Unsupported input type: ${input.getClass}")
