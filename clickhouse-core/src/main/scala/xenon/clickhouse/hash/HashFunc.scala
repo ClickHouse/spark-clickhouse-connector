@@ -1,6 +1,8 @@
 package xenon.clickhouse.hash
 
-abstract class HashFunc[T] {
+import scala.reflect.ClassTag
+
+abstract class HashFunc[T: ClassTag] {
   def applyHash(input: Array[Byte]): T
   def combineHashes(h1: T, h2: T): T
 
