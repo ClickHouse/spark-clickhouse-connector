@@ -48,8 +48,5 @@ object HashUtils {
     x.toInt
   }
 
-  def Int32ToUint32(v: Long): Long = {
-    assert(v >= 0 && v <= 0xffffffffL, s"Value $v is out of UInt32 range")
-    if (v < 0) v + (1L << 32) else v
-  }
+  def toUInt32(v: Int): Long = if (v < 0) v + (1L << 32) else v
 }

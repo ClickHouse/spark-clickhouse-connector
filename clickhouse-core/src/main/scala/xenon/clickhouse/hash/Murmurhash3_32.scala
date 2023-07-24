@@ -17,12 +17,10 @@ package xenon.clickhouse.hash
 import org.apache.commons.codec.digest.MurmurHash3
 
 // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Functions/FunctionsHashing.h#L519
-object Murmurhash3_32 extends HashFunc[Long] {
-  override def applyHash(input: Array[Byte]): Long = {
-    val h = MurmurHash3.hash32x86(input, 0, input.length, 0)
-    HashUtils.Int32ToUint32(h)
-  }
+object Murmurhash3_32 extends HashFunc[Int] {
+  override def applyHash(input: Array[Byte]): Int =
+    MurmurHash3.hash32x86(input, 0, input.length, 0)
 
-  override def combineHashes(h1: Long, h2: Long): Long =
-    HashUtils.Int32ToUint32(HashUtils.int32Impl(h1) ^ h2)
+  override def combineHashes(h1: Int, h2: Int): Int =
+    HashUtils.int32Impl(HashUtils.toUInt32(h1)) ^ h2
 }

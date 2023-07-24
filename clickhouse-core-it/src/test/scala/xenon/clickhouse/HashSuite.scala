@@ -53,14 +53,20 @@ class HashSuite extends ClickHouseSingleMixIn with Logging {
     "This is a long test text. 在传统的行式数据库系统中，数据按如下顺序存储。🇨🇳" * 5
   )
 
-  val testInputs: Iterator[Array[Any]] =
-    testElement.combinations(1) ++ testElement.combinations(2) ++ testElement.combinations(3)
+  val testInputs: Array[Array[Any]] =
+    (testElement.combinations(1) ++ testElement.combinations(2) ++ testElement.combinations(3)).toArray
 
   test("CityHash64 Java implementation") {
     withNodeClient() { client =>
       testInputs.foreach { testInput =>
         val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
-        testHash(client, x => CityHash64(x), testInput, "cityHash64", clickhouseInputExpr)
+        testHash[Array[Any]](
+          client,
+          x => CityHash64(x),
+          testInput,
+          "cityHash64",
+          clickhouseInputExpr
+        )
       }
     }
   }
@@ -69,7 +75,13 @@ class HashSuite extends ClickHouseSingleMixIn with Logging {
     withNodeClient() { client =>
       testInputs.foreach { testInput =>
         val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
-        testHash(client, x => Murmurhash2_32(x), testInput, "murmurHash2_32", clickhouseInputExpr)
+        testHash[Array[Any]](
+          client,
+          x => HashUtils.toUInt32(Murmurhash2_32(x)),
+          testInput,
+          "murmurHash2_32",
+          clickhouseInputExpr
+        )
       }
     }
   }
@@ -78,7 +90,13 @@ class HashSuite extends ClickHouseSingleMixIn with Logging {
     withNodeClient() { client =>
       testInputs.foreach { testInput =>
         val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
-        testHash(client, x => Murmurhash2_64(x), testInput, "murmurHash2_64", clickhouseInputExpr)
+        testHash(
+          client,
+          x => Murmurhash2_64(x),
+          testInput,
+          "murmurHash2_64",
+          clickhouseInputExpr
+        )
       }
     }
   }
@@ -87,7 +105,13 @@ class HashSuite extends ClickHouseSingleMixIn with Logging {
     withNodeClient() { client =>
       testInputs.foreach { testInput =>
         val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
-        testHash(client, x => Murmurhash2_32(x), testInput, "murmurHash3_32", clickhouseInputExpr)
+        testHash[Array[Any]](
+          client,
+          x => HashUtils.toUInt32(Murmurhash3_32(x)),
+          testInput,
+          "murmurHash3_32",
+          clickhouseInputExpr
+        )
       }
     }
   }
@@ -96,7 +120,13 @@ class HashSuite extends ClickHouseSingleMixIn with Logging {
     withNodeClient() { client =>
       testInputs.foreach { testInput =>
         val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
-        testHash(client, x => Murmurhash2_32(x), testInput, "murmurHash3_64", clickhouseInputExpr)
+        testHash[Array[Any]](
+          client,
+          x => Murmurhash3_64(x),
+          testInput,
+          "murmurHash3_64",
+          clickhouseInputExpr
+        )
       }
     }
   }
