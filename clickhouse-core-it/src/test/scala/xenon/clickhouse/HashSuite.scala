@@ -18,8 +18,6 @@ import xenon.clickhouse.base.ClickHouseSingleMixIn
 import xenon.clickhouse.client.NodeClient
 import xenon.clickhouse.hash._
 
-import java.time.{LocalDateTime, ZoneId}
-
 class HashSuite extends ClickHouseSingleMixIn with Logging {
 
   def testHash[T <: Array[Any]](
