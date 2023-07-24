@@ -14,7 +14,7 @@ package xenon.clickhouse.hash
  * limitations under the License.
  */
 
-object Util {
+object HashUtils {
   def intHash64Impl(x: Long): Long =
     // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Functions/FunctionsHashing.h#L140
     intHash64(x ^ 0x4cf2d2baae6da887L)

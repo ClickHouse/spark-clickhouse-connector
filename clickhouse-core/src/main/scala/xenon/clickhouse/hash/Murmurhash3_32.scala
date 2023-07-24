@@ -6,9 +6,9 @@ import org.apache.commons.codec.digest.MurmurHash3
 object Murmurhash3_32 extends HashFunc[Long] {
   override def applyHash(input: Array[Byte]): Long = {
     val h = MurmurHash3.hash32x86(input, 0, input.length, 0)
-    Util.Int32ToUint32(h)
+    HashUtils.Int32ToUint32(h)
   }
 
   override def combineHashes(h1: Long, h2: Long): Long =
-    Util.Int32ToUint32(Util.int32Impl(h1) ^ h2)
+    HashUtils.Int32ToUint32(HashUtils.int32Impl(h1) ^ h2)
 }

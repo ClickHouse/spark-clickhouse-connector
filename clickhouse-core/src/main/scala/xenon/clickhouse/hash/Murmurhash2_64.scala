@@ -8,5 +8,5 @@ object Murmurhash2_64 extends HashFunc[Long] {
     MurmurHash2.hash64(input, input.length, 0)
 
   override def combineHashes(h1: Long, h2: Long): Long =
-    Util.intHash64Impl(h1) ^ h2
+    HashUtils.intHash64Impl(h1) ^ h2
 }
