@@ -22,7 +22,8 @@ abstract class HashFunc[T: ClassTag] {
 
   final def executeAny(input: Any): T =
     input match {
-      case input: String => applyHash(input.getBytes)
+      case bytes: Array[Byte] => applyHash(bytes)
+      case string: String => applyHash(string.getBytes(StandardCharsets.UTF_8))
       case _ => throw new IllegalArgumentException(s"Unsupported input type: ${input.getClass}")
     }
   final def apply(input: Array[Any]): T = input.map(executeAny).reduce(combineHashes)
