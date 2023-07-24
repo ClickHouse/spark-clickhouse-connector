@@ -20,10 +20,10 @@ import xenon.clickhouse.hash._
 
 class HashSuite extends ClickHouseSingleMixIn with Logging {
 
-  def testHash[T <: Array[Any]](
+  def testHash(
     client: NodeClient,
-    fun: T => Long,
-    testInput: T,
+    fun: Array[Any] => Long,
+    testInput: Array[Any],
     clickhouseFunName: String,
     clickhouseInputExpr: String
   ): Unit = {
@@ -60,7 +60,7 @@ class HashSuite extends ClickHouseSingleMixIn with Logging {
     withNodeClient() { client =>
       testInputs.foreach { testInput =>
         val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
-        testHash[Array[Any]](
+        testHash(
           client,
           x => CityHash64(x),
           testInput,
@@ -75,7 +75,7 @@ class HashSuite extends ClickHouseSingleMixIn with Logging {
     withNodeClient() { client =>
       testInputs.foreach { testInput =>
         val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
-        testHash[Array[Any]](
+        testHash(
           client,
           x => HashUtils.toUInt32(Murmurhash2_32(x)),
           testInput,
@@ -105,7 +105,7 @@ class HashSuite extends ClickHouseSingleMixIn with Logging {
     withNodeClient() { client =>
       testInputs.foreach { testInput =>
         val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
-        testHash[Array[Any]](
+        testHash(
           client,
           x => HashUtils.toUInt32(Murmurhash3_32(x)),
           testInput,
@@ -120,7 +120,7 @@ class HashSuite extends ClickHouseSingleMixIn with Logging {
     withNodeClient() { client =>
       testInputs.foreach { testInput =>
         val clickhouseInputExpr = testInput.mkString("'", "', '", "'")
-        testHash[Array[Any]](
+        testHash(
           client,
           x => Murmurhash3_64(x),
           testInput,
