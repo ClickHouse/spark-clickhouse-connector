@@ -17,13 +17,7 @@ package org.apache.spark.sql.clickhouse
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.scalatest.funsuite.AnyFunSuite
 import xenon.clickhouse.ClickHouseHelper
-import xenon.clickhouse.func.clickhouse.ClickHouseXxHash64
-import xenon.clickhouse.func.{
-  ClickhouseEquivFunction,
-  CompositeFunctionRegistry,
-  DynamicFunctionRegistry,
-  StaticFunctionRegistry
-}
+import xenon.clickhouse.func.{ClickHouseXxHash64, ClickhouseEquivFunction, CompositeFunctionRegistry, DynamicFunctionRegistry, StaticFunctionRegistry}
 
 import scala.collection.JavaConverters._
 

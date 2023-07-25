@@ -26,8 +26,7 @@ import xenon.clickhouse.Constants._
 import xenon.clickhouse.client.NodeClient
 import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.exception.ClickHouseErrCode._
-import xenon.clickhouse.func.clickhouse.ClickHouseXxHash64Shard
-import xenon.clickhouse.func.{FunctionRegistry, _}
+import xenon.clickhouse.func.{ClickHouseXxHash64Shard, FunctionRegistry, _}
 import xenon.clickhouse.spec._
 
 import java.time.ZoneId

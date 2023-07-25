@@ -15,8 +15,12 @@
 package org.apache.spark.sql.clickhouse.cluster
 
 import org.apache.spark.sql.clickhouse.TestUtils.om
-import xenon.clickhouse.func.{CompositeFunctionRegistry, DynamicFunctionRegistry, StaticFunctionRegistry}
-import xenon.clickhouse.func.clickhouse.ClickHouseXxHash64Shard
+import xenon.clickhouse.func.{
+  ClickHouseXxHash64Shard,
+  CompositeFunctionRegistry,
+  DynamicFunctionRegistry,
+  StaticFunctionRegistry
+}
 
 import java.lang.{Long => JLong}
 
@@ -29,15 +33,6 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
     dynamicFunctionRegistry.register("clickhouse_shard_xxHash64", xxHash64ShardFunc)
     new CompositeFunctionRegistry(Array(StaticFunctionRegistry, dynamicFunctionRegistry))
   }
-
-  def product[A](xs: Seq[Seq[A]]): Seq[Seq[A]] =
-    xs.toList match {
-      case Nil => Seq(Seq())
-      case head :: tail => for {
-          h <- head
-          t <- product(tail)
-        } yield h +: t
-    }
 
   def runTest(funcSparkName: String, funcCkName: String, stringVal: String): Unit = {
     val sparkResult = spark.sql(

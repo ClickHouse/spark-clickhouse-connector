@@ -15,7 +15,6 @@
 package xenon.clickhouse.func
 
 import org.apache.spark.sql.connector.catalog.functions.UnboundFunction
-import xenon.clickhouse.func.clickhouse._
 
 import scala.collection.mutable
 

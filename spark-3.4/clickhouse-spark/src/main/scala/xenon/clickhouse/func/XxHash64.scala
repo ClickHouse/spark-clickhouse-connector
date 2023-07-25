@@ -12,13 +12,12 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.func.clickhouse
+package xenon.clickhouse.func
 
 import org.apache.spark.sql.catalyst.expressions.XxHash64Function
 import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFunction, UnboundFunction}
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
-import xenon.clickhouse.func.ClickhouseEquivFunction
 import xenon.clickhouse.spec.{ClusterSpec, ShardUtils}
 
 /**

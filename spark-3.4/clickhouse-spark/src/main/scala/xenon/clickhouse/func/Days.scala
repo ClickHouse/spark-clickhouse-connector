@@ -12,24 +12,23 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.func.clickhouse
+package xenon.clickhouse.func
 
 import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFunction, UnboundFunction}
 import org.apache.spark.sql.types._
-import xenon.clickhouse.func.ClickhouseEquivFunction
 
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 
-object Years extends UnboundFunction with ScalarFunction[Int] with ClickhouseEquivFunction {
+object Days extends UnboundFunction with ScalarFunction[Int] with ClickhouseEquivFunction {
 
-  override def name: String = "clickhouse_years"
+  override def name: String = "clickhouse_days"
 
   override def canonicalName: String = s"clickhouse.$name"
 
   override def toString: String = name
 
-  override val ckFuncNames: Array[String] = Array("toYear", "YEAR")
+  override val ckFuncNames: Array[String] = Array("toYYYYMMDD")
 
   override def description: String = s"$name: (date: Date) => shard_num: int"
 
@@ -47,7 +46,7 @@ object Years extends UnboundFunction with ScalarFunction[Int] with ClickhouseEqu
 
   def invoke(days: Int): Int = {
     val date = LocalDate.ofEpochDay(days)
-    val formatter = DateTimeFormatter.ofPattern("yyyy")
+    val formatter = DateTimeFormatter.ofPattern("yyyyMMdd")
     date.format(formatter).toInt
   }
 }

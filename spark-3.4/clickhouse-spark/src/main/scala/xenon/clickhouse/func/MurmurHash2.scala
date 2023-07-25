@@ -12,40 +12,25 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.func.clickhouse
+package xenon.clickhouse.func
 
-import org.apache.commons.codec.digest.{MurmurHash2, MurmurHash3}
-import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFunction, UnboundFunction}
-import org.apache.spark.sql.types._
-import org.apache.spark.unsafe.types.UTF8String
-import xenon.clickhouse.func.{ClickhouseEquivFunction, MultiArgsHash, Util}
+import xenon.clickhouse.hash
+import xenon.clickhouse.hash.HashUtils
 
-object MurmurHash2_64 extends MultiArgsHash {
+object MurmurHash2_64 extends MultiStringArgsHash {
   // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Functions/FunctionsHashing.h#L460
 
   override protected def funcName: String = "clickhouse_murmurHash2_64"
   override val ckFuncNames: Array[String] = Array("murmurHash2_64")
 
-  override def invokeBase(value: UTF8String): Long = {
-    // ignore UInt64 vs Int64
-    val data = value.getBytes
-    MurmurHash2.hash64(data, data.length, 0)
-  }
-
-  override def combineHashes(v1: Long, v2: Long): Long = Util.intHash64Impl(v1) ^ v2
+  override def applyHash(input: Array[Any]): Long = hash.Murmurhash2_64(input)
 }
 
-object MurmurHash2_32 extends MultiArgsHash {
+object MurmurHash2_32 extends MultiStringArgsHash {
   // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Functions/FunctionsHashing.h#L519
 
   override protected def funcName: String = "clickhouse_murmurHash2_32"
   override val ckFuncNames: Array[String] = Array("murmurHash2_32")
 
-  override def invokeBase(value: UTF8String): Long = {
-    val data = value.getBytes
-    val v = MurmurHash2.hash32(data, data.length, 0)
-    Util.toUInt32Range(v)
-  }
-
-  override def combineHashes(v1: Long, v2: Long): Long = Util.toUInt32Range(Util.int32Impl(v1) ^ v2)
+  override def applyHash(input: Array[Any]): Long = HashUtils.toUInt32(hash.Murmurhash2_32(input))
 }

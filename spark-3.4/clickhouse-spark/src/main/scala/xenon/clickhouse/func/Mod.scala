@@ -12,11 +12,10 @@
  * limitations under the License.
  */
 
-package xenon.clickhouse.func.clickhouse
+package xenon.clickhouse.func
 
 import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFunction, UnboundFunction}
 import org.apache.spark.sql.types._
-import xenon.clickhouse.func.ClickhouseEquivFunction
 
 object Mod extends UnboundFunction with ScalarFunction[Long] with ClickhouseEquivFunction {
 
