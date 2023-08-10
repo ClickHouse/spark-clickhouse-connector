@@ -70,6 +70,12 @@ class ClickHouseJsonReader(
         Decimal(jsonNode.decimalValue, d.precision, d.scale)
       case d: DecimalType if jsonNode.isFloat | jsonNode.isDouble =>
         Decimal(BigDecimal(jsonNode.doubleValue, new MathContext(d.precision)), d.precision, d.scale)
+      case d: DecimalType if jsonNode.isInt =>
+        Decimal(BigDecimal(jsonNode.intValue, new MathContext(d.precision)), d.precision, d.scale)
+      case d: DecimalType if jsonNode.isLong =>
+        Decimal(BigDecimal(jsonNode.longValue, new MathContext(d.precision)), d.precision, d.scale)
+      case d: DecimalType if jsonNode.isBigInteger =>
+        Decimal(BigDecimal(jsonNode.bigIntegerValue, new MathContext(d.precision)), d.precision, d.scale)
       case d: DecimalType =>
         Decimal(BigDecimal(jsonNode.textValue, new MathContext(d.precision)), d.precision, d.scale)
       case TimestampType =>
