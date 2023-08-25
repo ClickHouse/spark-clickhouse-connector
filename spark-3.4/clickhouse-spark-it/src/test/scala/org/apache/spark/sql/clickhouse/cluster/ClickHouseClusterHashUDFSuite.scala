@@ -28,25 +28,21 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
     new CompositeFunctionRegistry(Array(StaticFunctionRegistry, dynamicFunctionRegistry))
   }
 
-  def runTest(funcSparkName: String, funcCkName: String, stringVal: String): Unit = {
+  def runTest(sparkFuncName: String, ckFuncName: String, stringVal: String): Unit = {
     val sparkResult = spark.sql(
-      s"""SELECT
-         |  $funcSparkName($stringVal)                         AS hash_value
-         |""".stripMargin
+      s"SELECT $sparkFuncName($stringVal) AS hash_value"
     ).collect
     assert(sparkResult.length == 1)
     val sparkHashVal = sparkResult.head.getAs[Long]("hash_value")
 
     val clickhouseResultJsonStr = runClickHouseSQL(
-      s"""SELECT
-         |  $funcCkName($stringVal)     AS hash_value
-         |""".stripMargin
+      s"SELECT $ckFuncName($stringVal) AS hash_value "
     ).head.getString(0)
     val clickhouseResultJson = om.readTree(clickhouseResultJsonStr)
     val clickhouseHashVal = JLong.parseUnsignedLong(clickhouseResultJson.get("hash_value").asText)
     assert(
       sparkHashVal == clickhouseHashVal,
-      s"ck_function: $funcCkName, spark_function: $funcSparkName, args: ($stringVal)"
+      s"ck_function: $ckFuncName, spark_function: $sparkFuncName, args: ($stringVal)"
     )
   }
 
@@ -57,9 +53,9 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
     "clickhouse_murmurHash2_64",
     "clickhouse_murmurHash2_32",
     "clickhouse_cityHash64"
-  ).foreach { funcSparkName =>
-    val funcCkName = dummyRegistry.sparkToClickHouseFunc(funcSparkName)
-    test(s"UDF $funcSparkName") {
+  ).foreach { sparkFuncName =>
+    val ckFuncName = dummyRegistry.sparkToClickHouseFunc(sparkFuncName)
+    test(s"UDF $sparkFuncName") {
       Seq(
         "spark-clickhouse-connector",
         "Apache Spark",
@@ -69,7 +65,7 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
         "在传统的行式数据库系统中，数据按如下顺序存储：",
         "🇨🇳"
       ).map("'" + _ + "'").foreach { stringVal =>
-        runTest(funcSparkName, funcCkName, stringVal)
+        runTest(sparkFuncName, ckFuncName, stringVal)
       }
     }
   }
@@ -80,9 +76,9 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
     "clickhouse_murmurHash2_64",
     "clickhouse_murmurHash2_32",
     "clickhouse_cityHash64"
-  ).foreach { funcSparkName =>
-    val funcCkName = dummyRegistry.sparkToClickHouseFunc(funcSparkName)
-    test(s"UDF $funcSparkName multiple args") {
+  ).foreach { sparkFuncName =>
+    val ckFuncName = dummyRegistry.sparkToClickHouseFunc(sparkFuncName)
+    test(s"UDF $sparkFuncName multiple args") {
       Seq(
         "spark-clickhouse-connector",
         "Apache Spark",
@@ -93,7 +89,7 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
         "🇨🇳"
       ).map("'" + _ + "'").combinations(5).foreach { seq =>
         val stringVal = seq.mkString(", ")
-        runTest(funcSparkName, funcCkName, stringVal)
+        runTest(sparkFuncName, ckFuncName, stringVal)
       }
     }
   }
