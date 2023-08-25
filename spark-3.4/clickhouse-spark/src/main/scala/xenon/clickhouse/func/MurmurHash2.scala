@@ -27,10 +27,11 @@ object MurmurHash2_64 extends MultiStringArgsHash {
   override def applyHash(input: Array[Any]): Long = hash.Murmurhash2_64(input)
 }
 
+// https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Functions/FunctionsHashing.h#L519
 object MurmurHash2_32 extends MultiStringArgsHash {
-  // https://github.com/ClickHouse/ClickHouse/blob/v23.5.3.24-stable/src/Functions/FunctionsHashing.h#L519
 
   override protected def funcName: String = "clickhouse_murmurHash2_32"
+
   override val ckFuncNames: Array[String] = Array("murmurHash2_32")
 
   override def applyHash(input: Array[Any]): Long = HashUtils.toUInt32(hash.Murmurhash2_32(input))
