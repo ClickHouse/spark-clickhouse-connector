@@ -55,8 +55,9 @@ abstract class MultiStringArgsHash extends UnboundFunction with ClickhouseEquivF
           applyHash(inputStrings)
         }
       }
-    } else throw new UnsupportedOperationException(s"Expect multiple STRING argument. $description")
-
+    } else {
+      throw new UnsupportedOperationException(s"Expect multiple STRING argument. $description")
+    }
   }
 
 }

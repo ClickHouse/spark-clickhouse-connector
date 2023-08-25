@@ -68,8 +68,7 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
         "热爱",
         "在传统的行式数据库系统中，数据按如下顺序存储：",
         "🇨🇳"
-      ).foreach { rawStringVal =>
-        val stringVal = s"\'$rawStringVal\'"
+      ).map("'" + _ + "'").foreach { stringVal =>
         runTest(funcSparkName, funcCkName, stringVal)
       }
     }
@@ -84,17 +83,15 @@ class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {
   ).foreach { funcSparkName =>
     val funcCkName = dummyRegistry.sparkToClickHouseFunc(funcSparkName)
     test(s"UDF $funcSparkName multiple args") {
-      val strings = Seq(
-        "\'spark-clickhouse-connector\'",
-        "\'Apache Spark\'",
-        "\'ClickHouse\'",
-        "\'Yandex\'",
-        "\'热爱\'",
-        "\'在传统的行式数据库系统中，数据按如下顺序存储：\'",
-        "\'🇨🇳\'"
-      )
-      val test_5 = strings.combinations(5)
-      test_5.foreach { seq =>
+      Seq(
+        "spark-clickhouse-connector",
+        "Apache Spark",
+        "ClickHouse",
+        "Yandex",
+        "热爱",
+        "在传统的行式数据库系统中，数据按如下顺序存储：",
+        "🇨🇳"
+      ).map("'" + _ + "'").combinations(5).foreach { seq =>
         val stringVal = seq.mkString(", ")
         runTest(funcSparkName, funcCkName, stringVal)
       }
