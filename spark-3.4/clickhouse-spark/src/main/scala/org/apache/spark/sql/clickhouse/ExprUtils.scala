@@ -106,21 +106,16 @@ object ExprUtils extends SQLConfHelper with Serializable {
   }
 
   private class CustomResolveTimeZone(timeZoneId: Option[String]) extends Rule[LogicalPlan] {
-    private val transformTimeZoneExprs: PartialFunction[Expression, Expression] = {
-      case e: TimeZoneAwareExpression if e.timeZoneId.isEmpty =>
-        e.withTimeZone(timeZoneId.getOrElse(conf.sessionLocalTimeZone))
-      // Casts could be added in the subquery plan through the rule TypeCoercion while coercing
-      // the types between the value expression and list query expression of IN expression.
-      // We need to subject the subquery plan through ResolveTimeZone again to setup timezone
-      // information for time zone aware expressions.
-      case e: ListQuery => e.withNewPlan(apply(e.plan))
-    }
-
     override def apply(plan: LogicalPlan): LogicalPlan =
-      plan.resolveExpressionsWithPruning(
-        _.containsAnyPattern(LIST_SUBQUERY, TIME_ZONE_AWARE_EXPRESSION),
-        ruleId
-      )(transformTimeZoneExprs)
+      plan.resolveExpressionsWithPruning(_.containsAnyPattern(LIST_SUBQUERY, TIME_ZONE_AWARE_EXPRESSION)) {
+        case e: TimeZoneAwareExpression if e.timeZoneId.isEmpty =>
+          e.withTimeZone(timeZoneId.getOrElse(conf.sessionLocalTimeZone))
+        // Casts could be added in the subquery plan through the rule TypeCoercion while coercing
+        // the types between the value expression and list query expression of IN expression.
+        // We need to subject the subquery plan through ResolveTimeZone again to setup timezone
+        // information for time zone aware expressions.
+        case e: ListQuery => e.withNewPlan(apply(e.plan))
+      }
   }
 
   private class TypeCoercionExecutor(timeZoneId: Option[String]) extends RuleExecutor[LogicalPlan] {
