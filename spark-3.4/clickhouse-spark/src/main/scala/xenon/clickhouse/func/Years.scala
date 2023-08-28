@@ -34,7 +34,8 @@ object Years extends UnboundFunction with ScalarFunction[Int] with ClickhouseEqu
 
   override def bind(inputType: StructType): BoundFunction = inputType.fields match {
     case Array(StructField(_, DateType, _, _)) => this
-//    case Array(StructField(_, TimestampType, _, _)) | Array(StructField(_, TimestampNTZType, _, _)) => this
+    // TODO timezone aware implicit cast requires SPARK-44180
+    // case Array(StructField(_, TimestampType, _, _)) | Array(StructField(_, TimestampNTZType, _, _)) => this
     case _ => throw new UnsupportedOperationException(s"Expect 1 DATE argument. $description")
   }
 

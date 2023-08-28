@@ -18,11 +18,8 @@ import org.apache.spark.SparkConf
 import org.apache.spark.sql.Row
 
 class ClusterShardByTransformSuite extends SparkClickHouseClusterTest {
-  override protected def sparkConf: SparkConf = {
-    val _conf = super.sparkConf
-      .set("spark.clickhouse.write.distributed.convertLocal", "true")
-    _conf
-  }
+  override protected def sparkConf: SparkConf = super.sparkConf
+    .set("spark.clickhouse.write.distributed.convertLocal", "true")
 
   def runTest(func_name: String, func_args: Array[String]): Unit = {
     val func_expr = s"$func_name(${func_args.mkString(",")})"
@@ -94,13 +91,13 @@ class ClusterShardByTransformSuite extends SparkClickHouseClusterTest {
   }
 
   Seq(
-    // wait for SPARK-44180 to be fixed, then add implicit cast test cases
+    // TODO timezone aware implicit cast requires SPARK-44180
     ("toYear", Array("create_date")),
-//    ("toYear", Array("create_time")),
+    // ("toYear", Array("create_time")),
     ("toYYYYMM", Array("create_date")),
-//    ("toYYYYMM", Array("create_time")),
+    // ("toYYYYMM", Array("create_time")),
     ("toYYYYMMDD", Array("create_date")),
-//    ("toYYYYMMDD", Array("create_time")),
+    // ("toYYYYMMDD", Array("create_time")),
     ("toHour", Array("create_time")),
     ("xxHash64", Array("value")),
     ("murmurHash2_64", Array("value")),
