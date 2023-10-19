@@ -193,8 +193,10 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
   override def createReader(_partition: InputPartition): PartitionReader[InternalRow] = {
     val format = scanJob.readOptions.format
     val partition = _partition.asInstanceOf[ClickHouseInputPartition]
-    val finalScanJob = scanJob.copy(filtersExpr = scanJob.filtersExpr + " AND "
-        + compileFilters(AlwaysTrue :: runtimeFilters.toList))
+    val finalScanJob = scanJob.copy(filtersExpr =
+      scanJob.filtersExpr + " AND "
+        + compileFilters(AlwaysTrue :: runtimeFilters.toList)
+    )
     format match {
       case "json" => new ClickHouseJsonReader(finalScanJob, partition)
       case "binary" => new ClickHouseBinaryReader(finalScanJob, partition)
@@ -207,7 +209,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     BytesReadMetric()
   )
 
-  override def filterAttributes(): Array[NamedReference] = {
+  override def filterAttributes(): Array[NamedReference] =
     if (scanJob.readOptions.runtimeFilterEnabled) {
       scanJob.readSchema.fields.map { field =>
         Expressions.column(field.name)
@@ -215,9 +217,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     } else {
       Array.empty
     }
-  }
 
-  override def filter(filters: Array[Filter]): Unit = {
+  override def filter(filters: Array[Filter]): Unit =
     runtimeFilters = filters
-  }
 }
