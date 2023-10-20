@@ -444,7 +444,7 @@ class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
     withSimpleTable(db, tbl, true) {
       try {
         spark.sql(s"CACHE TABLE $db.$tbl")
-        val cachedPlan = spark.sql(s"SELECT * FROM $db.$tbl").queryExecution.normalized
+        val cachedPlan = spark.sql(s"SELECT * FROM $db.$tbl").queryExecution.commandExecuted
           .find(node => spark.sharedState.cacheManager.lookupCachedData(node).isDefined)
         assert(cachedPlan.isDefined)
       } finally
