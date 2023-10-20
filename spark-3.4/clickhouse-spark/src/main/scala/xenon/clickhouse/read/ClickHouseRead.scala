@@ -211,9 +211,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
 
   override def filterAttributes(): Array[NamedReference] =
     if (scanJob.readOptions.runtimeFilterEnabled) {
-      scanJob.readSchema.fields.map { field =>
-        Expressions.column(field.name)
-      }
+      scanJob.readSchema.fields.map(field => Expressions.column(field.name))
     } else {
       Array.empty
     }
