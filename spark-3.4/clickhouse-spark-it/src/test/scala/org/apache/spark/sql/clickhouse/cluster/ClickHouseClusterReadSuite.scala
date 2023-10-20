@@ -16,6 +16,8 @@ package org.apache.spark.sql.clickhouse.cluster
 
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.{AnalysisException, Row}
+import org.apache.spark.sql.catalyst.TableIdentifier
+import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 
 class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
 
@@ -81,6 +83,35 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
           Row(4, 4)
         )
       )
+    }
+  }
+
+  test("runtime filter - distributed table") {
+    withSimpleDistTable("single_replica", "runtime_db", "runtime_tbl", true) { (_, db, tbl_dist, _) =>
+      spark.sql("set spark.clickhouse.read.runtimeFilter.enabled=false")
+      checkAnswer(
+        spark.sql(s"SELECT id FROM $db.$tbl_dist " +
+          s"WHERE id IN (" +
+          s"  SELECT id FROM $db.$tbl_dist " +
+          s"  WHERE DATE_FORMAT(create_time, 'yyyy-MM-dd') between '2021-01-01' and '2022-01-01'" +
+          s")"),
+        Row(1)
+      )
+
+      spark.sql("set spark.clickhouse.read.runtimeFilter.enabled=true")
+      val df = spark.sql(s"SELECT id FROM $db.$tbl_dist " +
+        s"WHERE id IN (" +
+        s"  SELECT id FROM $db.$tbl_dist " +
+        s"  WHERE DATE_FORMAT(create_time, 'yyyy-MM-dd') between '2021-01-01' and '2022-01-01'" +
+        s")")
+      checkAnswer(df, Row(1))
+      val runtimeFilterExists = df.queryExecution.sparkPlan.exists {
+        case BatchScanExec(_, _, runtimeFilters, _, _, table, _, _, _)
+            if table.name() == TableIdentifier(tbl_dist, Some(db)).quotedString
+              && runtimeFilters.nonEmpty => true
+        case _ => false
+      }
+      assert(runtimeFilterExists)
     }
   }
 }
