@@ -436,4 +436,19 @@ class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
       createOrReplaceTable()
     }
   }
+
+  test("cache table") {
+    val db = "cache_db"
+    val tbl = "cache_tbl"
+
+    withSimpleTable(db, tbl, true) {
+      try {
+        spark.sql(s"CACHE TABLE $db.$tbl")
+        val cachedPlan = spark.sql(s"SELECT * FROM $db.$tbl").queryExecution.normalized
+          .find(node => spark.sharedState.cacheManager.lookupCachedData(node).isDefined)
+        assert(cachedPlan.isDefined)
+      } finally
+        spark.sql(s"UNCACHE TABLE $db.$tbl")
+    }
+  }
 }
