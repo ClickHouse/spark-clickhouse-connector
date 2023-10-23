@@ -16,7 +16,7 @@ package xenon.clickhouse.read
 
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
-import org.apache.spark.sql.connector.expressions.Transform
+import org.apache.spark.sql.connector.expressions.{Expressions, NamedReference, Transform}
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
 import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read._
@@ -127,8 +127,14 @@ class ClickHouseScanBuilder(
 
 class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     with SupportsReportPartitioning
+    with SupportsRuntimeFiltering
     with PartitionReaderFactory
-    with ClickHouseHelper {
+    with ClickHouseHelper
+    with SQLHelper {
+
+  implicit private val tz: ZoneId = scanJob.tz
+
+  private var runtimeFilters: Array[Filter] = Array.empty
 
   val database: String = scanJob.database
   val table: String = scanJob.table
@@ -187,9 +193,13 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
   override def createReader(_partition: InputPartition): PartitionReader[InternalRow] = {
     val format = scanJob.readOptions.format
     val partition = _partition.asInstanceOf[ClickHouseInputPartition]
+    val finalScanJob = scanJob.copy(filtersExpr =
+      scanJob.filtersExpr + " AND "
+        + compileFilters(AlwaysTrue :: runtimeFilters.toList)
+    )
     format match {
-      case "json" => new ClickHouseJsonReader(scanJob, partition)
-      case "binary" => new ClickHouseBinaryReader(scanJob, partition)
+      case "json" => new ClickHouseJsonReader(finalScanJob, partition)
+      case "binary" => new ClickHouseBinaryReader(finalScanJob, partition)
       case unsupported => throw CHClientException(s"Unsupported read format: $unsupported")
     }
   }
@@ -198,4 +208,14 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     BlocksReadMetric(),
     BytesReadMetric()
   )
+
+  override def filterAttributes(): Array[NamedReference] =
+    if (scanJob.readOptions.runtimeFilterEnabled) {
+      scanJob.readSchema.fields.map(field => Expressions.column(field.name))
+    } else {
+      Array.empty
+    }
+
+  override def filter(filters: Array[Filter]): Unit =
+    runtimeFilters = filters
 }

@@ -173,6 +173,13 @@ object ClickHouseSQLConf {
       .transform(_.toLowerCase)
       .createWithDefault("json")
 
+  val RUNTIME_FILTER_ENABLED: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.read.runtimeFilter.enabled")
+      .doc("Enable runtime filter for reading.")
+      .version("0.8.0")
+      .booleanConf
+      .createWithDefault(false)
+
   val WRITE_FORMAT: ConfigEntry[String] =
     buildConf("spark.clickhouse.write.format")
       .doc("Serialize format for writing. Supported formats: json, arrow")
