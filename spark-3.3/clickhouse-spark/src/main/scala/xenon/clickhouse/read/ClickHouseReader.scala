@@ -59,6 +59,7 @@ abstract class ClickHouseReader[Record](
        |FROM `$database`.`$table`
        |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
        |${scanJob.groupByClause.getOrElse("")}
+       |${scanJob.orderByClause.getOrElse("")}
        |${scanJob.limit.map(n => s"LIMIT $n").getOrElse("")}
        |""".stripMargin
   }
