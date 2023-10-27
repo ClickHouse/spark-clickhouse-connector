@@ -48,6 +48,9 @@ class ReadOptions(_options: JMap[String, String]) extends SparkOptions {
 
   def format: String =
     eval(READ_FORMAT.key, READ_FORMAT)
+
+  def runtimeFilterEnabled: Boolean =
+    eval(RUNTIME_FILTER_ENABLED.key, RUNTIME_FILTER_ENABLED)
 }
 
 class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
