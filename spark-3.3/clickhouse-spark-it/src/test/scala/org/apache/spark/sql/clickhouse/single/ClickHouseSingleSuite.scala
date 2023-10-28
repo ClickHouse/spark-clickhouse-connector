@@ -15,6 +15,8 @@
 package org.apache.spark.sql.clickhouse.single
 
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.catalyst.TableIdentifier
+import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 import org.apache.spark.sql.types._
 
 class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
@@ -449,6 +451,36 @@ class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
         assert(cachedPlan.isDefined)
       } finally
         spark.sql(s"UNCACHE TABLE $db.$tbl")
+    }
+  }
+
+  test("runtime filter") {
+    val db = "runtime_db"
+    val tbl = "runtime_tbl"
+
+    withSimpleTable(db, tbl, true) {
+      spark.sql("set spark.clickhouse.read.runtimeFilter.enabled=false")
+      checkAnswer(
+        spark.sql(s"SELECT id FROM $db.$tbl " +
+          s"WHERE id IN (" +
+          s"  SELECT id FROM $db.$tbl " +
+          s"  WHERE DATE_FORMAT(create_time, 'yyyy-MM-dd') between '2021-01-01' and '2022-01-01'" +
+          s")"),
+        Row(1)
+      )
+
+      spark.sql("set spark.clickhouse.read.runtimeFilter.enabled=true")
+      val df = spark.sql(s"SELECT id FROM $db.$tbl " +
+        s"WHERE id IN (" +
+        s"  SELECT id FROM $db.$tbl " +
+        s"  WHERE DATE_FORMAT(create_time, 'yyyy-MM-dd') between '2021-01-01' and '2022-01-01'" +
+        s")")
+      checkAnswer(df, Row(1))
+      val runtimeFilterExists = df.queryExecution.sparkPlan.exists {
+        case BatchScanExec(_, _, runtimeFilters, _) if runtimeFilters.nonEmpty => true
+        case _ => false
+      }
+      assert(runtimeFilterExists)
     }
   }
 }
