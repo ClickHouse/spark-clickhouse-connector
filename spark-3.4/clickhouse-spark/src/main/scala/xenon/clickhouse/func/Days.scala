@@ -22,7 +22,7 @@ import java.time.format.DateTimeFormatter
 
 object Days extends UnboundFunction with ScalarFunction[Int] with ClickhouseEquivFunction {
 
-  override def name: String = "clickhouse_days"
+  override def name: String = "clickhouse_toYYYYMMDD"
 
   override def canonicalName: String = s"clickhouse.$name"
 
@@ -30,7 +30,7 @@ object Days extends UnboundFunction with ScalarFunction[Int] with ClickhouseEqui
 
   override val ckFuncNames: Array[String] = Array("toYYYYMMDD")
 
-  override def description: String = s"$name: (date: Date) => shard_num: int"
+  override def description: String = s"$name: (date: DATE) => YYYYMMDD: STRING"
 
   override def bind(inputType: StructType): BoundFunction = inputType.fields match {
     case Array(StructField(_, DateType, _, _)) => this

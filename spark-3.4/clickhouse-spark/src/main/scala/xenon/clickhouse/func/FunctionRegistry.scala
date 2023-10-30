@@ -48,17 +48,17 @@ object StaticFunctionRegistry extends FunctionRegistry {
 
   private val functions = Map[String, UnboundFunction](
     "ck_xx_hash64" -> ClickHouseXxHash64, // for compatible
-    "clickhouse_xxHash64" -> ClickHouseXxHash64,
-    "clickhouse_murmurHash2_32" -> MurmurHash2_32,
-    "clickhouse_murmurHash2_64" -> MurmurHash2_64,
-    "clickhouse_murmurHash3_32" -> MurmurHash3_32,
-    "clickhouse_murmurHash3_64" -> MurmurHash3_64,
-    "clickhouse_cityHash64" -> CityHash64,
-    "clickhouse_years" -> Years,
-    "clickhouse_months" -> Months,
-    "clickhouse_days" -> Days,
-    "clickhouse_hours" -> Hours,
-    "sharding_mod" -> Mod
+    ClickHouseXxHash64.name -> ClickHouseXxHash64,
+    MurmurHash2_32.name -> MurmurHash2_32,
+    MurmurHash2_64.name -> MurmurHash2_64,
+    MurmurHash3_32.name -> MurmurHash3_32,
+    MurmurHash3_64.name -> MurmurHash3_64,
+    CityHash64.name -> CityHash64,
+    Years.name -> Years,
+    Months.name -> Months,
+    Days.name -> Days,
+    Hours.name -> Hours,
+    Mod.name -> Mod
   )
 
   override def list: Array[String] = functions.keys.toArray

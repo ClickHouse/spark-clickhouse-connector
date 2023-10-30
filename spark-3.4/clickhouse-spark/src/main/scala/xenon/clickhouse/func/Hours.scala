@@ -22,7 +22,7 @@ import java.text.SimpleDateFormat
 
 object Hours extends UnboundFunction with ScalarFunction[Int] with ClickhouseEquivFunction {
 
-  override def name: String = "clickhouse_hours"
+  override def name: String = "clickhouse_toHour"
 
   override def canonicalName: String = s"clickhouse.$name"
 
@@ -30,7 +30,7 @@ object Hours extends UnboundFunction with ScalarFunction[Int] with ClickhouseEqu
 
   override val ckFuncNames: Array[String] = Array("toHour", "HOUR")
 
-  override def description: String = s"$name: (time: timestamp) => shard_num: int"
+  override def description: String = s"$name: (time: TIMESTAMP) => HH: INT"
 
   override def bind(inputType: StructType): BoundFunction = inputType.fields match {
     case Array(StructField(_, TimestampType, _, _)) | Array(StructField(_, TimestampNTZType, _, _)) => this

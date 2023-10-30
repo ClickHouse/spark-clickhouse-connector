@@ -27,7 +27,7 @@ abstract class MultiStringArgsHash extends UnboundFunction with ClickhouseEquivF
 
   override val ckFuncNames: Array[String]
 
-  override def description: String = s"$name: (value: string, ...) => hash_value: long"
+  override def description: String = s"$name: (value: STRING, ...) => hash_value: LONG"
 
   private def isExceptedType(dt: DataType): Boolean =
     dt.isInstanceOf[StringType]

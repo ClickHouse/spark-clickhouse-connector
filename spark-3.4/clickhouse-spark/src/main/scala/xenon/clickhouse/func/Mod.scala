@@ -19,7 +19,7 @@ import org.apache.spark.sql.types._
 
 object Mod extends UnboundFunction with ScalarFunction[Long] with ClickhouseEquivFunction {
 
-  override def name: String = "sharding_mod"
+  override def name: String = "clickhouse_modulo"
 
   override def canonicalName: String = s"clickhouse.$name"
 
@@ -29,7 +29,7 @@ object Mod extends UnboundFunction with ScalarFunction[Long] with ClickhouseEqui
   // Added remainder as a synonym.
   override val ckFuncNames: Array[String] = Array("modulo", "remainder")
 
-  override def description: String = s"$name: (a: long, b: long) => mod: long"
+  override def description: String = s"$name: (a: LONG, b: LONG) => a % b: LONG"
 
   override def bind(inputType: StructType): BoundFunction = inputType.fields match {
     case Array(a, b) if

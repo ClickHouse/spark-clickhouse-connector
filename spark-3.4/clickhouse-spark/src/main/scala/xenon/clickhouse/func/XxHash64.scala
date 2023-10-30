@@ -36,7 +36,7 @@ object ClickHouseXxHash64 extends UnboundFunction with ScalarFunction[Long] with
 
   override val ckFuncNames: Array[String] = Array("xxHash64")
 
-  override def description: String = s"$name: (value: string) => hash_value: long"
+  override def description: String = s"$name: (value: STRING) => hash_value: LONG"
 
   override def bind(inputType: StructType): BoundFunction = inputType.fields match {
     case Array(StructField(_, StringType, _, _)) => this
@@ -75,7 +75,7 @@ class ClickHouseXxHash64Shard(clusters: Seq[ClusterSpec]) extends UnboundFunctio
 
   override def canonicalName: String = s"clickhouse.$name"
 
-  override def description: String = s"$name: (cluster_name: string, value: string) => shard_num: int"
+  override def description: String = s"$name: (cluster_name: STRING, value: STRING) => shard_num: INT"
 
   override def bind(inputType: StructType): BoundFunction = inputType.fields match {
     case Array(StructField(_, StringType, _, _), StructField(_, StringType, _, _)) => this
