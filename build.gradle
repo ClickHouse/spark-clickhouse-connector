@@ -61,7 +61,6 @@ allprojects {
 
     repositories {
         maven { url = "$mavenCentralMirror" }
-        maven { url = "https://repository.apache.org/content/repositories/orgapachekyuubi-1040/" }
     }
 }
 
