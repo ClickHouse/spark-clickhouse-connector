@@ -30,7 +30,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        spark: [ 3.3, 3.4 ]
+        spark: [ 3.3, 3.4, 3.5 ]
         scala: [ 2.12, 2.13 ]
     steps:
       - uses: actions/checkout@v3

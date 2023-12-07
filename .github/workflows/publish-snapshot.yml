@@ -28,7 +28,7 @@ jobs:
         branch:
           - "master"
         scala: [ 2.12, 2.13 ]
-        spark: [ 3.3, 3.4 ]
+        spark: [ 3.3, 3.4, 3.5 ]
     steps:
       - uses: actions/checkout@v3
         with:

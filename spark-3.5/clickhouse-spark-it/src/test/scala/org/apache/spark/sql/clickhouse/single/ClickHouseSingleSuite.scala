@@ -477,7 +477,7 @@ class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
         s")")
       checkAnswer(df, Row(1))
       val runtimeFilterExists = df.queryExecution.sparkPlan.exists {
-        case BatchScanExec(_, _, runtimeFilters, _, _, table, _, _, _)
+        case BatchScanExec(_, _, runtimeFilters, _, table, _)
             if table.name() == TableIdentifier(tbl, Some(db)).quotedString
               && runtimeFilters.nonEmpty => true
         case _ => false
