@@ -45,7 +45,7 @@ extra:
   clickhouse_version: 23.3
   clickhouse_jdbc_version: 0.4.5
   scala_binary_version: 2.12
-  spark_binary_version: 3.3
+  spark_binary_version: 3.4
   social:
     - icon: fontawesome/brands/github
       link: https://github.com/pan3793

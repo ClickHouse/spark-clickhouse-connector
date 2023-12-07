@@ -1,3 +1,5 @@
+import org.codehaus.groovy.runtime.GStringImpl
+
 /*
  * Licensed under the Apache License, Version 2.0 (the "License");
  * you may not use this file except in compliance with the License.
@@ -14,7 +16,7 @@
 
 plugins {
     id "idea"
-    id "org.scoverage" version "7.0.1" apply false
+    id "org.scoverage" version "8.0.3" apply false
     id "org.sonarqube" version "3.4.0.2513"
     id "com.diffplug.spotless" version "6.12.1" apply false
     id "org.nosphere.apache.rat" version "0.8.0"
@@ -23,13 +25,19 @@ plugins {
 }
 
 project.ext {
-    scala_binary_version = System.getProperty("scala_binary_version")
     spark_binary_version = System.getProperty("spark_binary_version")
-    scala_212_version = spark_binary_version == "3.3" ? project.getProperty("spark_33_scala_212_version") : project.getProperty("spark_34_scala_212_version")
-    scala_version = scala_binary_version == "2.12" ? scala_212_version : scala_213_version
-    antlr_version = spark_binary_version == "3.3" ? project.getProperty("spark_33_antlr_version") : project.getProperty("spark_34_antlr_version")
-    jackson_version = spark_binary_version == "3.3" ? project.getProperty("spark_33_jackson_version") : project.getProperty("spark_34_jackson_version")
-    slf4j_version = spark_binary_version == "3.3" ? project.getProperty("spark_33_slf4j_version") : project.getProperty("spark_34_slf4j_version")
+    scala_binary_version = System.getProperty("scala_binary_version")
+
+    spark_prefix = "spark_${spark_binary_version.replace('.', '')}"
+    scala_prefix = "scala_${scala_binary_version.replace('.', '')}"
+
+    scala_212_version = project.getProperty("${spark_prefix}_scala_212_version")
+    scala_213_version = project.getProperty("${spark_prefix}_scala_213_version")
+    scala_version = project.getProperty("${scala_prefix}_version")
+
+    antlr_version = project.getProperty("${spark_prefix}_antlr_version")
+    jackson_version = project.getProperty("${spark_prefix}_jackson_version")
+    slf4j_version = project.getProperty("${spark_prefix}_slf4j_version")
 }
 
 rat {
@@ -99,7 +107,7 @@ subprojects {
     }
 
     scoverage {
-        scoverageVersion = "1.4.11"
+        scoverageVersion = "2.0.11"
         reportDir.set(file("${rootProject.buildDir}/reports/scoverage"))
         highlighting.set(false)
         minimumRate.set(0.0)
