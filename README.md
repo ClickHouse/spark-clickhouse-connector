@@ -13,7 +13,7 @@ See the [documentation](https://housepower.github.io/spark-clickhouse-connector/
 
 ## Requirements
 
-- Java 8 or 11
+- Java 8 or 17
 - Scala 2.12 or 2.13
 - Apache Spark 3.3 or 3.4 or 3.5
 
@@ -29,7 +29,7 @@ Notes:
 
 | Version | Compatible Spark Versions | ClickHouse JDBC version |
 |---------|---------------------------|-------------------------|
-| 0.8.0   | Spark 3.3, 3.4, 3.5       | 0.4.6                   |
+| master  | Spark 3.3, 3.4, 3.5       | 0.4.6                   |
 | 0.7.2   | Spark 3.3, 3.4            | 0.4.6                   |
 | 0.6.0   | Spark 3.3                 | 0.3.2-patch11           |
 | 0.5.0   | Spark 3.2, 3.3            | 0.3.2-patch11           |
