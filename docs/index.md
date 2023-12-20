@@ -29,15 +29,14 @@ Spark ClickHouse Connector is a high performance connector build on top of Spark
 
 1. Basic knowledge of [Apache Spark](https://spark.apache.org/docs/latest/) and [ClickHouse](https://clickhouse.com/docs/en/).
 2. An available ClickHouse single node or cluster.
-3. An available Spark cluster, and Spark version should be 3.3 or above, because we need the interfaces of Spark DataSource V2
-   added in 3.3.0.
+3. An available Spark cluster, check the following **Compatible Matrix** to make sure the Spark version is compatible with this Connector.
 4. Make sure your network policy satisfies the following requirements, both driver and executor of Spark need to access 
    ClickHouse HTTP port. If you are using it to access ClickHouse cluster, ensure the connectivity between driver and
    executor of Spark and each node of ClickHouse cluster.
 
 ## Notes
 
-1. Integration tests based on Java 8&11, Scala 2.12&2.13, Spark {{ spark_binary_version }} and ClickHouse
+1. Integration tests based on Java 8 & 17, Scala 2.12 & 2.13, Spark {{ spark_binary_version }} and ClickHouse
    v{{ clickhouse_version }}, with both single ClickHouse instance and ClickHouse cluster.
 
 ## Compatible Matrix
@@ -46,7 +45,7 @@ For old versions, please refer the compatible matrix.
 
 | Version | Compatible Spark Versions | ClickHouse JDBC version |
 |---------|---------------------------|-------------------------|
-| 0.8.0   | Spark 3.3, 3.4, 3.5       | 0.4.6                   |
+| master  | Spark 3.3, 3.4, 3.5       | 0.4.6                   |
 | 0.7.2   | Spark 3.3, 3.4            | 0.4.6                   |
 | 0.6.0   | Spark 3.3                 | 0.3.2-patch11           |
 | 0.5.0   | Spark 3.2, 3.3            | 0.3.2-patch11           |
