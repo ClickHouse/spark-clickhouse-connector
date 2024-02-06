@@ -110,7 +110,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     val queryId = nextQueryId()
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecuteQuery(queryId, sql)
-    val req = client.connect(node).write()
+    val req = client.write(node)
       .query(sql, queryId)
       .decompressClientRequest(inputCompressionType)
       .format(ClickHouseFormat.valueOf(outputFormat))
@@ -131,7 +131,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   ): Either[CHException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
-    val req = client.connect(node)
+    val req = client.read(node)
       .query(sql, queryId).asInstanceOf[ClickHouseRequest[_]]
       .format(ClickHouseFormat.valueOf(outputFormat)).asInstanceOf[ClickHouseRequest[_]]
     settings.foreach { case (k, v) => req.set(k, v).asInstanceOf[ClickHouseRequest[_]] }
@@ -165,7 +165,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   ): ClickHouseResponse = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
-    val req = client.connect(node)
+    val req = client.read(node)
       .query(sql, queryId).asInstanceOf[ClickHouseRequest[_]]
       .compressServerResponse(outputCompressionType).asInstanceOf[ClickHouseRequest[_]]
       .format(ClickHouseFormat.valueOf(outputFormat)).asInstanceOf[ClickHouseRequest[_]]
