@@ -29,7 +29,7 @@ import java.nio.file.{Path, Paths}
 
 trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   // format: off
-  val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.3")
+  val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
   val CLICKHOUSE_USER:     String = Utils.load("CLICKHOUSE_USER", "default")
   val CLICKHOUSE_PASSWORD: String = Utils.load("CLICKHOUSE_PASSWORD", "")
   val CLICKHOUSE_DB:       String = Utils.load("CLICKHOUSE_DB", "")
