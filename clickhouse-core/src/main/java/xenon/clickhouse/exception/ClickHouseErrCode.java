@@ -14,6 +14,9 @@
 
 package xenon.clickhouse.exception;
 
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
+
 // Periodically sync from https://github.com/ClickHouse/ClickHouse/blob/master/src/Common/ErrorCodes.cpp
 public enum ClickHouseErrCode {
     UNKNOWN_ERROR(-2, "UNKNOWN_ERROR"),
@@ -628,11 +631,14 @@ public enum ClickHouseErrCode {
     STD_EXCEPTION(1001, "STD_EXCEPTION"),
     UNKNOWN_EXCEPTION(1002, "UNKNOWN_EXCEPTION");
 
+    private static final Logger LOG = LoggerFactory.getLogger(ClickHouseErrCode.class);
+
     public static ClickHouseErrCode fromCode(int code) {
         for (ClickHouseErrCode value : ClickHouseErrCode.values()) {
             if (value.code == code)
                 return value;
         }
+        LOG.warn("Unrecognized error code [{}], return {}[{}] instead.", code, UNKNOWN_ERROR.name, UNKNOWN_ERROR.code);
         return ClickHouseErrCode.UNKNOWN_ERROR;
     }
 
