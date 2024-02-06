@@ -17,19 +17,22 @@
         <Console name="stdout" target="SYSTEM_OUT">
             <PatternLayout pattern="%d{HH:mm:ss.SSS} %p %c: %m%n"/>
         </Console>
+        <File name="file" fileName="build/unit-tests.log">
+            <PatternLayout pattern="%d{HH:mm:ss.SSS} %t %p %c{1}: %m%n"/>
+        </File>
     </Appenders>
     <Loggers>
         <Root level="INFO">
-            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="file"/>
         </Root>
         <Logger name="org.apache.hadoop.util.Shell" level="ERROR" additivity="false">
-            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="file"/>
         </Logger>
         <Logger name="org.apache.hadoop.util.NativeCodeLoader" level="ERROR" additivity="false">
-            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="file"/>
         </Logger>
         <Logger name="xenon.clickhouse" level="DEBUG" additivity="false">
-            <AppenderRef ref="stdout"/>
+            <AppenderRef ref="file"/>
         </Logger>
     </Loggers>
 </Configuration>
