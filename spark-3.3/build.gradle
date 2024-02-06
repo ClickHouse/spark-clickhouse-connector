@@ -13,7 +13,7 @@
  */
 
 project.ext {
-    spark_version = "3.3.3"
+    spark_version = project.getProperty("spark_33_version")
     spark_binary_version = "3.3"
 }
 
