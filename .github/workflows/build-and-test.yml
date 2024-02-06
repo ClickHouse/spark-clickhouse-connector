@@ -44,6 +44,14 @@ jobs:
           -Dscala_binary_version=${{ matrix.scala }}
           -Dspark_binary_version=${{ matrix.spark }}
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: log-java-${{ matrix.java }}-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}
+          path: |
+            **/build/unit-tests.log
+            log/**
 
   run-tests-with-specific-clickhouse:
     runs-on: ubuntu-22.04
@@ -63,3 +71,11 @@ jobs:
       - run: >-
           ./gradlew clean test --no-daemon --refresh-dependencies
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+      - name: Upload logs
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: log-clickhouse-${{ matrix.clickhouse }}
+          path: |
+            **/build/unit-tests.log
+            log/**

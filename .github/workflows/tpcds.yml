@@ -48,6 +48,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v3
         with:
-          name: log-tpcds-spark-${{ matrix.spark }}
+          name: log-tpcds-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}
           path: |
+            **/build/unit-tests.log
             log/**
