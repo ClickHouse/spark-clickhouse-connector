@@ -48,9 +48,10 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v3
         with:
-          name: logs-${{ matrix.java }}-${{ matrix.spark }}-${{ matrix.scala }}
+          name: log-java-${{ matrix.java }}-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}
           path: |
             **/build/unit-tests.log
+            log/**
 
   run-tests-with-specific-clickhouse:
     runs-on: ubuntu-22.04
@@ -74,6 +75,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v3
         with:
-          name: logs-${{ clickhouse }}
+          name: log-clickhouse-${{ matrix.clickhouse }}
           path: |
             **/build/unit-tests.log
+            log/**
