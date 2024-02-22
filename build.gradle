@@ -69,10 +69,6 @@ allprojects {
 
     repositories {
         maven { url = "$mavenCentralMirror" }
-        maven {
-            name = "Spark 3.5.1 (RC2)"
-            url = "https://repository.apache.org/content/repositories/orgapachespark-1452/"
-        }
     }
 }
 
