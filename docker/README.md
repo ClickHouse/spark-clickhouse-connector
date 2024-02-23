@@ -12,7 +12,7 @@ Playground
 
 1. Connect using `beeline`(Recommended for beginners)
 
-`docker exec -it kyuubi /opt/kyuubi/bin/beeline -u 'jdbc:hive2://0.0.0.0:10009/'`;
+`docker exec -it kyuubi /opt/kyuubi/bin/beeline -u 'jdbc:kyuubi://0.0.0.0:10009/'`;
 
 2. Connect using `spark-sql`
 
