@@ -152,7 +152,7 @@ services:
       - zookeeper
 
   cloudbeaver:
-    image: pan3793/cloudbeaver:20220618
+    image: pan3793/cloudbeaver:20240223
     environment:
       CB_LOCAL_HOST_ADDR: 0.0.0.0
       CB_SERVER_NAME: Kyuubi Playground
@@ -164,8 +164,8 @@ services:
       - 8978:8978
     volumes:
       - ./conf/cloudbeaver-conf/cloudbeaver.conf:/opt/cloudbeaver/conf/cloudbeaver.conf
-      - ./conf/cloudbeaver-conf/initial-data.conf:/opt/cloudbeaver/conf/initial-data.conf
       - ./conf/cloudbeaver-conf/initial-data-sources.conf:/opt/cloudbeaver/conf/initial-data-sources.conf
+      - ./conf/cloudbeaver-conf/logback.xml:/opt/cloudbeaver/conf/logback.xml
       - ./conf/cloudbeaver-conf/product.conf:/opt/cloudbeaver/conf/product.conf
     depends_on:
       - postgres
