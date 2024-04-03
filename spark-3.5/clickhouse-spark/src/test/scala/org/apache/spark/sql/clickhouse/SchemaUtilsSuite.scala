@@ -190,7 +190,9 @@ class SchemaUtilsSuite extends AnyFunSuite {
         |    {"name": "id", "type": "integer", "nullable": false, "metadata": {}},
         |    {"name": "food", "type": "string", "nullable": false, "metadata": {"comment": "food"}},
         |    {"name": "price", "type": "decimal(2,1)", "nullable": false, "metadata": {"comment": "price usd"}},
-        |    {"name": "remark", "type": "string", "nullable": true, "metadata": {}}
+        |    {"name": "remark", "type": "string", "nullable": true, "metadata": {}},
+        |    {"name": "ingredient", "type": {"type": "array", "elementType": "string", "containsNull": true}, "nullable": true, "metadata": {}},
+        |    {"name": "nutrient", "type": {"type": "map", "keyType": "string", "valueType": "string", "valueContainsNull": true}, "nullable": true, "metadata": {}}
         |  ]
         |}
         |""".stripMargin
@@ -199,7 +201,9 @@ class SchemaUtilsSuite extends AnyFunSuite {
       ("id", "Int32", ""),
       ("food", "String", " COMMENT 'food'"),
       ("price", "Decimal(2, 1)", " COMMENT 'price usd'"),
-      ("remark", "Nullable(String)", "")
+      ("remark", "Nullable(String)", ""),
+      ("ingredient", "Array(Nullable(String))", ""),
+      ("nutrient", "Map(String,Nullable(String))", "")
     ) == toClickHouseSchema(catalystSchema))
   }
 }

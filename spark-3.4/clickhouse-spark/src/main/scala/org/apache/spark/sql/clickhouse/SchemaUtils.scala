@@ -110,7 +110,7 @@ object SchemaUtils {
       }
 
   private[clickhouse] def maybeNullable(chType: String, nullable: Boolean): String =
-    if (nullable && !chType.startsWith("Array") && !chType.startsWith("Map")) wrapNullable(chType) else chType
+    if (nullable) wrapNullable(chType) else chType
 
   private[clickhouse] def wrapNullable(chType: String): String = s"Nullable($chType)"
 }
