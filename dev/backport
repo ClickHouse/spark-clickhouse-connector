@@ -13,21 +13,17 @@
 # limitations under the License.
 #
 
-COMMIT_ID=""
-SPARK_FROM="3.4"
-SPARK_TO="3.3"
-
 function usage {
   set +x
   echo "./dev/backport - Tool for back port patch"
   echo ""
   echo "Usage:"
-  echo "+--------------------------------------------------------+"
-  echo "| ./dev/backport <commit-id> [<spark-from>] [<spark-to>] |"
-  echo "+--------------------------------------------------------+"
+  echo "+----------------------------------------------------+"
+  echo "| ./dev/backport <commit-id> <spark-from> <spark-to> |"
+  echo "+----------------------------------------------------+"
   echo "commit-id:    -  git commit hash id"
-  echo "spark-from:   -  default value 3.4"
-  echo "spark-to:     -  default value 3.3"
+  echo "spark-from:   -  options: 3.4, 3.5"
+  echo "spark-to:     -  options: 3.3, 3.4"
   echo ""
 }
 
@@ -36,12 +32,7 @@ function exit_with_usage {
   exit 1
 }
 
-if [[ $# -eq 1 ]]; then
-  COMMIT_ID=$1
-elif [[ $# -eq 2 ]]; then
-  COMMIT_ID=$1
-  SPARK_FROM=$2
-elif [[ $# -eq 3 ]]; then
+if [[ $# -eq 3 ]]; then
   COMMIT_ID=$1
   SPARK_FROM=$2
   SPARK_TO=$3

@@ -18,3 +18,4 @@ set -x
 PROJECT_DIR="$(cd "`dirname "$0"`/.."; pwd)"
 ${PROJECT_DIR}/gradlew spotlessApply -Dspark_binary_version=3.3
 ${PROJECT_DIR}/gradlew spotlessApply -Dspark_binary_version=3.4
+${PROJECT_DIR}/gradlew spotlessApply -Dspark_binary_version=3.5
