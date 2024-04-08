@@ -203,7 +203,7 @@ class SchemaUtilsSuite extends AnyFunSuite {
       ("price", "Decimal(2, 1)", " COMMENT 'price usd'"),
       ("remark", "Nullable(String)", ""),
       ("ingredient", "Array(Nullable(String))", ""),
-      ("nutrient", "Map(String,Nullable(String))", "")
+      ("nutrient", "Map(String, Nullable(String))", "")
     ) == toClickHouseSchema(catalystSchema))
   }
 }
