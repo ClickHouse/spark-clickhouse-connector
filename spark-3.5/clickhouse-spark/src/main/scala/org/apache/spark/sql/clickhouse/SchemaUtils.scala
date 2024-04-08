@@ -88,7 +88,7 @@ object SchemaUtils {
       case ArrayType(elemType, containsNull) => s"Array(${toClickHouseType(elemType, containsNull)})"
       // TODO currently only support String as key
       case MapType(keyType, valueType, valueContainsNull) if keyType.isInstanceOf[StringType] =>
-        s"Map(${toClickHouseType(keyType, nullable = false)},${toClickHouseType(valueType, valueContainsNull)})"
+        s"Map(${toClickHouseType(keyType, nullable = false)}, ${toClickHouseType(valueType, valueContainsNull)})"
       case _ => throw CHClientException(s"Unsupported type: $catalystType")
     }
 
