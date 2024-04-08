@@ -70,25 +70,25 @@ object SchemaUtils {
     (catalystType, chColumn.isNullable)
   }
 
-  def toClickHouseType(catalystType: DataType): String =
+  def toClickHouseType(catalystType: DataType, nullable: Boolean): String =
     catalystType match {
-      case BooleanType => "UInt8"
-      case ByteType => "Int8"
-      case ShortType => "Int16"
-      case IntegerType => "Int32"
-      case LongType => "Int64"
-      case FloatType => "Float32"
-      case DoubleType => "Float64"
-      case StringType => "String"
-      case VarcharType(_) => "String"
-      case CharType(_) => "String" // TODO: maybe FixString?
-      case DateType => "Date"
-      case TimestampType => "DateTime"
-      case DecimalType.Fixed(p, s) => s"Decimal($p, $s)"
-      case ArrayType(elemType, nullable) => s"Array(${maybeNullable(toClickHouseType(elemType), nullable)})"
+      case BooleanType => maybeNullable("UInt8", nullable)
+      case ByteType => maybeNullable("Int8", nullable)
+      case ShortType => maybeNullable("Int16", nullable)
+      case IntegerType => maybeNullable("Int32", nullable)
+      case LongType => maybeNullable("Int64", nullable)
+      case FloatType => maybeNullable("Float32", nullable)
+      case DoubleType => maybeNullable("Float64", nullable)
+      case StringType => maybeNullable("String", nullable)
+      case VarcharType(_) => maybeNullable("String", nullable)
+      case CharType(_) => maybeNullable("String", nullable) // TODO: maybe FixString?
+      case DateType => maybeNullable("Date", nullable)
+      case TimestampType => maybeNullable("DateTime", nullable)
+      case DecimalType.Fixed(p, s) => maybeNullable(s"Decimal($p, $s)", nullable)
+      case ArrayType(elemType, containsNull) => s"Array(${toClickHouseType(elemType, containsNull)})"
       // TODO currently only support String as key
-      case MapType(keyType, valueType, nullable) if keyType.isInstanceOf[StringType] =>
-        s"Map(${toClickHouseType(keyType)},${maybeNullable(toClickHouseType(valueType), nullable)})"
+      case MapType(keyType, valueType, valueContainsNull) if keyType.isInstanceOf[StringType] =>
+        s"Map(${toClickHouseType(keyType, nullable = false)}, ${toClickHouseType(valueType, valueContainsNull)})"
       case _ => throw CHClientException(s"Unsupported type: $catalystType")
     }
 
@@ -105,8 +105,8 @@ object SchemaUtils {
   def toClickHouseSchema(catalystSchema: StructType): Seq[(String, String, String)] =
     catalystSchema.fields
       .map { field =>
-        val chType = toClickHouseType(field.dataType)
-        (field.name, maybeNullable(chType, field.nullable), field.getComment().map(c => s" COMMENT '$c'").getOrElse(""))
+        val chType = toClickHouseType(field.dataType, field.nullable)
+        (field.name, chType, field.getComment().map(c => s" COMMENT '$c'").getOrElse(""))
       }
 
   private[clickhouse] def maybeNullable(chType: String, nullable: Boolean): String =
