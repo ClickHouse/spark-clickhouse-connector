@@ -24,6 +24,8 @@ import org.apache.spark.unsafe.types.UTF8String
 import xenon.clickhouse.exception.CHClientException
 import xenon.clickhouse.read.{ClickHouseInputPartition, ClickHouseReader, ScanJobDescription}
 
+import java.time.ZoneOffset
+import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 
 class ClickHouseBinaryReader(
@@ -62,7 +64,9 @@ class ClickHouseBinaryReader(
       case FloatType => value.asFloat
       case DoubleType => value.asDouble
       case d: DecimalType => Decimal(value.asBigDecimal(d.scale))
-      case TimestampType => value.asZonedDateTime.toEpochSecond * 1000 * 1000 // TODO consider scanJob.tz
+      case TimestampType =>
+        var _instant = value.asZonedDateTime.withZoneSameInstant(ZoneOffset.UTC)
+        TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
       case StringType if value.isInstanceOf[ClickHouseStringValue] => UTF8String.fromBytes(value.asBinary)
       case StringType => UTF8String.fromString(value.asString)
       case DateType => value.asDate.toEpochDay.toInt

@@ -27,6 +27,7 @@ import xenon.clickhouse.read.{ClickHouseInputPartition, ClickHouseReader, ScanJo
 
 import java.math.{MathContext, RoundingMode => RM}
 import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
+import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 import scala.math.BigDecimal.RoundingMode
 
@@ -79,9 +80,9 @@ class ClickHouseJsonReader(
       case d: DecimalType =>
         Decimal(BigDecimal(jsonNode.textValue, new MathContext(d.precision)), d.precision, d.scale)
       case TimestampType =>
-        ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(scanJob.tz))
-          .withZoneSameInstant(ZoneOffset.UTC)
-          .toEpochSecond * 1000 * 1000
+        var _instant =
+          ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(scanJob.tz)).withZoneSameInstant(ZoneOffset.UTC)
+        TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
       case StringType => UTF8String.fromString(jsonNode.asText)
       case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay.toInt
       case BinaryType => jsonNode.binaryValue
