@@ -16,6 +16,7 @@ license: |
 <!--begin-include-->
 |Key | Default | Description | Since
 |--- | ------- | ----------- | -----
+spark.clickhouse.fixedStringReadAs|binary|read ClickHouse FixedString type as the specified Spark data type. Supported formats: binary, string|0.8.1
 spark.clickhouse.ignoreUnsupportedTransform|false|ClickHouse supports using complex expressions as sharding keys or partition values, e.g. `cityHash64(col_1, col_2)`, and those can not be supported by Spark now. If `true`, ignore the unsupported expressions, otherwise fail fast w/ an exception. Note, when `spark.clickhouse.write.distributed.convertLocal` is enabled, ignore unsupported sharding keys may corrupt the data.|0.4.0
 spark.clickhouse.read.compression.codec|lz4|The codec used to decompress data for reading. Supported codecs: none, lz4.|0.5.0
 spark.clickhouse.read.distributed.convertLocal|true|When reading Distributed table, read local table instead of itself. If `true`, ignore `spark.clickhouse.read.distributed.useClusterNodes`.|0.1.0
