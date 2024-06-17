@@ -22,7 +22,7 @@ import java.util.concurrent.TimeUnit
 
 /**
  * Run the following command to update the configuration docs.
- *   UPDATE=1 ./gradlew test --tests=ConfigurationSuite
+ * UPDATE=1 ./gradlew test --tests=ConfigurationSuite
  */
 object ClickHouseSQLConf {
 
@@ -201,4 +201,12 @@ object ClickHouseSQLConf {
       .version("0.8.0")
       .booleanConf
       .createWithDefault(false)
+
+  val FIXED_STRING_READ_AS: ConfigEntry[String] =
+    buildConf("spark.clickhouse.fixedStringReadAs")
+      .doc("read ClickHouse FixedString type as the specified Spark data type. Supported formats: binary, string")
+      .version("0.8.1")
+      .stringConf
+      .transform(_.toLowerCase)
+      .createWithDefault("binary")
 }
