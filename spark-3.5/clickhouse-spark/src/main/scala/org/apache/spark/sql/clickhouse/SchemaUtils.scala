@@ -18,15 +18,22 @@ import com.clickhouse.data.ClickHouseDataType._
 import com.clickhouse.data.{ClickHouseColumn, ClickHouseDataType}
 import org.apache.spark.sql.types._
 import xenon.clickhouse.exception.CHClientException
+import org.apache.spark.sql.catalyst.SQLConfHelper
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_FIXED_STRING_AS
 
-object SchemaUtils {
+object SchemaUtils extends SQLConfHelper {
 
   def fromClickHouseType(chColumn: ClickHouseColumn): (DataType, Boolean) = {
     val catalystType = chColumn.getDataType match {
       case Nothing => NullType
       case Bool => BooleanType
       case String | JSON | UUID | Enum8 | Enum16 | IPv4 | IPv6 => StringType
-      case FixedString => BinaryType
+      case FixedString =>
+        conf.getConf(READ_FIXED_STRING_AS) match {
+          case "binary" => BinaryType
+          case "string" => StringType
+          case unsupported => throw CHClientException(s"Unsupported fixed string read format mapping: $unsupported")
+        }
       case Int8 => ByteType
       case UInt8 | Int16 => ShortType
       case UInt16 | Int32 => IntegerType
