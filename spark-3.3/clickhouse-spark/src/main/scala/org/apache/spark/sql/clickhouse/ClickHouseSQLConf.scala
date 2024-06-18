@@ -202,8 +202,8 @@ object ClickHouseSQLConf {
       .booleanConf
       .createWithDefault(false)
 
-  val FIXED_STRING_READ_AS: ConfigEntry[String] =
-    buildConf("spark.clickhouse.fixedStringReadAs")
+  val READ_FIXED_STRING_AS: ConfigEntry[String] =
+    buildConf("spark.clickhouse.read.fixedStringAs")
       .doc("Read ClickHouse FixedString type as the specified Spark data type. Supported types: binary, string")
       .version("0.8.0")
       .stringConf

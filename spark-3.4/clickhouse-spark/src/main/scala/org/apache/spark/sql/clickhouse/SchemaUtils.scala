@@ -19,7 +19,7 @@ import com.clickhouse.data.{ClickHouseColumn, ClickHouseDataType}
 import org.apache.spark.sql.types._
 import xenon.clickhouse.exception.CHClientException
 import org.apache.spark.sql.catalyst.SQLConfHelper
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.FIXED_STRING_READ_AS
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_FIXED_STRING_AS
 
 object SchemaUtils extends SQLConfHelper {
 
@@ -29,7 +29,7 @@ object SchemaUtils extends SQLConfHelper {
       case Bool => BooleanType
       case String | JSON | UUID | Enum8 | Enum16 | IPv4 | IPv6 => StringType
       case FixedString =>
-        conf.getConf(FIXED_STRING_READ_AS) match {
+        conf.getConf(READ_FIXED_STRING_AS) match {
           case "binary" => BinaryType
           case "string" => StringType
           case unsupported => throw CHClientException(s"Unsupported fixed string read format mapping: $unsupported")
