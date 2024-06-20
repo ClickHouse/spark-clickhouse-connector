@@ -20,6 +20,7 @@ import org.apache.commons.lang3.StringUtils
 import org.apache.spark.sql.connector.expressions.aggregate._
 import org.apache.spark.sql.connector.expressions.NamedReference
 import org.apache.spark.sql.sources._
+import org.apache.spark.sql.types.DecimalType
 import org.apache.spark.unsafe.types.UTF8String
 import xenon.clickhouse.Utils._
 
@@ -38,6 +39,9 @@ trait SQLHelper {
     case localDateTime: LocalDateTime => s"'${dateTimeFmt.format(localDateTime)}'"
     case legacyDate: Date => s"'${legacyDateFmt.format(legacyDate)}'"
     case localDate: LocalDate => s"'${dateFmt.format(localDate)}'"
+    case decimal: DecimalType if decimal.precision <= 9 => s"toDecimal32($value, ${decimal.scale})"
+    case decimal: DecimalType if decimal.precision <= 18 => s"toDecimal64($value, ${decimal.scale})"
+    case decimal: DecimalType => s"toDecimal128($value, ${decimal.scale})"
     case array: Array[Any] => array.map(compileValue).mkString(",")
     case _ => value
   }
