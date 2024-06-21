@@ -12,7 +12,7 @@
 # limitations under the License.
 #
 
-certifi==2023.5.7
+certifi==2023.7.22
 charset-normalizer==3.0.1
 click==8.1.3
 colorama==0.4.6
