@@ -19,10 +19,12 @@ on:
     branches:
       - "master"
       - "branch-*"
+      - "main"
   pull_request:
     branches:
       - "master"
       - "branch-*"
+      - "main"
 
 jobs:
   check-style:

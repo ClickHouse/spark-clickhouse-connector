@@ -21,7 +21,7 @@ Build and Test
 Check out source code from GitHub
 
 ```
-git checkout https://github.com/housepower/spark-clickhouse-connector.git
+git checkout https://github.com/ClickHouse/spark-clickhouse-connector.git
 ```
 
 Build w/o test
