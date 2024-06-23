@@ -17,12 +17,10 @@ name: "Check Style"
 on:
   push:
     branches:
-      - "master"
       - "branch-*"
       - "main"
   pull_request:
     branches:
-      - "master"
       - "branch-*"
       - "main"
 

@@ -26,7 +26,6 @@ jobs:
       fail-fast: false
       matrix:
         branch:
-          - "master"
           - "main"
         scala: [ 2.12, 2.13 ]
         spark: [ 3.3, 3.4, 3.5 ]
