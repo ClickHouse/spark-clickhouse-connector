@@ -58,7 +58,7 @@ object ExprUtils extends SQLConfHelper with Serializable {
     functionRegistry: FunctionRegistry
   ): Array[V2SortOrder] =
     toSparkSplits(
-      shardingKeyIgnoreRand,
+      shardingKeyIgnoreRand.map(k => ExprUtils.toSplitWithModulo(k, cluster.get.totalWeight)),
       partitionKey,
       functionRegistry
     ).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
@@ -211,4 +211,7 @@ object ExprUtils extends SQLConfHelper with Serializable {
     case bucket: BucketTransform => throw CHClientException(s"Bucket transform not support yet: $bucket")
     case other: Transform => throw CHClientException(s"Unsupported transform: $other")
   }
+
+  def toSplitWithModulo(shardingKey: Expr, weight: Int): FuncExpr =
+    FuncExpr("modulo", List(shardingKey, StringLiteral(weight.toString)))
 }
