@@ -16,7 +16,6 @@ name: "Deploy Website"
 on:
   push:
     branches:
-      - "master"
       - "main"
     paths:
       - "docs/**"

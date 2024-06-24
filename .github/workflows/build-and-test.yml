@@ -16,12 +16,10 @@ name: "Build and Test"
 on:
   push:
     branches:
-      - "master"
       - "branch-*"
       - "main"
   pull_request:
     branches:
-      - "master"
       - "branch-*"
       - "main"
 
