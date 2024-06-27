@@ -9,7 +9,7 @@ Build on Apache Spark DataSourceV2 API.
 
 ## Usage
 
-See the [documentation](https://housepower.github.io/spark-clickhouse-connector/) for how to use this connector.
+See the [documentation](https://clickhouse.com/docs/en/integrations/apache-spark) for how to use this connector.
 
 ## Requirements
 
