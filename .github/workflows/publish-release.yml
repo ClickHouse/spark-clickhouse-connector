@@ -21,7 +21,7 @@ on:
 
 jobs:
   publish-release:
-    if: ${{ startsWith(github.repository, 'housepower/') }}
+    if: ${{ startsWith(github.repository, 'clickhouse/') }}
     runs-on: ubuntu-22.04
     strategy:
       fail-fast: false
@@ -51,10 +51,9 @@ jobs:
           -Prelease
           -Psigning.gnupg.keyName='Cheng Pan'
           -Psigning.gnupg.executable=gpg
-          -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
 
   create-github-release:
-    if: ${{ startsWith(github.repository, 'housepower/') }}
+    if: ${{ startsWith(github.repository, 'clickhouse/') }}
     runs-on: ubuntu-22.04
     needs: publish-release
     steps:

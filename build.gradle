@@ -68,7 +68,7 @@ allprojects {
     version = getProjectVersion()
 
     repositories {
-        maven { url = "$mavenCentralMirror" }
+        mavenCentral()
     }
 }
 
