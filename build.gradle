@@ -43,6 +43,8 @@ project.ext {
 rat {
     verbose.set(true)
     exclude(
+            ".github/ISSUE_TEMPLATE/**",
+            ".github/dependabot.yml",
             "**/README.md",
             "CODE_OF_CONDUCT.md",
             "version.txt",
