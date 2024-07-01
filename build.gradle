@@ -45,6 +45,7 @@ rat {
     exclude(
             ".github/ISSUE_TEMPLATE/**",
             ".github/dependabot.yml",
+            ".github/pull_request_template.md",
             "**/README.md",
             "CODE_OF_CONDUCT.md",
             "version.txt",
