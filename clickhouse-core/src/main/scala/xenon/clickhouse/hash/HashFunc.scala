@@ -26,7 +26,7 @@ abstract class HashFunc[T: ClassTag] {
       // Here Array[Byte] means raw byte array, not Clickhouse's Array[UInt8] or Array[Int8].
       // Note that Array[UInt8] is handled differently in Clickhouse, so passing it here as Array[Byte] will cause different result.
       // This is left for performance issue, as sometimes raw bytes is better than constructing the real type
-      // see https://github.com/housepower/spark-clickhouse-connector/pull/261#discussion_r1271828750
+      // see https://github.com/clickhouse/spark-clickhouse-connector/pull/261#discussion_r1271828750
       case bytes: Array[Byte] => applyHash(bytes)
       case string: String => applyHash(string.getBytes(StandardCharsets.UTF_8))
       case _ => throw new IllegalArgumentException(s"Unsupported input type: ${input.getClass}")

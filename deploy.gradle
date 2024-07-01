@@ -44,7 +44,7 @@ subprojects {
 
                         pom {
                             name = "Spark ClickHouse Connector"
-                            url = "https://github.com/housepower/spark-clickhouse-connector"
+                            url = "https://github.com/clickhouse/spark-clickhouse-connector"
                             description = "Spark ClickHouse Connector build on Apache Spark DataSourceV2 API."
                             developers {
                                 developer {
@@ -61,11 +61,11 @@ subprojects {
                                 }
                             }
                             scm {
-                                url = "https://github.com/housepower/spark-clickhouse-connector.git"
+                                url = "https://github.com/clickhouse/spark-clickhouse-connector.git"
                             }
                             issueManagement {
                                 system = 'GitHub'
-                                url = 'https://github.com/housepower/spark-clickhouse-connector/issues'
+                                url = 'https://github.com/clickhouse/spark-clickhouse-connector/issues'
                             }
                         }
                     }
