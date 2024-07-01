@@ -19,7 +19,7 @@ plugins {
     id "org.scoverage" version "8.1" apply false
     id "org.sonarqube" version "3.4.0.2513"
     id "com.diffplug.spotless" version "6.12.1" apply false
-    id "org.nosphere.apache.rat" version "0.8.0"
+    id "org.nosphere.apache.rat" version "0.8.1"
     id "com.github.maiflai.scalatest" version "0.32" apply false
     id "com.github.johnrengelman.shadow" version "7.1.2" apply false
 }
