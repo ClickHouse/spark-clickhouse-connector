@@ -20,7 +20,7 @@ on:
 
 jobs:
   sonar-report:
-    if: ${{ startsWith(github.repository, 'housepower/') }}
+    if: ${{ startsWith(github.repository, 'clickhouse/') }}
     runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
