@@ -33,7 +33,6 @@ object NodeClient {
 }
 
 class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
-
   private val node: ClickHouseNode = ClickHouseNode.builder()
     .options(nodeSpec.options)
     .host(nodeSpec.host)

@@ -18,10 +18,29 @@ import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 import org.apache.spark.sql.types._
+import org.junit.Test
 
 class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
 
   import testImplicits._
+  override protected def beforeAll(): Unit = {
+    super.beforeAll()
+    Seq("db_t1",
+      "db_t2",
+      "db_part",
+      "db_part_date",
+      "db_multi_part_col",
+      "db_mul_part_date",
+      "db_part_toYYYYMMDD_toDate",
+      "db_multi_sort_col",
+      "db_trunc",
+      "db_del",
+      "db_rw", "db_metadata_col", "db_agg_col", "db_cor", "cache_db", "runtime_db").foreach {
+      database =>
+        println(s"Drop database $database")
+        runClickHouseSQL("DROP DATABASE IF EXISTS _" + database)
+    }
+  }
 
   test("clickhouse command runner") {
     checkAnswer(

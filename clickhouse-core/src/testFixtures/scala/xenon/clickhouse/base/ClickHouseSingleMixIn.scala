@@ -29,6 +29,8 @@ import java.nio.file.{Path, Paths}
 
 trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   // format: off
+  val CLICKHOUSE_VERSION:  String = Utils.load("CLICKHOUSE_VERSION", "23.8")
+  val isCloud: Boolean = if (CLICKHOUSE_VERSION.equalsIgnoreCase("cloud")) true else false
   val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
   val CLICKHOUSE_USER:     String = Utils.load("CLICKHOUSE_USER", "default")
   val CLICKHOUSE_PASSWORD: String = Utils.load("CLICKHOUSE_PASSWORD", "")
@@ -36,6 +38,8 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
 
   private val CLICKHOUSE_HTTP_PORT = 8123
   private val CLICKHOUSE_TPC_PORT  = 9000
+  private val CLICKHOUSE_CLOUD_HTTP_PORT = 8443
+  private val CLICKHOUSE_CLOUD_TCP_PORT = 9000
   // format: on
 
   protected val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)
@@ -73,14 +77,16 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
         .asInstanceOf[ClickHouseContainer]
     }
   // format: off
-  def clickhouseHost:  String = container.host
-  def clickhouseHttpPort: Int = container.mappedPort(CLICKHOUSE_HTTP_PORT)
-  def clickhouseTcpPort:  Int = container.mappedPort(CLICKHOUSE_TPC_PORT)
+  def clickhouseHost:  String = if (isCloud) sys.env.get("INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT").get else container.host
+  def clickhouseHttpPort: Int = if (isCloud) CLICKHOUSE_CLOUD_HTTP_PORT else container.mappedPort(CLICKHOUSE_HTTP_PORT)
+  def clickhouseTcpPort:  Int = if (isCloud) CLICKHOUSE_CLOUD_TCP_PORT else container.mappedPort(CLICKHOUSE_TPC_PORT)
+  def clickhousePassword: String = if (isCloud) sys.env.get("INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT").get else CLICKHOUSE_PASSWORD
+
   // format: on
 
   def withNodeClient(protocol: ClickHouseProtocol = HTTP)(block: NodeClient => Unit): Unit =
     Utils.tryWithResource {
-      NodeClient(NodeSpec(clickhouseHost, Some(clickhouseHttpPort), Some(clickhouseTcpPort), protocol))
+      NodeClient(NodeSpec(container.host, Some(container.mappedPort(CLICKHOUSE_HTTP_PORT)), Some(container.mappedPort(CLICKHOUSE_TPC_PORT)), protocol))
     } {
       client => block(client)
     }

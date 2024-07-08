@@ -35,7 +35,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
     .set("spark.sql.catalog.clickhouse.http_port", clickhouseHttpPort.toString)
     .set("spark.sql.catalog.clickhouse.protocol", "http")
     .set("spark.sql.catalog.clickhouse.user", CLICKHOUSE_USER)
-    .set("spark.sql.catalog.clickhouse.password", CLICKHOUSE_PASSWORD)
+    .set("spark.sql.catalog.clickhouse.password", clickhousePassword)
     .set("spark.sql.catalog.clickhouse.database", CLICKHOUSE_DB)
     .set("spark.sql.catalog.clickhouse.option.custom_http_params", "async_insert=1,wait_for_async_insert=1")
     // extended configurations
@@ -46,14 +46,17 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
     .set("spark.clickhouse.write.write.repartitionNum", "0")
     .set("spark.clickhouse.read.format", "json")
     .set("spark.clickhouse.write.format", "json")
+    .set("spark.sql.catalog.clickhouse.option.ssl", isCloud.toString)
+
 
   override def cmdRunnerOptions: Map[String, String] = Map(
     "host" -> clickhouseHost,
     "http_port" -> clickhouseHttpPort.toString,
     "protocol" -> "http",
     "user" -> CLICKHOUSE_USER,
-    "password" -> CLICKHOUSE_PASSWORD,
-    "database" -> CLICKHOUSE_DB
+    "password" -> clickhousePassword,
+    "database" -> CLICKHOUSE_DB,
+    "option.ssl" -> isCloud.toString
   )
 
   def withTable(
@@ -66,7 +69,6 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
   )(f: => Unit): Unit =
     try {
       runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
-
       spark.sql(
         s"""CREATE TABLE $db.$tbl (
            |  ${schema.fields.map(_.toDDL).mkString(",\n  ")}
@@ -78,7 +80,6 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
            |)
            |""".stripMargin
       )
-
       f
     } finally {
       runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
