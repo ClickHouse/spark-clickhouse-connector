@@ -22,7 +22,7 @@ class ClickHouseTableDDLSuite extends SparkClickHouseSingleTest {
 
   test("clickhouse command runner") {
     withTable("default.abc") {
-      runClickHouseSQL("CREATE TABLE default.abc(a UInt8) ENGINE=Log()")
+      runClickHouseSQL("CREATE TABLE default.abc(a UInt8) ENGINE=Memory()")
       checkAnswer(
         spark.sql("""DESC default.abc""").select($"col_name", $"data_type").limit(1),
         Row("a", "smallint") :: Nil
