@@ -83,10 +83,14 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   def clickhousePassword: String = if (isCloud) sys.env.get("INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT").get else CLICKHOUSE_PASSWORD
 
   // format: on
-
   def withNodeClient(protocol: ClickHouseProtocol = HTTP)(block: NodeClient => Unit): Unit =
     Utils.tryWithResource {
-      NodeClient(NodeSpec(container.host, Some(container.mappedPort(CLICKHOUSE_HTTP_PORT)), Some(container.mappedPort(CLICKHOUSE_TPC_PORT)), protocol))
+      NodeClient(NodeSpec(
+        container.host,
+        Some(container.mappedPort(CLICKHOUSE_HTTP_PORT)),
+        Some(container.mappedPort(CLICKHOUSE_TPC_PORT)),
+        protocol
+      ))
     } {
       client => block(client)
     }
