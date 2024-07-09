@@ -25,7 +25,8 @@ class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
   import testImplicits._
   override protected def beforeAll(): Unit = {
     super.beforeAll()
-    Seq("db_t1",
+    Seq(
+      "db_t1",
       "db_t2",
       "db_part",
       "db_part_date",
@@ -35,7 +36,13 @@ class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
       "db_multi_sort_col",
       "db_trunc",
       "db_del",
-      "db_rw", "db_metadata_col", "db_agg_col", "db_cor", "cache_db", "runtime_db").foreach {
+      "db_rw",
+      "db_metadata_col",
+      "db_agg_col",
+      "db_cor",
+      "cache_db",
+      "runtime_db"
+    ).foreach {
       database =>
         println(s"Drop database $database")
         runClickHouseSQL("DROP DATABASE IF EXISTS _" + database)

@@ -48,7 +48,6 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
     .set("spark.clickhouse.write.format", "json")
     .set("spark.sql.catalog.clickhouse.option.ssl", isCloud.toString)
 
-
   override def cmdRunnerOptions: Map[String, String] = Map(
     "host" -> clickhouseHost,
     "http_port" -> clickhouseHttpPort.toString,
