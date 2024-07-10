@@ -118,15 +118,25 @@ class ClickHouseCatalog extends TableCatalog
     val (database, table) = unwrap(ident) match {
       case None => throw new NoSuchTableException(ident)
       case Some((db, tbl)) =>
+//        println(s"loadTable: $db, $tbl")
         nodeClient.syncQueryOutputJSONEachRow(s"SELECT * FROM `$db`.`$tbl` WHERE 1=0") match {
-          case Left(exception) if exception.code == UNKNOWN_TABLE.code =>
+          case Left(exception)
+            if exception.code == UNKNOWN_TABLE.code =>
             throw new NoSuchTableException(ident)
           // not sure if this check is necessary
           case Left(exception) if exception.code == UNKNOWN_DATABASE.code =>
             throw new NoSuchTableException(s"Database $db does not exist")
-          case Left(rethrow) =>
+          case Left (exception) if (exception.toString.indexOf("Code: 60. DB::Exception: Unknown table") > 0) =>
+            throw new NoSuchTableException(ident)
+          case Left(rethrow) => {
+            val x : Int = rethrow.code
+//            println(s"loadTable error: $db, $tbl, $x, ($rethrow.code), [$rethrow]")
             throw rethrow
-          case Right(_) => (db, tbl)
+          }
+          case Right(_) => {
+//            println(s"loadTable: $db, $tbl, Right")
+            (db, tbl)
+          }
         }
     }
     implicit val _tz: ZoneId = tz.merge
@@ -238,6 +248,7 @@ class ClickHouseCatalog extends TableCatalog
       table: String,
       settingsClause: String
     ): Unit = {
+      log.debug(s"createTable($clusterOpt, $engineExpr, $database, $table, $settingsClause)")
       val clusterClause = clusterOpt.map(c => s"ON CLUSTER $c").getOrElse("")
       nodeClient.syncQueryAndCheckOutputJSONEachRow(
         s"""CREATE TABLE `$database`.`$table` $clusterClause (
