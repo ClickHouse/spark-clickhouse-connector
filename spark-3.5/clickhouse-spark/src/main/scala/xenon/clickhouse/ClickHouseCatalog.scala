@@ -119,11 +119,11 @@ class ClickHouseCatalog extends TableCatalog
       case None => throw new NoSuchTableException(ident)
       case Some((db, tbl)) =>
         nodeClient.syncQueryOutputJSONEachRow(s"SELECT * FROM `$db`.`$tbl` WHERE 1=0") match {
-          case Left(exception)  if exception.code == UNKNOWN_TABLE.code => throw new NoSuchTableException(ident)
+          case Left(exception) if exception.code == UNKNOWN_TABLE.code => throw new NoSuchTableException(ident)
           // not sure if this check is necessary
           case Left(exception) if exception.code == UNKNOWN_DATABASE.code =>
             throw new NoSuchTableException(s"Database $db does not exist")
-          case Left (exception) if exception.toString.indexOf("Code: 60. DB::Exception: Unknown table") > 0 =>
+          case Left(exception) if exception.toString.indexOf("Code: 60. DB::Exception: Unknown table") > 0 =>
             throw new NoSuchTableException(ident)
           case Left(rethrow) =>
             throw rethrow
