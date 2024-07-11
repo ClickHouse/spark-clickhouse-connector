@@ -34,6 +34,7 @@ class TPCDSClusterSuite extends SparkClickHouseClusterTest {
     .set("spark.clickhouse.write.format", "json")
 
   test("Cluster: TPC-DS sf1 write and count(*)") {
+    assume(isOnPrem, "This test is only for on prem version")
     withDatabase("tpcds_sf1_cluster") {
       spark.sql("CREATE DATABASE tpcds_sf1_cluster WITH DBPROPERTIES (cluster = 'single_replica')")
 

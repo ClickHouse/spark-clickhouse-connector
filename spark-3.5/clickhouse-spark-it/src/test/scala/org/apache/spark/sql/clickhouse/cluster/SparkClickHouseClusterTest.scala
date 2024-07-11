@@ -22,7 +22,6 @@ import xenon.clickhouse.base.ClickHouseClusterMixIn
 trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
 
   import testImplicits._
-
   override protected def sparkConf: SparkConf = super.sparkConf
     .setMaster("local[4]")
     .setAppName("spark-clickhouse-cluster-ut")

@@ -19,6 +19,7 @@ import org.apache.spark.sql.Row
 class ClusterShardByRandSuite extends SparkClickHouseClusterTest {
 
   test("shard by rand()") {
+    assume(isOnPrem, "This test is only for on prem version")
     val cluster = "single_replica"
     val db = "db_rand_shard"
     val tbl_dist = "tbl_rand_shard"

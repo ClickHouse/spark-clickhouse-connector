@@ -19,6 +19,7 @@ import org.apache.spark.sql.Row
 class ClusterPartitionManagementSuite extends SparkClickHouseClusterTest {
 
   test("distribute table partition") {
+    assume(isOnPrem, "This test is only for on prem version")
     withSimpleDistTable("single_replica", "db_part", "tbl_part", true) { (_, db, tbl_dist, _) =>
       checkAnswer(
         spark.sql(s"SHOW PARTITIONS $db.$tbl_dist"),

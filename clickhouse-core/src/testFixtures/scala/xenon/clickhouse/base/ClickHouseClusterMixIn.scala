@@ -24,14 +24,19 @@ import java.io.File
 
 trait ClickHouseClusterMixIn extends AnyFunSuite with ForAllTestContainer {
 
+  val CLICKHOUSE_VERSION: String = Utils.load("CLICKHOUSE_VERSION", "23.8")
+  val isCloud: Boolean = if (CLICKHOUSE_VERSION.equalsIgnoreCase("cloud")) true else false
+  val isOnPrem: Boolean = !isCloud
+  val CLICKHOUSE_IMAGE:    String = if (isCloud) "clickhouse/clickhouse-server:23.8" else Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
+
   protected val ZOOKEEPER_CLIENT_PORT = 2181
   protected val CLICKHOUSE_HTTP_PORT = 8123
   protected val CLICKHOUSE_TCP_PORT = 9000
 
-  protected val CLICKHOUSE_IMAGE: String = Utils.load(
-    "CLICKHOUSE_IMAGE",
-    "clickhouse/clickhouse-server:23.8"
-  )
+//  protected val CLICKHOUSE_IMAGE: String = Utils.load(
+//    "CLICKHOUSE_IMAGE",
+//    "clickhouse/clickhouse-server:23.8"
+//  )
 
   protected val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)
 
