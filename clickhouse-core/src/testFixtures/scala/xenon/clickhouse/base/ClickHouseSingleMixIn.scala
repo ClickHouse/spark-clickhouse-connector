@@ -31,7 +31,7 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   // format: off
   val CLICKHOUSE_VERSION:  String = Utils.load("CLICKHOUSE_VERSION", "23.8")
   val isCloud: Boolean = if (CLICKHOUSE_VERSION.equalsIgnoreCase("cloud")) true else false
-  val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
+  val CLICKHOUSE_IMAGE:    String = if (isCloud) "clickhouse/clickhouse-server:23.8" else Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
   val CLICKHOUSE_USER:     String = Utils.load("CLICKHOUSE_USER", "default")
   val CLICKHOUSE_PASSWORD: String = Utils.load("CLICKHOUSE_PASSWORD", "")
   val CLICKHOUSE_DB:       String = Utils.load("CLICKHOUSE_DB", "")
