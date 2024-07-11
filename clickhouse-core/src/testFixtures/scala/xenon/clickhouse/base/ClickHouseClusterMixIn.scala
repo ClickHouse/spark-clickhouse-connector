@@ -27,7 +27,8 @@ trait ClickHouseClusterMixIn extends AnyFunSuite with ForAllTestContainer {
   val CLICKHOUSE_VERSION: String = Utils.load("CLICKHOUSE_VERSION", "23.8")
   val isCloud: Boolean = if (CLICKHOUSE_VERSION.equalsIgnoreCase("cloud")) true else false
   val isOnPrem: Boolean = !isCloud
-  val CLICKHOUSE_IMAGE:    String = if (isCloud) "clickhouse/clickhouse-server:23.8" else Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
+  val CLICKHOUSE_IMAGE: String = if (isCloud) "clickhouse/clickhouse-server:23.8"
+  else Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
 
   protected val ZOOKEEPER_CLIENT_PORT = 2181
   protected val CLICKHOUSE_HTTP_PORT = 8123
