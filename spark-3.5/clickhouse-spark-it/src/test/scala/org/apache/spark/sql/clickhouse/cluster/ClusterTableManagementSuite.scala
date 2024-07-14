@@ -17,7 +17,6 @@ package org.apache.spark.sql.clickhouse.cluster
 class ClusterTableManagementSuite extends SparkClickHouseClusterTest {
 
   test("create or replace distribute table") {
-    assume(isOnPrem, "This test is only for on prem version")
     autoCleanupDistTable("single_replica", "db_cor", "tbl_cor_dist") { (cluster, db, _, tbl_local) =>
       def createLocalTable(): Unit = spark.sql(
         s"""CREATE TABLE $db.$tbl_local (

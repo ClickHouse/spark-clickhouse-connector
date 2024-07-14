@@ -22,7 +22,6 @@ import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
 
   test("clickhouse metadata column - distributed table") {
-    assume(isOnPrem, "This test is only for on prem version")
     withSimpleDistTable("single_replica", "db_w", "t_dist", true) { (_, db, tbl_dist, _) =>
       assert(READ_DISTRIBUTED_CONVERT_LOCAL.defaultValueString == "true")
 
@@ -49,7 +48,6 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
   }
 
   test("push down aggregation - distributed table") {
-    assume(isOnPrem, "This test is only for on prem version")
     withSimpleDistTable("single_replica", "db_agg_col", "t_dist", true) { (_, db, tbl_dist, _) =>
       checkAnswer(
         spark.sql(s"SELECT COUNT(id) FROM $db.$tbl_dist"),
@@ -89,7 +87,6 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
   }
 
   test("runtime filter - distributed table") {
-    assume(isOnPrem, "This test is only for on prem version")
     withSimpleDistTable("single_replica", "runtime_db", "runtime_tbl", true) { (_, db, tbl_dist, _) =>
       spark.sql("set spark.clickhouse.read.runtimeFilter.enabled=false")
       checkAnswer(

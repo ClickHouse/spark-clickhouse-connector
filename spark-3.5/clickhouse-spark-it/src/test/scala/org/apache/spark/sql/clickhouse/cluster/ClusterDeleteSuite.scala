@@ -17,7 +17,6 @@ package org.apache.spark.sql.clickhouse.cluster
 class ClusterDeleteSuite extends SparkClickHouseClusterTest {
 
   test("truncate distribute table") {
-    assume(isOnPrem, "This test is only for on prem version")
     withSimpleDistTable("single_replica", "db_truncate", "tbl_truncate", true) { (_, db, tbl_dist, _) =>
       assert(spark.table(s"$db.$tbl_dist").count() === 4)
       spark.sql(s"TRUNCATE TABLE $db.$tbl_dist")
@@ -26,7 +25,6 @@ class ClusterDeleteSuite extends SparkClickHouseClusterTest {
   }
 
   test("delete from distribute table") {
-    assume(isOnPrem, "This test is only for on prem version")
     withSimpleDistTable("single_replica", "db_delete", "tbl_delete", true) { (_, db, tbl_dist, _) =>
       assert(spark.table(s"$db.$tbl_dist").count() === 4)
       spark.sql(s"DELETE FROM $db.$tbl_dist WHERE m = 1")
