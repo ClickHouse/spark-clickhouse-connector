@@ -83,7 +83,7 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
           _ttl = ttlOpt,
           _settings = settings
         )
-      case eg: String if ("ReplicatedMergeTree" equalsIgnoreCase eg) || ("SharedMergeTree" equalsIgnoreCase eg)  =>
+      case eg: String if ("ReplicatedMergeTree" equalsIgnoreCase eg) || ("SharedMergeTree" equalsIgnoreCase eg) =>
         ReplicatedMergeTreeEngineSpec(
           engine_clause = engineExpr,
           zk_path = engineArgs.head.asInstanceOf[StringLiteral].value,
