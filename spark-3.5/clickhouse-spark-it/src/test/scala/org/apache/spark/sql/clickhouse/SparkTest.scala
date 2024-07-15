@@ -49,8 +49,6 @@ trait SparkTest extends QueryTest with SharedSparkSession {
     .set("spark.sql.shuffle.partitions", "2")
 
   def runClickHouseSQL(sql: String, options: Map[String, String] = cmdRunnerOptions): DataFrame =
-//    spark.conf.getAll.foreach(println)
-//    println("--------------------")
     spark.executeCommand(classOf[ClickHouseCommandRunner].getName, sql, options)
 
   def autoCleanupTable(

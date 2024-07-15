@@ -124,7 +124,6 @@ class ClickHouseCatalog extends TableCatalog
           case Left(exception) if exception.code == UNKNOWN_DATABASE.code =>
             throw new NoSuchTableException(s"Database $db does not exist")
           case Left(rethrow) =>
-            println(rethrow)
             throw rethrow
           case Right(_) =>
             (db, tbl)

@@ -34,11 +34,6 @@ trait ClickHouseClusterMixIn extends AnyFunSuite with ForAllTestContainer {
   protected val CLICKHOUSE_HTTP_PORT = 8123
   protected val CLICKHOUSE_TCP_PORT = 9000
 
-//  protected val CLICKHOUSE_IMAGE: String = Utils.load(
-//    "CLICKHOUSE_IMAGE",
-//    "clickhouse/clickhouse-server:23.8"
-//  )
-
   protected val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)
 
   test("clickhouse cluster up") {
