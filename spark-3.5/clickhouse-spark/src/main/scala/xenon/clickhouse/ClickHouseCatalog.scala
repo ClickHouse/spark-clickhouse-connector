@@ -123,9 +123,8 @@ class ClickHouseCatalog extends TableCatalog
           // not sure if this check is necessary
           case Left(exception) if exception.code == UNKNOWN_DATABASE.code =>
             throw new NoSuchTableException(s"Database $db does not exist")
-          case Left(exception) if exception.toString.indexOf("Code: 60. DB::Exception: Unknown table") > 0 =>
-            throw new NoSuchTableException(ident)
           case Left(rethrow) =>
+            println(rethrow)
             throw rethrow
           case Right(_) =>
             (db, tbl)
