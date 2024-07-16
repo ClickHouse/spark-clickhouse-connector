@@ -197,4 +197,20 @@ class SQLParserSuite extends AnyFunSuite {
     )
     assert(actual === expected)
   }
+
+  test("parse SharedMergeTree - 1") {
+    val ddl = "SharedMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}') " +
+      "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
+    val actual = parser.parseEngineClause(ddl)
+    val expected = SharedMergeTreeEngineSpec(
+      engine_clause = "SharedMergeTree('/clickhouse/tables/{uuid}/{shard}', '{replica}')",
+      zk_path = "/clickhouse/tables/{uuid}/{shard}",
+      replica_name = "{replica}",
+      _sorting_key = TupleExpr(FieldRef("id") :: Nil),
+      _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
+      _settings = Map("index_granularity" -> "8192")
+    )
+    assert(actual === expected)
+  }
+
 }
