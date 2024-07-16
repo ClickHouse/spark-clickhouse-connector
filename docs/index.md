@@ -45,7 +45,7 @@ For old versions, please refer the compatible matrix.
 
 | Version | Compatible Spark Versions | ClickHouse JDBC version |
 |---------|---------------------------|-------------------------|
-| main    | Spark 3.3, 3.4, 3.5       | 0.6.0                   |
+| main    | Spark 3.3, 3.4, 3.5       | 0.6.2                   |
 | 0.7.3   | Spark 3.3, 3.4            | 0.4.6                   |
 | 0.6.0   | Spark 3.3                 | 0.3.2-patch11           |
 | 0.5.0   | Spark 3.2, 3.3            | 0.3.2-patch11           |
