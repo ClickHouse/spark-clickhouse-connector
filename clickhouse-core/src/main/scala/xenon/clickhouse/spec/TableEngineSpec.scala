@@ -137,16 +137,16 @@ case class DistributedEngineSpec(
   override def is_distributed: Boolean = true
 }
 case class SharedMergeTreeEngineSpec(
-    engine_clause: String,
-    zk_path: String,
-    replica_name: String,
-    var _sorting_key: TupleExpr = TupleExpr(List.empty),
-    var _primary_key: TupleExpr = TupleExpr(List.empty),
-    var _partition_key: TupleExpr = TupleExpr(List.empty),
-    var _sampling_key: TupleExpr = TupleExpr(List.empty),
-    var _ttl: Option[String] = None,
-    var _settings: Map[String, String] = Map.empty
-  ) extends MergeTreeFamilyEngineSpec with ReplicatedEngineSpec {
+  engine_clause: String,
+  zk_path: String,
+  replica_name: String,
+  var _sorting_key: TupleExpr = TupleExpr(List.empty),
+  var _primary_key: TupleExpr = TupleExpr(List.empty),
+  var _partition_key: TupleExpr = TupleExpr(List.empty),
+  var _sampling_key: TupleExpr = TupleExpr(List.empty),
+  var _ttl: Option[String] = None,
+  var _settings: Map[String, String] = Map.empty
+) extends MergeTreeFamilyEngineSpec with ReplicatedEngineSpec {
   def engine: String = "SharedMergeTreeEngineSpec"
   override def sorting_key: TupleExpr = _sorting_key
   override def primary_key: TupleExpr = _primary_key
