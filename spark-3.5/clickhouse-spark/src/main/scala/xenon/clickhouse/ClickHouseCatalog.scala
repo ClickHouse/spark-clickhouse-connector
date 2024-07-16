@@ -125,8 +125,7 @@ class ClickHouseCatalog extends TableCatalog
             throw new NoSuchTableException(s"Database $db does not exist")
           case Left(rethrow) =>
             throw rethrow
-          case Right(_) =>
-            (db, tbl)
+          case Right(_) => (db, tbl)
         }
     }
     implicit val _tz: ZoneId = tz.merge
@@ -238,7 +237,6 @@ class ClickHouseCatalog extends TableCatalog
       table: String,
       settingsClause: String
     ): Unit = {
-      log.debug(s"createTable($clusterOpt, $engineExpr, $database, $table, $settingsClause)")
       val clusterClause = clusterOpt.map(c => s"ON CLUSTER $c").getOrElse("")
       nodeClient.syncQueryAndCheckOutputJSONEachRow(
         s"""CREATE TABLE `$database`.`$table` $clusterClause (
