@@ -15,7 +15,7 @@
 package org.apache.spark.sql.clickhouse.cluster
 
 import org.apache.spark.sql.clickhouse.TestUtils.om
-import xenon.clickhouse.func._
+import com.clickhouse.func._
 import java.lang.{Long => JLong}
 
 class ClickHouseClusterHashUDFSuite extends SparkClickHouseClusterTest {

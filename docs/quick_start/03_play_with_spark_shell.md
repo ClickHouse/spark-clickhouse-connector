@@ -20,7 +20,7 @@ Play with Spark Shell
 
 ```shell
 $SPARK_HOME/bin/spark-shell \
-  --conf spark.sql.catalog.clickhouse=xenon.clickhouse.ClickHouseCatalog \
+  --conf spark.sql.catalog.clickhouse=com.clickhouse.ClickHouseCatalog \
   --conf spark.sql.catalog.clickhouse.host=${CLICKHOUSE_HOST:-127.0.0.1} \
   --conf spark.sql.catalog.clickhouse.protocol=http \
   --conf spark.sql.catalog.clickhouse.http_port=${CLICKHOUSE_HTTP_PORT:-8123} \
@@ -130,7 +130,7 @@ scala> val sql = """
      | |ORDER BY id
      | """.stripMargin
 
-scala> spark.executeCommand("xenon.clickhouse.ClickHouseCommandRunner", sql, options) 
+scala> spark.executeCommand("com.clickhouse.ClickHouseCommandRunner", sql, options) 
 
 scala> spark.sql("show tables in clickhouse_s1r1.test_db").show
 +---------+---------+-----------+

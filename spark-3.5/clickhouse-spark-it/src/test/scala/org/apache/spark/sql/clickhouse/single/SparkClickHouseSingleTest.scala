@@ -14,11 +14,11 @@
 
 package org.apache.spark.sql.clickhouse.single
 
+import com.clickhouse.base.ClickHouseSingleMixIn
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.clickhouse.SparkTest
 import org.apache.spark.sql.functions.month
 import org.apache.spark.sql.types.StructType
-import xenon.clickhouse.base.ClickHouseSingleMixIn
 
 trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
 
@@ -30,7 +30,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
     .set("spark.sql.shuffle.partitions", "2")
     // catalog
     .set("spark.sql.defaultCatalog", "clickhouse")
-    .set("spark.sql.catalog.clickhouse", "xenon.clickhouse.ClickHouseCatalog")
+    .set("spark.sql.catalog.clickhouse", "com.clickhouse.ClickHouseCatalog")
     .set("spark.sql.catalog.clickhouse.host", clickhouseHost)
     .set("spark.sql.catalog.clickhouse.http_port", clickhouseHttpPort.toString)
     .set("spark.sql.catalog.clickhouse.protocol", "http")

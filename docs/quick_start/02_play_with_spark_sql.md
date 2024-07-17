@@ -23,7 +23,7 @@ for Production.
 
 ```shell
 $SPARK_HOME/bin/spark-sql \
-  --conf spark.sql.catalog.clickhouse=xenon.clickhouse.ClickHouseCatalog \
+  --conf spark.sql.catalog.clickhouse=com.clickhouse.ClickHouseCatalog \
   --conf spark.sql.catalog.clickhouse.host=${CLICKHOUSE_HOST:-127.0.0.1} \
   --conf spark.sql.catalog.clickhouse.protocol=http \
   --conf spark.sql.catalog.clickhouse.http_port=${CLICKHOUSE_HTTP_PORT:-8123} \

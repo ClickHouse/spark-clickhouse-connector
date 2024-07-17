@@ -21,8 +21,8 @@ import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.IGNORE_UNSUPPORTED_TRAN
 import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions.{Expression => V2Expression, _}
 import org.apache.spark.sql.types.{IntegerType, LongType, StructField, StructType}
-import xenon.clickhouse.exception.CHClientException
-import xenon.clickhouse.expr._
+import com.clickhouse.exception.CHClientException
+import com.clickhouse.expr._
 
 import scala.annotation.tailrec
 import scala.util.{Failure, Success, Try}

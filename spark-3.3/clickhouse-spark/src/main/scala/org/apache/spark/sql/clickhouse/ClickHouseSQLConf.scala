@@ -16,7 +16,7 @@ package org.apache.spark.sql.clickhouse
 
 import org.apache.spark.internal.config.ConfigEntry
 import org.apache.spark.sql.internal.SQLConf._
-import xenon.clickhouse.exception.ClickHouseErrCode._
+import com.clickhouse.exception.ClickHouseErrCode._
 
 import java.util.concurrent.TimeUnit
 
