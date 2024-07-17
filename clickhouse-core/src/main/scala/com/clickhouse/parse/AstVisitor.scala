@@ -14,9 +14,33 @@
 
 package com.clickhouse.parse
 
-import com.clickhouse.ClickHouseSQLParser.{ColumnExprContext, ColumnExprFunctionContext, ColumnExprIdentifierContext, ColumnExprListContext, ColumnExprLiteralContext, ColumnExprParensContext, ColumnExprPrecedence1Context, ColumnExprPrecedence2Context, ColumnExprTupleContext, ColumnsExprColumnContext, ColumnsExprContext, EngineClauseContext, OrderByClauseContext, OrderExprContext, SettingsClauseContext}
+import com.clickhouse.ClickHouseSQLParser.{
+  ColumnExprContext,
+  ColumnExprFunctionContext,
+  ColumnExprIdentifierContext,
+  ColumnExprListContext,
+  ColumnExprLiteralContext,
+  ColumnExprParensContext,
+  ColumnExprPrecedence1Context,
+  ColumnExprPrecedence2Context,
+  ColumnExprTupleContext,
+  ColumnsExprColumnContext,
+  ColumnsExprContext,
+  EngineClauseContext,
+  OrderByClauseContext,
+  OrderExprContext,
+  SettingsClauseContext
+}
 import com.clickhouse.expr.{Expr, FieldRef, FuncExpr, OrderExpr, StringLiteral, TupleExpr}
-import com.clickhouse.spec.{DistributedEngineSpec, MergeTreeEngineSpec, ReplacingMergeTreeEngineSpec, ReplicatedMergeTreeEngineSpec, ReplicatedReplacingMergeTreeEngineSpec, TableEngineSpec, UnknownTableEngineSpec}
+import com.clickhouse.spec.{
+  DistributedEngineSpec,
+  MergeTreeEngineSpec,
+  ReplacingMergeTreeEngineSpec,
+  ReplicatedMergeTreeEngineSpec,
+  ReplicatedReplacingMergeTreeEngineSpec,
+  TableEngineSpec,
+  UnknownTableEngineSpec
+}
 import com.clickhouse.{ClickHouseSQLBaseVisitor, Logging, Utils}
 
 import scala.collection.JavaConverters._

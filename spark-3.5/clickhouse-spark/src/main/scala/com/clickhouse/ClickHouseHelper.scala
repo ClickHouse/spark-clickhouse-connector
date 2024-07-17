@@ -25,7 +25,16 @@ import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import Constants._
 import Utils.dateTimeFmt
-import com.clickhouse.spec.{ClusterSpec, DatabaseSpec, NoPartitionSpec, NodeSpec, PartitionSpec, ReplicaSpec, ShardSpec, TableSpec}
+import com.clickhouse.spec.{
+  ClusterSpec,
+  DatabaseSpec,
+  NoPartitionSpec,
+  NodeSpec,
+  PartitionSpec,
+  ReplicaSpec,
+  ShardSpec,
+  TableSpec
+}
 import com.clickhouse.spec._
 
 import java.time.{LocalDateTime, ZoneId}

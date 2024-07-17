@@ -19,7 +19,12 @@ import com.clickhouse.client._
 import com.clickhouse.client.config.ClickHouseClientOption
 import com.clickhouse.data.{ClickHouseCompression, ClickHouseFormat}
 import com.clickhouse.exception.{CHClientException, CHException, CHServerException}
-import com.clickhouse.format.{JSONCompactEachRowWithNamesAndTypesSimpleOutput, JSONEachRowSimpleOutput, NamesAndTypes, SimpleOutput}
+import com.clickhouse.format.{
+  JSONCompactEachRowWithNamesAndTypesSimpleOutput,
+  JSONEachRowSimpleOutput,
+  NamesAndTypes,
+  SimpleOutput
+}
 import com.clickhouse.spec.NodeSpec
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode

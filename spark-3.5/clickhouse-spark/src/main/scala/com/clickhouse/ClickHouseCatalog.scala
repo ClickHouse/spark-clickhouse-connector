@@ -26,7 +26,13 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import Constants._
 import com.clickhouse
 import com.clickhouse.exception.ClickHouseErrCode._
-import com.clickhouse.func.{ClickHouseXxHash64Shard, CompositeFunctionRegistry, DynamicFunctionRegistry, FunctionRegistry, StaticFunctionRegistry}
+import com.clickhouse.func.{
+  ClickHouseXxHash64Shard,
+  CompositeFunctionRegistry,
+  DynamicFunctionRegistry,
+  FunctionRegistry,
+  StaticFunctionRegistry
+}
 import com.clickhouse.spec.{ClusterSpec, DistributedEngineSpec, NodeSpec, TableEngineUtils}
 import com.clickhouse.func._
 import com.clickhouse.spec._

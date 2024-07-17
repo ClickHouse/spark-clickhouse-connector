@@ -22,7 +22,7 @@ import com.clickhouse.spec.{DistributedEngineSpec, ShardUtils}
 import org.apache.commons.io.IOUtils
 import org.apache.spark.sql.catalyst.expressions.{BoundReference, Expression, TransformExpression}
 import org.apache.spark.sql.catalyst.expressions.{Projection, SafeProjection}
-import org.apache.spark.sql.catalyst.{InternalRow, expressions}
+import org.apache.spark.sql.catalyst.{expressions, InternalRow}
 import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}

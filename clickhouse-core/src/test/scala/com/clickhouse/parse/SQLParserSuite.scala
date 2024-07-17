@@ -15,7 +15,13 @@
 package com.clickhouse.parse
 
 import com.clickhouse.expr.{FieldRef, FuncExpr, StringLiteral, TupleExpr}
-import com.clickhouse.spec.{DistributedEngineSpec, MergeTreeEngineSpec, ReplacingMergeTreeEngineSpec, ReplicatedMergeTreeEngineSpec, ReplicatedReplacingMergeTreeEngineSpec}
+import com.clickhouse.spec.{
+  DistributedEngineSpec,
+  MergeTreeEngineSpec,
+  ReplacingMergeTreeEngineSpec,
+  ReplicatedMergeTreeEngineSpec,
+  ReplicatedReplacingMergeTreeEngineSpec
+}
 import org.scalatest.funsuite.AnyFunSuite
 import com.clickhouse.expr._
 import com.clickhouse.spec._

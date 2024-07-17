@@ -32,7 +32,16 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.apache.spark.unsafe.types.UTF8String
 import Utils._
 import com.clickhouse.read.{ClickHouseMetadataColumn, ClickHouseScanBuilder, ScanJobDescription}
-import com.clickhouse.spec.{ClusterSpec, DistributedEngineSpec, MergeTreeFamilyEngineSpec, NodeSpec, PartitionSpec, TableEngineSpec, TableEngineUtils, TableSpec}
+import com.clickhouse.spec.{
+  ClusterSpec,
+  DistributedEngineSpec,
+  MergeTreeFamilyEngineSpec,
+  NodeSpec,
+  PartitionSpec,
+  TableEngineSpec,
+  TableEngineUtils,
+  TableSpec
+}
 import com.clickhouse.write.{ClickHouseWriteBuilder, WriteJobDescription}
 import com.clickhouse.spec._
 
