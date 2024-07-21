@@ -31,7 +31,7 @@
         <Logger name="org.apache.hadoop.util.NativeCodeLoader" level="ERROR" additivity="false">
             <AppenderRef ref="file"/>
         </Logger>
-        <Logger name="xenon.clickhouse" level="DEBUG" additivity="false">
+        <Logger name="com.clickhouse.spark" level="DEBUG" additivity="false">
             <AppenderRef ref="file"/>
         </Logger>
     </Loggers>

@@ -16,8 +16,8 @@ package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.data.ClickHouseDataType._
 import com.clickhouse.data.{ClickHouseColumn, ClickHouseDataType}
+import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.sql.types._
-import xenon.clickhouse.exception.CHClientException
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_FIXED_STRING_AS
 

@@ -14,10 +14,10 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
+import com.clickhouse.spark.base.ClickHouseClusterMixIn
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.clickhouse.SparkTest
 import org.apache.spark.sql.functions.{month, year}
-import xenon.clickhouse.base.ClickHouseClusterMixIn
 
 trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
 
@@ -29,7 +29,7 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
     .set("spark.sql.shuffle.partitions", "4")
     // catalog
     .set("spark.sql.defaultCatalog", "clickhouse_s1r1")
-    .set("spark.sql.catalog.clickhouse_s1r1", "xenon.clickhouse.ClickHouseCatalog")
+    .set("spark.sql.catalog.clickhouse_s1r1", "com.clickhouse.spark.ClickHouseCatalog")
     .set("spark.sql.catalog.clickhouse_s1r1.host", clickhouse_s1r1_host)
     .set("spark.sql.catalog.clickhouse_s1r1.http_port", clickhouse_s1r1_http_port.toString)
     .set("spark.sql.catalog.clickhouse_s1r1.protocol", "http")
@@ -37,7 +37,7 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
     .set("spark.sql.catalog.clickhouse_s1r1.password", "")
     .set("spark.sql.catalog.clickhouse_s1r1.database", "default")
     .set("spark.sql.catalog.clickhouse_s1r1.option.custom_http_params", "async_insert=1,wait_for_async_insert=1")
-    .set("spark.sql.catalog.clickhouse_s1r2", "xenon.clickhouse.ClickHouseCatalog")
+    .set("spark.sql.catalog.clickhouse_s1r2", "com.clickhouse.spark.ClickHouseCatalog")
     .set("spark.sql.catalog.clickhouse_s1r2.host", clickhouse_s1r2_host)
     .set("spark.sql.catalog.clickhouse_s1r2.http_port", clickhouse_s1r2_http_port.toString)
     .set("spark.sql.catalog.clickhouse_s1r2.protocol", "http")
@@ -45,7 +45,7 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
     .set("spark.sql.catalog.clickhouse_s1r2.password", "")
     .set("spark.sql.catalog.clickhouse_s1r2.database", "default")
     .set("spark.sql.catalog.clickhouse_s1r2.option.custom_http_params", "async_insert=1,wait_for_async_insert=1")
-    .set("spark.sql.catalog.clickhouse_s2r1", "xenon.clickhouse.ClickHouseCatalog")
+    .set("spark.sql.catalog.clickhouse_s2r1", "com.clickhouse.spark.ClickHouseCatalog")
     .set("spark.sql.catalog.clickhouse_s2r1.host", clickhouse_s2r1_host)
     .set("spark.sql.catalog.clickhouse_s2r1.http_port", clickhouse_s2r1_http_port.toString)
     .set("spark.sql.catalog.clickhouse_s2r1.protocol", "http")
@@ -53,7 +53,7 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
     .set("spark.sql.catalog.clickhouse_s2r1.password", "")
     .set("spark.sql.catalog.clickhouse_s2r1.database", "default")
     .set("spark.sql.catalog.clickhouse_s2r1.option.custom_http_params", "async_insert=1,wait_for_async_insert=1")
-    .set("spark.sql.catalog.clickhouse_s2r2", "xenon.clickhouse.ClickHouseCatalog")
+    .set("spark.sql.catalog.clickhouse_s2r2", "com.clickhouse.spark.ClickHouseCatalog")
     .set("spark.sql.catalog.clickhouse_s2r2.host", clickhouse_s2r2_host)
     .set("spark.sql.catalog.clickhouse_s2r2.http_port", clickhouse_s2r2_http_port.toString)
     .set("spark.sql.catalog.clickhouse_s2r2.protocol", "http")
