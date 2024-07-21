@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
-import com.clickhouse.Utils
+import com.clickhouse.spark.Utils
 import org.apache.spark.internal.config.ConfigEntry
 import org.apache.spark.sql.internal.SQLConf
 import org.scalatest.funsuite.AnyFunSuite

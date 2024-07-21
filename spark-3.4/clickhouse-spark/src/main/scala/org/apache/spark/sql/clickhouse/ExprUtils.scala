@@ -28,10 +28,10 @@ import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFu
 import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions.{Expression => V2Expression, SortOrder => V2SortOrder, _}
 import org.apache.spark.sql.types.{StructField, StructType}
-import com.clickhouse.exception.CHClientException
-import com.clickhouse.expr._
-import com.clickhouse.func.FunctionRegistry
-import com.clickhouse.spec.ClusterSpec
+import com.clickhouse.spark.exception.CHClientException
+import com.clickhouse.spark.expr._
+import com.clickhouse.spark.func.FunctionRegistry
+import com.clickhouse.spark.spec.ClusterSpec
 
 import scala.util.{Failure, Success, Try}
 

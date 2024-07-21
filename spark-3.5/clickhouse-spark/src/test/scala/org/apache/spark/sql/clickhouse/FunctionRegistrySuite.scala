@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
-import com.clickhouse.func.{
+import com.clickhouse.spark.func.{
   ClickHouseXxHash64,
   ClickhouseEquivFunction,
   CompositeFunctionRegistry,
@@ -22,7 +22,7 @@ import com.clickhouse.func.{
   StaticFunctionRegistry
 }
 import org.scalatest.funsuite.AnyFunSuite
-import com.clickhouse.func._
+import com.clickhouse.spark.func._
 
 class FunctionRegistrySuite extends AnyFunSuite {
 

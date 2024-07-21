@@ -164,7 +164,7 @@ project(':clickhouse-core') {
 
     generateGrammarSource {
         maxHeapSize = "64m"
-        arguments += ["-visitor", "-package", "com.clickhouse"]
+        arguments += ["-visitor", "-package", "com.clickhouse.spark"]
     }
 
     test {

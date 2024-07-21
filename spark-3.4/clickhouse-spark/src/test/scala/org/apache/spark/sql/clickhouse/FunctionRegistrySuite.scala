@@ -15,7 +15,7 @@
 package org.apache.spark.sql.clickhouse
 
 import org.scalatest.funsuite.AnyFunSuite
-import com.clickhouse.func._
+import com.clickhouse.spark.func._
 
 class FunctionRegistrySuite extends AnyFunSuite {
 

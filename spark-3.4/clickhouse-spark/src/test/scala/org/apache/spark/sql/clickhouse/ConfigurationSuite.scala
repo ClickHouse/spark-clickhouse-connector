@@ -17,7 +17,7 @@ package org.apache.spark.sql.clickhouse
 import org.apache.spark.internal.config.ConfigEntry
 import org.apache.spark.sql.internal.SQLConf
 import org.scalatest.funsuite.AnyFunSuite
-import com.clickhouse.Utils
+import com.clickhouse.spark.Utils
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths, StandardOpenOption}

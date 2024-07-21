@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
-import com.clickhouse.ClickHouseHelper
+import com.clickhouse.spark.ClickHouseHelper
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.scalatest.funsuite.AnyFunSuite
 
