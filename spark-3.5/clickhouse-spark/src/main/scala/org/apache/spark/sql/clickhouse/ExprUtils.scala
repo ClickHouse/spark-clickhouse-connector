@@ -14,6 +14,10 @@
 
 package org.apache.spark.sql.clickhouse
 
+import com.clickhouse.spark.exception.CHClientException
+import com.clickhouse.spark.expr.{Expr, FieldRef, FuncExpr, OrderExpr, SQLExpr, StringLiteral}
+import com.clickhouse.spark.func.FunctionRegistry
+import com.clickhouse.spark.spec.ClusterSpec
 import org.apache.spark.sql.AnalysisException
 import org.apache.spark.sql.catalyst.analysis.{AnsiTypeCoercion, NoSuchFunctionException, TypeCoercion}
 import org.apache.spark.sql.catalyst.expressions.{Attribute, BoundReference, Expression, ListQuery, Literal}
@@ -28,10 +32,7 @@ import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFu
 import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions.{Expression => V2Expression, SortOrder => V2SortOrder, _}
 import org.apache.spark.sql.types.{StructField, StructType}
-import xenon.clickhouse.exception.CHClientException
-import xenon.clickhouse.expr._
-import xenon.clickhouse.func.FunctionRegistry
-import xenon.clickhouse.spec.ClusterSpec
+import com.clickhouse.spark.expr._
 
 import scala.util.{Failure, Success, Try}
 

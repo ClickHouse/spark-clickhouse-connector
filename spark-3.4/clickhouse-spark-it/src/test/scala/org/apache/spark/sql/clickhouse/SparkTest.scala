@@ -17,7 +17,7 @@ package org.apache.spark.sql.clickhouse
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.test.SharedSparkSession
 import org.apache.spark.sql.{DataFrame, QueryTest}
-import xenon.clickhouse.ClickHouseCommandRunner
+import com.clickhouse.spark.ClickHouseCommandRunner
 
 import java.sql.{Date, Timestamp}
 import java.time.Instant

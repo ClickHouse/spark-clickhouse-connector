@@ -24,7 +24,7 @@ Edit `$SPARK_HOME/conf/spark-defaults.conf`.
 ####################################################################################
 ## register a catalog named "clickhouse"
 ####################################################################################
-spark.sql.catalog.clickhouse                      xenon.clickhouse.ClickHouseCatalog
+spark.sql.catalog.clickhouse                      com.clickhouse.spark.ClickHouseCatalog
 
 ####################################################################################
 ## basic configurations for "clickhouse" catalog
@@ -57,7 +57,7 @@ named clickhouse1, and another installed on `10.0.0.2` and exposes HTTPS endpoin
 Edit `$SPARK_HOME/conf/spark-defaults.conf`.
 
 ```
-spark.sql.catalog.clickhouse1                xenon.clickhouse.ClickHouseCatalog
+spark.sql.catalog.clickhouse1                com.clickhouse.spark.ClickHouseCatalog
 spark.sql.catalog.clickhouse1.host           10.0.0.1
 spark.sql.catalog.clickhouse1.protocol       https
 spark.sql.catalog.clickhouse1.http_port      8443
@@ -66,7 +66,7 @@ spark.sql.catalog.clickhouse1.password
 spark.sql.catalog.clickhouse1.database       default
 spark.sql.catalog.clickhouse1.option.ssl     true
 
-spark.sql.catalog.clickhouse2                xenon.clickhouse.ClickHouseCatalog
+spark.sql.catalog.clickhouse2                com.clickhouse.spark.ClickHouseCatalog
 spark.sql.catalog.clickhouse2.host           10.0.0.2
 spark.sql.catalog.clickhouse2.protocol       https
 spark.sql.catalog.clickhouse2.http_port      8443

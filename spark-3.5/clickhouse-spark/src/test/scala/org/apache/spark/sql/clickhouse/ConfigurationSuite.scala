@@ -14,10 +14,10 @@
 
 package org.apache.spark.sql.clickhouse
 
+import com.clickhouse.spark.Utils
 import org.apache.spark.internal.config.ConfigEntry
 import org.apache.spark.sql.internal.SQLConf
 import org.scalatest.funsuite.AnyFunSuite
-import xenon.clickhouse.Utils
 
 import java.nio.charset.StandardCharsets
 import java.nio.file.{Files, Path, Paths, StandardOpenOption}

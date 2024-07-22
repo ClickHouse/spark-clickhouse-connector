@@ -58,7 +58,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        clickhouse: [ 23.8, 24.3, 24.4, 24.5, cloud]
+        clickhouse: [ 22.3, 22.8, 23.3, 23.8, 24.3, 24.6, 24.4, 24.5, cloud ]
     env:
       CLICKHOUSE_IMAGE: clickhouse/clickhouse-server:${{ matrix.clickhouse }}
       CLICKHOUSE_VERSION: ${{ matrix.clickhouse }}
