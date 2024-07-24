@@ -1,0 +1,57 @@
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: "ClickHouse Cloud"
+
+on:
+  push:
+    branches:
+      - "branch-*"
+      - "main"
+  pull_request:
+    branches:
+      - "branch-*"
+      - "main"
+
+jobs:
+  run-tests-with-clickhouse-cloud:
+    runs-on: ubuntu-22.04
+    strategy:
+      fail-fast: false
+      matrix:
+        spark: [ 3.3, 3.4, 3.5 ]
+        scala: [ 2.12, 2.13 ]
+    env:
+      CLICKHOUSE_CLOUD_HOST: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT }}
+      CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: 8
+          cache: gradle
+      - run: >-
+          ./gradlew clean cloudTest --no-daemon --refresh-dependencies
+          -Dspark_binary_version=${{ matrix.spark }}
+          -Dscala_binary_version=${{ matrix.scala }}
+          -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+      - name: Upload test logs
+        if: failure()
+        uses: actions/upload-artifact@v3
+        with:
+          name: log-clickhouse-cloud-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}
+          path: |
+            **/build/unit-tests.log
+            log/**

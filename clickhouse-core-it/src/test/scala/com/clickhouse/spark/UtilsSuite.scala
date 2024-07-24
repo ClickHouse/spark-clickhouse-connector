@@ -14,10 +14,18 @@
 
 package com.clickhouse.spark
 
-import com.clickhouse.spark.base.ClickHouseSingleMixIn
+import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseProvider, ClickHouseSingleMixIn}
+import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.tags.Cloud
+
 import java.time.{LocalDateTime, ZoneId}
 
-class UtilsClickHouseSuite extends ClickHouseSingleMixIn with Logging {
+@Cloud
+class ClickHouseCloudUtilsSuite extends UtilsSuite with ClickHouseCloudMixIn
+
+class ClickHouseSingleUtilsSuite extends UtilsSuite with ClickHouseSingleMixIn
+
+abstract class UtilsSuite extends AnyFunSuite with ClickHouseProvider with Logging {
 
   test("parse date with nano seconds") {
     withNodeClient() { client =>

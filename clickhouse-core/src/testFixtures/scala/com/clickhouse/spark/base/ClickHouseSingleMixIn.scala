@@ -15,11 +15,7 @@
 package com.clickhouse.spark.base
 
 import com.clickhouse.spark.Utils
-import com.clickhouse.client.ClickHouseProtocol
-import com.clickhouse.client.ClickHouseProtocol._
 import com.clickhouse.data.ClickHouseVersion
-import com.clickhouse.spark.client.NodeClient
-import com.clickhouse.spark.spec.NodeSpec
 import com.dimafeng.testcontainers.{ForAllTestContainer, JdbcDatabaseContainer, SingleContainer}
 import org.scalatest.funsuite.AnyFunSuite
 import org.testcontainers.containers.ClickHouseContainer
@@ -27,18 +23,18 @@ import org.testcontainers.utility.{DockerImageName, MountableFile}
 
 import java.nio.file.{Path, Paths}
 
-trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
+trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer with ClickHouseProvider {
   // format: off
-  val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
-  val CLICKHOUSE_USER:     String = Utils.load("CLICKHOUSE_USER", "default")
-  val CLICKHOUSE_PASSWORD: String = Utils.load("CLICKHOUSE_PASSWORD", "")
-  val CLICKHOUSE_DB:       String = Utils.load("CLICKHOUSE_DB", "")
+  private val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
+  private val CLICKHOUSE_USER:     String = Utils.load("CLICKHOUSE_USER", "default")
+  private val CLICKHOUSE_PASSWORD: String = Utils.load("CLICKHOUSE_PASSWORD", "")
+  private val CLICKHOUSE_DB:       String = Utils.load("CLICKHOUSE_DB", "")
 
   private val CLICKHOUSE_HTTP_PORT = 8123
   private val CLICKHOUSE_TPC_PORT  = 9000
   // format: on
 
-  protected val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)
+  override val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)
 
   protected val rootProjectDir: Path = {
     val thisClassURI = this.getClass.getProtectionDomain.getCodeSource.getLocation.toURI
@@ -72,16 +68,12 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
         )
         .asInstanceOf[ClickHouseContainer]
     }
-  // format: off
-  def clickhouseHost:  String = container.host
-  def clickhouseHttpPort: Int = container.mappedPort(CLICKHOUSE_HTTP_PORT)
-  def clickhouseTcpPort:  Int = container.mappedPort(CLICKHOUSE_TPC_PORT)
-  // format: on
 
-  def withNodeClient(protocol: ClickHouseProtocol = HTTP)(block: NodeClient => Unit): Unit =
-    Utils.tryWithResource {
-      NodeClient(NodeSpec(clickhouseHost, Some(clickhouseHttpPort), Some(clickhouseTcpPort), protocol))
-    } {
-      client => block(client)
-    }
+  override def clickhouseHost: String = container.host
+  override def clickhouseHttpPort: Int = container.mappedPort(CLICKHOUSE_HTTP_PORT)
+  override def clickhouseTcpPort: Int = container.mappedPort(CLICKHOUSE_TPC_PORT)
+  override def clickhouseUser: String = CLICKHOUSE_USER
+  override def clickhousePassword: String = CLICKHOUSE_PASSWORD
+  override def clickhouseDatabase: String = CLICKHOUSE_DB
+  override def isSslEnabled: Boolean = false
 }

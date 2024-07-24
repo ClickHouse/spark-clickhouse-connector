@@ -118,6 +118,7 @@ subprojects {
         environment("ROOT_PROJECT_DIR", rootProject.projectDir)
         tags {
             exclude 'org.scalatest.tags.Slow'
+            exclude 'org.scalatest.tags.Cloud'
         }
     }
 
@@ -127,6 +128,15 @@ subprojects {
         environment("ROOT_PROJECT_DIR", rootProject.projectDir)
         tags {
             include 'org.scalatest.tags.Slow'
+        }
+    }
+
+    tasks.register('cloudTest', Test) {
+        jvmArgs += extraJvmArgs
+        maxParallelForks = 1
+        environment("ROOT_PROJECT_DIR", rootProject.projectDir)
+        tags {
+            include 'org.scalatest.tags.Cloud'
         }
     }
 
@@ -218,6 +228,10 @@ project(":clickhouse-core-it") {
     }
 
     slowTest {
+        classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
+    }
+
+    cloudTest {
         classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
     }
 }
