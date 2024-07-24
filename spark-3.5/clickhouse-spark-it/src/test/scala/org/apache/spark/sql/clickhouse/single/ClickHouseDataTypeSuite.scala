@@ -14,15 +14,22 @@
 
 package org.apache.spark.sql.clickhouse.single
 
+import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.USE_NULLABLE_QUERY_SCHEMA
 import org.apache.spark.sql.clickhouse.SparkUtils
 import org.apache.spark.sql.types.DataTypes.{createArrayType, createMapType}
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.{DataFrame, Row}
+import org.scalatest.tags.Cloud
 
 import java.math.MathContext
 
-class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
+@Cloud
+class ClickHouseCloudDataTypeSuite extends ClickHouseDataTypeSuite with ClickHouseCloudMixIn
+
+class ClickHouseSingleDataTypeSuite extends ClickHouseDataTypeSuite with ClickHouseSingleMixIn
+
+abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
 
   val SPARK_43390_ENABLED: Boolean = sys.env.contains("SPARK_43390_ENABLED") || {
     SparkUtils.MAJOR_MINOR_VERSION match {

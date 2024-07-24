@@ -14,9 +14,16 @@
 
 package org.apache.spark.sql.clickhouse.single
 
+import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
 import org.apache.spark.sql.Row
+import org.scalatest.tags.Cloud
 
-class ClickHouseTableDDLSuite extends SparkClickHouseSingleTest {
+@Cloud
+class ClickHouseCloudTableDDLSuite extends ClickHouseTableDDLSuite with ClickHouseCloudMixIn
+
+class ClickHouseSingleTableDDLSuite extends ClickHouseTableDDLSuite with ClickHouseSingleMixIn
+
+abstract class ClickHouseTableDDLSuite extends SparkClickHouseSingleTest {
 
   import testImplicits._
 
