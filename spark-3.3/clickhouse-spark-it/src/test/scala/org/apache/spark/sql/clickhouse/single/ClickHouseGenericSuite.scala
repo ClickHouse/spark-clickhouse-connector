@@ -14,12 +14,19 @@
 
 package org.apache.spark.sql.clickhouse.single
 
+import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 import org.apache.spark.sql.types._
+import org.scalatest.tags.Cloud
 
-class ClickHouseSingleSuite extends SparkClickHouseSingleTest {
+@Cloud
+class ClickHouseCloudGenericSuite extends ClickHouseDataTypeSuite with ClickHouseCloudMixIn
+
+class ClickHouseSingleGenericSuite extends ClickHouseDataTypeSuite with ClickHouseSingleMixIn
+
+abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
   import testImplicits._
 

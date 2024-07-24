@@ -14,14 +14,21 @@
 
 package org.apache.spark.sql.clickhouse.single
 
+import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.functions._
 import org.apache.spark.sql.types.StringType
 import org.apache.spark.sql.{AnalysisException, Row}
+import org.scalatest.tags.Cloud
 
-import java.time.LocalDate
+@Cloud
+class ClickHouseCloudsWriteDistributionAndOrderingSuite
+    extends WriteDistributionAndOrderingSuite with ClickHouseCloudMixIn
 
-class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTest {
+class ClickHouseSinglesWriteDistributionAndOrderingSuite
+    extends WriteDistributionAndOrderingSuite with ClickHouseSingleMixIn
+
+abstract class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTest {
 
   import testImplicits._
 
