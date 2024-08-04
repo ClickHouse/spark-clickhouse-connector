@@ -20,6 +20,7 @@ import com.clickhouse.data.ClickHouseVersion
 import com.clickhouse.spark.Utils
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.spec.NodeSpec
+import java.util
 
 trait ClickHouseProvider {
   def clickhouseHost: String
@@ -33,7 +34,17 @@ trait ClickHouseProvider {
 
   def withNodeClient(protocol: ClickHouseProtocol = HTTP)(block: NodeClient => Unit): Unit =
     Utils.tryWithResource {
-      NodeClient(NodeSpec(clickhouseHost, Some(clickhouseHttpPort), Some(clickhouseTcpPort), protocol))
+      val opts: util.Map[String, String] = new util.HashMap[String, String]()
+      opts.put("ssl", "true")
+      NodeClient(NodeSpec(
+        clickhouseHost,
+        Some(clickhouseHttpPort),
+        Some(clickhouseTcpPort),
+        protocol,
+        username = clickhouseUser,
+        password = clickhousePassword,
+        options = opts
+      ))
     } {
       client => block(client)
     }
