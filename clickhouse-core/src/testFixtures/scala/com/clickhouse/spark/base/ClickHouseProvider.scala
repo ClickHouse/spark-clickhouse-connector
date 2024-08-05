@@ -35,7 +35,8 @@ trait ClickHouseProvider {
   def withNodeClient(protocol: ClickHouseProtocol = HTTP)(block: NodeClient => Unit): Unit =
     Utils.tryWithResource {
       val opts: util.Map[String, String] = new util.HashMap[String, String]()
-      opts.put("ssl", "true")
+      if (isSslEnabled)
+        opts.put("ssl", "true")
       NodeClient(NodeSpec(
         clickhouseHost,
         Some(clickhouseHttpPort),
