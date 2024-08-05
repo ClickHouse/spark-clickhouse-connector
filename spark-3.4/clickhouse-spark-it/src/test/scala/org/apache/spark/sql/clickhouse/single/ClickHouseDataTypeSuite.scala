@@ -183,7 +183,7 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
   private def testDataType(valueColDef: String)(prepare: (String, String) => Unit)(validate: DataFrame => Unit)
     : Unit = {
     val db = "test_kv_db"
-    val tbl = "test_kv_tbl"
+    val tbl = s"test_kv_tbl_${valueColDef}".replace("(", "_").replace(")", "_").replace(",", "_")
     withKVTable(db, tbl, valueColDef = valueColDef) {
       prepare(db, tbl)
       val df = spark.sql(s"SELECT key, value FROM $db.$tbl ORDER BY key")
