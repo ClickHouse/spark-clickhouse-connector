@@ -58,6 +58,12 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
 
     jar {
         archiveClassifier="empty"
+        manifest {
+            attributes(
+                    'Implementation-Title': 'Spark-ClickHosue-Connnector',
+                    'Implementation-Version': "${spark_binary_version}_${scala_binary_version}_${getProjectVersion()}"
+            )
+        }
     }
 }
 

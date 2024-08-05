@@ -17,6 +17,7 @@ project.ext {
     spark_binary_version = "3.5"
 }
 
+
 project(":clickhouse-spark-${spark_binary_version}_$scala_binary_version") {
     dependencies {
         api project(":clickhouse-core")
@@ -58,6 +59,12 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
 
     jar {
         archiveClassifier="empty"
+        manifest {
+            attributes(
+                    'Implementation-Title': 'Spark-ClickHouse-Connector',
+                    'Implementation-Version': "${spark_binary_version}_${scala_binary_version}_${getProjectVersion()}"
+            )
+        }
     }
 }
 

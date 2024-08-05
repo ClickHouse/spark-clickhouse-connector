@@ -41,6 +41,19 @@ object NodeClient {
 class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   // TODO: add configurable timeout
   private val timeout : Int = 30000
+  private lazy val userAgent = {
+    val title = getClass.getPackage.getImplementationTitle
+    val version = getClass.getPackage.getImplementationVersion
+    if (version != null) {
+      val versions = version.split("_")
+      val sparkVersion = versions(0)
+      val scalaVersion = versions(1)
+      val connectorVersion = versions(2)
+      s"${title}/${connectorVersion} (fv:spark/${sparkVersion}, lv:scala/${scalaVersion})"
+    } else {
+      "Spark-ClickHouse-Connector"
+    }
+  }
   private val node: ClickHouseNode = ClickHouseNode.builder()
     .options(nodeSpec.options)
     .host(nodeSpec.host)
@@ -51,6 +64,10 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
 
   private val client: ClickHouseClient = ClickHouseClient.builder()
     .option(ClickHouseClientOption.FORMAT, ClickHouseFormat.RowBinary)
+    .option(
+      ClickHouseClientOption.PRODUCT_NAME,
+      userAgent
+    )
     .nodeSelector(ClickHouseNodeSelector.of(node.getProtocol))
     .build()
 
