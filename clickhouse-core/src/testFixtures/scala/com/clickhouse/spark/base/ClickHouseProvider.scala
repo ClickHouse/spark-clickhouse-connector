@@ -20,7 +20,7 @@ import com.clickhouse.data.ClickHouseVersion
 import com.clickhouse.spark.Utils
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.spec.NodeSpec
-import java.util
+import scala.collection.JavaConverters._
 
 trait ClickHouseProvider {
   def clickhouseHost: String
@@ -35,7 +35,6 @@ trait ClickHouseProvider {
 
   def withNodeClient(protocol: ClickHouseProtocol = HTTP)(block: NodeClient => Unit): Unit =
     Utils.tryWithResource {
-      import scala.collection.JavaConverters._
       NodeClient(NodeSpec(
         clickhouseHost,
         Some(clickhouseHttpPort),
