@@ -28,6 +28,7 @@ jobs:
   run-tests-with-clickhouse-cloud:
     runs-on: ubuntu-22.04
     strategy:
+      max-parallel: 1
       fail-fast: false
       matrix:
         spark: [ 3.3, 3.4, 3.5 ]
