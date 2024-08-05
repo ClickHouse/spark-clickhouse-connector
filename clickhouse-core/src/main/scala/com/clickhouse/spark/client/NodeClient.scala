@@ -40,7 +40,7 @@ object NodeClient {
 
 class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   // TODO: add configurable timeout
-  private val timeout : Int = 30000
+  private val timeout: Int = 30000
   private lazy val userAgent = {
     val title = getClass.getPackage.getImplementationTitle
     val version = getClass.getPackage.getImplementationVersion
@@ -213,7 +213,6 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
        |$sql
        |""".stripMargin
   )
-  def ping(timeout : Int = timeout)  = {
+  def ping(timeout: Int = timeout) =
     client.ping(node, timeout)
-  }
 }
