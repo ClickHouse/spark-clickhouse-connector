@@ -43,9 +43,11 @@ trait ClickHouseProvider {
         Some(clickhouseTcpPort),
         protocol,
         username = clickhouseUser,
+        database = clickhouseDatabase,
         password = clickhousePassword,
         options = opts
       ))
+
     } {
       client => block(client)
     }
