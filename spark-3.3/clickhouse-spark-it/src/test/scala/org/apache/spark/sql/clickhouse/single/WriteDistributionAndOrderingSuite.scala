@@ -85,7 +85,7 @@ abstract class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTe
     WRITE_REPARTITION_BY_PARTITION.key -> repartitionByPartition.toString,
     WRITE_LOCAL_SORT_BY_KEY.key -> localSortByKey.toString
   ) {
-    if (!ignoreUnsupportedTransform && repartitionByPartition) {
+    if (!ignoreUnsupportedTransform && repartitionByPartition && !isCloud) {
       intercept[AnalysisException](write())
     } else {
       write()

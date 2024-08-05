@@ -31,6 +31,7 @@ trait ClickHouseProvider {
   def clickhouseDatabase: String
   def clickhouseVersion: ClickHouseVersion
   def isSslEnabled: Boolean
+  def isCloud: Boolean = false
 
   def withNodeClient(protocol: ClickHouseProtocol = HTTP)(block: NodeClient => Unit): Unit =
     Utils.tryWithResource {

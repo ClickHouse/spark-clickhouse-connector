@@ -34,4 +34,5 @@ trait ClickHouseCloudMixIn extends ClickHouseProvider {
   override def clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of("latest")
 
   override def isSslEnabled: Boolean = true
+  override def isCloud: Boolean = true
 }
