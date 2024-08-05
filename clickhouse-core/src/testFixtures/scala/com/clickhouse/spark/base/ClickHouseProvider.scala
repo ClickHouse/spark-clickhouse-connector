@@ -35,9 +35,7 @@ trait ClickHouseProvider {
 
   def withNodeClient(protocol: ClickHouseProtocol = HTTP)(block: NodeClient => Unit): Unit =
     Utils.tryWithResource {
-      val opts: util.Map[String, String] = new util.HashMap[String, String]()
-      if (isSslEnabled)
-        opts.put("ssl", "true")
+      import scala.collection.JavaConverters._
       NodeClient(NodeSpec(
         clickhouseHost,
         Some(clickhouseHttpPort),
@@ -46,9 +44,8 @@ trait ClickHouseProvider {
         username = clickhouseUser,
         database = clickhouseDatabase,
         password = clickhousePassword,
-        options = opts
+        options = Map("ssl" -> isSslEnabled.toString).asJava
       ))
-
     } {
       client => block(client)
     }
