@@ -97,4 +97,8 @@ project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version") {
     slowTest {
         classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
     }
+
+    cloudTest {
+        classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
+    }
 }

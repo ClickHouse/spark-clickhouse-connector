@@ -14,15 +14,22 @@
 
 package org.apache.spark.sql.clickhouse.single
 
+import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
 import org.apache.spark.sql.Row
+import org.scalatest.tags.Cloud
 
-class ClickHouseTableDDLSuite extends SparkClickHouseSingleTest {
+@Cloud
+class ClickHouseCloudTableDDLSuite extends ClickHouseTableDDLSuite with ClickHouseCloudMixIn
+
+class ClickHouseSingleTableDDLSuite extends ClickHouseTableDDLSuite with ClickHouseSingleMixIn
+
+abstract class ClickHouseTableDDLSuite extends SparkClickHouseSingleTest {
 
   import testImplicits._
 
   test("clickhouse command runner") {
     withTable("default.abc") {
-      runClickHouseSQL("CREATE TABLE default.abc(a UInt8) ENGINE=Log()")
+      runClickHouseSQL("CREATE TABLE default.abc(a UInt8) ENGINE=Memory()")
       checkAnswer(
         spark.sql("""DESC default.abc""").select($"col_name", $"data_type").limit(1),
         Row("a", "smallint") :: Nil

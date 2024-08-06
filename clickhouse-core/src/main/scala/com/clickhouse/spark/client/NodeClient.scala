@@ -39,6 +39,8 @@ object NodeClient {
 }
 
 class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
+  // TODO: add configurable timeout
+  private val timeout: Int = 30000
 
   private lazy val userAgent = {
     val title = getClass.getPackage.getImplementationTitle
@@ -53,7 +55,6 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
       "Spark-ClickHouse-Connector"
     }
   }
-
   private val node: ClickHouseNode = ClickHouseNode.builder()
     .options(nodeSpec.options)
     .host(nodeSpec.host)
@@ -158,6 +159,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     val req = client.read(node)
       .query(sql, queryId).asInstanceOf[ClickHouseRequest[_]]
       .format(ClickHouseFormat.valueOf(outputFormat)).asInstanceOf[ClickHouseRequest[_]]
+      .option(ClickHouseClientOption.CONNECTION_TIMEOUT, timeout).asInstanceOf[ClickHouseRequest[_]]
     settings.foreach { case (k, v) => req.set(k, v).asInstanceOf[ClickHouseRequest[_]] }
     Try(req.executeAndWait()) match {
       case Success(resp) => Right(deserializer(resp.getInputStream))
@@ -193,6 +195,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
       .query(sql, queryId).asInstanceOf[ClickHouseRequest[_]]
       .compressServerResponse(outputCompressionType).asInstanceOf[ClickHouseRequest[_]]
       .format(ClickHouseFormat.valueOf(outputFormat)).asInstanceOf[ClickHouseRequest[_]]
+      .option(ClickHouseClientOption.CONNECTION_TIMEOUT, timeout).asInstanceOf[ClickHouseRequest[_]]
     settings.foreach { case (k, v) => req.set(k, v).asInstanceOf[ClickHouseRequest[_]] }
     Try(req.executeAndWait()) match {
       case Success(resp) => resp
@@ -211,4 +214,6 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
        |$sql
        |""".stripMargin
   )
+  def ping(timeout: Int = timeout) =
+    client.ping(node, timeout)
 }

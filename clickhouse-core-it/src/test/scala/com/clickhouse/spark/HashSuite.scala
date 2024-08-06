@@ -14,12 +14,18 @@
 
 package com.clickhouse.spark
 
-import com.clickhouse.spark.base.ClickHouseSingleMixIn
+import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseProvider, ClickHouseSingleMixIn}
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.hash.{CityHash64, HashUtils, Murmurhash2_32, Murmurhash2_64, Murmurhash3_32, Murmurhash3_64}
-import com.clickhouse.spark.hash._
+import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.tags.Cloud
 
-class HashSuite extends ClickHouseSingleMixIn with Logging {
+@Cloud
+class ClickHouseCloudHashSuite extends HashSuite with ClickHouseCloudMixIn
+
+class ClickHouseSingleHashSuite extends HashSuite with ClickHouseSingleMixIn
+
+abstract class HashSuite extends AnyFunSuite with ClickHouseProvider with Logging {
 
   def testHash(
     client: NodeClient,

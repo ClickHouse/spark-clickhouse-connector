@@ -14,12 +14,18 @@
 
 package org.apache.spark.sql.clickhouse.single
 
+import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.clickhouse.TPCDSTestUtils
-import org.scalatest.tags.Slow
+import org.scalatest.tags.{Cloud, Slow}
+
+@Cloud
+class ClickHouseCloudTPCDSSuite extends TPCDSSuite with ClickHouseCloudMixIn
 
 @Slow
-class TPCDSSuite extends SparkClickHouseSingleTest {
+class ClickHouseSingleTPCDSSuite extends TPCDSSuite with ClickHouseSingleMixIn
+
+abstract class TPCDSSuite extends SparkClickHouseSingleTest {
 
   override protected def sparkConf: SparkConf = super.sparkConf
     .set("spark.sql.catalog.tpcds", "org.apache.kyuubi.spark.connector.tpcds.TPCDSCatalog")

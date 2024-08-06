@@ -14,13 +14,13 @@
 
 package org.apache.spark.sql.clickhouse.single
 
-import com.clickhouse.spark.base.ClickHouseSingleMixIn
+import com.clickhouse.spark.base.ClickHouseProvider
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.clickhouse.SparkTest
 import org.apache.spark.sql.functions.month
 import org.apache.spark.sql.types.StructType
 
-trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
+trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider {
 
   import testImplicits._
 
@@ -34,10 +34,11 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
     .set("spark.sql.catalog.clickhouse.host", clickhouseHost)
     .set("spark.sql.catalog.clickhouse.http_port", clickhouseHttpPort.toString)
     .set("spark.sql.catalog.clickhouse.protocol", "http")
-    .set("spark.sql.catalog.clickhouse.user", CLICKHOUSE_USER)
-    .set("spark.sql.catalog.clickhouse.password", CLICKHOUSE_PASSWORD)
-    .set("spark.sql.catalog.clickhouse.database", CLICKHOUSE_DB)
+    .set("spark.sql.catalog.clickhouse.user", clickhouseUser)
+    .set("spark.sql.catalog.clickhouse.password", clickhousePassword)
+    .set("spark.sql.catalog.clickhouse.database", clickhouseDatabase)
     .set("spark.sql.catalog.clickhouse.option.custom_http_params", "async_insert=1,wait_for_async_insert=1")
+    .set("spark.sql.catalog.clickhouse.option.ssl", isSslEnabled.toString)
     // extended configurations
     .set("spark.clickhouse.write.batchSize", "2")
     .set("spark.clickhouse.write.maxRetry", "2")
@@ -51,9 +52,11 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseSingleMixIn {
     "host" -> clickhouseHost,
     "http_port" -> clickhouseHttpPort.toString,
     "protocol" -> "http",
-    "user" -> CLICKHOUSE_USER,
-    "password" -> CLICKHOUSE_PASSWORD,
-    "database" -> CLICKHOUSE_DB
+    "user" -> clickhouseUser,
+    "password" -> clickhousePassword,
+    "database" -> clickhouseDatabase,
+    "option.custom_http_params" -> "async_insert=1,wait_for_async_insert=1",
+    "option.ssl" -> isSslEnabled.toString
   )
 
   def withTable(
