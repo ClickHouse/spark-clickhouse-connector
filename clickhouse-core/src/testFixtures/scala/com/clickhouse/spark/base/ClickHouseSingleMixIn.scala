@@ -20,8 +20,8 @@ import com.dimafeng.testcontainers.{ForAllTestContainer, JdbcDatabaseContainer, 
 import org.scalatest.funsuite.AnyFunSuite
 import org.testcontainers.containers.ClickHouseContainer
 import org.testcontainers.utility.{DockerImageName, MountableFile}
-
 import java.nio.file.{Path, Paths}
+import scala.collection.JavaConverters._
 
 trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer with ClickHouseProvider {
   // format: off
