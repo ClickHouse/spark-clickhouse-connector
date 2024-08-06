@@ -184,6 +184,9 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     : Unit = {
     val db = "test_kv_db"
     val tbl = "test_kv_tbl"
+    if (!clickhouseVersion.isNewerOrEqualTo("23.3")) {
+      Thread.sleep(1000)
+    }
     withKVTable(db, tbl, valueColDef = valueColDef) {
       prepare(db, tbl)
       val df = spark.sql(s"SELECT key, value FROM $db.$tbl ORDER BY key")
