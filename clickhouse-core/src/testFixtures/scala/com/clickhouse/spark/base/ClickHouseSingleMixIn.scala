@@ -27,6 +27,8 @@ import org.testcontainers.utility.{DockerImageName, MountableFile}
 
 import java.nio.file.{Path, Paths}
 
+import scala.collection.JavaConverters._
+
 trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   // format: off
   val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
@@ -43,13 +45,16 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer {
   protected val rootProjectDir: Path = {
     val thisClassURI = this.getClass.getProtectionDomain.getCodeSource.getLocation.toURI
     val currentPath = Paths.get(thisClassURI).toAbsolutePath.normalize
-    val coreModuleIndex = currentPath.toString.indexOf("/clickhouse-core")
+    val eachFolder = currentPath.iterator().asScala.toIndexedSeq
+    val coreModuleIndex = eachFolder.indexWhere(_.toString.startsWith("clickhouse-core"))
+    val sparkModuleIndex = eachFolder.indexWhere(_.toString.startsWith("clickhouse-spark"))
+    require(coreModuleIndex > 0 || sparkModuleIndex > 0, s"illegal path: $currentPath")
     if (coreModuleIndex > 0) {
-      Paths.get(currentPath.toString.substring(0, coreModuleIndex))
-    } else {
-      val sparkModuleIndex = currentPath.toString.indexOf("/clickhouse-spark")
-      require(sparkModuleIndex > 0, s"illegal path: $currentPath")
-      Paths.get(currentPath.toString.substring(0, sparkModuleIndex)).getParent
+      eachFolder.take(coreModuleIndex).reduce((acc, i) => acc.resolve(i))
+    } else if (sparkModuleIndex > 0) {
+      eachFolder.take(sparkModuleIndex).dropRight(1).reduce((acc, i) => acc.resolve(i))
+    } else { // unreachable code
+      throw new IllegalArgumentException(s"illegal path: $currentPath")
     }
   }
 
