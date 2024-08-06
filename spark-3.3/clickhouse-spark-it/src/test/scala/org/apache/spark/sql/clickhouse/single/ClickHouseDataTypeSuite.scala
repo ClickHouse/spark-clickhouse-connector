@@ -184,7 +184,7 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     : Unit = {
     val db = "test_kv_db"
     val tbl = "test_kv_tbl"
-    if (!clickhouseVersion.isNewerOrEqualTo("23.3")) {
+    if (!clickhouseVersion.isNewerOrEqualTo("23.3") || isCloud) {
       Thread.sleep(1000)
     }
     withKVTable(db, tbl, valueColDef = valueColDef) {

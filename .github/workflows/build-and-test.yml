@@ -56,7 +56,6 @@ jobs:
   run-tests-with-specific-clickhouse:
     runs-on: ubuntu-22.04
     strategy:
-      max-parallel: 1
       fail-fast: false
       matrix:
         clickhouse: [ 22.3, 22.8, 23.3, 23.8, 24.3, 24.6 ]
