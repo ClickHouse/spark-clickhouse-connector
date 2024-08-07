@@ -63,7 +63,8 @@ rat {
             "*.ipr",
             "*.iws",
             "*.idea/**",
-            ".editorconfig"
+            ".editorconfig",
+            "examples/**"
     )
 }
 
