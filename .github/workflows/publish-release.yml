@@ -49,7 +49,7 @@ jobs:
           -PmavenUser='${{ secrets.NEXUS_USER }}'
           -PmavenPassword='${{ secrets.NEXUS_PW }}'
           -Prelease
-          -Psigning.gnupg.keyName='Cheng Pan'
+          -Psigning.gnupg.keyName='mzitnik'
           -Psigning.gnupg.executable=gpg
 
   create-github-release:
