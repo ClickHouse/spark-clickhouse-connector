@@ -59,4 +59,4 @@ RUN set -x && \
     CLICKHOUSE_JDBC_JAR_NAME=clickhouse-jdbc && \
     wget -q ${MAVEN_MIRROR}/com/clickhouse/${CLICKHOUSE_JDBC_JAR_NAME}/${CLICKHOUSE_JDBC_VERSION}/${CLICKHOUSE_JDBC_JAR_NAME}-${CLICKHOUSE_JDBC_VERSION}-all.jar -P ${SPARK_HOME}/jars && \
     SCC_JAR_NAME=clickhouse-spark-runtime-${SPARK_BINARY_VERSION}_${SCALA_BINARY_VERSION} && \
-    if [ "$(echo ${PROJECT_VERSION} | grep SNAPSHOT)" = "" ]; then wget -q ${MAVEN_MIRROR}/com/github/housepower/${SCC_JAR_NAME}/${PROJECT_VERSION}/${SCC_JAR_NAME}-${PROJECT_VERSION}.jar -P ${SPARK_HOME}/jars; fi
+    if [ "$(echo ${PROJECT_VERSION} | grep SNAPSHOT)" = "" ]; then wget -q ${MAVEN_MIRROR}/com/clickhouse/spark/${SCC_JAR_NAME}/${PROJECT_VERSION}/${SCC_JAR_NAME}-${PROJECT_VERSION}.jar -P ${SPARK_HOME}/jars; fi

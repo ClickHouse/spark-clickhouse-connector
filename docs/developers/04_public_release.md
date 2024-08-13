@@ -37,7 +37,7 @@ workflow, it is scheduled to be deployed at midnight every day.
 3. Create new tag, e.g. `v0.3.0`, it will trigger the [Publish Release](https://github.com/ClickHouse/spark-clickhouse-connector/blob/main/.github/workflows/publish-release.yml)
    workflow; 
 4. Verify, close, and release in [Sonatype Repository](https://oss.sonatype.org/#stagingRepositories)
-5. Announce in [GitHub Release](https://github.com/housepower/spark-clickhouse-connector/releases)
+5. Announce in [GitHub Release](https://github.com/ClickHouse/spark-clickhouse-connector/releases)
 6. Update version in `version.txt` and `docker/.env-dev`, e.g. from `0.3.0` to `0.3.1-SNAPSHOT`;
 7. Update version on main branch in `version.txt` and `docker/.env-dev`, e.g. from `0.3.0-SNAPSHOT` to `0.4.0-SNAPSHOT`;
 8. [Publish Docker image](https://github.com/ClickHouse/spark-clickhouse-connector/tree/main/docker) after jars
