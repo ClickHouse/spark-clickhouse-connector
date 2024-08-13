@@ -102,7 +102,7 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
       case eg: String if "ReplacingMergeTree" equalsIgnoreCase eg =>
         ReplacingMergeTreeEngineSpec(
           engine_clause = engineExpr,
-          version_column = seqToOption(engineArgs).map(_.asInstanceOf[FieldRef]),
+          version_column = engineArgs.lift(0).map(_.asInstanceOf[FieldRef]),
           _sorting_key = tupleIfNeeded(orderByOpt.toList),
           _primary_key = tupleIfNeeded(pkOpt.toList),
           _partition_key = tupleIfNeeded(partOpt.toList),

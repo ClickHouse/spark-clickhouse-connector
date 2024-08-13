@@ -83,6 +83,20 @@ class SQLParserSuite extends AnyFunSuite {
     assert(actual === expected)
   }
 
+  test("parse ReplacingMergeTree - 3") {
+    val ddl = "ReplacingMergeTree(ts, is_deleted) " +
+      "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
+    val actual = parser.parseEngineClause(ddl)
+    val expected = ReplacingMergeTreeEngineSpec(
+      engine_clause = "ReplacingMergeTree(ts, is_deleted)",
+      version_column = Some(FieldRef("ts")),
+      _sorting_key = TupleExpr(FieldRef("id") :: Nil),
+      _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
+      _settings = Map("index_granularity" -> "8192")
+    )
+    assert(actual === expected)
+  }
+
   test("parse ReplicatedReplacingMergeTree - 1") {
     val ddl = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}') " +
       "PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
