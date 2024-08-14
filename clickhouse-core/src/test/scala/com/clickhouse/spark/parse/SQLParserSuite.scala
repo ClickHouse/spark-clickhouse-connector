@@ -90,6 +90,7 @@ class SQLParserSuite extends AnyFunSuite {
     val expected = ReplacingMergeTreeEngineSpec(
       engine_clause = "ReplacingMergeTree(ts, is_deleted)",
       version_column = Some(FieldRef("ts")),
+      is_deleted_column = Some(FieldRef("is_deleted")),
       _sorting_key = TupleExpr(FieldRef("id") :: Nil),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
       _settings = Map("index_granularity" -> "8192")
@@ -122,6 +123,25 @@ class SQLParserSuite extends AnyFunSuite {
       zk_path = "/clickhouse/tables/{shard}/wj_report/wj_respondent",
       replica_name = "{replica}",
       version_column = Some(FieldRef("ts")),
+      _sorting_key = TupleExpr(FieldRef("id") :: Nil),
+      _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
+      _settings = Map("index_granularity" -> "8192")
+    )
+    assert(actual === expected)
+  }
+
+  test("parse ReplicatedReplacingMergeTree - 3") {
+    val ddl = "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}', " +
+      "ts, is_deleted) PARTITION BY toYYYYMM(created) ORDER BY id SETTINGS index_granularity = 8192"
+    val actual = parser.parseEngineClause(ddl)
+    val expected = ReplicatedReplacingMergeTreeEngineSpec(
+      engine_clause =
+        "ReplicatedReplacingMergeTree('/clickhouse/tables/{shard}/wj_report/wj_respondent', '{replica}', " +
+          "ts, is_deleted)",
+      zk_path = "/clickhouse/tables/{shard}/wj_report/wj_respondent",
+      replica_name = "{replica}",
+      version_column = Some(FieldRef("ts")),
+      is_deleted_column = Some(FieldRef("is_deleted")),
       _sorting_key = TupleExpr(FieldRef("id") :: Nil),
       _partition_key = TupleExpr(List(FuncExpr("toYYYYMM", List(FieldRef("created"))))),
       _settings = Map("index_granularity" -> "8192")
