@@ -88,6 +88,7 @@ case class ReplicatedMergeTreeEngineSpec(
 case class ReplacingMergeTreeEngineSpec(
   engine_clause: String,
   version_column: Option[FieldRef] = None,
+  is_deleted_column: Option[FieldRef] = None,
   var _sorting_key: TupleExpr = TupleExpr(List.empty),
   var _primary_key: TupleExpr = TupleExpr(List.empty),
   var _partition_key: TupleExpr = TupleExpr(List.empty),
@@ -109,6 +110,7 @@ case class ReplicatedReplacingMergeTreeEngineSpec(
   zk_path: String,
   replica_name: String,
   version_column: Option[FieldRef] = None,
+  is_deleted_column: Option[FieldRef] = None,
   var _sorting_key: TupleExpr = TupleExpr(List.empty),
   var _primary_key: TupleExpr = TupleExpr(List.empty),
   var _partition_key: TupleExpr = TupleExpr(List.empty),
