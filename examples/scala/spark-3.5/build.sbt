@@ -18,11 +18,9 @@ version := "1.0"
 
 scalaVersion := "2.12.18"
 
-resolvers += "Maven Repo" at  "https://s01.oss.sonatype.org/content/repositories/snapshots/"
-
 libraryDependencies += "org.apache.spark" %% "spark-sql" % "3.5.0"
 libraryDependencies += "org.apache.spark" %% "spark-core" % "3.5.0"
 
 libraryDependencies += "com.clickhouse" % "clickhouse-jdbc" % "0.6.3" classifier "all"
-libraryDependencies += "com.clickhouse.spark" %% "clickhouse-spark-runtime-3.5" % "0.8.0-SNAPSHOT"
+libraryDependencies += "com.clickhouse.spark" %% "clickhouse-spark-runtime-3.5" % "0.8.0"
 
