@@ -45,12 +45,16 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   private lazy val userAgent = {
     val title = getClass.getPackage.getImplementationTitle
     val version = getClass.getPackage.getImplementationVersion
-    if (version != null) {
+    if (version != null && title != null) {
       val versions = version.split("_")
-      val sparkVersion = versions(0)
-      val scalaVersion = versions(1)
-      val connectorVersion = versions(2)
-      s"${title}/${connectorVersion} (fv:spark/${sparkVersion}, lv:scala/${scalaVersion})"
+      if (versions.length < 3) {
+        "Spark-ClickHouse-Connector"
+      } else {
+        val sparkVersion = versions(0)
+        val scalaVersion = versions(1)
+        val connectorVersion = versions(2)
+        s"${title}/${connectorVersion} (fv:spark/${sparkVersion}, lv:scala/${scalaVersion})"
+      }
     } else {
       "Spark-ClickHouse-Connector"
     }
