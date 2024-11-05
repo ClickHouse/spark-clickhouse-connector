@@ -22,8 +22,8 @@ The name pattern of binary jar is
 ```
 clickhouse-spark-runtime-${spark_binary_version}_${scala_binary_version}-${version}.jar
 ```
-you can find all available released jars under [Maven Central Repository](https://repo1.maven.org/maven2/com/github/housepower)
-and all daily build SNAPSHOT jars under [Sonatype OSS Snapshots Repository](https://oss.sonatype.org/content/repositories/snapshots/com/github/housepower/).
+you can find all available released jars under [Maven Central Repository](https://repo1.maven.org/maven2/com/clickhouse/spark)
+and all daily build SNAPSHOT jars under [Sonatype OSS Snapshots Repository](https://oss.sonatype.org/content/repositories/snapshots/com/clickhouse/spark/).
 
 ## Import as Dependency
 
@@ -31,7 +31,7 @@ and all daily build SNAPSHOT jars under [Sonatype OSS Snapshots Repository](http
 
 ```
 dependencies {
-  implementation("com.github.housepower:clickhouse-spark-runtime-{{ spark_binary_version }}_{{ scala_binary_version }}:{{ stable_version }}")
+  implementation("com.clickhouse.spark:clickhouse-spark-runtime-{{ spark_binary_version }}_{{ scala_binary_version }}:{{ stable_version }}")
   implementation("com.clickhouse:clickhouse-jdbc:{{ clickhouse_jdbc_version }}:all") { transitive = false }
 }
 ```
@@ -48,7 +48,7 @@ repositries {
 
 ```
 <dependency>
-  <groupId>com.github.housepower</groupId>
+  <groupId>com.clickhouse.spark</groupId>
   <artifactId>clickhouse-spark-runtime-{{ spark_binary_version }}_{{ scala_binary_version }}</artifactId>
   <version>{{ stable_version }}</version>
 </dependency>

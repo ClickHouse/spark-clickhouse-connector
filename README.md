@@ -1,6 +1,6 @@
 Spark ClickHouse Connector
 ===
-[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.github.housepower/clickhouse-spark-runtime-3.3_2.12/badge.svg)](https://search.maven.org/search?q=clickhouse-spark-runtime)
+[![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.clickhouse.spark/clickhouse-spark-runtime-3.5_2.12/badge.svg)](https://search.maven.org/search?q=clickhouse-spark-runtime)
 [![License](https://img.shields.io/github/license/clickhouse/spark-clickhouse-connector)](https://github.com/ClickHouse/spark-clickhouse-connector/blob/main/LICENSE)
 
 Build on Apache Spark DataSourceV2 API.
@@ -24,11 +24,14 @@ Notes:
 2. Since 0.6.0, HTTP becomes the default protocol.
 3. Since 0.7.0, gRPC is deprecated and not recommended, it may be removed in the future.
 4. Since 0.8.0, gRPC is removed.
+5. Since 0.8.0, the project groupId is rename from `com.github.housepower` to `com.clickhouse.spark`, and
+   the class `xenon.clickhouse.ClickHouseCatalog` is renamed to `com.clickhouse.spark.ClickHouseCatalog`
 
 ## Compatible Matrix
 
 | Version | Compatible Spark Versions | ClickHouse JDBC version |
 |---------|---------------------------|-------------------------|
+| 0.8.1   | Spark 3.3, 3.4, 3.5       | 0.6.3                   |
 | 0.8.0   | Spark 3.3, 3.4, 3.5       | 0.6.3                   |
 | 0.7.3   | Spark 3.3, 3.4            | 0.4.6                   |
 | 0.6.0   | Spark 3.3                 | 0.3.2-patch11           |
