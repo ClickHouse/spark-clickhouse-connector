@@ -209,4 +209,13 @@ object ClickHouseSQLConf {
       .stringConf
       .transform(_.toLowerCase)
       .createWithDefault("binary")
+
+  val READ_WITH_SETTINGS: ConfigEntry[String] =
+    buildConf("spark.clickhouse.read.withSettings")
+      .doc("Query-level settings when reading from ClickHouse. e.g. `final=1, max_execution_time=5`")
+      .version("0.9.0")
+      .stringConf
+      .transform(_.toLowerCase)
+      .createWithDefault("")
+
 }
