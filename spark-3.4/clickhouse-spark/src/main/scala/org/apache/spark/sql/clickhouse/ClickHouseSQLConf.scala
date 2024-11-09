@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
-import org.apache.spark.internal.config.ConfigEntry
+import org.apache.spark.internal.config.{ConfigEntry, OptionalConfigEntry}
 import org.apache.spark.sql.internal.SQLConf._
 import com.clickhouse.spark.exception.ClickHouseErrCode._
 
@@ -210,12 +210,12 @@ object ClickHouseSQLConf {
       .transform(_.toLowerCase)
       .createWithDefault("binary")
 
-  val READ_WITH_SETTINGS: ConfigEntry[String] =
-    buildConf("spark.clickhouse.read.withSettings")
-      .doc("Query-level settings when reading from ClickHouse. e.g. `final=1, max_execution_time=5`")
+  val READ_SETTINGS: OptionalConfigEntry[String] =
+    buildConf("spark.clickhouse.read.settings")
+      .doc("Settings when read from ClickHouse. e.g. `final=1, max_execution_time=5`")
       .version("0.9.0")
       .stringConf
       .transform(_.toLowerCase)
-      .createWithDefault("")
+      .createOptional
 
 }

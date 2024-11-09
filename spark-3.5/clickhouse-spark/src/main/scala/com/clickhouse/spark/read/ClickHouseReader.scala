@@ -36,7 +36,7 @@ abstract class ClickHouseReader[Record](
 
   val readDistributedUseClusterNodes: Boolean = conf.getConf(READ_DISTRIBUTED_USE_CLUSTER_NODES)
   val readDistributedConvertLocal: Boolean = conf.getConf(READ_DISTRIBUTED_CONVERT_LOCAL)
-  private val readWithSettings: String = conf.getConf(READ_WITH_SETTINGS)
+  private val readSettings: Option[String] = conf.getConf(READ_SETTINGS)
 
   val database: String = part.table.database
   val table: String = part.table.name
@@ -61,7 +61,7 @@ abstract class ClickHouseReader[Record](
        |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
        |${scanJob.groupByClause.getOrElse("")}
        |${scanJob.limit.map(n => s"LIMIT $n").getOrElse("")}
-       |${if (readWithSettings.nonEmpty) s"SETTINGS $readWithSettings" else ""}
+       |${readSettings.map(settings => s"SETTINGS $settings").getOrElse("")}
        |""".stripMargin
   }
 
