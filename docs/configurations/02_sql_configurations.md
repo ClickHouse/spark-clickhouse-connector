@@ -20,7 +20,7 @@ spark.clickhouse.ignoreUnsupportedTransform|false|ClickHouse supports using comp
 spark.clickhouse.read.compression.codec|lz4|The codec used to decompress data for reading. Supported codecs: none, lz4.|0.5.0
 spark.clickhouse.read.distributed.convertLocal|true|When reading Distributed table, read local table instead of itself. If `true`, ignore `spark.clickhouse.read.distributed.useClusterNodes`.|0.1.0
 spark.clickhouse.read.fixedStringAs|binary|Read ClickHouse FixedString type as the specified Spark data type. Supported types: binary, string|0.8.0
-spark.clickhouse.read.settings||Settings when read from ClickHouse. e.g. `final=1, max_execution_time=5`|0.9.0
+spark.clickhouse.read.settings|Settings when read from ClickHouse. e.g. `final=1, max_execution_time=5`|0.9.0
 spark.clickhouse.read.format|json|Serialize format for reading. Supported formats: json, binary|0.6.0
 spark.clickhouse.read.runtimeFilter.enabled|false|Enable runtime filter for reading.|0.8.0
 spark.clickhouse.read.splitByPartitionId|true|If `true`, construct input partition filter by virtual column `_partition_id`, instead of partition value. There are known bugs to assemble SQL predication by partition value. This feature requires ClickHouse Server v21.6+|0.4.0
