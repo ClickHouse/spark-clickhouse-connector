@@ -74,7 +74,13 @@ object Utils extends Logging {
     copyPath.toFile
   }
 
-  def load(key: String, defValue: String = ""): String = sys.props.getOrElse(key, sys.env.getOrElse(key, defValue))
+  def load(key: String, defValue: String = ""): String = {
+    val envValue = sys.env.getOrElse(key, defValue)
+    println(s"Loaded $key=${envValue.length}")
+    val value = sys.props.getOrElse(key, envValue)
+    println(s"Loaded $key=${value.length}")
+    value
+  }
 
   def stripSingleQuote(maybeQuoted: String): String = {
     var start = 0
