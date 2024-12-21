@@ -38,4 +38,5 @@ spark.clickhouse.write.repartitionNum|0|Repartition data to meet the distributio
 spark.clickhouse.write.repartitionStrictly|false|If `true`, Spark will strictly distribute incoming records across partitions to satisfy the required distribution before passing the records to the data source table on write. Otherwise, Spark may apply certain optimizations to speed up the query but break the distribution requirement. Note, this configuration requires SPARK-37523(available in Spark 3.4), w/o this patch, it always acts as `true`.|0.3.0
 spark.clickhouse.write.retryInterval|10s|The interval in seconds between write retry.|0.1.0
 spark.clickhouse.write.retryableErrorCodes|241|The retryable error codes returned by ClickHouse server when write failing.|0.1.0
+spark.clickhouse.write.settings|<undefined>|Settings when write into ClickHouse. e.g. `final=1, max_execution_time=5`|0.9.0
 <!--end-include-->
