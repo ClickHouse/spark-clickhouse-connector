@@ -246,12 +246,21 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     val client = nodeClient(shardNum)
     val data = serialize()
     var writeTime = 0L
+
+    val settings = writeJob.writeOptions.settings
+      .getOrElse("")
+      .split(",")
+      .map(_.trim.split("=", 2))
+      .collect { case Array(key, value) => key -> value }
+      .toMap
+
     Utils.retry[Unit, RetryableCHException](
       writeJob.writeOptions.maxRetry,
       writeJob.writeOptions.retryInterval
     ) {
       var startWriteTime = System.currentTimeMillis
-      client.syncInsertOutputJSONEachRow(database, table, format, codec, new ByteArrayInputStream(data)) match {
+      client.syncInsertOutputJSONEachRow(database, table, format, codec, new ByteArrayInputStream(data), settings)
+      match {
         case Right(_) =>
           writeTime = System.currentTimeMillis - startWriteTime
           _totalWriteTime.add(writeTime)

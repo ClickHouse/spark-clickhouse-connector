@@ -218,4 +218,12 @@ object ClickHouseSQLConf {
       .transform(_.toLowerCase)
       .createOptional
 
+  val WRITE_SETTINGS: OptionalConfigEntry[String] =
+    buildConf("spark.clickhouse.write.settings")
+      .doc("Settings when write into ClickHouse. e.g. `final=1, max_execution_time=5`")
+      .version("0.9.0")
+      .stringConf
+      .transform(_.toLowerCase)
+      .createOptional
+
 }

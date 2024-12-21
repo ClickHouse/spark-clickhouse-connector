@@ -91,4 +91,7 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
 
   def format: String =
     eval(WRITE_FORMAT.key, WRITE_FORMAT)
+
+  def settings: Option[String] =
+    eval(WRITE_SETTINGS.key, WRITE_SETTINGS)
 }
