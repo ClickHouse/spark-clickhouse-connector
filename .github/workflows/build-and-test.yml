@@ -46,7 +46,7 @@ jobs:
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
       - name: Upload logs
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: log-java-${{ matrix.java }}-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}
           path: |
@@ -73,7 +73,7 @@ jobs:
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
       - name: Upload logs
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
           name: log-clickhouse-${{ matrix.clickhouse }}
           path: |
