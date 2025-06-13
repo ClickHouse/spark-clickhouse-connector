@@ -108,20 +108,45 @@ class ClickHouseBinaryReader(
     val isNull = rawValue == null
 
     dataType match {
-      case StringType => ClickHouseStringValue.of(if (isNull) "" else rawValue.toString)
-      case IntegerType => ClickHouseIntegerValue.of(if (isNull) 0 else rawValue.asInstanceOf[Int])
-      case LongType => ClickHouseLongValue.of(if (isNull) 0L else rawValue.asInstanceOf[Long])
-      case DoubleType => ClickHouseDoubleValue.of(if (isNull) 0.0 else rawValue.asInstanceOf[Double])
-      case FloatType => ClickHouseFloatValue.of(if (isNull) 0.0f else rawValue.asInstanceOf[Float])
-      case BooleanType => ClickHouseBoolValue.of(if (isNull) false else rawValue.asInstanceOf[Boolean])
+      case StringType =>
+        if (isNull) ClickHouseStringValue.ofNull()
+        else ClickHouseStringValue.of(rawValue.toString)
+
+      case IntegerType =>
+        if (isNull) ClickHouseIntegerValue.ofNull()
+        else ClickHouseIntegerValue.of(rawValue.asInstanceOf[Int])
+
+      case LongType =>
+        if (isNull) ClickHouseLongValue.ofNull()
+        else ClickHouseLongValue.of(rawValue.asInstanceOf[Long])
+
+      case DoubleType =>
+        if (isNull) ClickHouseDoubleValue.ofNull()
+        else ClickHouseDoubleValue.of(rawValue.asInstanceOf[Double])
+
+      case FloatType =>
+        if (isNull) ClickHouseFloatValue.ofNull()
+        else ClickHouseFloatValue.of(rawValue.asInstanceOf[Float])
+
+      case BooleanType =>
+        if (isNull) ClickHouseBoolValue.ofNull()
+        else ClickHouseBoolValue.of(rawValue.asInstanceOf[Boolean])
+
       case _: ArrayType =>
-        ClickHouseArrayValue.of(if (isNull) Array.empty[Object] else rawValue.asInstanceOf[Array[Object]])
-      case _: MapType => ClickHouseMapValue.of(
-          if (isNull) Collections.emptyMap() else rawValue.asInstanceOf[java.util.Map[Object, Object]],
+        if (isNull) ClickHouseArrayValue.ofEmpty()
+        else ClickHouseArrayValue.of(rawValue.asInstanceOf[Array[Object]])
+
+      case _: MapType =>
+        if (isNull) ClickHouseMapValue.ofEmpty(classOf[Object], classOf[Object])
+        else ClickHouseMapValue.of(
+          rawValue.asInstanceOf[java.util.Map[Object, Object]],
           classOf[Object],
           classOf[Object]
         )
-      case _ => ClickHouseStringValue.of(if (isNull) "" else rawValue.toString)
+
+      case _ =>
+        if (isNull) ClickHouseStringValue.ofNull()
+        else ClickHouseStringValue.of(rawValue.toString)
     }
   }
 

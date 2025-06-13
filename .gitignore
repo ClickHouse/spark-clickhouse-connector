@@ -10,6 +10,13 @@ tmp/
 *.iws
 *.iml
 
+# vscode metails files
+.vscode/
+.bloop/
+.metals/
+
+
+
 # gradle build
 .gradle
 .out/
