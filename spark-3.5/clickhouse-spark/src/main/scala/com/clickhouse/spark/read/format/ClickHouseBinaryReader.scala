@@ -14,8 +14,18 @@
 
 package com.clickhouse.spark.read.format
 
-import com.clickhouse.data.value.ClickHouseStringValue
-import com.clickhouse.data.{ClickHouseRecord, ClickHouseValue}
+import java.util.Collections
+import com.clickhouse.data.value.{
+  ClickHouseArrayValue,
+  ClickHouseBoolValue,
+  ClickHouseDoubleValue,
+  ClickHouseFloatValue,
+  ClickHouseIntegerValue,
+  ClickHouseLongValue,
+  ClickHouseMapValue,
+  ClickHouseStringValue
+}
+import com.clickhouse.data.{ClickHouseArraySequence, ClickHouseRecord, ClickHouseValue}
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.read.{ClickHouseInputPartition, ClickHouseReader, ScanJobDescription}
 import org.apache.spark.sql.catalyst.InternalRow
@@ -72,13 +82,72 @@ class ClickHouseBinaryReader(
       case DateType => value.asDate.toEpochDay.toInt
       case BinaryType => value.asBinary
       case ArrayType(_dataType, _nullable) =>
-        // TODO https://github.com/ClickHouse/clickhouse-jdbc/issues/1088
-        new GenericArrayData(value.asArray())
-      case MapType(StringType, _valueType, _valueNullable) =>
-        // TODO https://github.com/ClickHouse/clickhouse-jdbc/issues/1088
-        ArrayBasedMapData(value.asMap.asScala)
+        val arrayValue = value.asInstanceOf[ClickHouseArraySequence]
+        val convertedArray = Array.tabulate(arrayValue.length) { i =>
+          decodeValue(
+            arrayValue.getValue(i, createClickHouseValue(null, _dataType)),
+            StructField("element", _dataType, _nullable)
+          )
+        }
+        new GenericArrayData(convertedArray)
+      case MapType(_keyType, _valueType, _valueNullable) =>
+        val convertedMap = value.asMap().asScala.map { case (rawKey, rawValue) =>
+          val decodedKey = decodeValue(createClickHouseValue(rawKey, _keyType), StructField("key", _keyType, false))
+          val decodedValue =
+            decodeValue(createClickHouseValue(rawValue, _valueType), StructField("value", _valueType, _valueNullable))
+          (decodedKey, decodedValue)
+        }
+        ArrayBasedMapData(convertedMap)
+
       case _ =>
         throw CHClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
     }
   }
+
+  private def createClickHouseValue(rawValue: Any, dataType: DataType): ClickHouseValue = {
+    val isNull = rawValue == null
+
+    dataType match {
+      case StringType =>
+        if (isNull) ClickHouseStringValue.ofNull()
+        else ClickHouseStringValue.of(rawValue.toString)
+
+      case IntegerType =>
+        if (isNull) ClickHouseIntegerValue.ofNull()
+        else ClickHouseIntegerValue.of(rawValue.asInstanceOf[Int])
+
+      case LongType =>
+        if (isNull) ClickHouseLongValue.ofNull()
+        else ClickHouseLongValue.of(rawValue.asInstanceOf[Long])
+
+      case DoubleType =>
+        if (isNull) ClickHouseDoubleValue.ofNull()
+        else ClickHouseDoubleValue.of(rawValue.asInstanceOf[Double])
+
+      case FloatType =>
+        if (isNull) ClickHouseFloatValue.ofNull()
+        else ClickHouseFloatValue.of(rawValue.asInstanceOf[Float])
+
+      case BooleanType =>
+        if (isNull) ClickHouseBoolValue.ofNull()
+        else ClickHouseBoolValue.of(rawValue.asInstanceOf[Boolean])
+
+      case _: ArrayType =>
+        if (isNull) ClickHouseArrayValue.ofEmpty()
+        else ClickHouseArrayValue.of(rawValue.asInstanceOf[Array[Object]])
+
+      case _: MapType =>
+        if (isNull) ClickHouseMapValue.ofEmpty(classOf[Object], classOf[Object])
+        else ClickHouseMapValue.of(
+          rawValue.asInstanceOf[java.util.Map[Object, Object]],
+          classOf[Object],
+          classOf[Object]
+        )
+
+      case _ =>
+        if (isNull) ClickHouseStringValue.ofNull()
+        else ClickHouseStringValue.of(rawValue.toString)
+    }
+  }
+
 }
