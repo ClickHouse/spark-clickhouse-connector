@@ -29,7 +29,34 @@ object TableEngineUtils extends Logging {
     }
   }
 
-  def resolveTableCluster(distributedEngineSpec: DistributedEngineSpec, clusterSpecs: Seq[ClusterSpec]): ClusterSpec =
-    clusterSpecs.find(_.name == distributedEngineSpec.cluster)
+  def resolveTableCluster(
+    distributedEngineSpec: DistributedEngineSpec,
+    clusterSpecs: Seq[ClusterSpec],
+    macrosSpecs: Seq[MacrosSpec]
+  ): ClusterSpec = {
+    val clusterName = if (distributedEngineSpec.cluster.contains("{")) {
+      val macrosMap = macrosSpecs.map(spec => (spec.name, spec.substitution)).toMap
+
+      var clusterName = distributedEngineSpec.cluster
+      var startPos = clusterName.indexOf('{')
+      while (startPos >= 0) {
+        val endPos = clusterName.indexOf('}', startPos)
+        if (endPos > startPos) {
+          val macroName = clusterName.substring(startPos + 1, endPos)
+          val substitution = macrosMap.getOrElse(macroName, throw CHClientException(s"Unknown macro: ${macroName}"))
+          clusterName = clusterName
+            .substring(0, startPos)
+            .concat(substitution)
+            .concat(clusterName.substring(endPos + 1))
+        }
+        startPos = clusterName.indexOf('{')
+      }
+      clusterName
+    } else {
+      distributedEngineSpec.cluster
+    }
+
+    clusterSpecs.find(_.name == clusterName)
       .getOrElse(throw CHClientException(s"Unknown cluster: ${distributedEngineSpec.cluster}"))
+  }
 }
