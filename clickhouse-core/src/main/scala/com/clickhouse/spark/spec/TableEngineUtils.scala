@@ -57,6 +57,6 @@ object TableEngineUtils extends Logging {
     }
 
     clusterSpecs.find(_.name == clusterName)
-      .getOrElse(throw CHClientException(s"Unknown cluster: ${distributedEngineSpec.cluster}"))
+      .getOrElse(throw CHClientException(s"Unknown cluster: resolved name '${clusterName}' (original: '${distributedEngineSpec.cluster}')"))
   }
 }
