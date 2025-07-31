@@ -37,21 +37,21 @@ object TableEngineUtils extends Logging {
     val clusterName = if (distributedEngineSpec.cluster.contains("{")) {
       val macrosMap = macrosSpecs.map(spec => (spec.name, spec.substitution)).toMap
 
-      var clusterName = distributedEngineSpec.cluster
-      var startPos = clusterName.indexOf('{')
+      var resolvedClusterName = distributedEngineSpec.cluster
+      var startPos = resolvedClusterName.indexOf('{')
       while (startPos >= 0) {
-        val endPos = clusterName.indexOf('}', startPos)
+        val endPos = resolvedClusterName.indexOf('}', startPos)
         if (endPos > startPos) {
-          val macroName = clusterName.substring(startPos + 1, endPos)
+          val macroName = resolvedClusterName.substring(startPos + 1, endPos)
           val substitution = macrosMap.getOrElse(macroName, throw CHClientException(s"Unknown macro: ${macroName}"))
-          clusterName = clusterName
+          resolvedClusterName = resolvedClusterName
             .substring(0, startPos)
             .concat(substitution)
-            .concat(clusterName.substring(endPos + 1))
+            .concat(resolvedClusterName.substring(endPos + 1))
         }
-        startPos = clusterName.indexOf('{')
+        startPos = resolvedClusterName.indexOf('{')
       }
-      clusterName
+      resolvedClusterName
     } else {
       distributedEngineSpec.cluster
     }
