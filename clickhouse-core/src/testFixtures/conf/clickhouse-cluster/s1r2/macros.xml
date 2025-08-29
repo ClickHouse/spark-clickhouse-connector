@@ -16,5 +16,6 @@
     <macros>
         <shard>1</shard>
         <replica>2</replica>
+        <cluster>single_replica</cluster>
     </macros>
 </yandex>
