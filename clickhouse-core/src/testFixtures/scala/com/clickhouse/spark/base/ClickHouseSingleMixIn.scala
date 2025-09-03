@@ -63,6 +63,7 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer with Cl
         .withEnv("CLICKHOUSE_USER", CLICKHOUSE_USER)
         .withEnv("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
         .withEnv("CLICKHOUSE_DB", CLICKHOUSE_DB)
+        .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")
         .withExposedPorts(CLICKHOUSE_HTTP_PORT, CLICKHOUSE_TPC_PORT)
         .withFileSystemBind(s"${sys.env("ROOT_PROJECT_DIR")}/log/clickhouse-server", "/var/log/clickhouse-server")
         .withCopyFileToContainer(
