@@ -21,6 +21,8 @@ services:
 
   clickhouse-s1r1:
     image: ${CLICKHOUSE_IMAGE}
+    environment:
+      "CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT": "1"
     hostname: clickhouse-s1r1
     ports:
       - 8123
