@@ -23,6 +23,7 @@ on:
     branches:
       - "branch-*"
       - "main"
+  workflow_dispatch:
 
 jobs:
   run-tests-with-clickhouse-cloud:
