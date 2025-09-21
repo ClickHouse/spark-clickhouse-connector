@@ -32,6 +32,7 @@ jobs:
           cache: gradle
       - run: >-
           ./gradlew sonarqube
+          -PenableSonar=true
           -Dsonar.projectKey=spark-clickhouse-connector
           -Dsonar.host.url=${{ secrets.SONAR_URL }}
           -Dsonar.login=${{ secrets.SONAR_TOKEN }}
