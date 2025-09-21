@@ -12,11 +12,11 @@
   See the License for the specific language governing permissions and
   limitations under the License. See accompanying LICENSE file.
 -->
-<yandex>
+<clickhouse>
     <zookeeper>
         <node index="1">
             <host>zookeeper</host>
             <port>2181</port>
         </node>
     </zookeeper>
-</yandex>
+</clickhouse>
