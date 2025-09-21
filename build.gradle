@@ -17,7 +17,7 @@ import org.codehaus.groovy.runtime.GStringImpl
 plugins {
     id "idea"
     id "org.scoverage" version "8.1" apply false
-    id "org.sonarqube" version "4.4.1.3373"
+    id "org.sonarqube" version "3.5.0.2730"
     id "com.diffplug.spotless" version "6.12.1" apply false
     id "org.nosphere.apache.rat" version "0.8.1"
     id "com.github.maiflai.scalatest" version "0.32" apply false
