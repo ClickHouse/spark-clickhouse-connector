@@ -24,6 +24,10 @@ plugins {
     id "com.github.johnrengelman.shadow" version "8.1.1" apply false
 }
 
+if (project.hasProperty('enableSonar')) {
+    apply plugin: 'org.sonarqube'
+}
+
 project.ext {
     spark_binary_version = System.getProperty("spark_binary_version")
     scala_binary_version = System.getProperty("scala_binary_version")
