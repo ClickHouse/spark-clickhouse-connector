@@ -28,10 +28,11 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
-          java-version: 8
+          java-version: 17
           cache: gradle
       - run: >-
-          ./gradlew sonarqube
+          ./gradlew sonar
+          -PenableSonar=true
           -Dsonar.projectKey=spark-clickhouse-connector
           -Dsonar.host.url=${{ secrets.SONAR_URL }}
           -Dsonar.login=${{ secrets.SONAR_TOKEN }}
