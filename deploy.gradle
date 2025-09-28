@@ -32,8 +32,10 @@ subprojects {
                         // Also include the sources from clickhouse-core
                         def coreProject = project.parent.findProject(":clickhouse-core")
                         if (coreProject != null) {
-                            // Declare dependency on generateGrammarSource task
-                            dependsOn coreProject.tasks.generateGrammarSource
+                            // Safely declare dependency on generateGrammarSource task if it exists
+                            if (coreProject.tasks.findByName('generateGrammarSource') != null) {
+                                dependsOn coreProject.tasks.generateGrammarSource
+                            }
                             from coreProject.sourceSets.main.allSource
                         }
                     } else {
