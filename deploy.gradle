@@ -18,17 +18,52 @@ subprojects {
     afterEvaluate {
         publishing {
             if (project.name.contains("-runtime")) {
+                // Determine the corresponding implementation project name
+                def implProjectName = project.name.replace("-runtime", "")
+                def implProject = project.parent.findProject(":${implProjectName}")
+
                 tasks.register('sourceJar', Jar) {
-                    dependsOn classes
                     archiveClassifier.set('sources')
-                    from sourceSets.main.allSource
+
+                    if (implProject != null) {
+                        // Include the sources from the implementation project
+                        from implProject.sourceSets.main.allSource
+
+                        // Also include the sources from clickhouse-core
+                        def coreProject = project.parent.findProject(":clickhouse-core")
+                        if (coreProject != null) {
+                            // Declare dependency on generateGrammarSource task
+                            dependsOn coreProject.tasks.generateGrammarSource
+                            from coreProject.sourceSets.main.allSource
+                        }
+                    } else {
+                        // Fallback to an empty jar if implementation project was not found
+                        from sourceSets.main.allSource
+                    }
+
                     group 'build'
                 }
 
                 tasks.register('javadocJar', Jar) {
-                    dependsOn javadoc
                     archiveClassifier.set('javadoc')
-                    from javadoc.destinationDir
+
+                    if (implProject != null) {
+                        // Include the javadoc from the implementation project
+                        dependsOn implProject.javadoc
+                        from implProject.javadoc.destinationDir
+
+                        // Optionally include javadoc from clickhouse-core
+                        def coreProject = project.parent.findProject(":clickhouse-core")
+                        if (coreProject != null) {
+                            dependsOn coreProject.javadoc
+                            from coreProject.javadoc.destinationDir
+                        }
+                    } else {
+                        // Fallback to the current project's javadoc
+                        dependsOn javadoc
+                        from javadoc.destinationDir
+                    }
+
                     group 'build'
                 }
 
