@@ -16,21 +16,20 @@ package com.clickhouse.spark.client
 
 import com.clickhouse.spark.Logging
 import com.clickhouse.client._
+import com.clickhouse.client.api.{Client, ServerException}
+import com.clickhouse.client.api.enums.Protocol
+import com.clickhouse.client.api.insert.{InsertResponse, InsertSettings}
+import com.clickhouse.client.api.query.{QueryResponse, QuerySettings}
 import com.clickhouse.client.config.ClickHouseClientOption
 import com.clickhouse.data.{ClickHouseCompression, ClickHouseFormat}
 import com.clickhouse.spark.exception.{CHClientException, CHException, CHServerException}
-import com.clickhouse.spark.format.{
-  JSONCompactEachRowWithNamesAndTypesSimpleOutput,
-  JSONEachRowSimpleOutput,
-  NamesAndTypes,
-  SimpleOutput
-}
+import com.clickhouse.spark.format.{JSONCompactEachRowWithNamesAndTypesSimpleOutput, JSONEachRowSimpleOutput, NamesAndTypes, SimpleOutput}
 import com.clickhouse.spark.spec.NodeSpec
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 import com.clickhouse.spark.format._
 
-import java.io.InputStream
+import java.io.{ByteArrayInputStream, InputStream}
 import java.util.UUID
 import scala.util.{Failure, Success, Try}
 
@@ -76,7 +75,19 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     .nodeSelector(ClickHouseNodeSelector.of(node.getProtocol))
     .build()
 
-  override def close(): Unit = client.close()
+  private val clientV2 = new Client.Builder()
+    .setUsername(nodeSpec.username)
+    .setPassword(nodeSpec.password)
+    .setDefaultDatabase(nodeSpec.database)
+    .setOptions(nodeSpec.options)
+    .setClientName(userAgent)
+    .addEndpoint(Protocol.HTTP, nodeSpec.host, nodeSpec.port, false) // TODO: get s full URL instead
+    .build()
+
+  override def close(): Unit = {
+    client.close()
+    clientV2.close()
+  }
 
   private def nextQueryId(): String = UUID.randomUUID.toString
 
@@ -139,17 +150,32 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     val queryId = nextQueryId()
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecuteQuery(queryId, sql)
-    val req = client.write(node)
-      .query(sql, queryId)
-      .decompressClientRequest(inputCompressionType)
-      .format(ClickHouseFormat.valueOf(outputFormat))
-    settings.foreach { case (k, v) => req.set(k, v) }
-    Try(req.data(data).executeAndWait()) match {
-      case Success(resp) => Right(deserializer(resp.getInputStream))
-      case Failure(ex: ClickHouseException) =>
-        Left(CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec), Some(ex)))
+
+    val insertSettings : InsertSettings = new InsertSettings();
+    settings.foreach { case (k, v) => insertSettings.setOption(k, v) }
+    insertSettings.setDatabase(database)
+    // TODO: check what type of compression is supported by the client v2
+    insertSettings.compressClientRequest(true)
+    val a : Array[Byte] = data.readAllBytes()
+    //    println("data: " + new String(a))
+    val is : InputStream = new ByteArrayInputStream("".getBytes())
+    Try(clientV2.insert(table, new ByteArrayInputStream(a),  ClickHouseFormat.valueOf(inputFormat), insertSettings).get()) match {
+      case Success(resp : InsertResponse) => Right(deserializer(is))
+      case Failure(se: ServerException) =>
+        Left(CHServerException(se.getCode, se.getMessage, Some(nodeSpec), Some(se)))
       case Failure(ex) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
     }
+//    val req = client.write(node)
+//      .query(sql, queryId)
+//      .decompressClientRequest(inputCompressionType)
+//      .format(ClickHouseFormat.valueOf(outputFormat))
+//    settings.foreach { case (k, v) => req.set(k, v) }
+//    Try(req.data(data).executeAndWait()) match {
+//      case Success(resp) => Right(deserializer(resp.getInputStream))
+//      case Failure(ex: ClickHouseException) =>
+//        Left(CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec), Some(ex)))
+//      case Failure(ex) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
+//    }
   }
 
   def syncQuery[OUT](
@@ -160,16 +186,31 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   ): Either[CHException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
-    val req = client.read(node)
-      .query(sql, queryId).asInstanceOf[ClickHouseRequest[_]]
-      .format(ClickHouseFormat.valueOf(outputFormat)).asInstanceOf[ClickHouseRequest[_]]
-      .option(ClickHouseClientOption.CONNECTION_TIMEOUT, timeout).asInstanceOf[ClickHouseRequest[_]]
-    settings.foreach { case (k, v) => req.set(k, v).asInstanceOf[ClickHouseRequest[_]] }
-    Try(req.executeAndWait()) match {
-      case Success(resp) => Right(deserializer(resp.getInputStream))
-      case Failure(ex: ClickHouseException) =>
-        Left(CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec), Some(ex)))
-      case Failure(ex) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
+    val querySettings: QuerySettings = new QuerySettings()
+    val clickHouseFormat = ClickHouseFormat.valueOf(outputFormat)
+    querySettings.setFormat(clickHouseFormat)
+    querySettings.setQueryId(queryId)
+    settings.foreach { case (k, v) => querySettings.setOption(k, v) }
+    // TODO: add timeout
+//    println(s"syncQuery: ${sql}")
+
+
+    //    val req = client.read(node)
+    //      .query(sql, queryId).asInstanceOf[ClickHouseRequest[_]]
+    //      .format(ClickHouseFormat.valueOf(outputFormat)).asInstanceOf[ClickHouseRequest[_]]
+    //      .option(ClickHouseClientOption.CONNECTION_TIMEOUT, timeout).asInstanceOf[ClickHouseRequest[_]]
+    //    settings.foreach { case (k, v) => req.set(k, v).asInstanceOf[ClickHouseRequest[_]] }
+    //    Try(req.executeAndWait()) match {
+    //      case Success(resp) => Right(deserializer(resp.getInputStream))
+    //      case Failure(ex: ClickHouseException) =>
+    //        Left(CHServerException(ex.getErrorCode, ex.getMessage, Some(nodeSpec), Some(ex)))
+    //      case Failure(ex) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
+    //    }
+
+    Try(clientV2.query(sql, querySettings).get()) match {
+      case Success(response: QueryResponse) => Right(deserializer(response.getInputStream))
+      case Failure(se: ServerException) => Left(CHServerException(se.getCode, se.getMessage, Some(nodeSpec), Some(se)))
+      case Failure(ex: Exception) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
     }
   }
 
@@ -195,6 +236,9 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   ): ClickHouseResponse = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
+    println(s"queryAndCheck: ${sql}")
+
+
     val req = client.read(node)
       .query(sql, queryId).asInstanceOf[ClickHouseRequest[_]]
       .compressServerResponse(outputCompressionType).asInstanceOf[ClickHouseRequest[_]]
@@ -219,5 +263,5 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
        |""".stripMargin
   )
   def ping(timeout: Int = timeout) =
-    client.ping(node, timeout)
+    clientV2.ping(timeout) // client.ping(node, timeout)
 }
