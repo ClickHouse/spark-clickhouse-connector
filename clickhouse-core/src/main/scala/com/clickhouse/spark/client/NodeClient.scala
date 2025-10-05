@@ -20,6 +20,8 @@ import com.clickhouse.client.api.{Client, ServerException}
 import com.clickhouse.client.api.enums.Protocol
 import com.clickhouse.client.api.insert.{InsertResponse, InsertSettings}
 import com.clickhouse.client.api.query.{QueryResponse, QuerySettings}
+
+import java.util.concurrent.TimeUnit
 //import com.clickhouse.client.config.ClickHouseClientOption
 import com.clickhouse.data.ClickHouseFormat // ClickHouseCompression
 import com.clickhouse.spark.exception.{CHClientException, CHException, CHServerException}
@@ -207,7 +209,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     //      case Failure(ex) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
     //    }
 
-    Try(clientV2.query(sql, querySettings).get()) match {
+    Try(clientV2.query(sql, querySettings).get(timeout,  TimeUnit.MILLISECONDS)) match {
       case Success(response: QueryResponse) => Right(deserializer(response.getInputStream))
       case Failure(se: ServerException) => Left(CHServerException(se.getCode, se.getMessage, Some(nodeSpec), Some(se)))
       case Failure(ex: Exception) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
@@ -246,7 +248,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     querySettings.setQueryId(queryId)
     settings.foreach { case (k, v) => querySettings.setOption(k , v) }
     // TODO: add timeout
-    Try(clientV2.query(sql, querySettings).get()) match {
+    Try(clientV2.query(sql, querySettings).get(timeout,  TimeUnit.MILLISECONDS)) match {
       case Success(response: QueryResponse) => response
       case Failure( se : ServerException) => throw CHServerException(se.getCode, se.getMessage, Some(nodeSpec), Some(se))
       case Failure( ex : Exception) => throw CHClientException(ex.getMessage, Some(nodeSpec), Some(ex))
