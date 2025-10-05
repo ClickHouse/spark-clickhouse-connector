@@ -14,17 +14,12 @@
 
 package com.clickhouse.spark.read.format
 
+import com.clickhouse.client.api.data_formats.internal.BinaryStreamReader
+import com.clickhouse.client.api.data_formats.{ClickHouseBinaryFormatReader, RowBinaryWithNamesAndTypesFormatReader}
+import com.clickhouse.client.api.query.{GenericRecord, Records}
+
 import java.util.Collections
-import com.clickhouse.data.value.{
-  ClickHouseArrayValue,
-  ClickHouseBoolValue,
-  ClickHouseDoubleValue,
-  ClickHouseFloatValue,
-  ClickHouseIntegerValue,
-  ClickHouseLongValue,
-  ClickHouseMapValue,
-  ClickHouseStringValue
-}
+import com.clickhouse.data.value.{ClickHouseArrayValue, ClickHouseBoolValue, ClickHouseDoubleValue, ClickHouseFloatValue, ClickHouseIntegerValue, ClickHouseLongValue, ClickHouseMapValue, ClickHouseStringValue}
 import com.clickhouse.data.{ClickHouseArraySequence, ClickHouseRecord, ClickHouseValue}
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.read.{ClickHouseInputPartition, ClickHouseReader, ScanJobDescription}
@@ -34,6 +29,7 @@ import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData}
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
 
+import java.io.InputStream
 import java.time.ZoneOffset
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
@@ -41,68 +37,147 @@ import scala.collection.JavaConverters._
 class ClickHouseBinaryReader(
   scanJob: ScanJobDescription,
   part: ClickHouseInputPartition
-) extends ClickHouseReader[ClickHouseRecord](scanJob, part) {
+) extends ClickHouseReader[GenericRecord](scanJob, part) {
 
   override val format: String = "RowBinaryWithNamesAndTypes"
 
-  lazy val streamOutput: Iterator[ClickHouseRecord] = resp.records().asScala.iterator
+//  lazy val streamOutput: Iterator[ClickHouseRecord] = resp.records().asScala.iterator
+    lazy val streamOutput: Iterator[GenericRecord] = {
+      val inputString : InputStream = resp.getInputStream
+      val cbfr : ClickHouseBinaryFormatReader = new RowBinaryWithNamesAndTypesFormatReader(inputString, resp.getSettings, new BinaryStreamReader.DefaultByteBufferAllocator)
+      val r = new Records(resp, cbfr)
+      r.asScala.iterator
+    }
 
-  override def decode(record: ClickHouseRecord): InternalRow = {
-    val values: Array[Any] = new Array[Any](record.size)
+  override def decode(record: GenericRecord): InternalRow = {
+    println(s"decode: ${record}")
+    val size = record.getSchema.getColumns.size()
+    val values: Array[Any] = new Array[Any](size)
     if (readSchema.nonEmpty) {
       var i: Int = 0
-      while (i < record.size) {
-        values(i) = decodeValue(record.getValue(i), readSchema.fields(i))
+      while (i < size) {
+        values(i) = decodeValue(i + 1, record, readSchema.fields(i))
         i = i + 1
       }
     }
+//    val values: Array[Any] = new Array[Any](record.size)
+//    if (readSchema.nonEmpty) {
+//      var i: Int = 0
+//      while (i < record.size) {
+//        values(i) = decodeValue(record.getValue(i), readSchema.fields(i))
+//        i = i + 1
+//      }
+//    }
     new GenericInternalRow(values)
   }
 
-  private def decodeValue(value: ClickHouseValue, structField: StructField): Any = {
-    if (value == null || value.isNullOrEmpty && value.isNullable) {
+  private def decodeValue(index : Int, record: GenericRecord, structField: StructField): Any = {
+    if (record.getObject(index) == null) {
       // should we check `structField.nullable`?
       return null
     }
-
+    //    println("**********************")
+    //    println(record.getValues)
+    //    println("**********************")
+    //    println(s"dataType: ${structField.dataType} index: ${index}")
     structField.dataType match {
-      case BooleanType => value.asBoolean
-      case ByteType => value.asByte
-      case ShortType => value.asShort
-      case IntegerType => value.asInteger
-      case LongType => value.asLong
-      case FloatType => value.asFloat
-      case DoubleType => value.asDouble
-      case d: DecimalType => Decimal(value.asBigDecimal(d.scale))
+      case BooleanType => record.getBoolean(index)
+      case ByteType => record.getByte(index)
+      case ShortType => record.getShort(index)
+      case IntegerType => record.getInteger(index)
+      case LongType => record.getLong(index)
+      case FloatType => record.getFloat(index)
+      case DoubleType => record.getDouble(index)
+      case d: DecimalType =>
+        val bigDecimal = record.getBigDecimal(index)
+        Decimal(bigDecimal.setScale(d.scale)) // d.scale
       case TimestampType =>
-        var _instant = value.asZonedDateTime.withZoneSameInstant(ZoneOffset.UTC)
+        var _instant = record.getZonedDateTime(index).withZoneSameInstant(ZoneOffset.UTC)
+        //        var _instant = value.asZonedDateTime.withZoneSameInstant(ZoneOffset.UTC)
         TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
-      case StringType if value.isInstanceOf[ClickHouseStringValue] => UTF8String.fromBytes(value.asBinary)
-      case StringType => UTF8String.fromString(value.asString)
-      case DateType => value.asDate.toEpochDay.toInt
-      case BinaryType => value.asBinary
+      //      case StringType if value.isInstanceOf[ClickHouseStringValue] => UTF8String.fromBytes(value.asBinary)
+      case StringType => UTF8String.fromString(record.getString(index)) //UTF8String.fromString(value.asString)
+      case DateType => record.getLocalDate(index).toEpochDay //value.asDate.toEpochDay.toInt
+      case BinaryType => record.getString(index).getBytes() //value.asBinary
       case ArrayType(_dataType, _nullable) =>
-        val arrayValue = value.asInstanceOf[ClickHouseArraySequence]
-        val convertedArray = Array.tabulate(arrayValue.length) { i =>
-          decodeValue(
-            arrayValue.getValue(i, createClickHouseValue(null, _dataType)),
-            StructField("element", _dataType, _nullable)
-          )
+        val array = _dataType match {
+          case BooleanType => record.getBooleanArray(index)
+          case ByteType => record.getByteArray(index)
+          case IntegerType => record.getIntArray(index)
+          case LongType => record.getLongArray(index)
+          case FloatType => record.getFloatArray(index)
+          case DoubleType => record.getDoubleArray(index)
+          case StringType => record.getStringArray(index)
+          case ShortType => record.getShortArray(index)
         }
-        new GenericArrayData(convertedArray)
-      case MapType(_keyType, _valueType, _valueNullable) =>
-        val convertedMap = value.asMap().asScala.map { case (rawKey, rawValue) =>
-          val decodedKey = decodeValue(createClickHouseValue(rawKey, _keyType), StructField("key", _keyType, false))
-          val decodedValue =
-            decodeValue(createClickHouseValue(rawValue, _valueType), StructField("value", _valueType, _valueNullable))
-          (decodedKey, decodedValue)
-        }
-        ArrayBasedMapData(convertedMap)
+        new GenericArrayData(array)
+      //        val arrayValue = value.asInstanceOf[ClickHouseArraySequence]
+      //        val convertedArray = Array.tabulate(arrayValue.length) { i =>
+      //          decodeValue(
+      //            arrayValue.getValue(i, createClickHouseValue(null, _dataType)),
+      //            StructField("element", _dataType, _nullable)
+      //          )
+      //        }
+      //        new GenericArrayData(convertedArray)
+      //      case MapType(_keyType, _valueType, _valueNullable) =>
+      //        val convertedMap = value.asMap().asScala.map { case (rawKey, rawValue) =>
+      //          val decodedKey = decodeValue(createClickHouseValue(rawKey, _keyType), StructField("key", _keyType, false))
+      //          val decodedValue =
+      //            decodeValue(createClickHouseValue(rawValue, _valueType), StructField("value", _valueType, _valueNullable))
+      //          (decodedKey, decodedValue)
+      //        }
+      //        ArrayBasedMapData(convertedMap)
 
       case _ =>
         throw CHClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
     }
   }
+
+//  private def decodeValue(value: ClickHouseValue, structField: StructField): Any = {
+//    println(s"decodeValue: ${value} structField: ${structField}")
+//    if (value == null || value.isNullOrEmpty && value.isNullable) {
+//      // should we check `structField.nullable`?
+//      return null
+//    }
+//
+//    structField.dataType match {
+//      case BooleanType => value.asBoolean
+//      case ByteType => value.asByte
+//      case ShortType => value.asShort
+//      case IntegerType => value.asInteger
+//      case LongType => value.asLong
+//      case FloatType => value.asFloat
+//      case DoubleType => value.asDouble
+//      case d: DecimalType => Decimal(value.asBigDecimal(d.scale))
+//      case TimestampType =>
+//        var _instant = value.asZonedDateTime.withZoneSameInstant(ZoneOffset.UTC)
+//        TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
+//      case StringType if value.isInstanceOf[ClickHouseStringValue] => UTF8String.fromBytes(value.asBinary)
+//      case StringType => UTF8String.fromString(value.asString)
+//      case DateType => value.asDate.toEpochDay.toInt
+//      case BinaryType => value.asBinary
+//      case ArrayType(_dataType, _nullable) =>
+//        val arrayValue = value.asInstanceOf[ClickHouseArraySequence]
+//        val convertedArray = Array.tabulate(arrayValue.length) { i =>
+//          decodeValue(
+//            arrayValue.getValue(i, createClickHouseValue(null, _dataType)),
+//            StructField("element", _dataType, _nullable)
+//          )
+//        }
+//        new GenericArrayData(convertedArray)
+//      case MapType(_keyType, _valueType, _valueNullable) =>
+//        val convertedMap = value.asMap().asScala.map { case (rawKey, rawValue) =>
+//          val decodedKey = decodeValue(createClickHouseValue(rawKey, _keyType), StructField("key", _keyType, false))
+//          val decodedValue =
+//            decodeValue(createClickHouseValue(rawValue, _valueType), StructField("value", _valueType, _valueNullable))
+//          (decodedKey, decodedValue)
+//        }
+//        ArrayBasedMapData(convertedMap)
+//
+//      case _ =>
+//        throw CHClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
+//    }
+//  }
 
   private def createClickHouseValue(rawValue: Any, dataType: DataType): ClickHouseValue = {
     val isNull = rawValue == null

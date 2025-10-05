@@ -14,17 +14,18 @@
 
 package com.clickhouse.spark.read
 
-import com.clickhouse.client.ClickHouseResponse
+import com.clickhouse.spark.{ClickHouseHelper, Logging, TaskMetric}
+import com.clickhouse.spark.client.{NodeClient, NodesClient}
 import com.clickhouse.data.ClickHouseCompression
+import com.clickhouse.spark.format.StreamOutput
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
 import com.clickhouse.spark.Metrics.{BLOCKS_READ, BYTES_READ}
-import com.clickhouse.spark.client.{NodeClient, NodesClient}
-import com.clickhouse.spark.format.StreamOutput
-import com.clickhouse.spark.{ClickHouseHelper, Logging, TaskMetric}
+import com.clickhouse.client.ClickHouseResponse
+import com.clickhouse.client.api.query.QueryResponse
 
 abstract class ClickHouseReader[Record](
   scanJob: ScanJobDescription,
@@ -40,7 +41,7 @@ abstract class ClickHouseReader[Record](
 
   val database: String = part.table.database
   val table: String = part.table.name
-  val codec: ClickHouseCompression = scanJob.readOptions.compressionCodec
+//  val codec: ClickHouseCompression = scanJob.readOptions.compressionCodec
   val readSchema: StructType = scanJob.readSchema
 
   private lazy val nodesClient = NodesClient(part.candidateNodes)
@@ -67,11 +68,12 @@ abstract class ClickHouseReader[Record](
 
   def format: String
 
-  lazy val resp: ClickHouseResponse = nodeClient.queryAndCheck(scanQuery, format, codec)
+  // , codec
+  lazy val resp: QueryResponse = nodeClient.queryAndCheck(scanQuery, format)
 
-  def totalBlocksRead: Long = resp.getSummary.getStatistics.getBlocks
+  def totalBlocksRead: Long = 0L //resp.getSummary.getStatistics.getBlocks
 
-  def totalBytesRead: Long = resp.getSummary.getReadBytes
+  def totalBytesRead: Long = resp.getReadBytes // resp.getSummary.getReadBytes
 
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
     TaskMetric(BLOCKS_READ, totalBlocksRead),

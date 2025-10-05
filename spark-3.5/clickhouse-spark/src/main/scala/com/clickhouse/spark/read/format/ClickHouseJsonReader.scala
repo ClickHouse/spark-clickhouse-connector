@@ -42,6 +42,7 @@ class ClickHouseJsonReader(
     JSONCompactEachRowWithNamesAndTypesStreamOutput.deserializeStream(resp.getInputStream)
 
   override def decode(record: Array[JsonNode]): InternalRow = {
+    println(s"JSON decode: ${record.mkString("Array(", ", ", ")")}")
     val values: Array[Any] = new Array[Any](record.length)
     if (readSchema.nonEmpty) {
       var i: Int = 0
