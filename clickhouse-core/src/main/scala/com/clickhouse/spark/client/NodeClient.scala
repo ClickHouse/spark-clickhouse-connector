@@ -23,7 +23,12 @@ import com.clickhouse.data.ClickHouseFormat
 import com.clickhouse.spark.Logging
 import java.util.concurrent.TimeUnit
 import com.clickhouse.spark.exception.{CHClientException, CHException, CHServerException}
-import com.clickhouse.spark.format.{JSONCompactEachRowWithNamesAndTypesSimpleOutput, JSONEachRowSimpleOutput, NamesAndTypes, SimpleOutput}
+import com.clickhouse.spark.format.{
+  JSONCompactEachRowWithNamesAndTypesSimpleOutput,
+  JSONEachRowSimpleOutput,
+  NamesAndTypes,
+  SimpleOutput
+}
 import com.clickhouse.spark.spec.NodeSpec
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
@@ -58,18 +63,27 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     }
   }
 
+  private def createClickHouseURL(nodeSpec: NodeSpec) : String = {
+    val ssl : Boolean = nodeSpec.options.getOrDefault("ssl", "false").toBoolean
+    if (ssl) {
+      s"https://${nodeSpec.host}:${nodeSpec.port}"
+    } else {
+      s"http://${nodeSpec.host}:${nodeSpec.port}"
+    }
+  }
+
   private val clientV2 = new Client.Builder()
     .setUsername(nodeSpec.username)
     .setPassword(nodeSpec.password)
     .setDefaultDatabase(nodeSpec.database)
     .setOptions(nodeSpec.options)
     .setClientName(userAgent)
-    .addEndpoint(Protocol.HTTP, nodeSpec.host, nodeSpec.port, false) // TODO: get s full URL instead
+    .addEndpoint(createClickHouseURL(nodeSpec))
+//    .addEndpoint(Protocol.HTTP, nodeSpec.host, nodeSpec.port, false) // TODO: get s full URL instead
     .build()
 
-  override def close(): Unit = {
+  override def close(): Unit =
     clientV2.close()
-  }
 
   private def nextQueryId(): String = UUID.randomUUID.toString
 
@@ -130,15 +144,20 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecuteQuery(queryId, sql)
 
-    val insertSettings : InsertSettings = new InsertSettings();
+    val insertSettings: InsertSettings = new InsertSettings();
     settings.foreach { case (k, v) => insertSettings.setOption(k, v) }
     insertSettings.setDatabase(database)
     // TODO: check what type of compression is supported by the client v2
     insertSettings.compressClientRequest(true)
-    val a : Array[Byte] = data.readAllBytes()
-    val is : InputStream = new ByteArrayInputStream("".getBytes())
-    Try(clientV2.insert(table, new ByteArrayInputStream(a),  ClickHouseFormat.valueOf(inputFormat), insertSettings).get()) match {
-      case Success(resp : InsertResponse) => Right(deserializer(is))
+    val a: Array[Byte] = data.readAllBytes()
+    val is: InputStream = new ByteArrayInputStream("".getBytes())
+    Try(clientV2.insert(
+      table,
+      new ByteArrayInputStream(a),
+      ClickHouseFormat.valueOf(inputFormat),
+      insertSettings
+    ).get()) match {
+      case Success(resp: InsertResponse) => Right(deserializer(is))
       case Failure(se: ServerException) =>
         Left(CHServerException(se.getCode, se.getMessage, Some(nodeSpec), Some(se)))
       case Failure(ex) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
@@ -158,7 +177,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     querySettings.setFormat(clickHouseFormat)
     querySettings.setQueryId(queryId)
     settings.foreach { case (k, v) => querySettings.setOption(k, v) }
-    Try(clientV2.query(sql, querySettings).get(timeout,  TimeUnit.MILLISECONDS)) match {
+    Try(clientV2.query(sql, querySettings).get(timeout, TimeUnit.MILLISECONDS)) match {
       case Success(response: QueryResponse) => Right(deserializer(response.getInputStream))
       case Failure(se: ServerException) => Left(CHServerException(se.getCode, se.getMessage, Some(nodeSpec), Some(se)))
       case Failure(ex: Exception) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
@@ -187,16 +206,16 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
 
-    val querySettings : QuerySettings = new QuerySettings()
+    val querySettings: QuerySettings = new QuerySettings()
     val clickHouseFormat = ClickHouseFormat.valueOf(outputFormat)
     querySettings.setFormat(clickHouseFormat)
     querySettings.setQueryId(queryId)
-    settings.foreach { case (k, v) => querySettings.setOption(k , v) }
+    settings.foreach { case (k, v) => querySettings.setOption(k, v) }
 
-    Try(clientV2.query(sql, querySettings).get(timeout,  TimeUnit.MILLISECONDS)) match {
+    Try(clientV2.query(sql, querySettings).get(timeout, TimeUnit.MILLISECONDS)) match {
       case Success(response: QueryResponse) => response
-      case Failure( se : ServerException) => throw CHServerException(se.getCode, se.getMessage, Some(nodeSpec), Some(se))
-      case Failure( ex : Exception) => throw CHClientException(ex.getMessage, Some(nodeSpec), Some(ex))
+      case Failure(se: ServerException) => throw CHServerException(se.getCode, se.getMessage, Some(nodeSpec), Some(se))
+      case Failure(ex: Exception) => throw CHClientException(ex.getMessage, Some(nodeSpec), Some(ex))
     }
   }
 

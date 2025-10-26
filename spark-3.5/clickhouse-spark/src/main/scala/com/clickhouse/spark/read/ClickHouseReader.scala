@@ -71,7 +71,7 @@ abstract class ClickHouseReader[Record](
   // , codec
   lazy val resp: QueryResponse = nodeClient.queryAndCheck(scanQuery, format)
 
-  def totalBlocksRead: Long = 0L //resp.getSummary.getStatistics.getBlocks
+  def totalBlocksRead: Long = 0L // resp.getSummary.getStatistics.getBlocks
 
   def totalBytesRead: Long = resp.getReadBytes // resp.getSummary.getReadBytes
 

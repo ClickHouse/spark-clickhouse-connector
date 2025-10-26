@@ -201,7 +201,7 @@ project(':clickhouse-core') {
         api "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
         api "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
 
-        api("com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version:all") { transitive = false }
+        api("com.clickhouse:client-v2:${clickhouse_client_v2_version}:all") { transitive = false }
 
         compileOnly "jakarta.annotation:jakarta.annotation-api:$jakarta_annotation_api_version"
 
@@ -222,6 +222,7 @@ project(":clickhouse-core-it") {
         testImplementation(testFixtures(project(":clickhouse-core")))
 
         testImplementation("com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version:all") { transitive = false }
+
         testImplementation "org.slf4j:slf4j-log4j12:$slf4j_version"
     }
 
