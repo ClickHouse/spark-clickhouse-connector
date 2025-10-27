@@ -72,8 +72,16 @@ allprojects {
     version = getProjectVersion()
 
     repositories {
-        mavenLocal()
-        maven { url = "$mavenCentralMirror" }
+        maven {
+            url = "$mavenCentralMirror"
+        }
+
+        maven {
+            url = "$mavenSnapshotsRepo"
+            mavenContent {
+                snapshotsOnly()
+            }
+        }git
     }
 }
 
