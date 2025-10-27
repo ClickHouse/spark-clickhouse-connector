@@ -25,10 +25,10 @@ import com.clickhouse.spark.format.{
   NamesAndTypes,
   SimpleOutput
 }
+import com.clickhouse.spark.Utils.RuntimeDetector.detectRuntime
 import com.clickhouse.spark.spec.NodeSpec
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
-import com.clickhouse.spark.format._
 
 import java.io.InputStream
 import java.util.UUID
@@ -42,23 +42,42 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   // TODO: add configurable timeout
   private val timeout: Int = 30000
 
-  private lazy val userAgent = {
+  private lazy val userAgent: String = {
     val title = getClass.getPackage.getImplementationTitle
     val version = getClass.getPackage.getImplementationVersion
-    if (version != null && title != null) {
-      val versions = version.split("_")
-      if (versions.length < 3) {
-        "Spark-ClickHouse-Connector"
-      } else {
-        val sparkVersion = versions(0)
-        val scalaVersion = versions(1)
-        val connectorVersion = versions(2)
-        s"${title}/${connectorVersion} (fv:spark/${sparkVersion}, lv:scala/${scalaVersion})"
-      }
-    } else {
-      "Spark-ClickHouse-Connector"
-    }
+    buildUserAgent(title, version)
   }
+
+  private def buildUserAgent(title: String, version: String): String =
+    (Option(title), Option(version)) match {
+      case (Some(t), Some(v)) =>
+        parseVersionString(v) match {
+          case Some((spark, scala, connector)) =>
+            val runtimeSuffix = getRuntimeEnvironmentSuffix()
+            s"$t/$connector (fv:spark/$spark, lv:scala/$scala$runtimeSuffix)"
+          case None => "Spark-ClickHouse-Connector"
+        }
+      case _ => "Spark-ClickHouse-Connector"
+    }
+
+  private def parseVersionString(version: String): Option[(String, String, String)] =
+    version.split("_") match {
+      case Array(spark, scala, connector, _*) => Some((spark, scala, connector))
+      case _ => None
+    }
+
+  private def getRuntimeEnvironmentSuffix(): String =
+    if (shouldInferRuntime()) {
+      detectRuntime()
+        .filter(_.nonEmpty)
+        .fold("")(env => s", env:$env")
+    } else {
+      ""
+    }
+
+  private def shouldInferRuntime(): Boolean =
+    nodeSpec.infer_runtime_env.equalsIgnoreCase("true") || nodeSpec.infer_runtime_env == "1"
+
   private val node: ClickHouseNode = ClickHouseNode.builder()
     .options(nodeSpec.options)
     .host(nodeSpec.host)
