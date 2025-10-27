@@ -99,7 +99,7 @@ allprojects {
             mavenContent {
                 snapshotsOnly()
             }
-        }git
+        }
     }
 }
 

@@ -78,18 +78,9 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     } else {
       ""
     }
-  }
 
   private def shouldInferRuntime(): Boolean =
     nodeSpec.infer_runtime_env.equalsIgnoreCase("true") || nodeSpec.infer_runtime_env == "1"
-
-  private val node: ClickHouseNode = ClickHouseNode.builder()
-    .options(nodeSpec.options)
-    .host(nodeSpec.host)
-    .port(nodeSpec.protocol, nodeSpec.port)
-    .database(nodeSpec.database)
-    .credentials(ClickHouseCredentials.fromUserAndPassword(nodeSpec.username, nodeSpec.password))
-    .build()
 
   private def createClickHouseURL(nodeSpec: NodeSpec) : String = {
     val ssl : Boolean = nodeSpec.options.getOrDefault("ssl", "false").toBoolean
@@ -107,7 +98,6 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     .setOptions(nodeSpec.options)
     .setClientName(userAgent)
     .addEndpoint(createClickHouseURL(nodeSpec))
-//    .addEndpoint(Protocol.HTTP, nodeSpec.host, nodeSpec.port, false) // TODO: get s full URL instead
     .build()
 
   override def close(): Unit =
