@@ -31,6 +31,7 @@ import scala.annotation.tailrec
 import scala.collection.mutable
 import scala.reflect.ClassTag
 import scala.util.{Failure, Success, Try}
+import scala.collection.JavaConverters.asScalaSetConverter
 
 object Utils extends Logging {
 
@@ -186,4 +187,153 @@ object Utils extends Logging {
   def setTesting(): Unit = System.setProperty(IS_TESTING, "true")
 
   def isTesting: Boolean = System.getProperty(IS_TESTING) == "true"
+
+  object RuntimeDetector {
+
+    def detectRuntime(): Option[String] =
+      RuntimeDetector.detectViaStackTrace()
+        .orElse(RuntimeDetector.detectViaClassLoader())
+        .orElse(RuntimeDetector.detectViaThreadNames())
+
+    /**
+     * Examines the current stack trace and loaded classes for platform-specific signatures
+     */
+    def detectViaStackTrace(): Option[String] = {
+      val stackTrace = Thread.currentThread().getStackTrace
+      val stackClasses = stackTrace.map(_.getClassName.toLowerCase)
+
+      // Check for platform-specific classes in stack
+      if (
+        stackClasses.exists(c =>
+          c.contains("com.databricks.logging") ||
+            c.contains("databricks.spark") ||
+            c.contains("com.databricks.backend")
+        )
+      ) {
+        Some("Databricks")
+      } else if (
+        stackClasses.exists { c =>
+          c.contains("com.amazonaws.services.glue") ||
+          c.contains("aws.glue") ||
+          c.contains("awsglue")
+        }
+      ) {
+        Some("Glue")
+      } else if (
+        stackClasses.exists(c =>
+          c.contains("com.amazon.emr") ||
+            c.contains("amazon.emrfs")
+        )
+      ) {
+        Some("EMR")
+      } else if (
+        stackClasses.exists(c =>
+          c.contains("com.google.cloud.dataproc") ||
+            c.contains("dataproc")
+        )
+      ) {
+        Some("Dataproc")
+      } else if (
+        stackClasses.exists(c =>
+          c.contains("com.microsoft.azure.synapse") ||
+            c.contains("synapse.spark")
+        )
+      ) {
+        Some("Synapse")
+      } else {
+        None
+      }
+    }
+
+    /**
+     * More comprehensive check using ClassLoader to find platform-specific classes
+     */
+    def detectViaClassLoader(): Option[String] = {
+      val classLoader = Thread.currentThread().getContextClassLoader
+
+      case class PlatformSignature(name: String, classNames: Seq[String])
+
+      val platformSignatures = Seq(
+        PlatformSignature(
+          "Databricks",
+          Seq(
+            "com.databricks.spark.util.DatabricksLogging",
+            "com.databricks.backend.daemon.driver.DriverLocal",
+            "com.databricks.dbutils_v1.DBUtilsHolder",
+            "com.databricks.spark.util.FrameProfiler"
+          )
+        ),
+        PlatformSignature(
+          "Glue",
+          Seq(
+            "com.amazonaws.services.glue.GlueContext",
+            "com.amazonaws.services.glue.util.GlueArgParser",
+            "com.amazonaws.services.glue.DynamicFrame"
+          )
+        ),
+        PlatformSignature(
+          "EMR",
+          Seq(
+            "com.amazon.ws.emr.hadoop.fs.EmrFileSystem",
+            "com.amazon.emr.kinesis.client.KinesisConnector",
+            "com.amazon.emr.cloudwatch.CloudWatchSink"
+          )
+        ),
+        PlatformSignature(
+          "Dataproc",
+          Seq(
+            "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem",
+            "com.google.cloud.dataproc.DataprocHadoopConfiguration",
+            "com.google.cloud.spark.bigquery.BigQueryConnector"
+          )
+        ),
+        PlatformSignature(
+          "Synapse",
+          Seq(
+            "com.microsoft.azure.synapse.ml.core.env.SynapseEnv",
+            "com.microsoft.azure.synapse.ml.logging.SynapseMLLogging"
+          )
+        ),
+        PlatformSignature(
+          "HDInsight",
+          Seq(
+            "com.microsoft.azure.hdinsight.spark.common.SparkBatchJob",
+            "com.microsoft.hdinsight.spark.common.HttpFutureCallback"
+          )
+        )
+      )
+
+      // Try to load platform-specific classes
+      def classExists(className: String): Boolean =
+        try {
+          Class.forName(className, false, classLoader)
+          true
+        } catch {
+          case _: ClassNotFoundException => false
+        }
+
+      platformSignatures.collectFirst {
+        case PlatformSignature(name, classes) if classes.exists(classExists) => name
+      }
+    }
+
+    /**
+     * Check running threads for platform-specific thread names
+     */
+    def detectViaThreadNames(): Option[String] = {
+      val threadNames = Thread.getAllStackTraces.keySet().asScala.map(_.getName.toLowerCase)
+
+      if (threadNames.exists(_.contains("databricks"))) {
+        Some("Databricks")
+      } else if (threadNames.exists(t => t.contains("glue") || t.contains("awsglue"))) {
+        Some("Glue")
+      } else if (threadNames.exists(_.contains("emr"))) {
+        Some("EMR")
+      } else if (threadNames.exists(_.contains("dataproc"))) {
+        Some("Dataproc")
+      } else {
+        None
+      }
+    }
+  }
 }

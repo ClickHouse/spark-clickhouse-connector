@@ -35,6 +35,7 @@ case class NodeSpec(
   @JsonProperty("username") username: String = "default",
   @JsonProperty("password") password: String = "",
   @JsonProperty("database") database: String = "default",
+  @JsonProperty("infer_runtime_env") infer_runtime_env: String = "true",
   @JsonProperty("options") options: util.Map[String, String] = Collections.emptyMap()
 ) extends Nodes with ToJson with Serializable {
   @JsonProperty("host") def host: String = findHost(_host)

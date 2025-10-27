@@ -12,9 +12,9 @@
   See the License for the specific language governing permissions and
   limitations under the License. See accompanying LICENSE file.
 -->
-<yandex>
+<clickhouse>
     <macros>
         <shard>2</shard>
         <replica>2</replica>
     </macros>
-</yandex>
+</clickhouse>
