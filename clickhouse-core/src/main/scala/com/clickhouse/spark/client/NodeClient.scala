@@ -82,8 +82,8 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   private def shouldInferRuntime(): Boolean =
     nodeSpec.infer_runtime_env.equalsIgnoreCase("true") || nodeSpec.infer_runtime_env == "1"
 
-  private def createClickHouseURL(nodeSpec: NodeSpec) : String = {
-    val ssl : Boolean = nodeSpec.options.getOrDefault("ssl", "false").toBoolean
+  private def createClickHouseURL(nodeSpec: NodeSpec): String = {
+    val ssl: Boolean = nodeSpec.options.getOrDefault("ssl", "false").toBoolean
     if (ssl) {
       s"https://${nodeSpec.host}:${nodeSpec.port}"
     } else {
@@ -158,6 +158,11 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     deserializer: InputStream => SimpleOutput[OUT],
     settings: Map[String, String]
   ): Either[CHException, SimpleOutput[OUT]] = {
+    def readAllBytes(inputStream: InputStream): Array[Byte] =
+      Stream.continually(inputStream.read())
+        .takeWhile(_ != -1)
+        .map(_.toByte)
+        .toArray
     val queryId = nextQueryId()
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecuteQuery(queryId, sql)
@@ -167,11 +172,11 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     insertSettings.setDatabase(database)
     // TODO: check what type of compression is supported by the client v2
     insertSettings.compressClientRequest(true)
-    val a: Array[Byte] = data.readAllBytes()
+    val payload: Array[Byte] = readAllBytes(data)
     val is: InputStream = new ByteArrayInputStream("".getBytes())
     Try(clientV2.insert(
       table,
-      new ByteArrayInputStream(a),
+      new ByteArrayInputStream(payload),
       ClickHouseFormat.valueOf(inputFormat),
       insertSettings
     ).get()) match {
