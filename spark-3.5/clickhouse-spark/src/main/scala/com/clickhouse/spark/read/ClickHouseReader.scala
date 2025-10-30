@@ -41,7 +41,6 @@ abstract class ClickHouseReader[Record](
 
   val database: String = part.table.database
   val table: String = part.table.name
-//  val codec: ClickHouseCompression = scanJob.readOptions.compressionCodec
   val readSchema: StructType = scanJob.readSchema
 
   private lazy val nodesClient = NodesClient(part.candidateNodes)
@@ -68,7 +67,6 @@ abstract class ClickHouseReader[Record](
 
   def format: String
 
-  // , codec
   lazy val resp: QueryResponse = nodeClient.queryAndCheck(scanQuery, format)
 
   def totalBlocksRead: Long = 0L // resp.getSummary.getStatistics.getBlocks
