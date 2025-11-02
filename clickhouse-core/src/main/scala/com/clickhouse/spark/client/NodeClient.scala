@@ -21,20 +21,17 @@ import com.clickhouse.client.api.insert.{InsertResponse, InsertSettings}
 import com.clickhouse.client.api.query.{QueryResponse, QuerySettings}
 import com.clickhouse.data.ClickHouseFormat
 import com.clickhouse.spark.Logging
+
 import java.util.concurrent.TimeUnit
 import com.clickhouse.spark.exception.{CHClientException, CHException, CHServerException}
-import com.clickhouse.spark.format.{
-  JSONCompactEachRowWithNamesAndTypesSimpleOutput,
-  JSONEachRowSimpleOutput,
-  NamesAndTypes,
-  SimpleOutput
-}
+import com.clickhouse.spark.format.{JSONCompactEachRowWithNamesAndTypesSimpleOutput, JSONEachRowSimpleOutput, NamesAndTypes, SimpleOutput}
 import com.clickhouse.spark.Utils.RuntimeDetector.detectRuntime
 import com.clickhouse.spark.spec.NodeSpec
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 
 import java.io.{ByteArrayInputStream, InputStream}
+import java.time.temporal.ChronoUnit
 import java.util.UUID
 import scala.util.{Failure, Success, Try}
 
@@ -99,6 +96,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     .setClientName(userAgent)
     .setConnectTimeout(1200000)
     .setMaxConnections(20)
+    .setConnectionRequestTimeout(30000, ChronoUnit.MILLIS)
     .addEndpoint(createClickHouseURL(nodeSpec))
     .build()
 
