@@ -44,7 +44,7 @@ object NodeClient {
 
 class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   // TODO: add configurable timeout
-  private val timeout: Int = 30000
+  private val timeout: Int = 60000
 
   private lazy val userAgent: String = {
     val title = getClass.getPackage.getImplementationTitle
