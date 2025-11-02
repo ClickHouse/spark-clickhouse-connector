@@ -24,7 +24,12 @@ import com.clickhouse.spark.Logging
 
 import java.util.concurrent.TimeUnit
 import com.clickhouse.spark.exception.{CHClientException, CHException, CHServerException}
-import com.clickhouse.spark.format.{JSONCompactEachRowWithNamesAndTypesSimpleOutput, JSONEachRowSimpleOutput, NamesAndTypes, SimpleOutput}
+import com.clickhouse.spark.format.{
+  JSONCompactEachRowWithNamesAndTypesSimpleOutput,
+  JSONEachRowSimpleOutput,
+  NamesAndTypes,
+  SimpleOutput
+}
 import com.clickhouse.spark.Utils.RuntimeDetector.detectRuntime
 import com.clickhouse.spark.spec.NodeSpec
 import com.fasterxml.jackson.databind.JsonNode
