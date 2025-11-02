@@ -97,7 +97,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     .setDefaultDatabase(nodeSpec.database)
     .setOptions(nodeSpec.options)
     .setClientName(userAgent)
-//    .setConnectTimeout(1200000)
+    .setConnectTimeout(1200000)
     .setMaxConnections(20)
     .addEndpoint(createClickHouseURL(nodeSpec))
     .build()
