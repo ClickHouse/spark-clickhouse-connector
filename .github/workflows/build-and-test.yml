@@ -41,10 +41,28 @@ jobs:
           java-version: ${{ matrix.java }}
           cache: gradle
       - run: >-
-          ./gradlew clean test --no-daemon --refresh-dependencies
+          ./gradlew clean test reportTestScoverage --no-daemon --refresh-dependencies
           -Dscala_binary_version=${{ matrix.scala }}
           -Dspark_binary_version=${{ matrix.spark }}
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+      
+      - name: Upload Test Results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-java-${{ matrix.java }}-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}
+          path: |
+            **/build/reports/tests/test/**
+            **/build/test-results/test/**
+      
+      - name: Upload Coverage Reports
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-java-${{ matrix.java }}-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}
+          path: |
+            **/build/reports/scoverageTest/**
+      
       - name: Upload logs
         if: failure()
         uses: actions/upload-artifact@v4
@@ -80,3 +98,94 @@ jobs:
           path: |
             **/build/unit-tests.log
             log/**
+
+  aggregate-coverage:
+    runs-on: ubuntu-22.04
+    needs: run-tests
+    if: always()
+    steps:
+      - uses: actions/checkout@v4
+      
+      - name: Download all coverage artifacts
+        uses: actions/download-artifact@v4
+        with:
+          pattern: coverage-*
+          path: downloaded-coverage
+      
+      - name: Organize coverage reports and create index files
+        run: |
+          # Copy HTML reports to their respective module directories
+          for dir in downloaded-coverage/coverage-*/; do
+            if [ -d "$dir" ]; then
+              find "$dir" -type d -name "scoverageTest" -exec sh -c '
+                for scov_dir; do
+                  module_path=$(echo "$scov_dir" | sed "s|downloaded-coverage/coverage-[^/]*/||" | sed "s|/build/reports/scoverageTest||")
+                  if [ -n "$module_path" ]; then
+                    target_dir="${module_path}/build/reports/scoverageTest"
+                    mkdir -p "$target_dir"
+                    cp -r "$scov_dir"/* "$target_dir/" 2>/dev/null || true
+                  fi
+                done
+              ' sh {} +
+            fi
+          done
+          
+          # Create root COVERAGE.md
+          cat > COVERAGE.md << 'EOF'
+          # Test Coverage Reports
+          
+          Coverage reports are generated for all Java/Spark/Scala combinations.
+          
+          ## Module Coverage
+          
+          - [ClickHouse Core](clickhouse-core/COVERAGE.md)
+          - [Spark 3.3](spark-3.3/COVERAGE.md)
+          - [Spark 3.4](spark-3.4/COVERAGE.md)
+          - [Spark 3.5](spark-3.5/COVERAGE.md)
+          
+          ## Viewing Reports
+          
+          Download the `coverage-aggregated` artifact from the workflow run and open the HTML reports:
+          - `clickhouse-core/build/reports/scoverageTest/index.html`
+          - `spark-{version}/clickhouse-spark/build/reports/scoverageTest/index.html`
+          EOF
+          
+          # Create clickhouse-core/COVERAGE.md
+          mkdir -p clickhouse-core
+          cat > clickhouse-core/COVERAGE.md << 'EOF'
+          # ClickHouse Core - Test Coverage
+          
+          ## Coverage Reports
+          
+          - [clickhouse-core HTML Report](build/reports/scoverageTest/index.html)
+          - [clickhouse-core-it HTML Report](../clickhouse-core-it/build/reports/scoverageTest/index.html)
+          
+          Reports are available for all Java/Spark/Scala combinations in the workflow artifacts.
+          EOF
+          
+          # Create spark-*/COVERAGE.md for each version
+          for spark_ver in 3.3 3.4 3.5; do
+            mkdir -p "spark-${spark_ver}"
+            cat > "spark-${spark_ver}/COVERAGE.md" << EOF
+          # Spark ${spark_ver} - Test Coverage
+          
+          ## Coverage Reports
+          
+          - [clickhouse-spark HTML Report](clickhouse-spark/build/reports/scoverageTest/index.html)
+          - [clickhouse-spark-it HTML Report](clickhouse-spark-it/build/reports/scoverageTest/index.html)
+          
+          Reports are available for all Java/Scala combinations in the workflow artifacts.
+          EOF
+          done
+      
+      - name: Upload aggregated coverage
+        uses: actions/upload-artifact@v4
+        with:
+          name: coverage-aggregated
+          path: |
+            COVERAGE.md
+            clickhouse-core/COVERAGE.md
+            clickhouse-core/build/reports/scoverageTest/**
+            clickhouse-core-it/build/reports/scoverageTest/**
+            spark-*/COVERAGE.md
+            spark-*/*/build/reports/scoverageTest/**

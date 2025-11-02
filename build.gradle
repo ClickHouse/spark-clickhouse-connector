@@ -204,6 +204,18 @@ project(':clickhouse-core') {
         dependsOn generateGrammarSource
     }
 
+    // Ensure scoverage tasks depend on ANTLR grammar generation
+    tasks.withType(JavaCompile).configureEach {
+        if (name.contains('Scoverage')) {
+            dependsOn generateGrammarSource
+        }
+    }
+    tasks.withType(ScalaCompile).configureEach {
+        if (name.contains('Scoverage')) {
+            dependsOn generateGrammarSource
+        }
+    }
+
     dependencies {
         api "org.scala-lang:scala-library:$scala_version"
 
