@@ -178,6 +178,92 @@ jobs:
           EOF
           done
       
+      - name: Create GitHub Pages structure
+        run: |
+          mkdir -p gh-pages
+          
+          # Copy all coverage reports to gh-pages
+          cp -r COVERAGE.md gh-pages/index.md
+          cp -r clickhouse-core gh-pages/
+          cp -r clickhouse-core-it gh-pages/
+          cp -r spark-* gh-pages/
+          
+          # Create a simple HTML index
+          cat > gh-pages/index.html << 'EOF'
+          <!DOCTYPE html>
+          <html>
+          <head>
+            <title>Test Coverage Reports - Spark ClickHouse Connector</title>
+            <style>
+              body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Arial, sans-serif; max-width: 1200px; margin: 40px auto; padding: 0 20px; }
+              h1 { color: #333; border-bottom: 2px solid #e1e4e8; padding-bottom: 10px; }
+              h2 { color: #0366d6; margin-top: 30px; }
+              .module-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(300px, 1fr)); gap: 20px; margin: 20px 0; }
+              .module-card { border: 1px solid #e1e4e8; border-radius: 6px; padding: 20px; background: #f6f8fa; }
+              .module-card h3 { margin-top: 0; color: #0366d6; }
+              .module-card a { color: #0366d6; text-decoration: none; display: block; margin: 8px 0; }
+              .module-card a:hover { text-decoration: underline; }
+              .info { background: #fff3cd; border: 1px solid #ffc107; border-radius: 4px; padding: 15px; margin: 20px 0; }
+              .timestamp { color: #586069; font-size: 14px; margin-top: 30px; }
+            </style>
+          </head>
+          <body>
+            <h1>📊 Test Coverage Reports</h1>
+            <div class="info">
+              <strong>Last Updated:</strong> $(date -u '+%Y-%m-%d %H:%M:%S UTC')
+            </div>
+            
+            <h2>Core Modules</h2>
+            <div class="module-grid">
+              <div class="module-card">
+                <h3>clickhouse-core</h3>
+                <a href="clickhouse-core/COVERAGE.md">📄 Coverage Index</a>
+                <a href="clickhouse-core/build/reports/scoverageTest/index.html">📈 HTML Report</a>
+              </div>
+              <div class="module-card">
+                <h3>clickhouse-core-it</h3>
+                <a href="clickhouse-core-it/build/reports/scoverageTest/index.html">📈 HTML Report</a>
+              </div>
+            </div>
+            
+            <h2>Spark Modules</h2>
+            <div class="module-grid">
+              <div class="module-card">
+                <h3>Spark 3.3</h3>
+                <a href="spark-3.3/COVERAGE.md">📄 Coverage Index</a>
+                <a href="spark-3.3/clickhouse-spark/build/reports/scoverageTest/index.html">📈 clickhouse-spark</a>
+                <a href="spark-3.3/clickhouse-spark-it/build/reports/scoverageTest/index.html">📈 clickhouse-spark-it</a>
+              </div>
+              <div class="module-card">
+                <h3>Spark 3.4</h3>
+                <a href="spark-3.4/COVERAGE.md">📄 Coverage Index</a>
+                <a href="spark-3.4/clickhouse-spark/build/reports/scoverageTest/index.html">📈 clickhouse-spark</a>
+                <a href="spark-3.4/clickhouse-spark-it/build/reports/scoverageTest/index.html">📈 clickhouse-spark-it</a>
+              </div>
+              <div class="module-card">
+                <h3>Spark 3.5</h3>
+                <a href="spark-3.5/COVERAGE.md">📄 Coverage Index</a>
+                <a href="spark-3.5/clickhouse-spark/build/reports/scoverageTest/index.html">📈 clickhouse-spark</a>
+                <a href="spark-3.5/clickhouse-spark-it/build/reports/scoverageTest/index.html">📈 clickhouse-spark-it</a>
+              </div>
+            </div>
+            
+            <p class="timestamp">
+              Reports generated from the latest push to main branch.<br>
+              View the <a href="https://github.com/ClickHouse/spark-clickhouse-connector">source repository</a>.
+            </p>
+          </body>
+          </html>
+          EOF
+      
+      - name: Deploy to GitHub Pages
+        if: github.ref == 'refs/heads/main' && github.event_name == 'push'
+        uses: peaceiris/actions-gh-pages@v3
+        with:
+          github_token: ${{ secrets.GITHUB_TOKEN }}
+          publish_dir: ./gh-pages
+          keep_files: false
+      
       - name: Upload aggregated coverage
         uses: actions/upload-artifact@v4
         with:
