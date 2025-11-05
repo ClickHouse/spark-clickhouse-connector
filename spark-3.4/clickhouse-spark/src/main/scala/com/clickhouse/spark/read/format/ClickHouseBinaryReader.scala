@@ -60,9 +60,19 @@ class ClickHouseBinaryReader(
   }
 
   private def decodeValue(value: ClickHouseValue, structField: StructField): Any = {
-    if (value == null || value.isNullOrEmpty && value.isNullable) {
-      // should we check `structField.nullable`?
-      return null
+    // For complex types (Array, Map), we need to handle empty vs null differently
+    // Empty collections should return empty, not null
+    structField.dataType match {
+      case _: ArrayType | _: MapType =>
+        // For collections, only return null if value is null, not if it's just empty
+        if (value == null) {
+          return null
+        }
+      case _ =>
+        // For primitive types, return null if value is null or empty
+        if (value == null || value.isNullOrEmpty && value.isNullable) {
+          return null
+        }
     }
 
     structField.dataType match {
