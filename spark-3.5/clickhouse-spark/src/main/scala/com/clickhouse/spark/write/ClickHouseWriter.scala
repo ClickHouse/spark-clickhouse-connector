@@ -253,7 +253,8 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
       writeJob.writeOptions.retryInterval
     ) {
       var startWriteTime = System.currentTimeMillis
-      client.syncInsertOutputJSONEachRow(database, table, format, codec, new ByteArrayInputStream(data)) match {
+      // codec,
+      client.syncInsertOutputJSONEachRow(database, table, format, new ByteArrayInputStream(data)) match {
         case Right(_) =>
           writeTime = System.currentTimeMillis - startWriteTime
           _totalWriteTime.add(writeTime)

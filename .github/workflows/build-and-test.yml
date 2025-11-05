@@ -70,7 +70,7 @@ jobs:
           java-version: 8
           cache: gradle
       - run: >-
-          ./gradlew clean test --no-daemon --refresh-dependencies
+          ./gradlew clean test --no-daemon --refresh-dependencies -info
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
       - name: Upload logs
         if: failure()

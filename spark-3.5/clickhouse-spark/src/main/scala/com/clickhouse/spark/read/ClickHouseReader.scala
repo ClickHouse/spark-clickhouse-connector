@@ -25,6 +25,7 @@ import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
 import com.clickhouse.spark.Metrics.{BLOCKS_READ, BYTES_READ}
 import com.clickhouse.client.ClickHouseResponse
+import com.clickhouse.client.api.query.QueryResponse
 
 abstract class ClickHouseReader[Record](
   scanJob: ScanJobDescription,
@@ -40,7 +41,6 @@ abstract class ClickHouseReader[Record](
 
   val database: String = part.table.database
   val table: String = part.table.name
-  val codec: ClickHouseCompression = scanJob.readOptions.compressionCodec
   val readSchema: StructType = scanJob.readSchema
 
   private lazy val nodesClient = NodesClient(part.candidateNodes)
@@ -67,11 +67,11 @@ abstract class ClickHouseReader[Record](
 
   def format: String
 
-  lazy val resp: ClickHouseResponse = nodeClient.queryAndCheck(scanQuery, format, codec)
+  lazy val resp: QueryResponse = nodeClient.queryAndCheck(scanQuery, format)
 
-  def totalBlocksRead: Long = resp.getSummary.getStatistics.getBlocks
+  def totalBlocksRead: Long = 0L // resp.getSummary.getStatistics.getBlocks
 
-  def totalBytesRead: Long = resp.getSummary.getReadBytes
+  def totalBytesRead: Long = resp.getReadBytes // resp.getSummary.getReadBytes
 
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
     TaskMetric(BLOCKS_READ, totalBlocksRead),
