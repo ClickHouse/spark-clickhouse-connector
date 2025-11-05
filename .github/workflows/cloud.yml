@@ -46,6 +46,7 @@ jobs:
           cache: gradle
       - name: Wake up ClickHouse Cloud instance
         env:
+          CLICKHOUSE_CLOUD_HOST: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT }}
           CLICKHOUSE_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
         run: |
           echo "Waking up ClickHouse Cloud instance..."
