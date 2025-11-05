@@ -114,6 +114,24 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
 
+  test("decode ShortType - nullable with null values") {
+    withKVTable("test_db", "test_short_null", valueColDef = "Nullable(Int16)") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_short_null VALUES
+          |(1, -32768),
+          |(2, NULL),
+          |(3, 32767)
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_short_null ORDER BY key")
+      checkAnswer(
+        df,
+        Row(1, -32768.toShort) :: Row(2, null) :: Row(3, 32767.toShort) :: Nil
+      )
+    }
+  }
+
   test("decode ShortType - UInt8 values") {
     withKVTable("test_db", "test_uint8", valueColDef = "UInt8") {
       runClickHouseSQL(
@@ -151,6 +169,24 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
 
+  test("decode IntegerType - nullable with null values") {
+    withKVTable("test_db", "test_int_null", valueColDef = "Nullable(Int32)") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_int_null VALUES
+          |(1, -2147483648),
+          |(2, NULL),
+          |(3, 2147483647)
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_int_null ORDER BY key")
+      checkAnswer(
+        df,
+        Row(1, -2147483648) :: Row(2, null) :: Row(3, 2147483647) :: Nil
+      )
+    }
+  }
+
   test("decode IntegerType - UInt16 values") {
     withKVTable("test_db", "test_uint16", valueColDef = "UInt16") {
       runClickHouseSQL(
@@ -184,6 +220,24 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       checkAnswer(
         df,
         Row(1, -9223372036854775808L) :: Row(2, 0L) :: Row(3, 9223372036854775807L) :: Nil
+      )
+    }
+  }
+
+  test("decode LongType - nullable with null values") {
+    withKVTable("test_db", "test_long_null", valueColDef = "Nullable(Int64)") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_long_null VALUES
+          |(1, -9223372036854775808),
+          |(2, NULL),
+          |(3, 9223372036854775807)
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_long_null ORDER BY key")
+      checkAnswer(
+        df,
+        Row(1, -9223372036854775808L) :: Row(2, null) :: Row(3, 9223372036854775807L) :: Nil
       )
     }
   }
