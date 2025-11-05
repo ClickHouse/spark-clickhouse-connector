@@ -29,7 +29,7 @@ class ClickHouseSingleBinaryReaderSuite extends ClickHouseBinaryReaderSuite with
  * All test cases are inherited from ClickHouseReaderTestBase.
  */
 abstract class ClickHouseBinaryReaderSuite extends ClickHouseReaderTestBase {
-  
+
   // Override to use binary format instead of JSON
   override protected def sparkConf: SparkConf = super.sparkConf
     .set("spark.clickhouse.read.format", "binary")

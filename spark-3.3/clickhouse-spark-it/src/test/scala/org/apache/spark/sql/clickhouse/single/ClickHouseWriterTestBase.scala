@@ -30,7 +30,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", BooleanType, nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_bool", schema) {
       val data = Seq(
         Row(1, true),
@@ -38,7 +38,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_bool")
-      
+
       val result = spark.table("test_db.test_write_bool").orderBy("id").collect()
       assert(result.length == 2)
       // Boolean is stored as UInt8 in ClickHouse, reads back as Short
@@ -52,7 +52,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", BooleanType, nullable = true)
     ))
-    
+
     withTable("test_db", "test_write_bool_null", schema) {
       val data = Seq(
         Row(1, true),
@@ -61,7 +61,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_bool_null")
-      
+
       val result = spark.table("test_db.test_write_bool_null").orderBy("id").collect()
       assert(result.length == 3)
       // Boolean is stored as UInt8 in ClickHouse, reads back as Short
@@ -77,7 +77,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", ByteType, nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_byte", schema) {
       val data = Seq(
         Row(1, Byte.MinValue),
@@ -86,7 +86,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_byte")
-      
+
       val result = spark.table("test_db.test_write_byte").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getByte(1) == Byte.MinValue)
@@ -101,7 +101,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", ShortType, nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_short", schema) {
       val data = Seq(
         Row(1, Short.MinValue),
@@ -110,7 +110,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_short")
-      
+
       val result = spark.table("test_db.test_write_short").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getShort(1) == Short.MinValue)
@@ -125,7 +125,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", IntegerType, nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_int", schema) {
       val data = Seq(
         Row(1, Int.MinValue),
@@ -134,7 +134,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_int")
-      
+
       val result = spark.table("test_db.test_write_int").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getInt(1) == Int.MinValue)
@@ -149,7 +149,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", LongType, nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_long", schema) {
       val data = Seq(
         Row(1, Long.MinValue),
@@ -158,7 +158,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_long")
-      
+
       val result = spark.table("test_db.test_write_long").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getLong(1) == Long.MinValue)
@@ -173,7 +173,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", FloatType, nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_float", schema) {
       val data = Seq(
         Row(1, 3.14f),
@@ -182,11 +182,11 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_float")
-      
+
       val result = spark.table("test_db.test_write_float").orderBy("id").collect()
       assert(result.length == 3)
       assert(math.abs(result(0).getFloat(1) - 3.14f) < 0.001f)
-      assert(math.abs(result(1).getFloat(1) - (-2.718f)) < 0.001f)
+      assert(math.abs(result(1).getFloat(1) - -2.718f) < 0.001f)
       assert(result(2).getFloat(1) == 0.0f)
     }
   }
@@ -197,7 +197,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", DoubleType, nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_double", schema) {
       val data = Seq(
         Row(1, 3.14159),
@@ -206,11 +206,11 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_double")
-      
+
       val result = spark.table("test_db.test_write_double").orderBy("id").collect()
       assert(result.length == 3)
       assert(math.abs(result(0).getDouble(1) - 3.14159) < 0.00001)
-      assert(math.abs(result(1).getDouble(1) - (-2.71828)) < 0.00001)
+      assert(math.abs(result(1).getDouble(1) - -2.71828) < 0.00001)
       assert(result(2).getDouble(1) == 0.0)
     }
   }
@@ -221,7 +221,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", DecimalType(10, 2), nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_decimal", schema) {
       val data = Seq(
         Row(1, BigDecimal("12345.67")),
@@ -230,7 +230,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_decimal")
-      
+
       val result = spark.table("test_db.test_write_decimal").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getDecimal(1) == BigDecimal("12345.67").underlying())
@@ -245,7 +245,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", StringType, nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_string", schema) {
       val data = Seq(
         Row(1, "hello"),
@@ -254,7 +254,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_string")
-      
+
       val result = spark.table("test_db.test_write_string").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getString(1) == "hello")
@@ -268,7 +268,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", StringType, nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_empty_string", schema) {
       val data = Seq(
         Row(1, ""),
@@ -277,7 +277,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_empty_string")
-      
+
       val result = spark.table("test_db.test_write_empty_string").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getString(1) == "")
@@ -292,7 +292,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", DateType, nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_date", schema) {
       val data = Seq(
         Row(1, java.sql.Date.valueOf("2024-01-01")),
@@ -301,7 +301,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_date")
-      
+
       val result = spark.table("test_db.test_write_date").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getDate(1) != null)
@@ -316,7 +316,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", TimestampType, nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_timestamp", schema) {
       val data = Seq(
         Row(1, java.sql.Timestamp.valueOf("2024-01-01 12:00:00")),
@@ -325,7 +325,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_timestamp")
-      
+
       val result = spark.table("test_db.test_write_timestamp").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getTimestamp(1) != null)
@@ -340,7 +340,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", ArrayType(IntegerType, containsNull = false), nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_array_int", schema) {
       val data = Seq(
         Row(1, Seq(1, 2, 3)),
@@ -349,7 +349,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_array_int")
-      
+
       val result = spark.table("test_db.test_write_array_int").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getSeq[Int](1) == Seq(1, 2, 3))
@@ -363,7 +363,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", ArrayType(IntegerType, containsNull = false), nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_empty_array", schema) {
       val data = Seq(
         Row(1, Seq()),
@@ -372,7 +372,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_empty_array")
-      
+
       val result = spark.table("test_db.test_write_empty_array").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getSeq[Int](1).isEmpty)
@@ -387,7 +387,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", MapType(StringType, IntegerType, valueContainsNull = false), nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_map", schema) {
       val data = Seq(
         Row(1, Map("a" -> 1, "b" -> 2)),
@@ -396,7 +396,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_map")
-      
+
       val result = spark.table("test_db.test_write_map").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getMap[String, Int](1) == Map("a" -> 1, "b" -> 2))
@@ -410,7 +410,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("id", IntegerType, nullable = false),
       StructField("value", MapType(StringType, IntegerType, valueContainsNull = false), nullable = false)
     ))
-    
+
     withTable("test_db", "test_write_empty_map", schema) {
       val data = Seq(
         Row(1, Map[String, Int]()),
@@ -419,7 +419,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable("test_db.test_write_empty_map")
-      
+
       val result = spark.table("test_db.test_write_empty_map").orderBy("id").collect()
       assert(result.length == 3)
       assert(result(0).getMap[String, Int](1).isEmpty)
