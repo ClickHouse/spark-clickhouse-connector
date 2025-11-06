@@ -85,7 +85,12 @@ class ClickHouseJsonReader(
         TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
       case StringType => UTF8String.fromString(jsonNode.asText)
       case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay.toInt
-      case BinaryType => jsonNode.binaryValue
+      case BinaryType if jsonNode.isTextual =>
+        // ClickHouse JSON format returns FixedString as plain text, not Base64
+        jsonNode.asText.getBytes("UTF-8")
+      case BinaryType =>
+        // True binary data is Base64 encoded in JSON format
+        jsonNode.binaryValue
       case ArrayType(_dataType, _nullable) =>
         val _structField = StructField(s"${structField.name}__array_element__", _dataType, _nullable)
         new GenericArrayData(jsonNode.asScala.map(decodeValue(_, _structField)))

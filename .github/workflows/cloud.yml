@@ -44,6 +44,31 @@ jobs:
           distribution: zulu
           java-version: 8
           cache: gradle
+      - name: Wake up ClickHouse Cloud instance
+        env:
+          CLICKHOUSE_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
+        run: |
+          echo "Waking up ClickHouse Cloud instance..."
+          max_attempts=3
+          attempt=1
+          
+          while [ $attempt -le $max_attempts ]; do
+            echo "Attempt $attempt of $max_attempts"
+            if curl -sS "https://${CLICKHOUSE_CLOUD_HOST}:8443/?query=SELECT+1" \
+                 --user "default:${CLICKHOUSE_PASSWORD}" \
+                 --max-time 60 > /dev/null; then
+              echo "Instance is awake!"
+              break
+            else
+              if [ $attempt -eq $max_attempts ]; then
+                echo "Failed to wake instance after $max_attempts attempts"
+                exit 1
+              fi
+              echo "Retrying in 10 seconds..."
+              sleep 10
+              ((attempt++))
+            fi
+          done
       - run: >-
           ./gradlew clean cloudTest --no-daemon --refresh-dependencies
           -Dspark_binary_version=${{ matrix.spark }}
