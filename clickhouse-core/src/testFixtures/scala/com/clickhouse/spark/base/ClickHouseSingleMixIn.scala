@@ -59,6 +59,16 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer with Cl
       ) {
         // TODO: remove this workaround after https://github.com/testcontainers/testcontainers-java/pull/5666
         override def getDriverClassName: String = "com.clickhouse.jdbc.ClickHouseDriver"
+
+        // Override JDBC URL to disable compression to workaround ClickHouse bug
+        override def getJdbcUrl: String = {
+          val baseUrl = super.getJdbcUrl
+          if (baseUrl.contains("?")) {
+            baseUrl + "&compress=0&decompress=0"
+          } else {
+            baseUrl + "?compress=0&decompress=0"
+          }
+        }
       }
         .withEnv("CLICKHOUSE_USER", CLICKHOUSE_USER)
         .withEnv("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)

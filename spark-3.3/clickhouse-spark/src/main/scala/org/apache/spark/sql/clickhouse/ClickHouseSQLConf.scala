@@ -156,14 +156,14 @@ object ClickHouseSQLConf {
       .doc("The codec used to decompress data for reading. Supported codecs: none, lz4.")
       .version("0.5.0")
       .stringConf
-      .createWithDefault("lz4")
+      .createWithDefault("none")
 
   val WRITE_COMPRESSION_CODEC: ConfigEntry[String] =
     buildConf("spark.clickhouse.write.compression.codec")
       .doc("The codec used to compress data for writing. Supported codecs: none, lz4.")
       .version("0.3.0")
       .stringConf
-      .createWithDefault("lz4")
+      .createWithDefault("none")
 
   val READ_FORMAT: ConfigEntry[String] =
     buildConf("spark.clickhouse.read.format")

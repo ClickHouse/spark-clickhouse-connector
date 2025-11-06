@@ -92,6 +92,8 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
       ClickHouseClientOption.PRODUCT_NAME,
       userAgent
     )
+    .option(ClickHouseClientOption.COMPRESS, false)
+    .option(ClickHouseClientOption.DECOMPRESS, false)
     .nodeSelector(ClickHouseNodeSelector.of(node.getProtocol))
     .build()
 
