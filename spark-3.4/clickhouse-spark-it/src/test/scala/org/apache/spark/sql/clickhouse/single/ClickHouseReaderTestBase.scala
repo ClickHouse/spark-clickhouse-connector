@@ -157,6 +157,77 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(2).get(1) != null)
     }
   }
+
+  // ============================================================================
+  // BooleanType Tests
+  // ============================================================================
+
+  test("decode BooleanType - true and false values") {
+    // ClickHouse Bool is stored as UInt8 (0 or 1)
+    // JSON format reads as Boolean, Binary format reads as Short
+    withKVTable("test_db", "test_bool", valueColDef = "Bool") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_bool VALUES
+          |(1, true),
+          |(2, false),
+          |(3, 1),
+          |(4, 0)
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_bool ORDER BY key")
+      val result = df.collect()
+      assert(result.length == 4)
+      // Check the value - handle both Boolean (JSON) and Short (Binary) formats
+      val v0 = result(0).get(1)
+      val v1 = result(1).get(1)
+      v0 match {
+        case b: Boolean => 
+          assert(b == true)
+          assert(result(1).getBoolean(1) == false)
+          assert(result(2).getBoolean(1) == true)
+          assert(result(3).getBoolean(1) == false)
+        case s: Short =>
+          assert(s == 1)
+          assert(result(1).getShort(1) == 0)
+          assert(result(2).getShort(1) == 1)
+          assert(result(3).getShort(1) == 0)
+        case _ => fail(s"Unexpected type: ${v0.getClass}")
+      }
+    }
+  }
+  test("decode BooleanType - nullable with null values") {
+    withKVTable("test_db", "test_bool_null", valueColDef = "Nullable(Bool)") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_bool_null VALUES
+          |(1, true),
+          |(2, NULL),
+          |(3, false)
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_bool_null ORDER BY key")
+      val result = df.collect()
+      assert(result.length == 3)
+      assert(result(1).isNullAt(1))
+      // Check the value - handle both Boolean (JSON) and Short (Binary) formats
+      val v0 = result(0).get(1)
+      v0 match {
+        case b: Boolean =>
+          assert(b == true)
+          assert(result(2).getBoolean(1) == false)
+        case s: Short =>
+          assert(s == 1)
+          assert(result(2).getShort(1) == 0)
+        case _ => fail(s"Unexpected type: ${v0.getClass}")
+      }
+    }
+  }
+
+  // ============================================================================
+  // ByteType Tests
+  // ============================================================================
+
   test("decode ByteType - min and max values") {
     withKVTable("test_db", "test_byte", valueColDef = "Int8") {
       runClickHouseSQL(
