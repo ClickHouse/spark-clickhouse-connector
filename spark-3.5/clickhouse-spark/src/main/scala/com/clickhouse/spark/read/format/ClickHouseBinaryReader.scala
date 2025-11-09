@@ -99,16 +99,36 @@ class ClickHouseBinaryReader(
       case FloatType => value.asInstanceOf[Float]
       case DoubleType => value.asInstanceOf[Double]
       case d: DecimalType =>
-        val dec = value.asInstanceOf[BigDecimal]
+        // Java client returns BigInteger for Int256/UInt256, BigDecimal for Decimal types
+        val dec: BigDecimal = value match {
+          case bi: java.math.BigInteger => BigDecimal(bi)
+          case bd: java.math.BigDecimal => BigDecimal(bd)
+        }
         Decimal(dec.setScale(d.scale))
       case TimestampType =>
         var _instant = value.asInstanceOf[ZonedDateTime].withZoneSameInstant(ZoneOffset.UTC)
         TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
-      case StringType => UTF8String.fromString(value.asInstanceOf[String])
-      case DateType => value.asInstanceOf[LocalDate].toEpochDay.toInt
+      case StringType => 
+        val strValue = value match {
+          case uuid: java.util.UUID => uuid.toString
+          case inet: java.net.InetAddress => inet.getHostAddress
+          case s: String => s
+          case enumValue: BinaryStreamReader.EnumValue => enumValue.toString
+          case _ => value.toString
+        }
+        UTF8String.fromString(strValue)
+      case DateType => 
+        val localDate = value match {
+          case ld: LocalDate => ld
+          case zdt: ZonedDateTime => zdt.toLocalDate
+          case _ => value.asInstanceOf[LocalDate]
+        }
+        localDate.toEpochDay.toInt
       case BinaryType => value.asInstanceOf[String].getBytes
       case ArrayType(_dataType, _nullable) =>
-        val arrayValue = value.asInstanceOf[Seq[Object]]
+        // Java client returns BinaryStreamReader.ArrayValue for arrays
+        val arrayVal = value.asInstanceOf[BinaryStreamReader.ArrayValue]
+        val arrayValue = arrayVal.getArrayOfObjects().toSeq.asInstanceOf[Seq[Object]]
         val convertedArray = Array.tabulate(arrayValue.length) { i =>
           decodeValue(
             arrayValue(i),
@@ -117,8 +137,10 @@ class ClickHouseBinaryReader(
         }
         new GenericArrayData(convertedArray)
       case MapType(_keyType, _valueType, _valueNullable) =>
+        // Java client returns util.Map (LinkedHashMap or EmptyMap)
+        val javaMap = value.asInstanceOf[util.Map[Object, Object]]
         val convertedMap =
-          value.asInstanceOf[util.LinkedHashMap[Object, Object]].asScala.map { case (rawKey, rawValue) =>
+          javaMap.asScala.map { case (rawKey, rawValue) =>
             val decodedKey = decodeValue(rawKey, StructField("key", _keyType, false))
             val decodedValue =
               decodeValue(rawValue, StructField("value", _valueType, _valueNullable))
