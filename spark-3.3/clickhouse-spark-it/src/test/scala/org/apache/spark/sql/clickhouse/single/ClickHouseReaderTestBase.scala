@@ -182,7 +182,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       val v0 = result(0).get(1)
       val v1 = result(1).get(1)
       v0 match {
-        case b: Boolean => 
+        case b: Boolean =>
           assert(b == true)
           assert(result(1).getBoolean(1) == false)
           assert(result(2).getBoolean(1) == true)

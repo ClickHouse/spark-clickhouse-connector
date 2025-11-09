@@ -72,7 +72,11 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
   test("write ArrayType - nested arrays") {
     val schema = StructType(Seq(
       StructField("id", IntegerType, nullable = false),
-      StructField("value", ArrayType(ArrayType(IntegerType, containsNull = false), containsNull = false), nullable = false)
+      StructField(
+        "value",
+        ArrayType(ArrayType(IntegerType, containsNull = false), containsNull = false),
+        nullable = false
+      )
     ))
 
     withTable("test_db", "test_write_nested_array", schema) {
