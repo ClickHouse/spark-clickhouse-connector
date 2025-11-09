@@ -13,16 +13,7 @@
 #
 
 name: "Build and Test"
-on:
-  push:
-    branches:
-      - "branch-*"
-      - "main"
-  pull_request:
-    branches:
-      - "branch-*"
-      - "main"
-  workflow_dispatch:
+on: [push]
 
 jobs:
   run-tests:
