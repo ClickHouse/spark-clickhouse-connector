@@ -93,7 +93,7 @@ class ClickHouseJsonReader(
         jsonNode.binaryValue
       case ArrayType(_dataType, _nullable) =>
         val _structField = StructField(s"${structField.name}__array_element__", _dataType, _nullable)
-        new GenericArrayData(jsonNode.asScala.map(decodeValue(_, _structField)))
+        new GenericArrayData(jsonNode.asScala.map(decodeValue(_, _structField)).toArray)
       case MapType(StringType, _valueType, _valueNullable) =>
         val mapData = jsonNode.fields.asScala.map { entry =>
           val _structField = StructField(s"${structField.name}__map_value__", _valueType, _valueNullable)

@@ -90,10 +90,14 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
 
       val result = spark.table("test_db.test_write_nested_array").orderBy("id").collect()
       assert(result.length == 3)
-      assert(result(0).getSeq[Seq[Int]](1) == Seq(Seq(1, 2), Seq(3, 4)))
-      assert(result(1).getSeq[Seq[Int]](1) == Seq(Seq(10, 20, 30)))
-      assert(result(2).getSeq[Seq[Int]](1)(0).isEmpty)
-      assert(result(2).getSeq[Seq[Int]](1)(1) == Seq(100))
+      // Convert to List for Scala 2.12/2.13 compatibility
+      val row0 = result(0).getAs[scala.collection.Seq[scala.collection.Seq[Int]]](1).map(_.toList).toList
+      val row1 = result(1).getAs[scala.collection.Seq[scala.collection.Seq[Int]]](1).map(_.toList).toList
+      val row2 = result(2).getAs[scala.collection.Seq[scala.collection.Seq[Int]]](1).map(_.toList).toList
+      assert(row0 == Seq(Seq(1, 2), Seq(3, 4)))
+      assert(row1 == Seq(Seq(10, 20, 30)))
+      assert(row2(0).isEmpty)
+      assert(row2(1) == Seq(100))
     }
   }
 
@@ -283,7 +287,6 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       assert(result(2).getDecimal(1) == BigDecimal("0.01").underlying())
     }
   }
-
 
   test("write DecimalType - Decimal(18,4)") {
     // Note: High-precision decimals (>15-17 significant digits) may lose precision in JSON/Arrow formats.
@@ -705,7 +708,6 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       assert(result(2).getString(1) == "test")
     }
   }
-
 
   test("write TimestampType - nullable with null values") {
     val schema = StructType(Seq(

@@ -108,7 +108,7 @@ class ClickHouseBinaryReader(
       case TimestampType =>
         var _instant = value.asInstanceOf[ZonedDateTime].withZoneSameInstant(ZoneOffset.UTC)
         TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
-      case StringType => 
+      case StringType =>
         val strValue = value match {
           case uuid: java.util.UUID => uuid.toString
           case inet: java.net.InetAddress => inet.getHostAddress
@@ -117,7 +117,7 @@ class ClickHouseBinaryReader(
           case _ => value.toString
         }
         UTF8String.fromString(strValue)
-      case DateType => 
+      case DateType =>
         val localDate = value match {
           case ld: LocalDate => ld
           case zdt: ZonedDateTime => zdt.toLocalDate
