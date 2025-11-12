@@ -34,12 +34,12 @@ jobs:
       max-parallel: 1
       fail-fast: false
       matrix:
-        spark: [ 3.3, 3.4, 3.5, 4.0 ]
-        scala: [ 2.12, 2.13 ]
+        spark: [ '3.3', '3.4', '3.5', '4.0' ]
+        scala: [ '2.12', '2.13' ]
         exclude:
           # Spark 4.0 only supports Scala 2.13
-          - spark: 4.0
-            scala: 2.12
+          - spark: '4.0'
+            scala: '2.12'
     env:
       CLICKHOUSE_CLOUD_HOST: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT }}
       CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
