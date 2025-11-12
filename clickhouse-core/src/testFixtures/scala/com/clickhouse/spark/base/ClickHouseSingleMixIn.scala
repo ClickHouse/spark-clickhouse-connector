@@ -24,7 +24,7 @@ import org.testcontainers.utility.{DockerImageName, MountableFile}
 import java.nio.file.{Path, Paths}
 import scala.collection.JavaConverters._
 
-trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer with ClickHouseProvider with Logging with BeforeAndAfterAll {
+trait ClickHouseSingleMixIn extends AnyFunSuite with BeforeAndAfterAll with ForAllTestContainer with ClickHouseProvider with Logging {
   // format: off
   private val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
   private val CLICKHOUSE_USER:     String = Utils.load("CLICKHOUSE_USER", "default")
@@ -87,7 +87,7 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer with Cl
   override def beforeAll(): Unit = {
     val startTime = System.currentTimeMillis()
     log.info(s"[ClickHouseSingleMixIn] Starting ClickHouse container: $CLICKHOUSE_IMAGE")
-    super.beforeAll()
+    super.beforeAll()  // This starts the container
     val duration = System.currentTimeMillis() - startTime
     log.info(s"[ClickHouseSingleMixIn] ClickHouse container started in ${duration}ms at ${container.host}:${container.mappedPort(CLICKHOUSE_HTTP_PORT)}")
   }
