@@ -36,10 +36,19 @@ jobs:
       matrix:
         spark: [ '3.3', '3.4', '3.5', '4.0' ]
         scala: [ '2.12', '2.13' ]
+        java: [ 8 ]
+        include:
+          # Spark 4.0 requires Java 17
+          - spark: '4.0'
+            scala: '2.13'
+            java: 17
         exclude:
           # Spark 4.0 only supports Scala 2.13
           - spark: '4.0'
             scala: '2.12'
+          # Spark 4.0 requires Java 11+ (will use Java 17 from include)
+          - spark: '4.0'
+            java: 8
     env:
       CLICKHOUSE_CLOUD_HOST: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT }}
       CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
@@ -48,7 +57,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
-          java-version: 8
+          java-version: ${{ matrix.java }}
           cache: gradle
       - name: Wake up ClickHouse Cloud instance
         env:
