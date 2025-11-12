@@ -34,7 +34,7 @@ jobs:
       max-parallel: 1
       fail-fast: false
       matrix:
-        spark: [ 3.3, 3.4, 3.5 ]
+        spark: [ 3.3, 3.4, 3.5, 4.0 ]
         scala: [ 2.12, 2.13 ]
     env:
       CLICKHOUSE_CLOUD_HOST: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT }}
