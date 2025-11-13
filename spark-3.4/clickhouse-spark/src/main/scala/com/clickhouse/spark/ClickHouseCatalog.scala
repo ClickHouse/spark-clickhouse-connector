@@ -59,6 +59,7 @@ class ClickHouseCatalog extends TableCatalog
   // /////////////////// CLUSTERS //////////////////////
   // ///////////////////////////////////////////////////
   private var clusterSpecs: Seq[ClusterSpec] = Nil
+  private var macroSpecs: Seq[MacrosSpec] = Nil
 
   private var functionRegistry: FunctionRegistry = _
 
@@ -82,6 +83,7 @@ class ClickHouseCatalog extends TableCatalog
     }
 
     this.clusterSpecs = queryClusterSpecs(nodeSpec)
+    this.macroSpecs = queryMacrosSpec()
 
     val dynamicFunctionRegistry = new DynamicFunctionRegistry
     val xxHash64ShardFunc = new ClickHouseXxHash64Shard(clusterSpecs)
@@ -134,7 +136,7 @@ class ClickHouseCatalog extends TableCatalog
     val tableEngineSpec = TableEngineUtils.resolveTableEngine(tableSpec)
     val tableClusterSpec = tableEngineSpec match {
       case distributeSpec: DistributedEngineSpec =>
-        Some(TableEngineUtils.resolveTableCluster(distributeSpec, clusterSpecs))
+        Some(TableEngineUtils.resolveTableCluster(distributeSpec, clusterSpecs, macroSpecs))
       case _ => None
     }
     ClickHouseTable(
