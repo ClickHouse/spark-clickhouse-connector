@@ -93,20 +93,19 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     }
   }
 
-  private val clientV2 = new Client.Builder()
+  private val client = new Client.Builder()
     .setUsername(nodeSpec.username)
     .setPassword(nodeSpec.password)
     .setDefaultDatabase(nodeSpec.database)
     .setOptions(nodeSpec.options)
     .setClientName(userAgent)
-    .setConnectTimeout(1200000)
-    .setMaxConnections(20)
+    .compressClientRequest(true)
     .setConnectionRequestTimeout(30000, ChronoUnit.MILLIS)
     .addEndpoint(createClickHouseURL(nodeSpec))
     .build()
 
   override def close(): Unit =
-    clientV2.close()
+    client.close()
 
   private def nextQueryId(): String = UUID.randomUUID.toString
 
@@ -179,7 +178,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     insertSettings.compressClientRequest(true)
     val payload: Array[Byte] = readAllBytes(data)
     val is: InputStream = new ByteArrayInputStream("".getBytes())
-    Try(clientV2.insert(
+    Try(client.insert(
       table,
       new ByteArrayInputStream(payload),
       ClickHouseFormat.valueOf(inputFormat),
@@ -205,7 +204,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     querySettings.setFormat(clickHouseFormat)
     querySettings.setQueryId(queryId)
     settings.foreach { case (k, v) => querySettings.setOption(k, v) }
-    Try(clientV2.query(sql, querySettings).get(timeout, TimeUnit.MILLISECONDS)) match {
+    Try(client.query(sql, querySettings).get(timeout, TimeUnit.MILLISECONDS)) match {
       case Success(response: QueryResponse) => Right(deserializer(response.getInputStream))
       case Failure(se: ServerException) => Left(CHServerException(se.getCode, se.getMessage, Some(nodeSpec), Some(se)))
       case Failure(ex: Exception) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
@@ -240,7 +239,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     querySettings.setQueryId(queryId)
     settings.foreach { case (k, v) => querySettings.setOption(k, v) }
 
-    Try(clientV2.query(sql, querySettings).get(timeout, TimeUnit.MILLISECONDS)) match {
+    Try(client.query(sql, querySettings).get(timeout, TimeUnit.MILLISECONDS)) match {
       case Success(response: QueryResponse) => response
       case Failure(se: ServerException) => throw CHServerException(se.getCode, se.getMessage, Some(nodeSpec), Some(se))
       case Failure(ex: Exception) => throw CHClientException(ex.getMessage, Some(nodeSpec), Some(ex))
@@ -257,5 +256,5 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
        |""".stripMargin
   )
   def ping(timeout: Int = timeout) =
-    clientV2.ping(timeout)
+    client.ping(timeout)
 }
