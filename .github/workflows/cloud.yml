@@ -19,10 +19,12 @@ on:
     branches:
       - "branch-*"
       - "main"
+      - "spark-4-support"
   pull_request:
     branches:
       - "branch-*"
       - "main"
+      - "spark-4-support"
   workflow_dispatch:
 
 jobs:
