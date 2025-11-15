@@ -20,6 +20,7 @@ import com.clickhouse.client.api.enums.Protocol
 import com.clickhouse.client.api.insert.{InsertResponse, InsertSettings}
 import com.clickhouse.client.api.query.{QueryResponse, QuerySettings}
 import com.clickhouse.data.ClickHouseFormat
+import com.clickhouse.shaded.org.apache.commons.io.IOUtils
 import com.clickhouse.spark.Logging
 
 import java.util.concurrent.TimeUnit
@@ -165,20 +166,21 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     settings: Map[String, String]
   ): Either[CHException, SimpleOutput[OUT]] = {
     def readAllBytes(inputStream: InputStream): Array[Byte] =
-      Stream.continually(inputStream.read())
-        .takeWhile(_ != -1)
-        .map(_.toByte)
-        .toArray
+      IOUtils.toByteArray(inputStream)
     val queryId = nextQueryId()
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecuteQuery(queryId, sql)
-
+    println(
+      s"host: ${nodeSpec.host} port: ${nodeSpec.port} database: ${nodeSpec.database} sql: ${sql} queryId: ${queryId}"
+    )
     val insertSettings: InsertSettings = new InsertSettings();
     settings.foreach { case (k, v) => insertSettings.setOption(k, v) }
     insertSettings.setDatabase(database)
     // TODO: check what type of compression is supported by the client v2
     insertSettings.compressClientRequest(true)
+    val start: Long = System.currentTimeMillis()
     val payload: Array[Byte] = readAllBytes(data)
+    println(s"time took to readAllBytes: ${System.currentTimeMillis() - start}")
     val is: InputStream = new ByteArrayInputStream("".getBytes())
     Try(client.insert(
       table,
@@ -201,6 +203,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   ): Either[CHException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
+//    println(s"sql: ${sql} queryId: ${queryId}")
     val querySettings: QuerySettings = new QuerySettings()
     val clickHouseFormat = ClickHouseFormat.valueOf(outputFormat)
     querySettings.setFormat(clickHouseFormat)
@@ -234,7 +237,7 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
   ): QueryResponse = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
-
+//    println(s"sql: ${sql} queryId: ${queryId}")
     val querySettings: QuerySettings = new QuerySettings()
     val clickHouseFormat = ClickHouseFormat.valueOf(outputFormat)
     querySettings.setFormat(clickHouseFormat)
