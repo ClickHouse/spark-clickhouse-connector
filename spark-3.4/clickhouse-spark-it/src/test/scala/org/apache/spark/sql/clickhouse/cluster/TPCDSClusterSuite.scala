@@ -38,6 +38,8 @@ class TPCDSClusterSuite extends SparkClickHouseClusterTest {
       spark.sql("CREATE DATABASE tpcds_sf1_cluster WITH DBPROPERTIES (cluster = 'single_replica')")
 
       TPCDSTestUtils.tablePrimaryKeys.foreach { case (table, primaryKeys) =>
+        println(s"before table ${table} ${primaryKeys}")
+        val start: Long = System.currentTimeMillis()
         spark.sql(
           s"""
              |CREATE TABLE tpcds_sf1_cluster.$table
@@ -51,6 +53,7 @@ class TPCDSClusterSuite extends SparkClickHouseClusterTest {
              |SELECT * FROM tpcds.sf1.$table;
              |""".stripMargin
         )
+        println(s"time took  table ${table} ${System.currentTimeMillis() - start}")
       }
 
       TPCDSTestUtils.tablePrimaryKeys.keys.foreach { table =>

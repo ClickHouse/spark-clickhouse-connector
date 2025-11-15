@@ -101,6 +101,8 @@ class NodeClient(val nodeSpec: NodeSpec) extends AutoCloseable with Logging {
     .setClientName(userAgent)
     .compressClientRequest(true)
     .setConnectionRequestTimeout(30000, ChronoUnit.MILLIS)
+    .setClientNetworkBufferSize(804800 * 2)
+    .setSocketRcvbuf(804800 * 2)
     .addEndpoint(createClickHouseURL(nodeSpec))
     .build()
 
