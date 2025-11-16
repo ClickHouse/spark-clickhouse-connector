@@ -33,12 +33,21 @@ jobs:
       fail-fast: false
       matrix:
         spark: [ 3.3, 3.4, 3.5, 4.0 ]
+        include:
+          - spark: 3.3
+            java: 8
+          - spark: 3.4
+            java: 8
+          - spark: 3.5
+            java: 8
+          - spark: 4.0
+            java: 17
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
-          java-version: 8
+          java-version: ${{ matrix.java }}
           cache: gradle
       - run: >-
           ./gradlew spotlessCheck --no-daemon --refresh-dependencies
