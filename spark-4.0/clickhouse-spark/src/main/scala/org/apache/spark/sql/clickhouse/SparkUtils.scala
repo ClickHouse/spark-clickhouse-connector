@@ -25,7 +25,8 @@ object SparkUtils {
 
   lazy val MAJOR_MINOR_VERSION: (Int, Int) = VersionUtils.majorMinorVersion(SPARK_VERSION)
 
-  def toArrowSchema(schema: StructType, timeZoneId: String): Schema = ArrowUtils.toArrowSchema(schema, timeZoneId, true)
+  def toArrowSchema(schema: StructType, timeZoneId: String): Schema =
+    ArrowUtils.toArrowSchema(schema, timeZoneId, true, false)
 
   def spawnArrowAllocator(name: String): BufferAllocator =
     ArrowUtils.rootAllocator.newChildAllocator(name, 0, Long.MaxValue)

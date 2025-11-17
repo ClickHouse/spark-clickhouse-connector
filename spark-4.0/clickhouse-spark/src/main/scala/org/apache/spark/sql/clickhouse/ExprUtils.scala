@@ -90,7 +90,11 @@ object ExprUtils extends SQLConfHelper with Serializable {
       case _: UnsupportedOperationException if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) =>
         None
       case e: UnsupportedOperationException =>
-        throw new AnalysisException(e.getMessage, cause = Some(e))
+        throw new AnalysisException(
+          errorClass = "UNSUPPORTED_OPERATION",
+          messageParameters = Map("operation" -> e.getMessage),
+          cause = Some(e)
+        )
     }
   }
 
@@ -169,7 +173,11 @@ object ExprUtils extends SQLConfHelper with Serializable {
       case Success(t: Transform) => Some(t)
       case Success(_) => None
       case Failure(_) if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) => None
-      case Failure(rethrow) => throw new AnalysisException(rethrow.getMessage, cause = Some(rethrow))
+      case Failure(rethrow) => throw new AnalysisException(
+          errorClass = "UNSUPPORTED_FEATURE.TRANSFORM_EXPRESSION",
+          messageParameters = Map("transform" -> rethrow.getMessage),
+          cause = Some(rethrow)
+        )
     }
 
   def toSparkExpression(expr: Expr, functionRegistry: FunctionRegistry): V2Expression =
