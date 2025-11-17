@@ -36,12 +36,7 @@ jobs:
       matrix:
         spark: [ '3.3', '3.4', '3.5', '4.0' ]
         scala: [ '2.12', '2.13' ]
-        java: [ 8 ]
-        include:
-          # Spark 4.0 requires Java 11+ (using Java 17)
-          - spark: '4.0'
-            scala: '2.13'
-            java: 17
+        java: [ 8, 17 ]
         exclude:
           # Spark 4.0 only supports Scala 2.13
           - spark: '4.0'
@@ -93,7 +88,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: log-clickhouse-cloud-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}
+          name: log-clickhouse-cloud-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}-java-${{ matrix.java }}
           path: |
             **/build/unit-tests.log
             log/**

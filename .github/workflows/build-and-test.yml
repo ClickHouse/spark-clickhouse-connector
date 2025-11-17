@@ -58,6 +58,7 @@ jobs:
       fail-fast: false
       matrix:
         clickhouse: [ 25.3, 25.6, 25.7, latest ]
+        java: [ 8, 17 ]
     env:
       CLICKHOUSE_IMAGE: clickhouse/clickhouse-server:${{ matrix.clickhouse }}
     steps:
@@ -65,7 +66,7 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
-          java-version: 17
+          java-version: ${{ matrix.java }}
           cache: gradle
       - run: >-
           ./gradlew clean test --no-daemon --refresh-dependencies
@@ -74,7 +75,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: log-clickhouse-${{ matrix.clickhouse }}
+          name: log-clickhouse-${{ matrix.clickhouse }}-java-${{ matrix.java }}
           path: |
             **/build/unit-tests.log
             log/**
