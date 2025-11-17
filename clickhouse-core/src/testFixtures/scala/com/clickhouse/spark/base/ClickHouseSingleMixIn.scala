@@ -17,13 +17,15 @@ package com.clickhouse.spark.base
 import com.clickhouse.spark.Utils
 import com.clickhouse.data.ClickHouseVersion
 import com.dimafeng.testcontainers.{ForAllTestContainer, JdbcDatabaseContainer, SingleContainer}
+import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 import org.testcontainers.containers.ClickHouseContainer
 import org.testcontainers.utility.{DockerImageName, MountableFile}
 import java.nio.file.{Path, Paths}
 import scala.collection.JavaConverters._
 
-trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer with ClickHouseProvider {
+trait ClickHouseSingleMixIn extends AnyFunSuite with BeforeAndAfterAll with ForAllTestContainer
+    with ClickHouseProvider {
   // format: off
   private val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
   private val CLICKHOUSE_USER:     String = Utils.load("CLICKHOUSE_USER", "default")
@@ -33,6 +35,8 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer with Cl
   private val CLICKHOUSE_HTTP_PORT = 8123
   private val CLICKHOUSE_TPC_PORT  = 9000
   // format: on
+
+  println(s"[ClickHouseSingleMixIn] Initializing with ClickHouse image: $CLICKHOUSE_IMAGE")
 
   override val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)
 
@@ -80,4 +84,20 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with ForAllTestContainer with Cl
   override def clickhousePassword: String = CLICKHOUSE_PASSWORD
   override def clickhouseDatabase: String = CLICKHOUSE_DB
   override def isSslEnabled: Boolean = false
+
+  override def beforeAll(): Unit = {
+    val startTime = System.currentTimeMillis()
+    println(s"[ClickHouseSingleMixIn] Starting ClickHouse container: $CLICKHOUSE_IMAGE")
+    super.beforeAll() // This starts the container and makes mappedPort available
+    val duration = System.currentTimeMillis() - startTime
+    println(
+      s"[ClickHouseSingleMixIn] ClickHouse container started in ${duration}ms at ${container.host}:${container.mappedPort(CLICKHOUSE_HTTP_PORT)}"
+    )
+  }
+
+  override def afterAll(): Unit = {
+    println(s"[ClickHouseSingleMixIn] Stopping ClickHouse container")
+    super.afterAll()
+    println(s"[ClickHouseSingleMixIn] ClickHouse container stopped")
+  }
 }
