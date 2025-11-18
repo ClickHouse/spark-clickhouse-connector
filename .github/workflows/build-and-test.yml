@@ -58,7 +58,7 @@ jobs:
       fail-fast: false
       matrix:
         clickhouse: [ 25.3, 25.6, 25.7, latest ]
-        java: [ 8, 17 ]
+        java: [ 17 ]
     env:
       CLICKHOUSE_IMAGE: clickhouse/clickhouse-server:${{ matrix.clickhouse }}
     steps:
