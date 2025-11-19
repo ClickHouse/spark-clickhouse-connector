@@ -49,8 +49,8 @@ project.ext {
     spark_prefix = "spark_${spark_binary_version.replace('.', '')}"
     scala_prefix = "scala_${scala_binary_version.replace('.', '')}"
 
-    scala_212_version = project.getProperty("${spark_prefix}_scala_212_version")
-    scala_213_version = project.getProperty("${spark_prefix}_scala_213_version")
+    scala_212_version = project.findProperty("${spark_prefix}_scala_212_version") ?: "2.12.18"
+    scala_213_version = project.findProperty("${spark_prefix}_scala_213_version") ?: "2.13.8"
     scala_version = project.getProperty("${scala_prefix}_version")
 
     antlr_version = project.getProperty("${spark_prefix}_antlr_version")
