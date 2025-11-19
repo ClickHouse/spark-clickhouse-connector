@@ -37,7 +37,7 @@ jobs:
           # Spark 4.0 only supports Scala 2.13
           - spark: '4.0'
             scala: '2.12'
-          # Spark 4.0 requires Java 11+
+          # Spark 4.0 requires Java 17+
           - spark: '4.0'
             java: 8
     steps:
