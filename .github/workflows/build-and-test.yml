@@ -21,6 +21,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
+        clickhouse: [ 25.3, 25.6, 25.7, latest ]
         java: [ 8, 17 ]
         scala: [ '2.12', '2.13' ]
         spark: [ '3.3', '3.4', '3.5', '4.0' ]
@@ -31,6 +32,8 @@ jobs:
           # Spark 4.0 requires Java 17+
           - spark: '4.0'
             java: 8
+    env:
+      CLICKHOUSE_IMAGE: clickhouse/clickhouse-server:${{ matrix.clickhouse }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
@@ -47,35 +50,7 @@ jobs:
         if: failure()
         uses: actions/upload-artifact@v4
         with:
-          name: log-java-${{ matrix.java }}-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}
-          path: |
-            **/build/unit-tests.log
-            log/**
-
-  run-tests-with-specific-clickhouse:
-    runs-on: ubuntu-22.04
-    strategy:
-      fail-fast: false
-      matrix:
-        clickhouse: [ 25.3, 25.6, 25.7, latest ]
-        java: [ 17 ]
-    env:
-      CLICKHOUSE_IMAGE: clickhouse/clickhouse-server:${{ matrix.clickhouse }}
-    steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-java@v4
-        with:
-          distribution: zulu
-          java-version: ${{ matrix.java }}
-          cache: gradle
-      - run: >-
-          ./gradlew clean test --no-daemon --refresh-dependencies
-          -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
-      - name: Upload logs
-        if: failure()
-        uses: actions/upload-artifact@v4
-        with:
-          name: log-clickhouse-${{ matrix.clickhouse }}-java-${{ matrix.java }}
+          name: log-ch-${{ matrix.clickhouse }}-java-${{ matrix.java }}-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}
           path: |
             **/build/unit-tests.log
             log/**
