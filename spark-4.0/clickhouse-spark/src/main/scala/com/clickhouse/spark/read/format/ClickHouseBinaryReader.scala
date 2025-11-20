@@ -147,6 +147,31 @@ class ClickHouseBinaryReader(
             (decodedKey, decodedValue)
           }
         ArrayBasedMapData(convertedMap)
+      case struct: StructType =>
+        // ClickHouse Java client can return tuples as either:
+        // - Array[Object] for unnamed tuples
+        // - util.List[Object] for named tuples
+        val fieldValues = value match {
+          case arr: Array[Object] =>
+            struct.fields.zipWithIndex.map { case (field, idx) =>
+              if (idx < arr.length) {
+                decodeValue(arr(idx), field)
+              } else {
+                null
+              }
+            }
+          case list: util.List[_] =>
+            struct.fields.zipWithIndex.map { case (field, idx) =>
+              if (idx < list.size()) {
+                decodeValue(list.get(idx).asInstanceOf[Object], field)
+              } else {
+                null
+              }
+            }
+          case _ =>
+            throw CHClientException(s"Unexpected tuple type: ${value.getClass}, expected Array or List")
+        }
+        new GenericInternalRow(fieldValues)
       case _ =>
         throw CHClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
     }
