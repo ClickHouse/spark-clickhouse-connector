@@ -49,8 +49,8 @@ project.ext {
     spark_prefix = "spark_${spark_binary_version.replace('.', '')}"
     scala_prefix = "scala_${scala_binary_version.replace('.', '')}"
 
-    scala_212_version = project.getProperty("${spark_prefix}_scala_212_version")
-    scala_213_version = project.getProperty("${spark_prefix}_scala_213_version")
+    scala_212_version = project.findProperty("${spark_prefix}_scala_212_version") ?: "2.12.18"
+    scala_213_version = project.findProperty("${spark_prefix}_scala_213_version") ?: "2.13.8"
     scala_version = project.getProperty("${scala_prefix}_version")
 
     antlr_version = project.getProperty("${spark_prefix}_antlr_version")
@@ -106,7 +106,11 @@ allprojects {
 subprojects {
     apply plugin: "scala"
     apply plugin: "java-library"
-    apply plugin: "org.scoverage"
+    // Disable scoverage when running Metals' bloopInstall to avoid plugin resolution issues
+    def isBloopInstall = gradle.startParameter.taskNames.any { it.contains('bloopInstall') }
+    if (!project.hasProperty('disableScoverage') && !isBloopInstall) {
+        apply plugin: "org.scoverage"
+    }
     apply plugin: "com.diffplug.spotless"
     apply plugin: "com.github.maiflai.scalatest"
 
@@ -168,11 +172,13 @@ subprojects {
         }
     }
 
-    scoverage {
-        scoverageVersion = "2.0.11"
-        reportDir.set(file("${rootProject.buildDir}/reports/scoverage"))
-        highlighting.set(false)
-        minimumRate.set(0.0)
+    if (plugins.hasPlugin('org.scoverage')) {
+        scoverage {
+            scoverageVersion = "2.0.11"
+            reportDir.set(file("${rootProject.buildDir}/reports/scoverage"))
+            highlighting.set(false)
+            minimumRate.set(0.0)
+        }
     }
 
     spotless {
