@@ -72,6 +72,7 @@ project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version") {
     dependencies {
         implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
 
+        testImplementation project(":clickhouse-spark-${spark_binary_version}_$scala_binary_version")
         testImplementation project(path: ":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version", configuration: "shadow")
         testImplementation(testFixtures(project(":clickhouse-core"))) {
             exclude module: "clickhouse-core"
