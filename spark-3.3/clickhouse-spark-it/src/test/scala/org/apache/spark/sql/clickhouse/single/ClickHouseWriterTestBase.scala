@@ -143,14 +143,14 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
 
       val result = spark.table("test_db.test_write_bool_null").orderBy("id").collect()
       assert(result.length == 3)
-      // Boolean is stored as UInt8 in ClickHouse, reads back as Short
-      assert(result(0).getShort(1) == 1)
+      // Boolean is stored as Bool in ClickHouse, reads back as Boolean
+      assert(result(0).getBoolean(1) == true)
       assert(result(1).isNullAt(1))
-      assert(result(2).getShort(1) == 0)
+      assert(result(2).getBoolean(1) == false)
     }
   }
 
-  // NOTE: ClickHouse stores Boolean as UInt8, so it reads back as Short (0 or 1)
+  // NOTE: ClickHouse stores Boolean as Bool, so it reads back as Boolean
   test("write BooleanType - true and false values") {
     val schema = StructType(Seq(
       StructField("id", IntegerType, nullable = false),
@@ -167,9 +167,9 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
 
       val result = spark.table("test_db.test_write_bool").orderBy("id").collect()
       assert(result.length == 2)
-      // Boolean is stored as UInt8 in ClickHouse, reads back as Short
-      assert(result(0).getShort(1) == 1)
-      assert(result(1).getShort(1) == 0)
+      // Boolean is stored as Bool in ClickHouse, reads back as Boolean
+      assert(result(0).getBoolean(1) == true)
+      assert(result(1).getBoolean(1) == false)
     }
   }
 
