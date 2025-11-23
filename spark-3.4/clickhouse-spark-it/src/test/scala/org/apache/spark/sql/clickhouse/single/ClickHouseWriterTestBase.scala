@@ -755,4 +755,348 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
     }
   }
 
+  test("write StructType - simple tuple") {
+    val schema = StructType(
+      StructField("id", LongType, false) ::
+        StructField(
+          "person",
+          StructType(Seq(
+            StructField("name", StringType, false),
+            StructField("age", IntegerType, false)
+          )),
+          false
+        ) :: Nil
+    )
+
+    withTable("test_db", "test_write_simple_struct", schema) {
+      val data = Seq(
+        Row(1L, Row("Alice", 30)),
+        Row(2L, Row("Bob", 25)),
+        Row(3L, Row("Charlie", 35))
+      )
+      val dataDF = spark.createDataFrame(
+        spark.sparkContext.parallelize(data),
+        schema
+      )
+
+      dataDF.writeTo("test_db.test_write_simple_struct").append()
+
+      val result = spark.table("test_db.test_write_simple_struct").sort("id").collect()
+
+      assert(result.length === 3)
+      val row0 = result(0)
+      assert(row0.getLong(0) === 1L)
+      val person0 = row0.getStruct(1)
+      assert(person0.getString(0) === "Alice")
+      assert(person0.getInt(1) === 30)
+
+      val row1 = result(1)
+      assert(row1.getLong(0) === 2L)
+      val person1 = row1.getStruct(1)
+      assert(person1.getString(0) === "Bob")
+      assert(person1.getInt(1) === 25)
+    }
+  }
+
+  test("write StructType - nested tuple") {
+    val schema = StructType(
+      StructField("id", LongType, false) ::
+        StructField(
+          "data",
+          StructType(Seq(
+            StructField("name", StringType, false),
+            StructField(
+              "address",
+              StructType(Seq(
+                StructField("city", StringType, false),
+                StructField("zip", IntegerType, false)
+              )),
+              false
+            )
+          )),
+          false
+        ) :: Nil
+    )
+
+    withTable("test_db", "test_write_nested_struct", schema) {
+      val data = Seq(
+        Row(1L, Row("Alice", Row("NYC", 10001))),
+        Row(2L, Row("Bob", Row("LA", 90001)))
+      )
+      val dataDF = spark.createDataFrame(
+        spark.sparkContext.parallelize(data),
+        schema
+      )
+
+      dataDF.writeTo("test_db.test_write_nested_struct").append()
+
+      val result = spark.table("test_db.test_write_nested_struct").sort("id").collect()
+
+      assert(result.length === 2)
+      val row0 = result(0)
+      assert(row0.getLong(0) === 1L)
+      val data0 = row0.getStruct(1)
+      assert(data0.getString(0) === "Alice")
+      val address0 = data0.getStruct(1)
+      assert(address0.getString(0) === "NYC")
+      assert(address0.getInt(1) === 10001)
+    }
+  }
+
+  test("write StructType - nullable fields") {
+    val schema = StructType(
+      StructField("id", LongType, false) ::
+        StructField(
+          "person",
+          StructType(Seq(
+            StructField("name", StringType, false),
+            StructField("age", IntegerType, true) // nullable
+          )),
+          false
+        ) :: Nil
+    )
+
+    withTable("test_db", "test_write_nullable_struct", schema) {
+      val data = Seq(
+        Row(1L, Row("Alice", 30)),
+        Row(2L, Row("Bob", null)),
+        Row(3L, Row("Charlie", 35))
+      )
+      val dataDF = spark.createDataFrame(
+        spark.sparkContext.parallelize(data),
+        schema
+      )
+
+      dataDF.writeTo("test_db.test_write_nullable_struct").append()
+
+      val result = spark.table("test_db.test_write_nullable_struct").sort("id").collect()
+
+      assert(result.length === 3)
+      val row1 = result(1)
+      assert(row1.getLong(0) === 2L)
+      val person1 = row1.getStruct(1)
+      assert(person1.getString(0) === "Bob")
+      assert(person1.isNullAt(1))
+    }
+  }
+
+  test("write StructType - complex types (Boolean, Date, Double)") {
+    val schema = StructType(
+      StructField("id", LongType, false) ::
+        StructField(
+          "complex",
+          StructType(Seq(
+            StructField("name", StringType, false),
+            StructField("score", DoubleType, false),
+            StructField("active", BooleanType, false),
+            StructField("created", DateType, false)
+          )),
+          false
+        ) :: Nil
+    )
+
+    withTable("test_db", "test_write_complex_struct", schema) {
+      val data = Seq(
+        Row(1L, Row("Alice", 95.5, true, date("2024-01-15"))),
+        Row(2L, Row("Bob", 87.3, false, date("2024-02-20")))
+      )
+      val dataDF = spark.createDataFrame(
+        spark.sparkContext.parallelize(data),
+        schema
+      )
+
+      dataDF.writeTo("test_db.test_write_complex_struct").append()
+
+      val result = spark.table("test_db.test_write_complex_struct").sort("id").collect()
+
+      assert(result.length === 2)
+      val row0 = result(0)
+      assert(row0.getLong(0) === 1L)
+      val complex0 = row0.getStruct(1)
+      assert(complex0.getString(0) === "Alice")
+      assert(complex0.getDouble(1) === 95.5)
+      assert(complex0.getBoolean(2) === true)
+      assert(complex0.getDate(3) === date("2024-01-15"))
+
+      val row1 = result(1)
+      assert(row1.getLong(0) === 2L)
+      val complex1 = row1.getStruct(1)
+      assert(complex1.getString(0) === "Bob")
+      assert(complex1.getDouble(1) === 87.3)
+      assert(complex1.getBoolean(2) === false)
+      assert(complex1.getDate(3) === date("2024-02-20"))
+    }
+  }
+
+  test("write StructType - array field within struct") {
+    val schema = StructType(
+      StructField("id", LongType, false) ::
+        StructField(
+          "profile",
+          StructType(Seq(
+            StructField("name", StringType, false),
+            StructField("roles", ArrayType(StringType, false), false),
+            StructField("scores", ArrayType(IntegerType, false), false)
+          )),
+          false
+        ) :: Nil
+    )
+
+    withTable("test_db", "test_write_struct_array", schema) {
+      val data = Seq(
+        Row(1L, Row("Alice", Seq("admin", "user"), Seq(95, 88, 92))),
+        Row(2L, Row("Bob", Seq("user"), Seq(78, 85)))
+      )
+      val dataDF = spark.createDataFrame(
+        spark.sparkContext.parallelize(data),
+        schema
+      )
+
+      dataDF.writeTo("test_db.test_write_struct_array").append()
+
+      val result = spark.table("test_db.test_write_struct_array").sort("id").collect()
+
+      assert(result.length === 2)
+      val row0 = result(0)
+      assert(row0.getLong(0) === 1L)
+      val profile0 = row0.getStruct(1)
+      assert(profile0.getString(0) === "Alice")
+      assert(profile0.getSeq[String](1) === Seq("admin", "user"))
+      assert(profile0.getSeq[Int](2) === Seq(95, 88, 92))
+
+      val row1 = result(1)
+      assert(row1.getLong(0) === 2L)
+      val profile1 = row1.getStruct(1)
+      assert(profile1.getString(0) === "Bob")
+      assert(profile1.getSeq[String](1) === Seq("user"))
+      assert(profile1.getSeq[Int](2) === Seq(78, 85))
+    }
+  }
+
+  test("write StructType - full round-trip with Spark-created table") {
+    // This test verifies the complete cycle: Spark creates table, writes data, reads it back
+    val db = "test_db"
+    val tbl = "test_struct_roundtrip"
+
+    // Create schema with various struct configurations
+    val schema = StructType(
+      StructField("id", LongType, false) ::
+        StructField(
+          "user_info",
+          StructType(Seq(
+            StructField("name", StringType, false),
+            StructField("age", IntegerType, false),
+            StructField("active", BooleanType, false)
+          )),
+          false
+        ) ::
+        StructField(
+          "metadata",
+          StructType(Seq(
+            StructField("created", DateType, false),
+            StructField("score", DoubleType, false),
+            StructField("tags", ArrayType(StringType, false), false)
+          )),
+          false
+        ) :: Nil
+    )
+
+    try {
+      // Create database via Spark
+      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+
+      // Create table via Spark with explicit schema
+      spark.sql(
+        s"""CREATE TABLE IF NOT EXISTS $db.$tbl (
+           |  id BIGINT NOT NULL,
+           |  user_info STRUCT<name: STRING, age: INT, active: BOOLEAN> NOT NULL,
+           |  metadata STRUCT<created: DATE, score: DOUBLE, tags: ARRAY<STRING>> NOT NULL
+           |) USING clickhouse
+           |TBLPROPERTIES (
+           |  engine = 'MergeTree()',
+           |  order_by = 'id'
+           |)
+           |""".stripMargin
+      )
+      // Write data via Spark
+      val writeData = Seq(
+        Row(
+          1L,
+          Row("Alice", 30, true),
+          Row(date("2024-01-15"), 95.5, Seq("premium", "verified"))
+        ),
+        Row(
+          2L,
+          Row("Bob", 25, false),
+          Row(date("2024-02-20"), 87.3, Seq("basic"))
+        ),
+        Row(
+          3L,
+          Row("Charlie", 35, true),
+          Row(date("2024-03-10"), 92.1, Seq("premium", "admin", "verified"))
+        )
+      )
+
+      val writeDF = spark.createDataFrame(
+        spark.sparkContext.parallelize(writeData),
+        schema
+      )
+
+      writeDF.writeTo(s"$db.$tbl").append()
+
+      // Read data back via Spark
+      val readDF = spark.table(s"$db.$tbl").sort("id")
+      val result = readDF.collect()
+
+      // Verify schema structure (note: array containsNull may change to true in ClickHouse)
+      assert(readDF.schema.fields.length === schema.fields.length)
+      assert(readDF.schema.fields(0).name === "id")
+      assert(readDF.schema.fields(1).name === "user_info")
+      assert(readDF.schema.fields(2).name === "metadata")
+
+      // Verify data integrity
+      assert(result.length === 3)
+
+      // Verify first row
+      val row0 = result(0)
+      assert(row0.getLong(0) === 1L)
+      val userInfo0 = row0.getStruct(1)
+      assert(userInfo0.getString(0) === "Alice")
+      assert(userInfo0.getInt(1) === 30)
+      assert(userInfo0.getBoolean(2) === true)
+      val metadata0 = row0.getStruct(2)
+      assert(metadata0.getDate(0) === date("2024-01-15"))
+      assert(metadata0.getDouble(1) === 95.5)
+      assert(metadata0.getSeq[String](2) === Seq("premium", "verified"))
+
+      // Verify second row
+      val row1 = result(1)
+      assert(row1.getLong(0) === 2L)
+      val userInfo1 = row1.getStruct(1)
+      assert(userInfo1.getString(0) === "Bob")
+      assert(userInfo1.getInt(1) === 25)
+      assert(userInfo1.getBoolean(2) === false)
+      val metadata1 = row1.getStruct(2)
+      assert(metadata1.getDate(0) === date("2024-02-20"))
+      assert(metadata1.getDouble(1) === 87.3)
+      assert(metadata1.getSeq[String](2) === Seq("basic"))
+
+      // Verify third row
+      val row2 = result(2)
+      assert(row2.getLong(0) === 3L)
+      val userInfo2 = row2.getStruct(1)
+      assert(userInfo2.getString(0) === "Charlie")
+      assert(userInfo2.getInt(1) === 35)
+      assert(userInfo2.getBoolean(2) === true)
+      val metadata2 = row2.getStruct(2)
+      assert(metadata2.getDate(0) === date("2024-03-10"))
+      assert(metadata2.getDouble(1) === 92.1)
+      assert(metadata2.getSeq[String](2) === Seq("premium", "admin", "verified"))
+
+    } finally {
+      // Clean up: drop table and database
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
 }

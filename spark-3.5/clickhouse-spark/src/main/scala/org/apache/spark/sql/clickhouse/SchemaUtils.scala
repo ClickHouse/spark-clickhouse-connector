@@ -35,7 +35,11 @@ object SchemaUtils extends SQLConfHelper {
           case unsupported => throw CHClientException(s"Unsupported fixed string read format mapping: $unsupported")
         }
       case Int8 => ByteType
-      case UInt8 | Int16 => ShortType
+      case UInt8 =>
+        // Check if this UInt8 is actually a Bool (ClickHouse stores Bool as UInt8)
+        if (chColumn.getOriginalTypeName.toLowerCase.contains("bool")) BooleanType
+        else ShortType
+      case Int16 => ShortType
       case UInt16 | Int32 => IntegerType
       case UInt32 | Int64 | UInt64 => LongType
       case Int128 | UInt128 | Int256 | UInt256 => DecimalType(38, 0)
@@ -70,7 +74,16 @@ object SchemaUtils extends SQLConfHelper {
         )
         val (valueType, valueNullable) = fromClickHouseType(valueChType)
         MapType(keyType, valueType, valueNullable)
-      case Object | Nested | Tuple | Point | Polygon | MultiPolygon | Ring | IntervalQuarter | IntervalWeek |
+      case Tuple =>
+        val nestedCols = chColumn.getNestedColumns
+        val fields = nestedCols.asScala.zipWithIndex.map { case (col, idx) =>
+          val (fieldType, fieldNullable) = fromClickHouseType(col)
+          // Use Spark convention for unnamed tuple fields: _1, _2, etc.
+          val fieldName = if (col.getColumnName.isEmpty) s"_${idx + 1}" else col.getColumnName
+          StructField(fieldName, fieldType, fieldNullable)
+        }.toArray
+        StructType(fields)
+      case Object | Nested | Point | Polygon | MultiPolygon | Ring | IntervalQuarter | IntervalWeek |
           Decimal256 | AggregateFunction | SimpleAggregateFunction =>
         throw CHClientException(s"Unsupported type: ${chColumn.getOriginalTypeName}")
     }
@@ -79,7 +92,7 @@ object SchemaUtils extends SQLConfHelper {
 
   def toClickHouseType(catalystType: DataType, nullable: Boolean): String =
     catalystType match {
-      case BooleanType => maybeNullable("UInt8", nullable)
+      case BooleanType => maybeNullable("Bool", nullable)
       case ByteType => maybeNullable("Int8", nullable)
       case ShortType => maybeNullable("Int16", nullable)
       case IntegerType => maybeNullable("Int32", nullable)
@@ -96,6 +109,12 @@ object SchemaUtils extends SQLConfHelper {
       // TODO currently only support String as key
       case MapType(keyType, valueType, valueContainsNull) if keyType.isInstanceOf[StringType] =>
         s"Map(${toClickHouseType(keyType, nullable = false)}, ${toClickHouseType(valueType, valueContainsNull)})"
+      case struct: StructType =>
+        val fieldTypes = struct.fields.map { field =>
+          val fieldType = toClickHouseType(field.dataType, field.nullable)
+          s"${field.name} ${fieldType}"
+        }.mkString(", ")
+        s"Tuple($fieldTypes)"
       case _ => throw CHClientException(s"Unsupported type: $catalystType")
     }
 
