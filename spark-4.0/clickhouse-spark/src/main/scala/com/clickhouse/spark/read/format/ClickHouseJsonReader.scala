@@ -105,12 +105,14 @@ class ClickHouseJsonReader(
         // - Array format: [value1, value2, ...] - for unnamed tuples
         // - Object format: {"field1": value1, "field2": value2} - for named tuples
         val fieldValues = if (jsonNode.isArray) {
+          if (jsonNode.size() != struct.fields.length) {
+            throw CHClientException(
+              s"Tuple length mismatch: expected ${struct.fields.length} fields " +
+                s"but got ${jsonNode.size()} values for struct ${struct.simpleString}"
+            )
+          }
           struct.fields.zipWithIndex.map { case (field, idx) =>
-            if (idx < jsonNode.size()) {
-              decodeValue(jsonNode.get(idx), field)
-            } else {
-              null
-            }
+            decodeValue(jsonNode.get(idx), field)
           }
         } else if (jsonNode.isObject) {
           struct.fields.map { field =>

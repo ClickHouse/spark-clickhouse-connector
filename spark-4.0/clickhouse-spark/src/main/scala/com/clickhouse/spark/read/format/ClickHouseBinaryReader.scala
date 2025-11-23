@@ -153,20 +153,24 @@ class ClickHouseBinaryReader(
         // - util.List[Object] for named tuples
         val fieldValues = value match {
           case arr: Array[Object] =>
-            struct.fields.zipWithIndex.map { case (field, idx) =>
-              if (idx < arr.length) {
-                decodeValue(arr(idx), field)
-              } else {
-                null
-              }
+            if (arr.length != struct.fields.length) {
+              throw CHClientException(
+                s"Tuple length mismatch: expected ${struct.fields.length} fields " +
+                  s"but got ${arr.length} values for struct ${struct.simpleString}"
+              )
+            }
+            struct.fields.zip(arr).map { case (field, rawValue) =>
+              decodeValue(rawValue, field)
             }
           case list: util.List[_] =>
+            if (list.size() != struct.fields.length) {
+              throw CHClientException(
+                s"Tuple length mismatch: expected ${struct.fields.length} fields " +
+                  s"but got ${list.size()} values for struct ${struct.simpleString}"
+              )
+            }
             struct.fields.zipWithIndex.map { case (field, idx) =>
-              if (idx < list.size()) {
-                decodeValue(list.get(idx).asInstanceOf[Object], field)
-              } else {
-                null
-              }
+              decodeValue(list.get(idx).asInstanceOf[Object], field)
             }
           case _ =>
             throw CHClientException(s"Unexpected tuple type: ${value.getClass}, expected Array or List")
