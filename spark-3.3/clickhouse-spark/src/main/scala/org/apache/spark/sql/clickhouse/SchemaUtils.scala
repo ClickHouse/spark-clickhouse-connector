@@ -21,6 +21,8 @@ import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_FIXED_STRING_AS
 
+import scala.collection.JavaConverters._
+
 object SchemaUtils extends SQLConfHelper {
 
   def fromClickHouseType(chColumn: ClickHouseColumn): (DataType, Boolean) = {
