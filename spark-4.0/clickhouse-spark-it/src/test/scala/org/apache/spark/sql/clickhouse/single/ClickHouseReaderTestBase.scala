@@ -163,8 +163,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   // ============================================================================
 
   test("decode BooleanType - true and false values") {
-    // ClickHouse Bool is stored as UInt8 (0 or 1)
-    // JSON format reads as Boolean, Binary format reads as Short
+    // ClickHouse Bool now correctly maps to BooleanType
     withKVTable("test_db", "test_bool", valueColDef = "Bool") {
       runClickHouseSQL(
         """INSERT INTO test_db.test_bool VALUES
@@ -1326,6 +1325,70 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       // Max value that fits in signed Long
       assert(result(2).getLong(1) == 9223372036854775807L)
     }
+  }
+
+  // ============================================================================
+  // StructType Tests
+  // ============================================================================
+
+  test("decode StructType - unnamed tuple created directly in ClickHouse") {
+    val db = "test_db"
+    val tbl = "test_read_unnamed_tuple"
+
+    try {
+      // Create database
+      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
+
+      // Create table directly in ClickHouse with unnamed tuple
+      runClickHouseSQL(
+        s"""CREATE TABLE $db.$tbl (
+           |  id Int64,
+           |  data Tuple(String, Int32, String)
+           |) ENGINE = MergeTree()
+           |ORDER BY id
+           |""".stripMargin
+      )
+
+      // Insert data directly via ClickHouse (unnamed tuple as array)
+      runClickHouseSQL(
+        s"""INSERT INTO $db.$tbl VALUES
+           |  (1, ('Alice', 30, 'NYC')),
+           |  (2, ('Bob', 25, 'LA')),
+           |  (3, ('Charlie', 35, 'SF'))
+           |""".stripMargin
+      )
+
+      // Read via Spark - should infer schema with field names _1, _2, _3
+      val result = spark.table(s"$db.$tbl").sort("id").collect()
+
+      assert(result.length === 3)
+
+      // Verify first row
+      val row0 = result(0)
+      assert(row0.getLong(0) === 1L)
+      val data0 = row0.getStruct(1)
+      assert(data0.getString(0) === "Alice")
+      assert(data0.getInt(1) === 30)
+      assert(data0.getString(2) === "NYC")
+
+      // Verify second row
+      val row1 = result(1)
+      assert(row1.getLong(0) === 2L)
+      val data1 = row1.getStruct(1)
+      assert(data1.getString(0) === "Bob")
+      assert(data1.getInt(1) === 25)
+      assert(data1.getString(2) === "LA")
+
+      // Verify third row
+      val row2 = result(2)
+      assert(row2.getLong(0) === 3L)
+      val data2 = row2.getStruct(1)
+      assert(data2.getString(0) === "Charlie")
+      assert(data2.getInt(1) === 35)
+      assert(data2.getString(2) === "SF")
+
+    } finally
+      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
   }
 
 }

@@ -147,6 +147,35 @@ class ClickHouseBinaryReader(
             (decodedKey, decodedValue)
           }
         ArrayBasedMapData(convertedMap)
+      case struct: StructType =>
+        // ClickHouse Java client can return tuples as either:
+        // - Array[Object] for unnamed tuples
+        // - util.List[Object] for named tuples
+        val fieldValues = value match {
+          case arr: Array[Object] =>
+            if (arr.length != struct.fields.length) {
+              throw CHClientException(
+                s"Tuple length mismatch: expected ${struct.fields.length} fields " +
+                  s"but got ${arr.length} values for struct ${struct.simpleString}"
+              )
+            }
+            struct.fields.zip(arr).map { case (field, rawValue) =>
+              decodeValue(rawValue, field)
+            }
+          case list: util.List[_] =>
+            if (list.size() != struct.fields.length) {
+              throw CHClientException(
+                s"Tuple length mismatch: expected ${struct.fields.length} fields " +
+                  s"but got ${list.size()} values for struct ${struct.simpleString}"
+              )
+            }
+            struct.fields.zipWithIndex.map { case (field, idx) =>
+              decodeValue(list.get(idx).asInstanceOf[Object], field)
+            }
+          case _ =>
+            throw CHClientException(s"Unexpected tuple type: ${value.getClass}, expected Array or List")
+        }
+        new GenericInternalRow(fieldValues)
       case _ =>
         throw CHClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
     }
