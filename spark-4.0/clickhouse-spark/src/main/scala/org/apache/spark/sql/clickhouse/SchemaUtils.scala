@@ -29,7 +29,8 @@ object SchemaUtils extends SQLConfHelper {
     val catalystType = chColumn.getDataType match {
       case Nothing => NullType
       case Bool => BooleanType
-      case String | JSON | UUID | Enum8 | Enum16 | IPv4 | IPv6 => StringType
+      case JSON => VariantType
+      case String | UUID | Enum8 | Enum16 | IPv4 | IPv6 => StringType
       case FixedString =>
         conf.getConf(READ_FIXED_STRING_AS) match {
           case "binary" => BinaryType
@@ -104,6 +105,7 @@ object SchemaUtils extends SQLConfHelper {
       case StringType => maybeNullable("String", nullable)
       case VarcharType(_) => maybeNullable("String", nullable)
       case CharType(_) => maybeNullable("String", nullable) // TODO: maybe FixString?
+      case VariantType => maybeNullable("JSON", nullable)
       case DateType => maybeNullable("Date", nullable)
       case TimestampType => maybeNullable("DateTime", nullable)
       case DecimalType.Fixed(p, s) => maybeNullable(s"Decimal($p, $s)", nullable)
