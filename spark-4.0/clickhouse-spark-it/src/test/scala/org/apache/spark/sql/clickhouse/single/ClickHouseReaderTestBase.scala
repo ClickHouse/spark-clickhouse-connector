@@ -15,6 +15,7 @@
 package org.apache.spark.sql.clickhouse.single
 
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.types._
 
 /**
  * Shared test cases for both JSON and Binary readers.
@@ -1418,6 +1419,199 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
 
     } finally
       runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
+  }
+
+  // ============================================================================
+  // VariantType Tests (ClickHouse 25.3+ JSON type)
+  // ============================================================================
+
+  // Helper to extract JSON string from VariantVal
+  private def variantToJson(variantVal: org.apache.spark.unsafe.types.VariantVal): String = {
+    val variant = new org.apache.spark.types.variant.Variant(variantVal.getValue, variantVal.getMetadata)
+    variant.toJson(java.time.ZoneId.of("UTC"))
+  }
+
+  test("decode VariantType - simple JSON objects") {
+    withKVTable("test_db", "test_variant_simple", valueColDef = "JSON") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_simple VALUES
+          |(1, '{"name": "Alice", "age": 30}'),
+          |(2, '{"name": "Bob", "age": 25}'),
+          |(3, '{"name": "Charlie", "age": 35}')
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_simple ORDER BY key")
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val result = df.collect()
+      assert(result.length == 3)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("Alice") && json1.contains("30"))
+
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("Bob") && json2.contains("25"))
+
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("Charlie") && json3.contains("35"))
+    }
+  }
+
+  test("decode VariantType - nested JSON objects") {
+    withKVTable("test_db", "test_variant_nested", valueColDef = "JSON") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_nested VALUES
+          |(1, '{"person": {"name": "Alice", "age": 30}, "city": "NYC"}'),
+          |(2, '{"person": {"name": "Bob", "age": 25}, "city": "LA"}')
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_nested ORDER BY key")
+      val result = df.collect()
+      assert(result.length == 2)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("Alice") && json1.contains("NYC"))
+
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("Bob") && json2.contains("LA"))
+    }
+  }
+
+  test("decode VariantType - JSON with arrays") {
+    withKVTable("test_db", "test_variant_arrays", valueColDef = "JSON") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_arrays VALUES
+          |(1, '{"tags": ["a", "b", "c"], "nums": [1, 2, 3]}'),
+          |(2, '{"tags": ["x", "y"], "nums": [10, 20]}')
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_arrays ORDER BY key")
+      val result = df.collect()
+      assert(result.length == 2)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("tags") && json1.contains("nums"))
+    }
+  }
+
+  test("decode VariantType - mixed types") {
+    withKVTable("test_db", "test_variant_mixed", valueColDef = "JSON") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_mixed VALUES
+          |(1, '{"str": "text", "num": 42, "bool": true, "null": null}'),
+          |(2, '{"str": "data", "num": 3.14, "bool": false}')
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_mixed ORDER BY key")
+      val result = df.collect()
+      assert(result.length == 2)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("text") && json1.contains("42") && json1.contains("true"))
+    }
+  }
+
+  test("decode VariantType - NULL values") {
+    withKVTable("test_db", "test_variant_nulls", valueColDef = "Nullable(JSON)") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_nulls VALUES
+          |(1, '{"name": "Alice"}'),
+          |(2, NULL),
+          |(3, '{"name": "Charlie"}')
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_nulls ORDER BY key")
+      val result = df.collect()
+      assert(result.length == 3)
+      assert(!result(0).isNullAt(1))
+      assert(result(1).isNullAt(1))
+      assert(!result(2).isNullAt(1))
+    }
+  }
+
+  test("decode VariantType - empty JSON object") {
+    withKVTable("test_db", "test_variant_empty", valueColDef = "JSON") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_empty VALUES
+          |(1, '{}'),
+          |(2, '{"empty": []}')
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_empty ORDER BY key")
+      val result = df.collect()
+      assert(result.length == 2)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("{}") || json1.trim == "{}")
+
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("empty"))
+    }
+  }
+
+  test("decode VariantType - numeric precision") {
+    withKVTable("test_db", "test_variant_numbers", valueColDef = "JSON") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_numbers VALUES
+          |(1, '{"int": 42, "float": 3.14159, "large": 9223372036854775807}'),
+          |(2, '{"negative": -123, "zero": 0, "decimal": 0.123456789}')
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_numbers ORDER BY key")
+      val result = df.collect()
+      assert(result.length == 2)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("42") && json1.contains("3.14"))
+
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("-123") && json2.contains("0.123"))
+    }
+  }
+
+  test("decode VariantType - special characters") {
+    withKVTable("test_db", "test_variant_special", valueColDef = "JSON") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_special VALUES
+          |(1, '{"text": "Hello World", "emoji": "🎉"}'),
+          |(2, '{"unicode": "café", "symbol": "@#$%"}')
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_special ORDER BY key")
+      val result = df.collect()
+      assert(result.length == 2)
+      assert(!result(0).isNullAt(1))
+      assert(!result(1).isNullAt(1))
+    }
+  }
+
+  test("decode VariantType - deeply nested structures") {
+    withKVTable("test_db", "test_variant_deep", valueColDef = "JSON") {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_deep VALUES
+          |(1, '{"a": {"b": {"c": {"d": {"e": "deep"}}}}}'),
+          |(2, '{"x": [{"y": [{"z": "nested"}]}]}')
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_deep ORDER BY key")
+      val result = df.collect()
+      assert(result.length == 2)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("deep"))
+
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("nested"))
+    }
   }
 
 }
