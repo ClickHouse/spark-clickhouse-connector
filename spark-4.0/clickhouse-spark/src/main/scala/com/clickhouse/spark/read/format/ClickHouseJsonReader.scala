@@ -22,6 +22,7 @@ import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
 import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData}
 import org.apache.spark.sql.types._
+import org.apache.spark.types.variant.VariantBuilder
 import org.apache.spark.unsafe.types.UTF8String
 import com.clickhouse.spark.Utils.{dateFmt, dateTimeFmt}
 
@@ -84,6 +85,9 @@ class ClickHouseJsonReader(
           ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(scanJob.tz)).withZoneSameInstant(ZoneOffset.UTC)
         TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
       case StringType => UTF8String.fromString(jsonNode.asText)
+      case VariantType =>
+        val variant = VariantBuilder.parseJson(jsonNode.toString, false)
+        new org.apache.spark.unsafe.types.VariantVal(variant.getValue, variant.getMetadata)
       case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay.toInt
       case BinaryType if jsonNode.isTextual =>
         // ClickHouse JSON format returns FixedString as plain text, not Base64
