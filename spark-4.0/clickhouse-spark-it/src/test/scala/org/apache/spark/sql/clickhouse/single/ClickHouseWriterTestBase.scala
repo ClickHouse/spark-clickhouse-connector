@@ -1103,4 +1103,209 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
     }
   }
 
+  // ============================================================================
+  // VariantType Write Tests (ClickHouse 25.3+ JSON type)
+  // ============================================================================
+
+  // Helper to extract JSON string from VariantVal
+  private def variantToJson(variantVal: org.apache.spark.unsafe.types.VariantVal): String = {
+    val variant = new org.apache.spark.types.variant.Variant(variantVal.getValue, variantVal.getMetadata)
+    variant.toJson(java.time.ZoneId.of("UTC"))
+  }
+
+  test("write VariantType - simple JSON objects") {
+    val db = "test_db"
+    val tbl = "test_variant_write_simple"
+
+    try {
+      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id INT,
+           |  data VARIANT
+           |) USING clickhouse
+           |TBLPROPERTIES (
+           |  engine = 'MergeTree()',
+           |  order_by = 'id',
+           |  settings.allow_nullable_key = 1
+           |)
+           |""".stripMargin
+      )
+
+      // Write using parse_json()
+      spark.sql(
+        s"""INSERT INTO $db.$tbl 
+           |SELECT 1 as id, parse_json('{"name": "Alice", "age": 30}') as data
+           |UNION ALL SELECT 2, parse_json('{"name": "Bob", "age": 25}')
+           |UNION ALL SELECT 3, parse_json('{"name": "Charlie", "age": 35}')
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$db.$tbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 3)
+      assert(!result(0).isNullAt(1))
+      assert(!result(1).isNullAt(1))
+      assert(!result(2).isNullAt(1))
+
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
+  test("write VariantType - nested JSON objects") {
+    val db = "test_db"
+    val tbl = "test_variant_write_nested"
+
+    try {
+      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id INT,
+           |  data VARIANT
+           |) USING clickhouse
+           |TBLPROPERTIES (
+           |  engine = 'MergeTree()',
+           |  order_by = 'id',
+           |  settings.allow_nullable_key = 1
+           |)
+           |""".stripMargin
+      )
+
+      spark.sql(
+        s"""INSERT INTO $db.$tbl 
+           |SELECT 1 as id, parse_json('{"person": {"name": "Alice", "age": 30}, "city": "NYC"}') as data
+           |UNION ALL SELECT 2, parse_json('{"person": {"name": "Bob", "age": 25}, "city": "LA"}')
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$db.$tbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 2)
+      assert(!result(0).isNullAt(1))
+      assert(!result(1).isNullAt(1))
+
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
+  test("write VariantType - JSON with arrays") {
+    val db = "test_db"
+    val tbl = "test_variant_write_arrays"
+
+    try {
+      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id INT,
+           |  data VARIANT
+           |) USING clickhouse
+           |TBLPROPERTIES (
+           |  engine = 'MergeTree()',
+           |  order_by = 'id',
+           |  settings.allow_nullable_key = 1
+           |)
+           |""".stripMargin
+      )
+
+      spark.sql(
+        s"""INSERT INTO $db.$tbl 
+           |SELECT 1 as id, parse_json('{"tags": ["a", "b", "c"], "nums": [1, 2, 3]}') as data
+           |UNION ALL SELECT 2, parse_json('{"tags": ["x", "y"], "nums": [10, 20]}')
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$db.$tbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 2)
+      assert(!result(0).isNullAt(1))
+      assert(!result(1).isNullAt(1))
+
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
+  test("write VariantType - NULL values") {
+    val db = "test_db"
+    val tbl = "test_variant_write_nulls"
+
+    try {
+      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id INT,
+           |  data VARIANT
+           |) USING clickhouse
+           |TBLPROPERTIES (
+           |  engine = 'MergeTree()',
+           |  order_by = 'id',
+           |  settings.allow_nullable_key = 1
+           |)
+           |""".stripMargin
+      )
+
+      spark.sql(
+        s"""INSERT INTO $db.$tbl 
+           |SELECT 1 as id, parse_json('{"name": "Alice"}') as data
+           |UNION ALL SELECT 2, CAST(NULL AS VARIANT)
+           |UNION ALL SELECT 3, parse_json('{"name": "Charlie"}')
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$db.$tbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 3)
+      assert(!result(0).isNullAt(1))
+      assert(result(1).isNullAt(1))
+      assert(!result(2).isNullAt(1))
+
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
+  test("write VariantType - round-trip") {
+    val db = "test_db"
+    val tbl = "test_variant_roundtrip"
+
+    try {
+      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id INT,
+           |  data VARIANT
+           |) USING clickhouse
+           |TBLPROPERTIES (
+           |  engine = 'MergeTree()',
+           |  order_by = 'id',
+           |  settings.allow_nullable_key = 1
+           |)
+           |""".stripMargin
+      )
+
+      // Write
+      spark.sql(
+        s"""INSERT INTO $db.$tbl 
+           |SELECT 1 as id, parse_json('{"name": "Alice", "age": 30, "active": true}') as data
+           |""".stripMargin
+      )
+
+      // Read back
+      val df = spark.table(s"$db.$tbl")
+      val result = df.collect()
+      assert(result.length == 1)
+      assert(!result(0).isNullAt(1))
+
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
 }
