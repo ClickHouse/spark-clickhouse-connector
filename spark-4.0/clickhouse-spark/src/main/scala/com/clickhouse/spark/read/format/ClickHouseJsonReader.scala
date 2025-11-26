@@ -84,7 +84,12 @@ class ClickHouseJsonReader(
         var _instant =
           ZonedDateTime.parse(jsonNode.asText, dateTimeFmt.withZone(scanJob.tz)).withZoneSameInstant(ZoneOffset.UTC)
         TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
-      case StringType => UTF8String.fromString(jsonNode.asText)
+      case StringType =>
+        if (jsonNode.isObject || jsonNode.isArray) {
+          UTF8String.fromString(jsonNode.toString)
+        } else {
+          UTF8String.fromString(jsonNode.asText)
+        }
       case VariantType =>
         val variant = VariantBuilder.parseJson(jsonNode.toString, false)
         new org.apache.spark.unsafe.types.VariantVal(variant.getValue, variant.getMetadata)
