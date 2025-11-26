@@ -235,8 +235,6 @@ project(':clickhouse-core') {
 
         api("com.clickhouse:client-v2:${clickhouse_client_v2_version}:all") { transitive = false }
 
-        compileOnly "jakarta.annotation:jakarta.annotation-api:$jakarta_annotation_api_version"
-
         testFixturesApi "org.slf4j:slf4j-api:$slf4j_version"
         testFixturesApi "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
         testFixturesRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
