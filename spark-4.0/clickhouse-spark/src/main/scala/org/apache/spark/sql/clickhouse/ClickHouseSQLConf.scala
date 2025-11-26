@@ -212,9 +212,8 @@ object ClickHouseSQLConf {
 
   val READ_JSON_AS: ConfigEntry[String] =
     buildConf("spark.clickhouse.read.jsonAs")
-      .doc("Read ClickHouse JSON type as the specified Spark data type. " +
-        "Supported types: variant (Spark 4.0+ VariantType), string. " +
-        "Note: VariantType is only available in Spark 4.0+")
+      .doc("[Spark 4.0+ only] Read ClickHouse JSON type as the specified Spark data type. " +
+        "Supported types: variant (VariantType), string")
       .version("0.9.0")
       .stringConf
       .transform(_.toLowerCase)
