@@ -19,7 +19,7 @@ import com.clickhouse.data.{ClickHouseColumn, ClickHouseDataType}
 import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.sql.types._
 import org.apache.spark.sql.catalyst.SQLConfHelper
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_FIXED_STRING_AS
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_FIXED_STRING_AS, READ_JSON_AS}
 
 import scala.collection.JavaConverters._
 
@@ -29,7 +29,12 @@ object SchemaUtils extends SQLConfHelper {
     val catalystType = chColumn.getDataType match {
       case Nothing => NullType
       case Bool => BooleanType
-      case JSON => VariantType
+      case JSON =>
+        conf.getConf(READ_JSON_AS) match {
+          case "variant" => VariantType
+          case "string" => StringType
+          case unsupported => throw CHClientException(s"Unsupported JSON read format mapping: $unsupported")
+        }
       case String | UUID | Enum8 | Enum16 | IPv4 | IPv6 => StringType
       case FixedString =>
         conf.getConf(READ_FIXED_STRING_AS) match {

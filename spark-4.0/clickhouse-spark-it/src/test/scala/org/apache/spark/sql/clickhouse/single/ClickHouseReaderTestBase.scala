@@ -1614,4 +1614,31 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
 
+  test("decode VariantType - read JSON as string with config") {
+    withSQLConf("spark.clickhouse.read.jsonAs" -> "string") {
+      withKVTable("test_db", "test_json_as_string", valueColDef = "JSON") {
+        runClickHouseSQL(
+          """INSERT INTO test_db.test_json_as_string VALUES
+            |(1, '{"name": "Alice", "age": 30}'),
+            |(2, '{"name": "Bob", "age": 25}')
+            |""".stripMargin
+        )
+
+        val df = spark.sql("SELECT key, value FROM test_db.test_json_as_string ORDER BY key")
+        val result = df.collect()
+
+        // Verify schema is StringType, not VariantType
+        assert(df.schema.fields(1).dataType == StringType)
+
+        // Verify data is read as JSON strings
+        assert(result.length == 2)
+        val json1 = result(0).getString(1)
+        assert(json1.contains("Alice") && json1.contains("30"))
+
+        val json2 = result(1).getString(1)
+        assert(json2.contains("Bob") && json2.contains("25"))
+      }
+    }
+  }
+
 }
