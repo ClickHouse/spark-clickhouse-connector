@@ -35,6 +35,7 @@ object SchemaUtils extends SQLConfHelper {
           case "string" => StringType
           case unsupported => throw CHClientException(s"Unsupported JSON read format mapping: $unsupported")
         }
+      case Variant => VariantType
       case String | UUID | Enum8 | Enum16 | IPv4 | IPv6 => StringType
       case FixedString =>
         conf.getConf(READ_FIXED_STRING_AS) match {
@@ -99,6 +100,9 @@ object SchemaUtils extends SQLConfHelper {
   }
 
   def toClickHouseType(catalystType: DataType, nullable: Boolean): String =
+    toClickHouseType(catalystType, nullable, None)
+
+  def toClickHouseType(catalystType: DataType, nullable: Boolean, variantTypes: Option[String]): String =
     catalystType match {
       case BooleanType => maybeNullable("Bool", nullable)
       case ByteType => maybeNullable("Int8", nullable)
@@ -110,17 +114,21 @@ object SchemaUtils extends SQLConfHelper {
       case StringType => maybeNullable("String", nullable)
       case VarcharType(_) => maybeNullable("String", nullable)
       case CharType(_) => maybeNullable("String", nullable) // TODO: maybe FixString?
-      case VariantType => maybeNullable("JSON", nullable)
+      case VariantType =>
+        variantTypes match {
+          case Some(types) => s"Variant($types)"
+          case None => "JSON"
+        }
       case DateType => maybeNullable("Date", nullable)
       case TimestampType => maybeNullable("DateTime", nullable)
       case DecimalType.Fixed(p, s) => maybeNullable(s"Decimal($p, $s)", nullable)
-      case ArrayType(elemType, containsNull) => s"Array(${toClickHouseType(elemType, containsNull)})"
+      case ArrayType(elemType, containsNull) => s"Array(${toClickHouseType(elemType, containsNull, variantTypes)})"
       // TODO currently only support String as key
       case MapType(keyType, valueType, valueContainsNull) if keyType.isInstanceOf[StringType] =>
-        s"Map(${toClickHouseType(keyType, nullable = false)}, ${toClickHouseType(valueType, valueContainsNull)})"
+        s"Map(${toClickHouseType(keyType, nullable = false, variantTypes)}, ${toClickHouseType(valueType, valueContainsNull, variantTypes)})"
       case struct: StructType =>
         val fieldTypes = struct.fields.map { field =>
-          val fieldType = toClickHouseType(field.dataType, field.nullable)
+          val fieldType = toClickHouseType(field.dataType, field.nullable, variantTypes)
           s"${field.name} ${fieldType}"
         }.mkString(", ")
         s"Tuple($fieldTypes)"
@@ -138,9 +146,29 @@ object SchemaUtils extends SQLConfHelper {
   }
 
   def toClickHouseSchema(catalystSchema: StructType): Seq[(String, String, String)] =
+    toClickHouseSchema(catalystSchema, scala.collection.immutable.Map.empty[String, String])
+
+  /**
+   * Convert Spark schema to ClickHouse schema with optional column properties.
+   *
+   * For VariantType columns, you can specify the ClickHouse Variant types via table properties:
+   * {{{
+   * CREATE TABLE clickhouse.db.table (
+   *   id INT,
+   *   data VARIANT
+   * )
+   * TBLPROPERTIES (
+   *   'clickhouse.column.data.variant_types' = 'Int64, Float64, Bool, Array(String),JSON'
+   * )
+   * }}}
+   *
+   * If no variant_types property is specified, VariantType defaults to ClickHouse's JSON type (schema-less).
+   */
+  def toClickHouseSchema(catalystSchema: StructType, properties: Map[String, String]): Seq[(String, String, String)] =
     catalystSchema.fields
       .map { field =>
-        val chType = toClickHouseType(field.dataType, field.nullable)
+        val variantTypes = properties.get(s"clickhouse.column.${field.name}.variant_types")
+        val chType = toClickHouseType(field.dataType, field.nullable, variantTypes)
         (field.name, chType, field.getComment().map(c => s" COMMENT '$c'").getOrElse(""))
       }
 
