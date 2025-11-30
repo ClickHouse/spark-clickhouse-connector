@@ -19,7 +19,6 @@ import org.codehaus.groovy.runtime.GStringImpl
 buildscript {
     repositories {
         maven { url = "https://plugins.gradle.org/m2/" }
-        gradlePluginPortal()
     }
     dependencies {
         // Only add SonarQube to classpath if explicitly enabled
