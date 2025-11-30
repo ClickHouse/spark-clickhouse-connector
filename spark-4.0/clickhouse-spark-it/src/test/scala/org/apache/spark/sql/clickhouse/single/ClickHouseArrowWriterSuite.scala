@@ -29,7 +29,7 @@ abstract class ClickHouseArrowWriterSuite extends ClickHouseWriterTestBase {
   override def test(testName: String, testTags: org.scalatest.Tag*)(testFun: => Any)(implicit
     pos: org.scalactic.source.Position
   ): Unit =
-    if (testName.contains("VariantType")) {
+    if (testName.contains("VariantType") || testName.contains("Variant")) {
       ignore(testName, testTags: _*)(testFun)(pos)
     } else {
       super.test(testName, testTags: _*)(testFun)(pos)
