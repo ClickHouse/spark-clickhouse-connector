@@ -51,6 +51,9 @@ object ClickHouseBinaryReader extends SQLConfHelper {
   private val jsonFactory = new com.fasterxml.jackson.core.JsonFactory()
 
   private def buildVariantFromValue(value: Any): org.apache.spark.unsafe.types.VariantVal = {
+    if (value == null) {
+      return null
+    }
     val jsonString = jsonMapper.writeValueAsString(value)
     val parser = jsonFactory.createParser(jsonString)
     parser.nextToken()
