@@ -35,6 +35,7 @@ plugins {
     id "org.nosphere.apache.rat" version "0.8.1"
     id "com.github.maiflai.scalatest" version "0.32" apply false
     id "com.github.johnrengelman.shadow" version "8.1.1" apply false
+    id 'com.gradleup.nmcp' version '0.0.8' apply false
 }
 
 // Apply SonarQube plugin only when property is set
