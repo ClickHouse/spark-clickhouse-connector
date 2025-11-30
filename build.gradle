@@ -19,11 +19,15 @@ import org.codehaus.groovy.runtime.GStringImpl
 buildscript {
     repositories {
         maven { url = "https://plugins.gradle.org/m2/" }
+        gradlePluginPortal()
     }
     dependencies {
         // Only add SonarQube to classpath if explicitly enabled
         if (project.hasProperty('enableSonar')) {
             classpath "org.sonarsource.scanner.gradle:sonarqube-gradle-plugin:4.4.1.3373"
+        }
+        if (JavaVersion.current() >= JavaVersion.VERSION_11) {
+            classpath 'com.gradleup.nmcp:nmcp:0.0.8'
         }
     }
 }
@@ -35,7 +39,6 @@ plugins {
     id "org.nosphere.apache.rat" version "0.8.1"
     id "com.github.maiflai.scalatest" version "0.32" apply false
     id "com.github.johnrengelman.shadow" version "8.1.1" apply false
-    id 'com.gradleup.nmcp' version '0.0.8' apply false
 }
 
 // Apply SonarQube plugin only when property is set
