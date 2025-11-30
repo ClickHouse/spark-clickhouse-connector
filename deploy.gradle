@@ -15,7 +15,9 @@
 subprojects {
     apply plugin: "maven-publish"
     apply plugin: 'signing'
-    apply plugin: 'com.gradleup.nmcp'
+    if (JavaVersion.current() >= JavaVersion.VERSION_11) {
+        apply plugin: 'com.gradleup.nmcp'
+    }
     afterEvaluate {
         publishing {
             if (project.name.contains("-runtime")) {
@@ -120,12 +122,15 @@ subprojects {
                 }
             }
 
-            nmcp {
-                publish('shadow') {
-                    username = System.getenv('NMCP_USERNAME')
-                    password = System.getenv('NMCP_PASSWORD')
-                    publicationType = 'USER_MANAGED'
+            if (JavaVersion.current() >= JavaVersion.VERSION_11 && !project.version.endsWith("-SNAPSHOT")) {
+                nmcp {
+                    publish('shadow') {
+                        username = System.getenv('NMCP_USERNAME')
+                        password = System.getenv('NMCP_PASSWORD')
+                        publicationType = 'USER_MANAGED'
+                    }
                 }
-            }        }
+            }
+        }
     }
 }
