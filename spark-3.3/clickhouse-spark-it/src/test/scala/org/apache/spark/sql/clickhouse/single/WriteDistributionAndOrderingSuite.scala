@@ -51,7 +51,7 @@ abstract class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTe
     )
   )
 
-  override protected def beforeAll(): Unit = {
+  override def beforeAll(): Unit = {
     super.beforeAll()
     sql(s"CREATE DATABASE IF NOT EXISTS `$db`")
     runClickHouseSQL(
@@ -65,7 +65,7 @@ abstract class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTe
     )
   }
 
-  override protected def afterAll(): Unit = {
+  override def afterAll(): Unit = {
     sql(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
     sql(s"DROP DATABASE IF EXISTS `$db`")
     super.afterAll()

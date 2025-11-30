@@ -142,8 +142,8 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
 
         spark.createDataFrame(dataDF.rdd, tblSchema)
           .writeTo(s"$db.$tbl_dist")
-          .append
-        Thread.sleep(2000) // Allow ClickHouse to flush data and create partitions
+          .append()
+        Thread.sleep(2000)
       }
       f(cluster, db, tbl_dist, tbl_local)
     }
