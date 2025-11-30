@@ -1641,4 +1641,476 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
 
+  test("decode VariantType - mixed primitives and arrays") {
+    withKVTable(
+      "test_db",
+      "test_variant_mixed_types",
+      valueColDef = "Variant(String, Int64, Float64, Bool, Array(String))"
+    ) {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_mixed_types VALUES
+          |(1, 42),
+          |(2, true),
+          |(3, 'hello'),
+          |(4, 3.14),
+          |(5, ['a', 'b', 'c']),
+          |(6, false)
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_mixed_types")
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val result = df.collect().sortBy(_.getInt(0))
+      assert(result.length == 6)
+
+      // Test primitive integer
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("42"))
+
+      // Test primitive boolean (true)
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("true"))
+
+      // Test primitive string
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("hello"))
+
+      // Test primitive float
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json4.contains("3.14"))
+
+      // Test array
+      val json5 = variantToJson(result(4).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json5.contains("a") && json5.contains("b") && json5.contains("c"))
+
+      // Test primitive boolean (false)
+      val json6 = variantToJson(result(5).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json6.contains("false"))
+    }
+  }
+
+  test("decode VariantType - mixed primitives, arrays and JSON objects") {
+    withKVTable(
+      "test_db",
+      "test_variant_with_json",
+      valueColDef = "Variant(String, Int64, Float64, Bool, Array(String), JSON)"
+    ) {
+      runClickHouseSQL("SET allow_experimental_json_type = 1")
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_with_json VALUES
+          |(1, 42),
+          |(2, true),
+          |(3, 'hello'),
+          |(4, 3.14),
+          |(5, ['a', 'b', 'c']),
+          |(6, CAST('{"name": "Alice", "age": 30}' AS JSON)),
+          |(7, CAST('{"city": "NYC", "country": "USA"}' AS JSON)),
+          |(8, false)
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_with_json")
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val result = df.collect().sortBy(_.getInt(0))
+      assert(result.length == 8)
+
+      // Test primitive integer
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("42"))
+
+      // Test primitive boolean (true)
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("true"))
+
+      // Test primitive string
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("hello"))
+
+      // Test primitive float
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json4.contains("3.14"))
+
+      // Test array
+      val json5 = variantToJson(result(4).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json5.contains("a") && json5.contains("b") && json5.contains("c"))
+
+      // Test JSON object 1
+      val json6 = variantToJson(result(5).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json6.contains("Alice") && json6.contains("30"))
+
+      // Test JSON object 2
+      val json7 = variantToJson(result(6).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json7.contains("NYC") && json7.contains("USA"))
+
+      // Test primitive boolean (false)
+      val json8 = variantToJson(result(7).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json8.contains("false"))
+    }
+  }
+
+  test("decode VariantType - explicit Variant with NULL values") {
+    withKVTable(
+      "test_db",
+      "test_variant_nulls_explicit",
+      valueColDef = "Nullable(Variant(String, Int64, Bool))"
+    ) {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_nulls_explicit VALUES
+          |(1, 'hello'),
+          |(2, NULL),
+          |(3, 42),
+          |(4, NULL),
+          |(5, true)
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_nulls_explicit ORDER BY key")
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val result = df.collect()
+      assert(result.length == 5)
+
+      // Row 1: string value
+      assert(!result(0).isNullAt(1))
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("hello"))
+
+      // Row 2: NULL
+      assert(result(1).isNullAt(1))
+
+      // Row 3: integer value
+      assert(!result(2).isNullAt(1))
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("42"))
+
+      // Row 4: NULL
+      assert(result(3).isNullAt(1))
+
+      // Row 5: boolean value
+      assert(!result(4).isNullAt(1))
+      val json5 = variantToJson(result(4).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json5.contains("true"))
+    }
+  }
+
+  test("decode VariantType - Variant with empty arrays") {
+    withKVTable(
+      "test_db",
+      "test_variant_empty_arrays",
+      valueColDef = "Variant(String, Array(String), Array(Int64))"
+    ) {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_empty_arrays VALUES
+          |(1, []),
+          |(2, 'text'),
+          |(3, ['a', 'b']),
+          |(4, [])
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_empty_arrays ORDER BY key")
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val result = df.collect()
+      assert(result.length == 4)
+
+      // Row 1: empty array
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("[]") || json1.trim == "[]")
+
+      // Row 2: string
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("text"))
+
+      // Row 3: non-empty array
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("a") && json3.contains("b"))
+
+      // Row 4: empty array
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json4.contains("[]") || json4.trim == "[]")
+    }
+  }
+
+  test("decode VariantType - Variant with nested arrays") {
+    withKVTable(
+      "test_db",
+      "test_variant_nested_arrays",
+      valueColDef = "Variant(String, Array(Array(String)))"
+    ) {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_nested_arrays VALUES
+          |(1, [['a', 'b'], ['c', 'd']]),
+          |(2, 'text'),
+          |(3, [[]])
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_nested_arrays ORDER BY key")
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val result = df.collect()
+      assert(result.length == 3)
+
+      // Row 1: nested array
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("a") && json1.contains("b") && json1.contains("c") && json1.contains("d"))
+
+      // Row 2: string
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("text"))
+
+      // Row 3: nested empty array
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("[]"))
+    }
+  }
+
+  test("decode VariantType - Variant with only JSON type (default behavior)") {
+    // When no explicit variant types are specified in Spark DDL, it defaults to JSON
+    // JSON type only accepts JSON objects (starting with '{')
+    withKVTable("test_db", "test_variant_json_only", valueColDef = "JSON") {
+      runClickHouseSQL("SET allow_experimental_json_type = 1")
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_json_only VALUES
+          |(1, '{"type": "object1", "value": 42}'),
+          |(2, '{"type": "object2", "nested": {"key": "value"}}'),
+          |(3, '{"type": "object3", "array": [1, 2, 3]}')
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_json_only ORDER BY key")
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val result = df.collect()
+      assert(result.length == 3)
+
+      // Row 1: JSON object with number
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("object1") && json1.contains("42"))
+
+      // Row 2: JSON object with nested object
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("object2") && json2.contains("nested") && json2.contains("key"))
+
+      // Row 3: JSON object with array
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("object3") && json3.contains("array"))
+    }
+  }
+
+  test("decode VariantType - Variant with numeric types") {
+    withKVTable(
+      "test_db",
+      "test_variant_numeric",
+      valueColDef = "Variant(Int8, Int16, Int32, Int64, Float32, Float64)"
+    ) {
+      runClickHouseSQL(
+        """INSERT INTO test_db.test_variant_numeric VALUES
+          |(1, CAST(127 AS Int8)),
+          |(2, CAST(32767 AS Int16)),
+          |(3, CAST(2147483647 AS Int32)),
+          |(4, CAST(9223372036854775807 AS Int64)),
+          |(5, CAST(3.14 AS Float32)),
+          |(6, CAST(2.718281828 AS Float64))
+          |""".stripMargin
+      )
+
+      val df = spark.sql("SELECT key, value FROM test_db.test_variant_numeric ORDER BY key")
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val result = df.collect()
+      assert(result.length == 6)
+
+      // Test various numeric types
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("127"))
+
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("32767"))
+
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("2147483647"))
+
+      val json5 = variantToJson(result(4).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json5.contains("3.14"))
+    }
+  }
+
+  test("end-to-end: Spark creates table with Variant, writes and reads data") {
+    // Clean up any existing table
+    spark.sql("DROP TABLE IF EXISTS clickhouse.test_db.test_e2e_variant")
+    spark.sql("DROP DATABASE IF EXISTS clickhouse.test_db")
+    spark.sql("CREATE DATABASE IF NOT EXISTS clickhouse.test_db")
+
+    try {
+      // Enable experimental JSON type for ClickHouse
+      runClickHouseSQL("SET allow_experimental_json_type = 1")
+
+      // Create table via Spark SQL with explicit Variant types
+      spark.sql("""
+        CREATE TABLE clickhouse.test_db.test_e2e_variant (
+          id INT NOT NULL,
+          simple_data VARIANT,
+          complex_data VARIANT
+        )
+        USING clickhouse
+        TBLPROPERTIES (
+          'clickhouse.column.simple_data.variant_types' = 'String, Int64, Bool',
+          'engine' = 'MergeTree()',
+          'order_by' = 'id'
+        )
+      """)
+
+      // Verify table was created
+      val tables = spark.sql("SHOW TABLES IN clickhouse.test_db").collect()
+      assert(tables.exists(_.getString(1) == "test_e2e_variant"), "Table should be created")
+
+      // Write data using Spark SQL with parse_json
+      import org.apache.spark.sql.functions._
+
+      val testData = spark.createDataFrame(Seq(
+        (1, """42""", """{"type":"object1","value":100}"""),
+        (2, """"hello"""", """{"type":"object2","nested":{"key":"value"}}"""),
+        (3, """true""", """{"type":"object3","array":[1,2,3]}"""),
+        (4, """false""", """{"type":"object4","text":"data"}"""),
+        (5, """12345""", """{"type":"object5","items":["a","b","c"]}""")
+      )).toDF("id", "simple_json", "complex_json")
+
+      val variantDF = testData
+        .withColumn("simple_data", parse_json(col("simple_json")))
+        .withColumn("complex_data", parse_json(col("complex_json")))
+        .select("id", "simple_data", "complex_data")
+
+      // Write to ClickHouse
+      variantDF.writeTo("clickhouse.test_db.test_e2e_variant").append()
+
+      // Read back the data
+      val df = spark.sql("SELECT id, simple_data, complex_data FROM clickhouse.test_db.test_e2e_variant ORDER BY id")
+
+      // Verify schema
+      assert(df.schema.fields(1).dataType == VariantType, "simple_data should be VariantType")
+      assert(df.schema.fields(2).dataType == VariantType, "complex_data should be VariantType")
+
+      val result = df.collect()
+      assert(result.length == 5, "Should have 5 rows")
+
+      // Verify Row 1: integer and JSON object
+      assert(result(0).getInt(0) == 1)
+      val simple1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(simple1.contains("42"))
+      val complex1 = variantToJson(result(0).get(2).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(complex1.contains("object1") && complex1.contains("100"))
+
+      // Verify Row 2: string and nested JSON object
+      assert(result(1).getInt(0) == 2)
+      val simple2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(simple2.contains("hello"))
+      val complex2 = variantToJson(result(1).get(2).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(complex2.contains("object2") && complex2.contains("nested") && complex2.contains("key"))
+
+      // Verify Row 3: boolean and JSON with array
+      assert(result(2).getInt(0) == 3)
+      val simple3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(simple3.contains("true"))
+      val complex3 = variantToJson(result(2).get(2).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(complex3.contains("object3") && complex3.contains("array"))
+
+      // Verify Row 4: boolean false
+      assert(result(3).getInt(0) == 4)
+      val simple4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(simple4.contains("false"))
+
+      // Verify Row 5: integer
+      assert(result(4).getInt(0) == 5)
+      val simple5 = variantToJson(result(4).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(simple5.contains("12345"))
+
+      // Test filtering on Variant columns (read-only, no pushdown expected)
+      val filtered = spark.sql("SELECT id FROM clickhouse.test_db.test_e2e_variant WHERE id > 2 ORDER BY id")
+      val filteredResult = filtered.collect()
+      assert(filteredResult.length == 3)
+      assert(filteredResult(0).getInt(0) == 3)
+      assert(filteredResult(1).getInt(0) == 4)
+      assert(filteredResult(2).getInt(0) == 5)
+
+    } finally {
+      // Clean up
+      spark.sql("DROP TABLE IF EXISTS clickhouse.test_db.test_e2e_variant")
+      spark.sql("DROP DATABASE IF EXISTS clickhouse.test_db")
+    }
+  }
+
+  test("end-to-end: Spark creates table with default JSON Variant, writes and reads data") {
+    // Clean up any existing table
+    spark.sql("DROP TABLE IF EXISTS clickhouse.test_db.test_e2e_json_default")
+    spark.sql("DROP DATABASE IF EXISTS clickhouse.test_db")
+    spark.sql("CREATE DATABASE IF NOT EXISTS clickhouse.test_db")
+
+    try {
+      // Enable experimental JSON type for ClickHouse
+      runClickHouseSQL("SET allow_experimental_json_type = 1")
+
+      // Create table via Spark SQL WITHOUT explicit variant types (defaults to JSON)
+      spark.sql("""
+        CREATE TABLE clickhouse.test_db.test_e2e_json_default (
+          id INT NOT NULL,
+          data VARIANT
+        )
+        USING clickhouse
+        TBLPROPERTIES (
+          'engine' = 'MergeTree()',
+          'order_by' = 'id'
+        )
+      """)
+
+      // Write data using Spark SQL - only JSON objects (JSON type restriction)
+      import org.apache.spark.sql.functions._
+
+      val testData = spark.createDataFrame(Seq(
+        (1, """{"name":"Alice","age":30}"""),
+        (2, """{"name":"Bob","age":25,"city":"NYC"}"""),
+        (3, """{"nested":{"deep":"value"},"array":[1,2,3]}""")
+      )).toDF("id", "data_json")
+
+      val variantDF = testData
+        .withColumn("data", parse_json(col("data_json")))
+        .select("id", "data")
+
+      // Write to ClickHouse
+      variantDF.writeTo("clickhouse.test_db.test_e2e_json_default").append()
+
+      // Read back the data
+      val df = spark.sql("SELECT id, data FROM clickhouse.test_db.test_e2e_json_default ORDER BY id")
+
+      // Verify schema
+      assert(df.schema.fields(1).dataType == VariantType, "data should be VariantType")
+
+      val result = df.collect()
+      assert(result.length == 3, "Should have 3 rows")
+
+      // Verify Row 1
+      assert(result(0).getInt(0) == 1)
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("Alice") && json1.contains("30"))
+
+      // Verify Row 2
+      assert(result(1).getInt(0) == 2)
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("Bob") && json2.contains("NYC"))
+
+      // Verify Row 3
+      assert(result(2).getInt(0) == 3)
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("nested") && json3.contains("deep") && json3.contains("array"))
+
+    } finally {
+      // Clean up
+      spark.sql("DROP TABLE IF EXISTS clickhouse.test_db.test_e2e_json_default")
+      spark.sql("DROP DATABASE IF EXISTS clickhouse.test_db")
+    }
+  }
+
 }
