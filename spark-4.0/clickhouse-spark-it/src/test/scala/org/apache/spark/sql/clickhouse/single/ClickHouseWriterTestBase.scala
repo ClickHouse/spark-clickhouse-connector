@@ -29,7 +29,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", ArrayType(IntegerType, containsNull = false), nullable = false)
     ))
 
-    withTable("test_db", "test_write_array_int", schema) {
+    withTable("test_db", "test_write_array_int", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Seq(1, 2, 3)),
         Row(2, Seq(10, 20, 30)),
@@ -52,7 +52,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", ArrayType(IntegerType, containsNull = false), nullable = false)
     ))
 
-    withTable("test_db", "test_write_empty_array", schema) {
+    withTable("test_db", "test_write_empty_array", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Seq()),
         Row(2, Seq(1, 2, 3)),
@@ -79,7 +79,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       )
     ))
 
-    withTable("test_db", "test_write_nested_array", schema) {
+    withTable("test_db", "test_write_nested_array", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Seq(Seq(1, 2), Seq(3, 4))),
         Row(2, Seq(Seq(10, 20, 30))),
@@ -107,7 +107,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", ArrayType(IntegerType, containsNull = true), nullable = false)
     ))
 
-    withTable("test_db", "test_write_array_nullable", schema) {
+    withTable("test_db", "test_write_array_nullable", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Seq(1, null, 3)),
         Row(2, Seq(null, null)),
@@ -132,7 +132,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", BooleanType, nullable = true)
     ))
 
-    withTable("test_db", "test_write_bool_null", schema) {
+    withTable("test_db", "test_write_bool_null", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, true),
         Row(2, null),
@@ -156,7 +156,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", BooleanType, nullable = false)
     ))
 
-    withTable("test_db", "test_write_bool", schema) {
+    withTable("test_db", "test_write_bool", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, true),
         Row(2, false)
@@ -178,7 +178,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", ByteType, nullable = false)
     ))
 
-    withTable("test_db", "test_write_byte", schema) {
+    withTable("test_db", "test_write_byte", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Byte.MinValue),
         Row(2, 0.toByte),
@@ -201,7 +201,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", ByteType, nullable = true)
     ))
 
-    withTable("test_db", "test_write_byte_null", schema) {
+    withTable("test_db", "test_write_byte_null", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Byte.MinValue),
         Row(2, null),
@@ -224,7 +224,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", DateType, nullable = false)
     ))
 
-    withTable("test_db", "test_write_date", schema) {
+    withTable("test_db", "test_write_date", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, java.sql.Date.valueOf("2024-01-01")),
         Row(2, java.sql.Date.valueOf("2024-06-15")),
@@ -247,7 +247,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", DateType, nullable = true)
     ))
 
-    withTable("test_db", "test_write_date_null", schema) {
+    withTable("test_db", "test_write_date_null", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, java.sql.Date.valueOf("2024-01-01")),
         Row(2, null),
@@ -270,7 +270,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", DecimalType(10, 2), nullable = false)
     ))
 
-    withTable("test_db", "test_write_decimal", schema) {
+    withTable("test_db", "test_write_decimal", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, BigDecimal("12345.67")),
         Row(2, BigDecimal("-9999.99")),
@@ -297,7 +297,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", DecimalType(18, 4), nullable = false)
     ))
 
-    withTable("test_db", "test_write_decimal_18_4", schema) {
+    withTable("test_db", "test_write_decimal_18_4", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, BigDecimal("12345678901234.5678")),
         Row(2, BigDecimal("-9999999999999.9999")),
@@ -323,7 +323,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", DecimalType(10, 2), nullable = true)
     ))
 
-    withTable("test_db", "test_write_decimal_null", schema) {
+    withTable("test_db", "test_write_decimal_null", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, BigDecimal("12345.67")),
         Row(2, null),
@@ -346,7 +346,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", DoubleType, nullable = true)
     ))
 
-    withTable("test_db", "test_write_double_null", schema) {
+    withTable("test_db", "test_write_double_null", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, 3.14159),
         Row(2, null),
@@ -369,7 +369,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", DoubleType, nullable = false)
     ))
 
-    withTable("test_db", "test_write_double", schema) {
+    withTable("test_db", "test_write_double", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, 3.14159),
         Row(2, -2.71828),
@@ -392,7 +392,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", FloatType, nullable = true)
     ))
 
-    withTable("test_db", "test_write_float_null", schema) {
+    withTable("test_db", "test_write_float_null", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, 3.14f),
         Row(2, null),
@@ -415,7 +415,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", FloatType, nullable = false)
     ))
 
-    withTable("test_db", "test_write_float", schema) {
+    withTable("test_db", "test_write_float", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, 3.14f),
         Row(2, -2.718f),
@@ -438,7 +438,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", IntegerType, nullable = false)
     ))
 
-    withTable("test_db", "test_write_int", schema) {
+    withTable("test_db", "test_write_int", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Int.MinValue),
         Row(2, 0),
@@ -461,7 +461,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", IntegerType, nullable = true)
     ))
 
-    withTable("test_db", "test_write_int_null", schema) {
+    withTable("test_db", "test_write_int_null", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Int.MinValue),
         Row(2, null),
@@ -484,7 +484,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", LongType, nullable = false)
     ))
 
-    withTable("test_db", "test_write_long", schema) {
+    withTable("test_db", "test_write_long", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Long.MinValue),
         Row(2, 0L),
@@ -507,7 +507,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", LongType, nullable = true)
     ))
 
-    withTable("test_db", "test_write_long_null", schema) {
+    withTable("test_db", "test_write_long_null", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Long.MinValue),
         Row(2, null),
@@ -530,7 +530,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", MapType(StringType, IntegerType, valueContainsNull = false), nullable = false)
     ))
 
-    withTable("test_db", "test_write_empty_map", schema) {
+    withTable("test_db", "test_write_empty_map", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Map[String, Int]()),
         Row(2, Map("a" -> 1)),
@@ -553,7 +553,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", MapType(StringType, IntegerType, valueContainsNull = false), nullable = false)
     ))
 
-    withTable("test_db", "test_write_map", schema) {
+    withTable("test_db", "test_write_map", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Map("a" -> 1, "b" -> 2)),
         Row(2, Map("x" -> 10, "y" -> 20)),
@@ -576,7 +576,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", MapType(StringType, IntegerType, valueContainsNull = true), nullable = false)
     ))
 
-    withTable("test_db", "test_write_map_nullable", schema) {
+    withTable("test_db", "test_write_map_nullable", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Map("a" -> 1, "b" -> null)),
         Row(2, Map("x" -> null, "y" -> 20)),
@@ -599,7 +599,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", ShortType, nullable = false)
     ))
 
-    withTable("test_db", "test_write_short", schema) {
+    withTable("test_db", "test_write_short", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Short.MinValue),
         Row(2, 0.toShort),
@@ -622,7 +622,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", ShortType, nullable = true)
     ))
 
-    withTable("test_db", "test_write_short_null", schema) {
+    withTable("test_db", "test_write_short_null", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, Short.MinValue),
         Row(2, null),
@@ -645,7 +645,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", StringType, nullable = false)
     ))
 
-    withTable("test_db", "test_write_empty_string", schema) {
+    withTable("test_db", "test_write_empty_string", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, ""),
         Row(2, "not empty"),
@@ -668,7 +668,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", StringType, nullable = true)
     ))
 
-    withTable("test_db", "test_write_string_null", schema) {
+    withTable("test_db", "test_write_string_null", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, "hello"),
         Row(2, null),
@@ -691,7 +691,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", StringType, nullable = false)
     ))
 
-    withTable("test_db", "test_write_string", schema) {
+    withTable("test_db", "test_write_string", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, "hello"),
         Row(2, "world"),
@@ -714,7 +714,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", TimestampType, nullable = true)
     ))
 
-    withTable("test_db", "test_write_timestamp_null", schema) {
+    withTable("test_db", "test_write_timestamp_null", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, java.sql.Timestamp.valueOf("2024-01-01 12:00:00")),
         Row(2, null),
@@ -737,7 +737,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       StructField("value", TimestampType, nullable = false)
     ))
 
-    withTable("test_db", "test_write_timestamp", schema) {
+    withTable("test_db", "test_write_timestamp", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1, java.sql.Timestamp.valueOf("2024-01-01 12:00:00")),
         Row(2, java.sql.Timestamp.valueOf("2024-06-15 18:30:45")),
@@ -771,7 +771,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         ) :: Nil
     )
 
-    withTable("test_db", "test_write_simple_struct", schema) {
+    withTable("test_db", "test_write_simple_struct", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1L, Row("Alice", 30)),
         Row(2L, Row("Bob", 25)),
@@ -821,7 +821,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         ) :: Nil
     )
 
-    withTable("test_db", "test_write_nested_struct", schema) {
+    withTable("test_db", "test_write_nested_struct", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1L, Row("Alice", Row("NYC", 10001))),
         Row(2L, Row("Bob", Row("LA", 90001)))
@@ -859,7 +859,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         ) :: Nil
     )
 
-    withTable("test_db", "test_write_nullable_struct", schema) {
+    withTable("test_db", "test_write_nullable_struct", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1L, Row("Alice", 30)),
         Row(2L, Row("Bob", null)),
@@ -898,7 +898,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         ) :: Nil
     )
 
-    withTable("test_db", "test_write_complex_struct", schema) {
+    withTable("test_db", "test_write_complex_struct", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1L, Row("Alice", 95.5, true, date("2024-01-15"))),
         Row(2L, Row("Bob", 87.3, false, date("2024-02-20")))
@@ -945,7 +945,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         ) :: Nil
     )
 
-    withTable("test_db", "test_write_struct_array", schema) {
+    withTable("test_db", "test_write_struct_array", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
         Row(1L, Row("Alice", Seq("admin", "user"), Seq(95, 88, 92))),
         Row(2L, Row("Bob", Seq("user"), Seq(78, 85)))

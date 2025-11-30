@@ -66,7 +66,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     val tbl = "tbl_part"
 
     // DROP + PURGE
-    withSimpleTable(db, tbl, true) {
+    withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
       checkAnswer(
         spark.sql(s"SHOW PARTITIONS $db.$tbl"),
         Seq(Row("m=1"), Row("m=2"))
@@ -90,7 +90,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     }
 
     // DROP + TRUNCATE
-    withSimpleTable(db, tbl, true) {
+    withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
       checkAnswer(
         spark.sql(s"SHOW PARTITIONS $db.$tbl"),
         Seq(Row("m=1"), Row("m=2"))
@@ -340,7 +340,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     val db = "db_rw"
     val tbl = "tbl_rw"
 
-    withSimpleTable(db, tbl, true) {
+    withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
       val tblSchema = spark.table(s"$db.$tbl").schema
       assert(tblSchema == StructType(
         StructField("id", DataTypes.LongType, false) ::
@@ -372,7 +372,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     val db = "db_metadata_col"
     val tbl = "tbl_metadata_col"
 
-    withSimpleTable(db, tbl, true) {
+    withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
       checkAnswer(
         spark.sql(s"SELECT m, _partition_id FROM $db.$tbl ORDER BY m"),
         Seq(
@@ -394,7 +394,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     val db = "db_agg_col"
     val tbl = "tbl_agg_col"
 
-    withSimpleTable(db, tbl, true) {
+    withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
       checkAnswer(
         spark.sql(s"SELECT COUNT(id) FROM $db.$tbl"),
         Seq(Row(2))
@@ -450,7 +450,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     val db = "cache_db"
     val tbl = "cache_tbl"
 
-    withSimpleTable(db, tbl, true) {
+    withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
       try {
         spark.sql(s"CACHE TABLE $db.$tbl")
         val cachedPlan = spark.sql(s"SELECT * FROM $db.$tbl").queryExecution.commandExecuted
@@ -465,7 +465,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     val db = "runtime_db"
     val tbl = "runtime_tbl"
 
-    withSimpleTable(db, tbl, true) {
+    withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
       spark.sql("set spark.clickhouse.read.runtimeFilter.enabled=false")
       checkAnswer(
         spark.sql(s"SELECT id FROM $db.$tbl " +

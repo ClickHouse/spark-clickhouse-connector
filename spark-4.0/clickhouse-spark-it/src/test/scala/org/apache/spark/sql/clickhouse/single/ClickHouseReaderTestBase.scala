@@ -164,7 +164,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
 
   test("decode BooleanType - true and false values") {
     // ClickHouse Bool now correctly maps to BooleanType
-    withKVTable("test_db", "test_bool", valueColDef = "Bool") {
+    withKVTable("test_db", "test_bool", valueColDef = "Bool") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_bool VALUES
           |(1, true),
@@ -228,7 +228,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   // ============================================================================
 
   test("decode ByteType - min and max values") {
-    withKVTable("test_db", "test_byte", valueColDef = "Int8") {
+    withKVTable("test_db", "test_byte", valueColDef = "Int8") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_byte VALUES
           |(1, -128),
@@ -262,7 +262,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode DateTime32 - 32-bit timestamp") {
-    withKVTable("test_db", "test_datetime32", valueColDef = "DateTime32") {
+    withKVTable("test_db", "test_datetime32", valueColDef = "DateTime32") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_datetime32 VALUES
           |(1, '2024-01-01 12:00:00'),
@@ -296,7 +296,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode DateType - Date") {
-    withKVTable("test_db", "test_date", valueColDef = "Date") {
+    withKVTable("test_db", "test_date", valueColDef = "Date") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_date VALUES
           |(1, '2024-01-01'),
@@ -314,7 +314,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode DateType - Date32") {
-    withKVTable("test_db", "test_date32", valueColDef = "Date32") {
+    withKVTable("test_db", "test_date32", valueColDef = "Date32") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_date32 VALUES
           |(1, '1900-01-01'),
@@ -499,7 +499,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode DoubleType - regular values") {
-    withKVTable("test_db", "test_double", valueColDef = "Float64") {
+    withKVTable("test_db", "test_double", valueColDef = "Float64") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_double VALUES
           |(1, -3.141592653589793),
@@ -611,7 +611,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode FloatType - regular values") {
-    withKVTable("test_db", "test_float", valueColDef = "Float32") {
+    withKVTable("test_db", "test_float", valueColDef = "Float32") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_float VALUES
           |(1, -3.14),
@@ -629,7 +629,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode Int128 - large integers as Decimal") {
-    withKVTable("test_db", "test_int128", valueColDef = "Int128") {
+    withKVTable("test_db", "test_int128", valueColDef = "Int128") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_int128 VALUES
           |(1, 0),
@@ -683,7 +683,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode Int256 - very large integers as Decimal") {
-    withKVTable("test_db", "test_int256", valueColDef = "Int256") {
+    withKVTable("test_db", "test_int256", valueColDef = "Int256") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_int256 VALUES
           |(1, 0),
@@ -699,7 +699,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode IntegerType - min and max values") {
-    withKVTable("test_db", "test_int", valueColDef = "Int32") {
+    withKVTable("test_db", "test_int", valueColDef = "Int32") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_int VALUES
           |(1, -2147483648),
@@ -733,7 +733,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode IPv4 - IP addresses") {
-    withKVTable("test_db", "test_ipv4", valueColDef = "IPv4") {
+    withKVTable("test_db", "test_ipv4", valueColDef = "IPv4") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_ipv4 VALUES
           |(1, '127.0.0.1'),
@@ -769,7 +769,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode IPv6 - IPv6 addresses") {
-    withKVTable("test_db", "test_ipv6", valueColDef = "IPv6") {
+    withKVTable("test_db", "test_ipv6", valueColDef = "IPv6") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_ipv6 VALUES
           |(1, '::1'),
@@ -823,7 +823,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode JSON - semi-structured data") {
-    withKVTable("test_db", "test_json", valueColDef = "String") {
+    withKVTable("test_db", "test_json", valueColDef = "String") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_json VALUES
           |(1, '{"name": "Alice", "age": 30}'),
@@ -841,7 +841,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode LongType - min and max values") {
-    withKVTable("test_db", "test_long", valueColDef = "Int64") {
+    withKVTable("test_db", "test_long", valueColDef = "Int64") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_long VALUES
           |(1, -9223372036854775808),
@@ -892,7 +892,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode LongType - UInt32 values") {
-    withKVTable("test_db", "test_uint32", valueColDef = "UInt32") {
+    withKVTable("test_db", "test_uint32", valueColDef = "UInt32") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_uint32 VALUES
           |(1, 0),
@@ -946,7 +946,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode ShortType - min and max values") {
-    withKVTable("test_db", "test_short", valueColDef = "Int16") {
+    withKVTable("test_db", "test_short", valueColDef = "Int16") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_short VALUES
           |(1, -32768),
@@ -997,7 +997,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode ShortType - UInt8 values") {
-    withKVTable("test_db", "test_uint8", valueColDef = "UInt8") {
+    withKVTable("test_db", "test_uint8", valueColDef = "UInt8") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_uint8 VALUES
           |(1, 0),
@@ -1014,7 +1014,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode StringType - empty strings") {
-    withKVTable("test_db", "test_empty_string", valueColDef = "String") {
+    withKVTable("test_db", "test_empty_string", valueColDef = "String") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_empty_string VALUES
           |(1, ''),
@@ -1049,7 +1049,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode StringType - regular strings") {
-    withKVTable("test_db", "test_string", valueColDef = "String") {
+    withKVTable("test_db", "test_string", valueColDef = "String") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_string VALUES
           |(1, 'hello'),
@@ -1067,7 +1067,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode StringType - UUID") {
-    withKVTable("test_db", "test_uuid", valueColDef = "UUID") {
+    withKVTable("test_db", "test_uuid", valueColDef = "UUID") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_uuid VALUES
           |(1, '550e8400-e29b-41d4-a716-446655440000'),
@@ -1102,7 +1102,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   }
   test("decode StringType - very long strings") {
     val longString = "a" * 10000
-    withKVTable("test_db", "test_long_string", valueColDef = "String") {
+    withKVTable("test_db", "test_long_string", valueColDef = "String") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO test_db.test_long_string VALUES
            |(1, '$longString')
@@ -1116,7 +1116,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode TimestampType - DateTime") {
-    withKVTable("test_db", "test_datetime", valueColDef = "DateTime") {
+    withKVTable("test_db", "test_datetime", valueColDef = "DateTime") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_datetime VALUES
           |(1, '2024-01-01 00:00:00'),
@@ -1188,7 +1188,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode UInt128 - large unsigned integers as Decimal") {
-    withKVTable("test_db", "test_uint128", valueColDef = "UInt128") {
+    withKVTable("test_db", "test_uint128", valueColDef = "UInt128") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_uint128 VALUES
           |(1, 0),
@@ -1239,7 +1239,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode UInt16 - unsigned 16-bit integers") {
-    withKVTable("test_db", "test_uint16", valueColDef = "UInt16") {
+    withKVTable("test_db", "test_uint16", valueColDef = "UInt16") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_uint16 VALUES
           |(1, 0),
@@ -1274,7 +1274,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode UInt256 - very large unsigned integers as Decimal") {
-    withKVTable("test_db", "test_uint256", valueColDef = "UInt256") {
+    withKVTable("test_db", "test_uint256", valueColDef = "UInt256") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_uint256 VALUES
           |(1, 0),
@@ -1308,7 +1308,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     }
   }
   test("decode UInt64 - unsigned 64-bit integers") {
-    withKVTable("test_db", "test_uint64", valueColDef = "UInt64") {
+    withKVTable("test_db", "test_uint64", valueColDef = "UInt64") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         """INSERT INTO test_db.test_uint64 VALUES
           |(1, 0),
