@@ -28,7 +28,11 @@ jobs:
         branch:
           - "main"
         scala: [ 2.12, 2.13 ]
-        spark: [ 3.3, 3.4, 3.5 ]
+        spark: [ 3.3, 3.4, 3.5, 4.0 ]
+        exclude:
+          # Spark 4.0 only supports Scala 2.13
+          - spark: '4.0'
+            scala: '2.12'
     steps:
       - uses: actions/checkout@v4
         with:
