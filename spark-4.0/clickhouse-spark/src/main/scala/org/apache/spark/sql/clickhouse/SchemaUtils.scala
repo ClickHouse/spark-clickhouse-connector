@@ -117,7 +117,7 @@ object SchemaUtils extends SQLConfHelper {
       case VariantType =>
         variantTypes match {
           case Some(types) => s"Variant($types)"
-          case None => "JSON"
+          case None => maybeNullable("JSON", nullable)
         }
       case DateType => maybeNullable("Date", nullable)
       case TimestampType => maybeNullable("DateTime", nullable)
