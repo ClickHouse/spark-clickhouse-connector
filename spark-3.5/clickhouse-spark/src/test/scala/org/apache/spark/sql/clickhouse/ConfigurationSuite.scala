@@ -113,6 +113,7 @@ class ConfigurationSuite extends AnyFunSuite {
       finally writer.close()
     } else {
       val expected = Files.readAllLines(goldenFile).asScala
+        .filterNot(line => line.contains("[Spark 4.0+ only]"))
       val hint = s"$goldenFile is out of date, please update the golden file with " +
         s"UPDATE=1 ./gradlew test --tests=ConfigurationSuite"
       assert(newOutput.size === expected.size, hint)

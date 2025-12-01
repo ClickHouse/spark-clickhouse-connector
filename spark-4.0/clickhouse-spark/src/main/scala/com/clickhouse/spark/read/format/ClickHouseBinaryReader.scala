@@ -32,15 +32,39 @@ import com.clickhouse.data.value.{
 import com.clickhouse.data.{ClickHouseArraySequence, ClickHouseRecord, ClickHouseValue}
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.read.{ClickHouseInputPartition, ClickHouseReader, ScanJobDescription}
+import com.fasterxml.jackson.databind.ObjectMapper
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
 import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData}
+import org.apache.spark.sql.catalyst.SQLConfHelper
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_JSON_AS
 import org.apache.spark.sql.types._
+import org.apache.spark.types.variant.VariantBuilder
 import org.apache.spark.unsafe.types.UTF8String
 
 import java.io.InputStream
 import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
 import java.util
+
+object ClickHouseBinaryReader extends SQLConfHelper {
+  private val jsonMapper = new ObjectMapper()
+  private val jsonFactory = new com.fasterxml.jackson.core.JsonFactory()
+
+  private def buildVariantFromValue(value: Any): org.apache.spark.unsafe.types.VariantVal = {
+    if (value == null) {
+      return null
+    }
+    val jsonString = jsonMapper.writeValueAsString(value)
+    val parser = jsonFactory.createParser(jsonString)
+    parser.nextToken()
+    val variant = VariantBuilder.parseJson(parser, false)
+    new org.apache.spark.unsafe.types.VariantVal(variant.getValue, variant.getMetadata)
+  }
+
+  private def serializeToJsonString(value: Any): String =
+    jsonMapper.writeValueAsString(value)
+}
+
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 
@@ -108,6 +132,8 @@ class ClickHouseBinaryReader(
       case TimestampType =>
         var _instant = value.asInstanceOf[ZonedDateTime].withZoneSameInstant(ZoneOffset.UTC)
         TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
+      case StringType if value.isInstanceOf[util.Map[_, _]] || value.isInstanceOf[util.List[_]] =>
+        UTF8String.fromString(ClickHouseBinaryReader.serializeToJsonString(value))
       case StringType =>
         val strValue = value match {
           case uuid: java.util.UUID => uuid.toString
@@ -117,6 +143,8 @@ class ClickHouseBinaryReader(
           case _ => value.toString
         }
         UTF8String.fromString(strValue)
+      case VariantType =>
+        ClickHouseBinaryReader.buildVariantFromValue(value)
       case DateType =>
         val localDate = value match {
           case ld: LocalDate => ld
