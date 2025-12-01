@@ -56,5 +56,5 @@ jobs:
           ./gradlew clean publishAllPublicationsToCentralPortal 
           -Dscala_binary_version=${{ matrix.scala }}
           -Dspark_binary_version=${{ matrix.spark }}
-          -Prelease --stacktrace
+          -Prelease 
 
