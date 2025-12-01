@@ -58,15 +58,3 @@ jobs:
           -Dspark_binary_version=${{ matrix.spark }}
           -Prelease --stacktrace
 
-  create-github-release:
-    if: ${{ startsWith(github.repository, 'clickhouse/') }}
-    runs-on: ubuntu-22.04
-    needs: publish-release
-    steps:
-      - name: Create Draft Release
-        uses: softprops/action-gh-release@v2
-        with:
-          draft: true
-          token: ${{ secrets.GITHUB_TOKEN }}
-        env:
-          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
