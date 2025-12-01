@@ -46,10 +46,6 @@ jobs:
           distribution: zulu
           java-version: 17
           cache: gradle
-      - name: Import GPG key
-        uses: crazy-max/ghaction-import-gpg@v5
-        with:
-          gpg_private_key: ${{ secrets.GPG_PRIVATE_KEY }}
       - name: Publish Release
         env:
           NMCP_USERNAME: ${{ secrets.NMCP_USERNAME }}
