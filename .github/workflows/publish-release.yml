@@ -60,7 +60,7 @@ jobs:
           ./gradlew clean publishAllPublicationsToCentralPortal 
           -Dscala_binary_version=${{ matrix.scala }}
           -Dspark_binary_version=${{ matrix.spark }}
-          -Prelease
+          -Prelease --stacktrace
 
   create-github-release:
     if: ${{ startsWith(github.repository, 'clickhouse/') }}
