@@ -32,7 +32,7 @@ abstract class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTe
 
   import testImplicits._
 
-  private val db = "db_distribution_and_ordering"
+  private lazy val db = if (useSuiteLevelDatabase) testDatabaseName else "db_distribution_and_ordering"
   private val tbl = "tbl_distribution_and_ordering"
 
   private def write(): Unit = spark.range(3)
@@ -53,7 +53,9 @@ abstract class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTe
 
   override def beforeAll(): Unit = {
     super.beforeAll()
-    sql(s"CREATE DATABASE IF NOT EXISTS `$db`")
+    if (!useSuiteLevelDatabase) {
+      sql(s"CREATE DATABASE IF NOT EXISTS `$db`")
+    }
     runClickHouseSQL(
       s"""CREATE TABLE `$db`.`$tbl` (
          |  `id` String,
@@ -65,11 +67,16 @@ abstract class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTe
     )
   }
 
-  override def afterAll(): Unit = {
-    sql(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
-    sql(s"DROP DATABASE IF EXISTS `$db`")
-    super.afterAll()
-  }
+  override def afterAll(): Unit =
+    try
+      if (useSuiteLevelDatabase) {
+        dropTableWithRetry(db, tbl)
+      } else {
+        sql(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
+        sql(s"DROP DATABASE IF EXISTS `$db`")
+      }
+    finally
+      super.afterAll()
 
   override protected def beforeEach(): Unit = {
     sql(s"TRUNCATE TABLE `$db`.`$tbl`")

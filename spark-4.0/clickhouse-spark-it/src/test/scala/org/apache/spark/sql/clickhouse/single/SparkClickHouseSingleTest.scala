@@ -28,7 +28,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
 
   import testImplicits._
 
-  private lazy val testDatabaseName: String = {
+  protected lazy val testDatabaseName: String = {
     val timestamp = System.currentTimeMillis()
     val uuidPrefix = UUID.randomUUID().toString.split("-").head
     s"test_db_${timestamp}_${uuidPrefix}"
@@ -90,7 +90,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
       }
   }
 
-  private def dropTableWithRetry(db: String, tbl: String, maxRetries: Int = 5): Unit = {
+  protected def dropTableWithRetry(db: String, tbl: String, maxRetries: Int = 5): Unit = {
     var attempt = 0
     while (attempt < maxRetries)
       Try(runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl`")) match {

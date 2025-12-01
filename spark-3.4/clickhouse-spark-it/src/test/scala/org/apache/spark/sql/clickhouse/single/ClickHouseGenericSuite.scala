@@ -364,7 +364,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
       assert(spark.table(s"$db.$tbl").filter($"id" > 1).count === 1)
 
-      // infiniteLoop()
+    // infiniteLoop()
     }
   }
 
