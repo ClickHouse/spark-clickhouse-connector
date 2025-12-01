@@ -35,12 +35,15 @@ abstract class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTe
   private lazy val db = if (useSuiteLevelDatabase) testDatabaseName else "db_distribution_and_ordering"
   private val tbl = "tbl_distribution_and_ordering"
 
-  private def write(): Unit = spark.range(3)
-    .toDF("id")
-    .withColumn("id", $"id".cast(StringType))
-    .withColumn("load_date", lit(date("2022-05-27")))
-    .writeTo(s"$db.$tbl")
-    .append
+  private def write(): Unit = {
+    spark.range(3)
+      .toDF("id")
+      .withColumn("id", $"id".cast(StringType))
+      .withColumn("load_date", lit(date("2022-05-27")))
+      .writeTo(s"$db.$tbl")
+      .append
+    Thread.sleep(1000)
+  }
 
   private def check(): Unit = checkAnswer(
     spark.sql(s"SELECT id, load_date FROM $db.$tbl"),
