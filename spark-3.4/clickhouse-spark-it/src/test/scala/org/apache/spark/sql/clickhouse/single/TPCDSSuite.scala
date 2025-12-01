@@ -35,13 +35,16 @@ abstract class TPCDSSuite extends SparkClickHouseSingleTest {
     .set("spark.clickhouse.write.compression.codec", "none")
 
   test("TPC-DS tiny write and count(*)") {
-    withDatabase("tpcds_tiny") {
-      spark.sql("CREATE DATABASE tpcds_tiny")
+    val dbName = if (useSuiteLevelDatabase) testDatabaseName else "tpcds_tiny"
+    withDatabase(dbName) {
+      if (!useSuiteLevelDatabase) {
+        spark.sql(s"CREATE DATABASE $dbName")
+      }
 
       TPCDSTestUtils.tablePrimaryKeys.foreach { case (table, primaryKeys) =>
         spark.sql(
           s"""
-             |CREATE TABLE tpcds_tiny.$table
+             |CREATE TABLE $dbName.$table
              |USING clickhouse
              |TBLPROPERTIES (
              |    order_by = '${primaryKeys.mkString(",")}',
@@ -53,7 +56,7 @@ abstract class TPCDSSuite extends SparkClickHouseSingleTest {
       }
 
       TPCDSTestUtils.tablePrimaryKeys.keys.foreach { table =>
-        assert(spark.table(s"tpcds_tiny.$table").count === spark.table(s"tpcds.tiny.$table").count)
+        assert(spark.table(s"$dbName.$table").count === spark.table(s"tpcds.tiny.$table").count)
       }
     }
   }

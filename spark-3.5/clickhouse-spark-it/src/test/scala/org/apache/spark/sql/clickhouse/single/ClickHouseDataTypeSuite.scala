@@ -50,7 +50,7 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     )
     val db = "t_w_s_db"
     val tbl = "t_w_s_tbl"
-    withTable(db, tbl, schema) {
+    withTable(db, tbl, schema) { (actualDb: String, actualTbl: String) =>
       val tblSchema = spark.table(s"$db.$tbl").schema
       val respectNullable = SPARK_43390_ENABLED && !spark.conf.get(USE_NULLABLE_QUERY_SCHEMA)
       if (respectNullable) {
@@ -188,9 +188,9 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     if (!clickhouseVersion.isNewerOrEqualTo("23.3") || isCloud) {
       Thread.sleep(1000)
     }
-    withKVTable(db, tbl, valueColDef = valueColDef) {
-      prepare(db, tbl)
-      val df = spark.sql(s"SELECT key, value FROM $db.$tbl ORDER BY key")
+    withKVTable(db, tbl, valueColDef = valueColDef) { (actualDb: String, actualTbl: String) =>
+      prepare(actualDb, actualTbl)
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       validate(df)
     }
   }

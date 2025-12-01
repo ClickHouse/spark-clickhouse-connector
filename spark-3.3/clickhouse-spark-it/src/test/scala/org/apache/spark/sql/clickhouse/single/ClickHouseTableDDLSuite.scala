@@ -28,7 +28,7 @@ abstract class ClickHouseTableDDLSuite extends SparkClickHouseSingleTest {
   import testImplicits._
 
   test("clickhouse command runner") {
-    withTable("default.abc") {
+    withTable("default.abc") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL("CREATE TABLE default.abc(a UInt8) ENGINE=Memory()")
       checkAnswer(
         spark.sql("""DESC default.abc""").select($"col_name", $"data_type").limit(1),
