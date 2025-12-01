@@ -25,6 +25,9 @@ buildscript {
         if (project.hasProperty('enableSonar')) {
             classpath "org.sonarsource.scanner.gradle:sonarqube-gradle-plugin:4.4.1.3373"
         }
+        if (JavaVersion.current() >= JavaVersion.VERSION_11) {
+            classpath 'com.gradleup.nmcp:nmcp:0.0.8'
+        }
     }
 }
 
