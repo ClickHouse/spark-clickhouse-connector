@@ -61,24 +61,43 @@ case class WriteJobDescription(
     case _ => None
   }
 
-  def sparkSplits: Array[Transform] =
-    if (writeOptions.repartitionByPartition) {
-      ExprUtils.toSparkSplits(
-        shardingKeyIgnoreRand,
-        partitionKey,
-        functionRegistry
-      )
+  // For SharedMergeTree, filter out unsupported partition expressions while keeping supported ones.
+  private lazy val isSharedMergeTree: Boolean =
+    tableEngineSpec.engine_clause.toLowerCase.contains("sharedmergetree")
+
+  private def filterSupportedPartitionExprs(exprs: Option[List[Expr]]): Option[List[Expr]] = {
+    if (!isSharedMergeTree) return exprs
+    exprs.map(_.flatMap { expr =>
+      ExprUtils.toSparkTransformOpt(expr, functionRegistry).map(_ => expr)
+    })
+  }
+
+  def sparkSplits: Array[Transform] = {
+    val _partitionKey = if (writeOptions.repartitionByPartition) {
+      filterSupportedPartitionExprs(partitionKey)
     } else {
-      ExprUtils.toSparkSplits(
-        shardingKeyIgnoreRand,
-        None,
-        functionRegistry
-      )
+      None
     }
+    ExprUtils.toSparkSplits(
+      shardingKeyIgnoreRand,
+      _partitionKey,
+      functionRegistry
+    )
+  }
 
   def sparkSortOrders: Array[SortOrder] = {
-    val _partitionKey = if (writeOptions.localSortByPartition) partitionKey else None
+    val _partitionKey = if (writeOptions.localSortByPartition) {
+      filterSupportedPartitionExprs(partitionKey)
+    } else {
+      None
+    }
     val _sortingKey = if (writeOptions.localSortByKey) sortingKey else None
-    ExprUtils.toSparkSortOrders(shardingKeyIgnoreRand, _partitionKey, _sortingKey, cluster, functionRegistry)
+    ExprUtils.toSparkSortOrders(
+      shardingKeyIgnoreRand,
+      _partitionKey,
+      _sortingKey,
+      cluster,
+      functionRegistry
+    )
   }
 }
