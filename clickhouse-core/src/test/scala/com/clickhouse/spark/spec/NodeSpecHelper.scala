@@ -16,6 +16,8 @@ package com.clickhouse.spark.spec
 
 trait NodeSpecHelper {
 
+  val cluster_name = "cluster-s2r2"
+
   val node_s1r1: NodeSpec = NodeSpec("s1r1")
   val node_s1r2: NodeSpec = NodeSpec("s1r2")
   val node_s2r1: NodeSpec = NodeSpec("s2r1")
@@ -40,7 +42,7 @@ trait NodeSpecHelper {
 
   val cluster: ClusterSpec =
     ClusterSpec(
-      name = "cluster-s2r2",
+      name = cluster_name,
       shards = Array(shard_s2, shard_s1) // unsorted
     )
 }
