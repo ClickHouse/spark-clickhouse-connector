@@ -14,6 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
+import com.clickhouse.spark.base.ClickHouseRetryMixIn
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.test.SharedSparkSession
 import org.apache.spark.sql.{DataFrame, QueryTest}
@@ -50,6 +51,15 @@ trait SparkTest extends QueryTest with SharedSparkSession {
 
   def runClickHouseSQL(sql: String, options: Map[String, String] = cmdRunnerOptions): DataFrame =
     spark.executeCommand(classOf[ClickHouseCommandRunner].getName, sql, options)
+
+  protected def createDatabaseWithRetry(db: String, maxRetries: Int = 5): Unit =
+    ClickHouseRetryMixIn.createDatabaseWithRetry(db, runClickHouseSQL(_), maxRetries)
+
+  protected def dropDatabaseWithRetry(db: String, maxRetries: Int = 5): Unit =
+    ClickHouseRetryMixIn.dropDatabaseWithRetry(db, runClickHouseSQL(_), maxRetries)
+
+  protected def dropTableWithRetry(db: String, tbl: String, maxRetries: Int = 5): Unit =
+    ClickHouseRetryMixIn.dropTableWithRetry(db, tbl, runClickHouseSQL(_), maxRetries)
 
   def autoCleanupTable(
     database: String,

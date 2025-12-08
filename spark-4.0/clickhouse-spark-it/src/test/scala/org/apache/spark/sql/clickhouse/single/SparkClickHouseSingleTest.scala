@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse.single
 
-import com.clickhouse.spark.base.ClickHouseProvider
+import com.clickhouse.spark.base.{ClickHouseProvider, ClickHouseSingleMixIn, RetryUtils}
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.clickhouse.SparkTest
 import org.apache.spark.sql.functions.month
@@ -22,7 +22,6 @@ import org.apache.spark.sql.types.StructType
 import org.scalatest.BeforeAndAfterAll
 
 import java.util.UUID
-import scala.util.{Failure, Success, Try}
 
 trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with BeforeAndAfterAll {
 
@@ -51,53 +50,13 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
     finally
       super.afterAll()
 
-  private def retryOnReplicationError[T](
-    operation: => T,
-    operationName: String,
-    maxRetries: Int = 5,
-    failSilently: Boolean = false
-  ): T = {
-    var attempt = 0
-    while (attempt < maxRetries)
-      Try(operation) match {
-        case Success(result) => return result
-        case Failure(e) if e.getMessage.contains("Code: 341") && attempt < maxRetries - 1 =>
-          // Code 341: UNFINISHED - replication in progress, retry
-          attempt += 1
-          Thread.sleep(Math.pow(2, attempt).toLong * 1000)
-        case Failure(e) if failSilently && attempt == maxRetries - 1 =>
-          System.err.println(s"Warning: $operationName failed after $maxRetries attempts: ${e.getMessage}")
-          return null.asInstanceOf[T]
-        case Failure(e) =>
-          throw new RuntimeException(s"$operationName failed after $attempt attempts", e)
-      }
-    throw new RuntimeException(s"$operationName exhausted $maxRetries retries")
-  }
-
-  private def createDatabaseWithRetry(db: String, maxRetries: Int = 5): Unit = {
-    retryOnReplicationError(
-      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS `$db`"),
-      s"Create database $db",
-      maxRetries
-    )
+  override protected def createDatabaseWithRetry(db: String, maxRetries: Int = 5): Unit = {
+    super.createDatabaseWithRetry(db, maxRetries)
     if (isCloud) Thread.sleep(2000)
   }
 
-  private def dropDatabaseWithRetry(db: String, maxRetries: Int = 5): Unit =
-    retryOnReplicationError(
-      runClickHouseSQL(s"DROP DATABASE IF EXISTS `$db`"),
-      s"Drop database $db",
-      maxRetries,
-      failSilently = true
-    )
-
-  protected def dropTableWithRetry(db: String, tbl: String, maxRetries: Int = 5): Unit = {
-    retryOnReplicationError(
-      runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl`"),
-      s"Drop table $db.$tbl",
-      maxRetries,
-      failSilently = true
-    )
+  override protected def dropTableWithRetry(db: String, tbl: String, maxRetries: Int = 5): Unit = {
+    super.dropTableWithRetry(db, tbl, maxRetries)
     if (isCloud) Thread.sleep(500)
   }
 
