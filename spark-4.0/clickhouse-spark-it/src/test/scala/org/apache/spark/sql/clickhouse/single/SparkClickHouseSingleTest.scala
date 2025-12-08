@@ -14,15 +14,51 @@
 
 package org.apache.spark.sql.clickhouse.single
 
-import com.clickhouse.spark.base.ClickHouseProvider
+import com.clickhouse.spark.base.{ClickHouseProvider, ClickHouseSingleMixIn, RetryUtils}
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.clickhouse.SparkTest
 import org.apache.spark.sql.functions.month
 import org.apache.spark.sql.types.StructType
+import org.scalatest.BeforeAndAfterAll
 
-trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider {
+import java.util.UUID
+
+trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with BeforeAndAfterAll {
 
   import testImplicits._
+
+  protected lazy val testDatabaseName: String = {
+    val timestamp = System.currentTimeMillis()
+    val uuidPrefix = UUID.randomUUID().toString.split("-").head
+    s"test_db_${timestamp}_${uuidPrefix}"
+  }
+
+  protected def useSuiteLevelDatabase: Boolean = isCloud
+
+  override def beforeAll(): Unit = {
+    super.beforeAll()
+    if (useSuiteLevelDatabase) {
+      createDatabaseWithRetry(testDatabaseName)
+    }
+  }
+
+  override def afterAll(): Unit =
+    try
+      if (useSuiteLevelDatabase) {
+        dropDatabaseWithRetry(testDatabaseName)
+      }
+    finally
+      super.afterAll()
+
+  override protected def createDatabaseWithRetry(db: String, maxRetries: Int = 5): Unit = {
+    super.createDatabaseWithRetry(db, maxRetries)
+    if (isCloud) Thread.sleep(2000)
+  }
+
+  override protected def dropTableWithRetry(db: String, tbl: String, maxRetries: Int = 5): Unit = {
+    super.dropTableWithRetry(db, tbl, maxRetries)
+    if (isCloud) Thread.sleep(500)
+  }
 
   override protected def sparkConf: SparkConf = super.sparkConf
     .setMaster("local[2]")
@@ -66,12 +102,15 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider {
     engine: String = "MergeTree()",
     sortKeys: Seq[String] = "id" :: Nil,
     partKeys: Seq[String] = Seq.empty
-  )(f: => Unit): Unit =
+  )(f: => Unit): Unit = {
+    val actualDb = if (useSuiteLevelDatabase) testDatabaseName else db
     try {
-      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
+      if (!useSuiteLevelDatabase) {
+        runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS `$actualDb`")
+      }
 
       spark.sql(
-        s"""CREATE TABLE $db.$tbl (
+        s"""CREATE TABLE `$actualDb`.`$tbl` (
            |  ${schema.fields.map(_.toDDL).mkString(",\n  ")}
            |) USING ClickHouse
            |${if (partKeys.isEmpty) "" else partKeys.mkString("PARTITIONED BY(", ", ", ")")}
@@ -82,45 +121,64 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider {
            |""".stripMargin
       )
 
+      if (isCloud) Thread.sleep(1000)
+
       f
-    } finally {
-      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
-      runClickHouseSQL(s"DROP DATABASE IF EXISTS $db")
-    }
+    } finally
+      if (useSuiteLevelDatabase) {
+        dropTableWithRetry(actualDb, tbl)
+      } else {
+        runClickHouseSQL(s"DROP TABLE IF EXISTS `$actualDb`.`$tbl`")
+        runClickHouseSQL(s"DROP DATABASE IF EXISTS `$actualDb`")
+      }
+  }
 
   def withKVTable(
     db: String,
     tbl: String,
     keyColDef: String = "Int32",
     valueColDef: String
-  )(f: => Unit): Unit =
+  )(f: => Unit): Unit = {
+    val actualDb = if (useSuiteLevelDatabase) testDatabaseName else db
     try {
-      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
+      if (!useSuiteLevelDatabase) {
+        runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS `$actualDb`")
+      }
       runClickHouseSQL(
-        s"""CREATE TABLE $db.$tbl (
+        s"""CREATE TABLE `$actualDb`.`$tbl` (
            |  key   $keyColDef,
            |  value $valueColDef
            |) ENGINE = MergeTree()
            |ORDER BY key
            |""".stripMargin
       )
+
+      if (isCloud) Thread.sleep(1000)
+
       f
-    } finally {
-      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
-      runClickHouseSQL(s"DROP DATABASE IF EXISTS $db")
-    }
+    } finally
+      if (useSuiteLevelDatabase) {
+        dropTableWithRetry(actualDb, tbl)
+      } else {
+        runClickHouseSQL(s"DROP TABLE IF EXISTS `$actualDb`.`$tbl`")
+        runClickHouseSQL(s"DROP DATABASE IF EXISTS `$actualDb`")
+      }
+  }
 
   def withSimpleTable(
     db: String,
     tbl: String,
     writeData: Boolean = false
-  )(f: => Unit): Unit =
+  )(f: => Unit): Unit = {
+    val actualDb = if (useSuiteLevelDatabase) testDatabaseName else db
     try {
-      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
+      if (!useSuiteLevelDatabase) {
+        runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS `$actualDb`")
+      }
 
       // SPARK-33779: Spark 3.3 only support IdentityTransform
       spark.sql(
-        s"""CREATE TABLE $db.$tbl (
+        s"""CREATE TABLE `$actualDb`.`$tbl` (
            |  id          BIGINT    NOT NULL COMMENT 'sort key',
            |  value       STRING,
            |  create_time TIMESTAMP NOT NULL,
@@ -134,8 +192,10 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider {
            |""".stripMargin
       )
 
+      if (isCloud) Thread.sleep(1000)
+
       if (writeData) {
-        val tblSchema = spark.table(s"$db.$tbl").schema
+        val tblSchema = spark.table(s"$actualDb.$tbl").schema
         val dataDF = spark.createDataFrame(Seq(
           (1L, "1", timestamp("2021-01-01T10:10:10Z")),
           (2L, "2", timestamp("2022-02-02T10:10:10Z"))
@@ -144,13 +204,17 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider {
           .select($"id", $"value", $"create_time", $"m")
 
         spark.createDataFrame(dataDF.rdd, tblSchema)
-          .writeTo(s"$db.$tbl")
+          .writeTo(s"$actualDb.$tbl")
           .append
       }
 
       f
-    } finally {
-      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
-      runClickHouseSQL(s"DROP DATABASE IF EXISTS $db")
-    }
+    } finally
+      if (useSuiteLevelDatabase) {
+        dropTableWithRetry(actualDb, tbl)
+      } else {
+        runClickHouseSQL(s"DROP TABLE IF EXISTS `$actualDb`.`$tbl`")
+        runClickHouseSQL(s"DROP DATABASE IF EXISTS `$actualDb`")
+      }
+  }
 }

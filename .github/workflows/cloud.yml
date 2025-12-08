@@ -31,7 +31,6 @@ jobs:
     # Only run on main repository where secrets are available
     if: github.repository == 'ClickHouse/spark-clickhouse-connector'
     strategy:
-      max-parallel: 1
       fail-fast: false
       matrix:
         spark: [ '3.3', '3.4', '3.5', '4.0' ]
