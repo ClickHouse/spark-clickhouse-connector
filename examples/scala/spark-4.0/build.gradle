@@ -21,12 +21,12 @@ dependencies {
     implementation "org.scala-lang:scala-library:${scala_version}"
 
     // Spark APIs are needed at runtime when running from IDE/Gradle
-    implementation "org.apache.spark:spark-sql_${scala_binary_version}:${spark_40_version}"
-    implementation "org.apache.spark:spark-streaming_${scala_binary_version}:${spark_40_version}"
+    implementation "org.apache.spark:spark-sql_${scala_binary_version}:${spark_version}"
+    implementation "org.apache.spark:spark-streaming_${scala_binary_version}:${spark_version}"
 
     // Use connector project classes, and include shaded runtime on classpath
-    implementation project(":clickhouse-spark-4.0_${scala_binary_version}")
-    runtimeOnly project(":clickhouse-spark-runtime-4.0_${scala_binary_version}")
+    implementation project(":clickhouse-spark-${spark_binary_version}_${scala_binary_version}")
+    runtimeOnly project(":clickhouse-spark-runtime-${spark_binary_version}_${scala_binary_version}")
 }
 
 sourceCompatibility = JavaVersion.VERSION_17
@@ -44,7 +44,7 @@ tasks.register("runStreaming", JavaExec) {
     description = "Run StreamingRateExample"
     classpath = sourceSets.main.runtimeClasspath
     mainClass = "examples.StreamingRateExample"
-    jvmArgs "-Dspark_binary_version=4.0", "-Dscala_binary_version=2.13",
+    jvmArgs "-Dspark_binary_version=${spark_binary_version}", "-Dscala_binary_version=${scala_binary_version}",
             "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
 }
 
@@ -53,6 +53,6 @@ tasks.register("runBatch", JavaExec) {
     description = "Run SimpleBatchExample"
     classpath = sourceSets.main.runtimeClasspath
     mainClass = "examples.SimpleBatchExample"
-    jvmArgs "-Dspark_binary_version=4.0", "-Dscala_binary_version=2.13",
+    jvmArgs "-Dspark_binary_version=${spark_binary_version}", "-Dscala_binary_version=${scala_binary_version}",
             "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
 }
