@@ -173,9 +173,9 @@ object ExprUtils extends SQLConfHelper with Serializable {
       case Success(t: Transform) => Some(t)
       case Success(_) => None
       case Failure(_) if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) => None
-      case Failure(rethrow) => throw new AnalysisException(
-          errorClass = "UNSUPPORTED_FEATURE.TRANSFORM_EXPRESSION",
-          messageParameters = Map("transform" -> rethrow.getMessage),
+      case Failure(rethrow) =>
+        throw CHClientException(
+          s"Unsupported transform expression: ${rethrow.getMessage}",
           cause = Some(rethrow)
         )
     }
