@@ -225,7 +225,7 @@ class ClickHouseCatalog extends TableCatalog
     val sampleClause = props.get(s"${keyPrefix}sample_by").map(p => s"SAMPLE BY ($p)").getOrElse("")
 
     val fieldsClause = SchemaUtils
-      .toClickHouseSchema(schema)
+      .toClickHouseSchema(schema, props.toMap)
       .map { case (fieldName, ckType, comment) => s"${quoted(fieldName)} $ckType$comment" }
       .mkString(",\n ")
 
