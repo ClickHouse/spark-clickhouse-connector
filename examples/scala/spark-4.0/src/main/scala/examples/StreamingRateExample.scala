@@ -53,6 +53,7 @@ object StreamingRateExample {
       .config("spark.sql.catalog.clickhouse.user", user)
       .config("spark.sql.catalog.clickhouse.password", password)
       .config("spark.sql.catalog.clickhouse.database", database)
+      .config("spark.sql.catalog.clickhouse.option.ssl", (protocol == "https").toString)
       .config(
         "spark.executor.extraJavaOptions",
         "--add-opens=java.base/java.nio=ALL-UNNAMED"
