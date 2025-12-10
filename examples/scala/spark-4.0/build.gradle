@@ -20,7 +20,7 @@ plugins {
 dependencies {
     implementation "org.scala-lang:scala-library:${scala_version}"
 
-    // Spark APIs are needed at runtime when running from IDE/Gradle
+    // Note: For production Spark applications, use 'compileOnly' instead of 'implementation'
     implementation "org.apache.spark:spark-sql_${scala_binary_version}:${spark_version}"
     implementation "org.apache.spark:spark-streaming_${scala_binary_version}:${spark_version}"
 

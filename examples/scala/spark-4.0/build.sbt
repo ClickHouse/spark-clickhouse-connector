@@ -21,6 +21,7 @@ scalaVersion := "2.13.16"
 val sparkVersion = "4.0.1"
 val clickhouseConnectorVersion = "0.9.0"
 
+// Note: For production Spark applications, add % "provided" to Spark dependencies
 libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-sql" % sparkVersion,
   "org.apache.spark" %% "spark-streaming" % sparkVersion,
