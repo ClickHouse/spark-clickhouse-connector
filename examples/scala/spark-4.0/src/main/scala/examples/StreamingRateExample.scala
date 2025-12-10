@@ -35,20 +35,27 @@ import org.apache.spark.sql.types._
 object StreamingRateExample {
 
   def main(args: Array[String]): Unit = {
+    // Read connection parameters from environment or use defaults
+    val host = sys.env.getOrElse("CH_HOST", "localhost")
+    val protocol = sys.env.getOrElse("CH_PROTOCOL", "http")
+    val port = sys.env.getOrElse("CH_PORT", "8123")
+    val user = sys.env.getOrElse("CH_USER", "default")
+    val password = sys.env.getOrElse("CH_PASSWORD", "")
+    val database = sys.env.getOrElse("CH_DATABASE", "default")
+
     val spark = SparkSession.builder()
       .appName("ClickHouse Streaming Rate Example")
       .master("local[*]")
       .config("spark.sql.catalog.clickhouse", "com.clickhouse.spark.ClickHouseCatalog")
-      .config("spark.sql.catalog.clickhouse.host", "localhost")
-      .config("spark.sql.catalog.clickhouse.protocol", "http")
-      .config("spark.sql.catalog.clickhouse.http_port", "8123")
-      .config("spark.sql.catalog.clickhouse.user", "default")
-      .config("spark.sql.catalog.clickhouse.password", "")
-      .config("spark.sql.catalog.clickhouse.database", "default")
-      .config("spark.sql.catalog.clickhouse.option.ssl", "false")
+      .config("spark.sql.catalog.clickhouse.host", host)
+      .config("spark.sql.catalog.clickhouse.protocol", protocol)
+      .config("spark.sql.catalog.clickhouse.http_port", port)
+      .config("spark.sql.catalog.clickhouse.user", user)
+      .config("spark.sql.catalog.clickhouse.password", password)
+      .config("spark.sql.catalog.clickhouse.database", database)
       .config(
         "spark.executor.extraJavaOptions",
-        "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
+        "--add-opens=java.base/java.nio=ALL-UNNAMED"
       )
       .getOrCreate()
 
@@ -56,6 +63,7 @@ object StreamingRateExample {
 
     println("=" * 80)
     println("Starting ClickHouse Streaming Rate Example")
+    println(s"Connecting to: $protocol://$host:$port")
     println("=" * 80)
 
     // Create the target table in ClickHouse

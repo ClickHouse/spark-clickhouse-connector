@@ -45,7 +45,7 @@ tasks.register("runStreaming", JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = "examples.StreamingRateExample"
     jvmArgs "-Dspark_binary_version=${spark_binary_version}", "-Dscala_binary_version=${scala_binary_version}",
-            "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
+            "--add-opens=java.base/java.nio=ALL-UNNAMED"
 }
 
 tasks.register("runBatch", JavaExec) {
@@ -54,5 +54,5 @@ tasks.register("runBatch", JavaExec) {
     classpath = sourceSets.main.runtimeClasspath
     mainClass = "examples.SimpleBatchExample"
     jvmArgs "-Dspark_binary_version=${spark_binary_version}", "-Dscala_binary_version=${scala_binary_version}",
-            "--add-opens=java.base/java.nio=org.apache.arrow.memory.core,ALL-UNNAMED"
+            "--add-opens=java.base/java.nio=ALL-UNNAMED"
 }

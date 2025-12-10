@@ -16,20 +16,30 @@ name := "clickhouse-spark-examples"
 
 version := "1.0"
 
-scalaVersion := "2.13.8"
+scalaVersion := "2.13.16"
 
 val sparkVersion = "4.0.1"
+val clickhouseConnectorVersion = "0.9.0"
 
 libraryDependencies ++= Seq(
-  "org.apache.spark" %% "spark-sql" % sparkVersion % "provided",
-  "org.apache.spark" %% "spark-streaming" % sparkVersion % "provided"
+  "org.apache.spark" %% "spark-sql" % sparkVersion,
+  "org.apache.spark" %% "spark-streaming" % sparkVersion,
+  "org.scala-lang" % "scala-reflect" % scalaVersion.value,
+  "com.clickhouse.spark" %% "clickhouse-spark-runtime-4.0" % clickhouseConnectorVersion
 )
 
-// For local development, include the connector from the parent project
-unmanagedClasspath in Compile ++= {
-  val base = baseDirectory.value / ".." / "clickhouse-spark" / "build" / "classes"
-  Seq(
-    Attributed.blank(base / "scala" / "main"),
-    Attributed.blank(base / "java" / "main")
-  )
-}
+// For local debugging: uncomment to use locally built connector JAR instead of Maven
+// This allows you to debug connector code changes without publishing to Maven
+// unmanagedJars in Compile += {
+//   val runtimeJar =
+//     baseDirectory.value / ".." / ".." / ".." / "spark-4.0" / "clickhouse-spark-runtime" / "build" / "libs" / "clickhouse-spark-runtime-4.0_2.13-0.9.0-SNAPSHOT.jar"
+//   Attributed.blank(runtimeJar)
+// }
+
+// Fork the JVM for run to avoid classpath issues
+fork := true
+
+// Add JVM options for Arrow
+javaOptions ++= Seq(
+  "--add-opens=java.base/java.nio=ALL-UNNAMED"
+)

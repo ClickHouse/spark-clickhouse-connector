@@ -13,11 +13,16 @@ This directory contains example applications for debugging and testing the Click
      clickhouse/clickhouse-server
    ```
 
-2. **Build the Connector**
+2. **Build the Connector** (optional - only needed for local debugging)
+   
+   By default, examples use the connector from Maven. To debug connector code changes:
+   
    ```bash
-   cd /Users/shimonsteinitz/Projects/spark-clickhouse-connector
-   ./gradlew -Dspark_binary_version=4.0 -Dscala_binary_version=2.13 :clickhouse-spark-4.0_2.13:build
+   # From project root - build the local connector JAR
+   ./gradlew :clickhouse-spark-runtime-4.0_2.13:shadowJar -Dspark_binary_version=4.0 -Dscala_binary_version=2.13
    ```
+   
+   Then uncomment the `unmanagedJars` section in `build.sbt` to use the local JAR.
 
 ## Running Examples in IDE (for Debugging)
 
@@ -42,7 +47,71 @@ This directory contains example applications for debugging and testing the Click
 
 4. **Run in Debug Mode** and step through the connector code
 
-## Examples
+## Running Examples
+
+### Option 1: Using Gradle (Recommended)
+
+**SimpleBatchExample:**
+```bash
+# From project root
+CH_PORT=8123 ./gradlew :examples-scala-spark-4.0:runBatch \
+  -Dspark_binary_version=4.0 -Dscala_binary_version=2.13
+```
+
+**StreamingRateExample:**
+```bash
+# From project root
+CH_PORT=8123 ./gradlew :examples-scala-spark-4.0:runStreaming \
+  -Dspark_binary_version=4.0 -Dscala_binary_version=2.13
+```
+
+**Environment Variables:**
+- `CH_HOST` - ClickHouse host (default: localhost)
+- `CH_PORT` - ClickHouse HTTP port (default: 8123)
+- `CH_PROTOCOL` - http or https (default: http)
+- `CH_USER` - ClickHouse user (default: default)
+- `CH_PASSWORD` - ClickHouse password (default: empty)
+- `CH_DATABASE` - ClickHouse database (default: default)
+
+### Option 2: Using sbt
+
+**Note:** sbt will automatically download the connector from Maven Central (version `0.9.0`).
+
+**SimpleBatchExample:**
+```bash
+# From examples/scala/spark-4.0 directory
+CH_PORT=8123 sbt "runMain examples.SimpleBatchExample"
+```
+
+**StreamingRateExample:**
+```bash
+# From examples/scala/spark-4.0 directory
+CH_PORT=8123 sbt "runMain examples.StreamingRateExample"
+```
+
+**For local debugging:** Uncomment the `unmanagedJars` section in `build.sbt` to use a locally built connector JAR instead of Maven.
+
+### Option 3: Using spark-submit
+
+**SimpleBatchExample:**
+```bash
+spark-submit \
+  --class examples.SimpleBatchExample \
+  --master local[*] \
+  --jars /path/to/clickhouse-spark-runtime-4.0_2.13-0.9.0-SNAPSHOT.jar \
+  /path/to/examples-scala-spark-4.0.jar
+```
+
+**StreamingRateExample:**
+```bash
+spark-submit \
+  --class examples.StreamingRateExample \
+  --master local[*] \
+  --jars /path/to/clickhouse-spark-runtime-4.0_2.13-0.9.0-SNAPSHOT.jar \
+  /path/to/examples-scala-spark-4.0.jar
+```
+
+## Examples Description
 
 ### 1. SimpleBatchExample
 
@@ -57,15 +126,6 @@ A straightforward batch processing example that:
 - Read operations
 - Schema inference
 
-**Run**:
-```bash
-spark-submit \
-  --class examples.SimpleBatchExample \
-  --master local[*] \
-  --jars clickhouse-spark-runtime-4.0_2.13.jar \
-  examples/SimpleBatchExample.scala
-```
-
 ### 2. StreamingRateExample
 
 A streaming application that:
@@ -79,15 +139,6 @@ A streaming application that:
 - Micro-batch processing
 - Continuous data ingestion
 - Performance under load
-
-**Run**:
-```bash
-spark-submit \
-  --class examples.StreamingRateExample \
-  --master local[*] \
-  --jars clickhouse-spark-runtime-4.0_2.13.jar \
-  examples/StreamingRateExample.scala
-```
 
 **Monitor the stream**:
 ```sql
