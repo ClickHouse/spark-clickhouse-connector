@@ -20,7 +20,8 @@ import com.dimafeng.testcontainers.{ForAllTestContainer, JdbcDatabaseContainer, 
 import org.scalatest.BeforeAndAfterAll
 import org.scalatest.funsuite.AnyFunSuite
 import org.slf4j.LoggerFactory
-import org.testcontainers.containers.ClickHouseContainer
+import org.testcontainers.clickhouse.ClickHouseContainer
+import org.testcontainers.containers.BindMode
 import org.testcontainers.utility.{DockerImageName, MountableFile}
 import java.nio.file.{Path, Paths}
 import scala.collection.JavaConverters._
@@ -61,23 +62,26 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with BeforeAndAfterAll with ForA
 
   override val container: SingleContainer[ClickHouseContainer] with JdbcDatabaseContainer =
     new SingleContainer[ClickHouseContainer] with JdbcDatabaseContainer {
-      override val container: ClickHouseContainer = new ClickHouseContainer(
-        DockerImageName.parse(CLICKHOUSE_IMAGE).asCompatibleSubstituteFor("clickhouse/clickhouse-server")
-      ) {
-        // TODO: remove this workaround after https://github.com/testcontainers/testcontainers-java/pull/5666
-        override def getDriverClassName: String = "com.clickhouse.jdbc.ClickHouseDriver"
-      }
-        .withEnv("CLICKHOUSE_USER", CLICKHOUSE_USER)
-        .withEnv("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)
-        .withEnv("CLICKHOUSE_DB", CLICKHOUSE_DB)
-        .withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")
-        .withExposedPorts(CLICKHOUSE_HTTP_PORT, CLICKHOUSE_TPC_PORT)
-        .withFileSystemBind(s"${sys.env("ROOT_PROJECT_DIR")}/log/clickhouse-server", "/var/log/clickhouse-server")
-        .withCopyFileToContainer(
-          MountableFile.forClasspathResource("clickhouse-single/users.xml"),
-          "/etc/clickhouse-server/users.xml"
+      override val container: ClickHouseContainer = {
+        val logPath = rootProjectDir.resolve("log/clickhouse-server").toString
+        val c = new ClickHouseContainer(
+          DockerImageName.parse(CLICKHOUSE_IMAGE).asCompatibleSubstituteFor("clickhouse/clickhouse-server")
         )
-        .asInstanceOf[ClickHouseContainer]
+        // Configure with empty password to match users.xml
+        c.withUsername(CLICKHOUSE_USER)
+        c.withPassword(CLICKHOUSE_PASSWORD)
+        if (!CLICKHOUSE_DB.isEmpty) {
+          c.withDatabaseName(CLICKHOUSE_DB)
+        }
+        c.withEnv("CLICKHOUSE_DEFAULT_ACCESS_MANAGEMENT", "1")
+          .withExposedPorts(CLICKHOUSE_HTTP_PORT, CLICKHOUSE_TPC_PORT)
+          .withFileSystemBind(logPath, "/var/log/clickhouse-server", BindMode.READ_WRITE)
+          .withCopyFileToContainer(
+            MountableFile.forClasspathResource("clickhouse-single/users.xml"),
+            "/etc/clickhouse-server/users.d/users.xml"
+          )
+        c
+      }
     }
 
   override def clickhouseHost: String = container.host
