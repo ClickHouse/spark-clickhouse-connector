@@ -17,24 +17,58 @@ package com.clickhouse.spark.write
 import com.clickhouse.spark.{BytesWrittenMetric, RecordsWrittenMetric, SerializeTimeMetric, WriteTimeMetric}
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.write.format.{ClickHouseArrowStreamWriter, ClickHouseJsonEachRowWriter}
+import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.distributions.{Distribution, Distributions}
 import org.apache.spark.sql.connector.expressions.SortOrder
 import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.write._
+import org.apache.spark.sql.sources.Filter
 import com.clickhouse.spark._
+import com.clickhouse.spark.spec.DistributedEngineSpec
+import org.apache.spark.sql.sources.AlwaysTrue
 
-class ClickHouseWriteBuilder(writeJob: WriteJobDescription) extends WriteBuilder {
+class ClickHouseWriteBuilder(writeJob: WriteJobDescription)
+    extends WriteBuilder
+    with SupportsOverwrite
+    with Logging {
 
-  override def build(): Write = new ClickHouseWrite(writeJob)
+  private var isOverwrite: Boolean = false
+  private var overwriteFilters: Array[Filter] = Array.empty
+
+  override def build(): Write = new ClickHouseWrite(writeJob, isOverwrite, overwriteFilters)
+
+  override def overwrite(filters: Array[Filter]): WriteBuilder = {
+    log.info(s"Overwrite mode for table ${writeJob.targetDatabase(false)}.${writeJob.targetTable(false)}")
+    isOverwrite = true
+    overwriteFilters = filters
+
+    // Check if we have actual partition filters (not AlwaysTrue or empty)
+    val hasPartitionFilters = filters.nonEmpty && !filters.forall {
+      case _: AlwaysTrue => true
+      case _ => false
+    }
+
+    if (hasPartitionFilters) {
+      log.warn(
+        s"Conditional overwrite with partition filters is not fully supported, filters: ${filters.mkString(", ")}"
+      )
+    } else {
+      log.info("Full table overwrite (no partition filters)")
+    }
+    this
+  }
 }
 
 class ClickHouseWrite(
-  writeJob: WriteJobDescription
+  writeJob: WriteJobDescription,
+  isOverwrite: Boolean = false,
+  overwriteFilters: Array[Filter] = Array.empty
 ) extends Write
     with RequiresDistributionAndOrdering
-    with SQLConfHelper {
+    with SQLConfHelper
+    with Logging {
 
   override def distributionStrictlyRequired: Boolean = writeJob.writeOptions.repartitionStrictly
 
@@ -47,7 +81,7 @@ class ClickHouseWrite(
 
   override def requiredOrdering(): Array[SortOrder] = writeJob.sparkSortOrders
 
-  override def toBatch: BatchWrite = new ClickHouseBatchWrite(writeJob)
+  override def toBatch: BatchWrite = new ClickHouseBatchWrite(writeJob, isOverwrite)
 
   override def supportedCustomMetrics(): Array[CustomMetric] = Array(
     RecordsWrittenMetric(),
@@ -58,10 +92,37 @@ class ClickHouseWrite(
 }
 
 class ClickHouseBatchWrite(
-  writeJob: WriteJobDescription
-) extends BatchWrite with DataWriterFactory {
+  writeJob: WriteJobDescription,
+  isOverwrite: Boolean = false
+) extends BatchWrite with DataWriterFactory with Logging {
 
-  override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory = this
+  override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory = {
+    // Truncate table before writing if overwrite mode is enabled
+    if (isOverwrite) {
+      truncateTable()
+    }
+    this
+  }
+
+  private def truncateTable(): Unit = {
+    import com.clickhouse.spark.client.NodeClient
+    import com.clickhouse.spark.Utils
+
+    log.info(s"Truncating table ${writeJob.targetDatabase(false)}.${writeJob.targetTable(false)} for overwrite mode")
+
+    Utils.tryWithResource(NodeClient(writeJob.node)) { implicit nodeClient =>
+      writeJob.tableEngineSpec match {
+        case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
+          val sql = s"TRUNCATE TABLE IF EXISTS `$local_db`.`$local_table` ON CLUSTER `$cluster`"
+          log.info(s"Executing: $sql")
+          nodeClient.syncQueryAndCheckOutputJSONEachRow(sql)
+        case _ =>
+          val sql = s"TRUNCATE TABLE IF EXISTS `${writeJob.targetDatabase(false)}`.`${writeJob.targetTable(false)}`"
+          log.info(s"Executing: $sql")
+          nodeClient.syncQueryAndCheckOutputJSONEachRow(sql)
+      }
+    }
+  }
 
   override def commit(messages: Array[WriterCommitMessage]): Unit = {}
 

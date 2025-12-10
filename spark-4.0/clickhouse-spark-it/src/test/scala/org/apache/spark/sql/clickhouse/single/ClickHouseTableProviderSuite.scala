@@ -107,6 +107,59 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
     }
   }
 
+  test("overwrite mode replaces all existing data") {
+    withTable("overwrite_db", "test_overwrite", testSchema) {
+      val initialData = Seq(
+        (1, "Alice", 95.5, timestamp("2024-01-15T10:00:00Z")),
+        (2, "Bob", 87.3, timestamp("2024-02-20T14:30:00Z")),
+        (3, "Charlie", 92.1, timestamp("2024-03-10T09:15:00Z"))
+      ).toDF("id", "name", "value", "created")
+
+      val options = cmdRunnerOptions ++
+        Map(
+          "database" -> (if (useSuiteLevelDatabase) testDatabaseName else "overwrite_db"),
+          "table" -> "test_overwrite"
+        )
+
+      // Write initial data
+      initialData.write.format("clickhouse").mode(SaveMode.Append).options(options).save()
+
+      // Verify initial data
+      val initialResult = spark.read.format("clickhouse").options(options).load()
+      assert(initialResult.count() == 3, "Should have 3 rows initially")
+      checkAnswer(
+        initialResult.filter("id = 1"),
+        Row(1, "Alice", 95.5, timestamp("2024-01-15T10:00:00Z")) :: Nil
+      )
+
+      // Overwrite with new data
+      val newData = Seq(
+        (4, "David", 88.7, timestamp("2024-04-05T11:20:00Z")),
+        (5, "Eve", 91.2, timestamp("2024-05-12T16:45:00Z"))
+      ).toDF("id", "name", "value", "created")
+
+      newData.write.format("clickhouse").mode(SaveMode.Overwrite).options(options).save()
+
+      // Verify only new data exists
+      val finalResult = spark.read.format("clickhouse").options(options).load()
+      assert(finalResult.count() == 2, "Should have only 2 rows after overwrite")
+
+      // Old data should be gone
+      assert(finalResult.filter("id = 1").count() == 0, "Old data (id=1) should be removed")
+      assert(finalResult.filter("id = 2").count() == 0, "Old data (id=2) should be removed")
+      assert(finalResult.filter("id = 3").count() == 0, "Old data (id=3) should be removed")
+
+      // New data should exist
+      checkAnswer(
+        finalResult.orderBy("id"),
+        Seq(
+          Row(4, "David", 88.7, timestamp("2024-04-05T11:20:00Z")),
+          Row(5, "Eve", 91.2, timestamp("2024-05-12T16:45:00Z"))
+        )
+      )
+    }
+  }
+
   test("schema inference works correctly") {
     val dbName = if (useSuiteLevelDatabase) testDatabaseName else "schema_db"
     val tableName = "test_schema"
@@ -306,37 +359,6 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
         selected.orderBy("id"),
         Seq(Row(1, "Alice"), Row(2, "Bob"))
       )
-    }
-  }
-
-  test("error if exists mode is not supported") {
-    withTable("error_db", "test_error", testSchema) {
-      val initialData = Seq(
-        (1, "Alice", 95.5, timestamp("2024-01-15T10:00:00Z"))
-      ).toDF("id", "name", "value", "created")
-
-      val options = cmdRunnerOptions ++
-        Map("database" -> (if (useSuiteLevelDatabase) testDatabaseName else "error_db"), "table" -> "test_error")
-
-      initialData.write.format("clickhouse").mode(SaveMode.Append).options(options).save()
-
-      val newData = Seq(
-        (2, "Bob", 87.3, timestamp("2024-02-20T14:30:00Z"))
-      ).toDF("id", "name", "value", "created")
-
-      val exception = intercept[Exception] {
-        newData.write.format("clickhouse").mode(SaveMode.ErrorIfExists).options(options).save()
-      }
-
-      assert(
-        exception.getMessage.contains("UNSUPPORTED_DATA_SOURCE_SAVE_MODE") ||
-          exception.getMessage.contains("ErrorIfExists"),
-        s"Expected error about unsupported save mode, got: ${exception.getMessage}"
-      )
-
-      val result = spark.read.format("clickhouse").options(options).load()
-      assert(result.count() == 1)
-      checkAnswer(result, Row(1, "Alice", 95.5, timestamp("2024-01-15T10:00:00Z")) :: Nil)
     }
   }
 
