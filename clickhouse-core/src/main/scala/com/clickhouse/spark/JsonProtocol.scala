@@ -34,7 +34,10 @@ object JsonProtocol {
 
   @transient lazy val om: ObjectMapper with ClassTagExtensions = {
     val _om = new ObjectMapper() with ClassTagExtensions
-    _om.findAndRegisterModules()
+    // Don't use findAndRegisterModules() - it picks up Databricks' shaded Hudi Jackson modules
+    // Instead, manually register only the modules we need
+    _om.registerModule(com.fasterxml.jackson.module.scala.DefaultScalaModule)
+    _om.registerModule(new com.fasterxml.jackson.datatype.jsr310.JavaTimeModule())
     _om.configure(DeserializationFeature.FAIL_ON_UNKNOWN_PROPERTIES, false)
     _om
   }
