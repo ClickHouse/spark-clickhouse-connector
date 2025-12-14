@@ -35,7 +35,6 @@ services:
       - ./users.xml:/etc/clickhouse-server/users.d/users.xml
       - ./s1r1/interserver_http_host.xml:/etc/clickhouse-server/config.d/interserver_http_host.xml
       - ./s1r1/macros.xml:/etc/clickhouse-server/config.d/macros.xml
-      - ./../../../../../log/clickhouse-s1r1-server:/var/log/clickhouse-server
     depends_on:
       - zookeeper
 
@@ -53,7 +52,6 @@ services:
       - ./users.xml:/etc/clickhouse-server/users.d/users.xml
       - ./s1r2/interserver_http_host.xml:/etc/clickhouse-server/config.d/interserver_http_host.xml
       - ./s1r2/macros.xml:/etc/clickhouse-server/config.d/macros.xml
-      - ./../../../../../log/clickhouse-s1r2-server:/var/log/clickhouse-server
     depends_on:
       - zookeeper
 
@@ -71,7 +69,6 @@ services:
       - ./users.xml:/etc/clickhouse-server/users.d/users.xml
       - ./s2r1/interserver_http_host.xml:/etc/clickhouse-server/config.d/interserver_http_host.xml
       - ./s2r1/macros.xml:/etc/clickhouse-server/config.d/macros.xml
-      - ./../../../../../log/clickhouse-s2r1-server:/var/log/clickhouse-server
     depends_on:
       - zookeeper
 
@@ -89,6 +86,5 @@ services:
       - ./users.xml:/etc/clickhouse-server/users.d/users.xml
       - ./s2r2/interserver_http_host.xml:/etc/clickhouse-server/config.d/interserver_http_host.xml
       - ./s2r2/macros.xml:/etc/clickhouse-server/config.d/macros.xml
-      - ./../../../../../log/clickhouse-s2r2-server:/var/log/clickhouse-server
     depends_on:
       - zookeeper

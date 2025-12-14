@@ -18,6 +18,7 @@ import com.clickhouse.spark.Utils
 import com.clickhouse.data.ClickHouseVersion
 import com.dimafeng.testcontainers.{DockerComposeContainer, ExposedService, ForAllTestContainer}
 import org.scalatest.funsuite.AnyFunSuite
+import org.testcontainers.utility.MountableFile
 import Utils.PREFIX
 
 import java.io.File
@@ -53,23 +54,28 @@ trait ClickHouseClusterMixIn extends AnyFunSuite with ForAllTestContainer {
     assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s2r2_PORT_$CLICKHOUSE_TCP_PORT").isDefined)
   }
 
-  override val container: DockerComposeContainer = DockerComposeContainer.Def(
-    composeFiles = new File(Utils.classpathResource("clickhouse-cluster/clickhouse-s2r2-compose.yml")),
-    exposedServices = ExposedService("zookeeper", ZOOKEEPER_CLIENT_PORT) ::
-      // s1r1
-      ExposedService("clickhouse-s1r1", CLICKHOUSE_HTTP_PORT) ::
-      ExposedService("clickhouse-s1r1", CLICKHOUSE_TCP_PORT) ::
-      // s1r2
-      ExposedService("clickhouse-s1r2", CLICKHOUSE_HTTP_PORT) ::
-      ExposedService("clickhouse-s1r2", CLICKHOUSE_TCP_PORT) ::
-      // s2r1
-      ExposedService("clickhouse-s2r1", CLICKHOUSE_HTTP_PORT) ::
-      ExposedService("clickhouse-s2r1", CLICKHOUSE_TCP_PORT) ::
-      // s2r2
-      ExposedService("clickhouse-s2r2", CLICKHOUSE_HTTP_PORT) ::
-      ExposedService("clickhouse-s2r2", CLICKHOUSE_TCP_PORT) :: Nil,
-    env = Map("CLICKHOUSE_IMAGE" -> CLICKHOUSE_IMAGE)
-  ).createContainer()
+  override val container: DockerComposeContainer = {
+    val composeResource = MountableFile.forClasspathResource("clickhouse-cluster/clickhouse-s2r2-compose.yml")
+    val composeFile = new File(composeResource.getResolvedPath)
+
+    DockerComposeContainer.Def(
+      composeFiles = composeFile,
+      exposedServices = ExposedService("zookeeper", ZOOKEEPER_CLIENT_PORT) ::
+        // s1r1
+        ExposedService("clickhouse-s1r1", CLICKHOUSE_HTTP_PORT) ::
+        ExposedService("clickhouse-s1r1", CLICKHOUSE_TCP_PORT) ::
+        // s1r2
+        ExposedService("clickhouse-s1r2", CLICKHOUSE_HTTP_PORT) ::
+        ExposedService("clickhouse-s1r2", CLICKHOUSE_TCP_PORT) ::
+        // s2r1
+        ExposedService("clickhouse-s2r1", CLICKHOUSE_HTTP_PORT) ::
+        ExposedService("clickhouse-s2r1", CLICKHOUSE_TCP_PORT) ::
+        // s2r2
+        ExposedService("clickhouse-s2r2", CLICKHOUSE_HTTP_PORT) ::
+        ExposedService("clickhouse-s2r2", CLICKHOUSE_TCP_PORT) :: Nil,
+      env = Map("CLICKHOUSE_IMAGE" -> CLICKHOUSE_IMAGE)
+    ).createContainer()
+  }
 
   // format: off
   // s1r1
