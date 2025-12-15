@@ -254,6 +254,7 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
            |WHERE type = 'QueryFinish' 
            |  AND query LIKE '%$dbName%test_filter%'
            |  AND query LIKE '%SELECT%'
+           |  AND query LIKE '%name%'
            |  AND event_time > now() - INTERVAL 10 SECOND
            |ORDER BY event_time DESC
            |LIMIT 5""".stripMargin
@@ -262,7 +263,7 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
       val recentQueries2 = recentQueries2DF.collect().map(_.getString(0))
 
       val hasNameFilter = recentQueries2.exists(query =>
-        query.contains("WHERE") && query.contains("`name` = 'Bob'")
+        query.contains("WHERE") && (query.contains("`name` = 'Bob'") || query.contains("`name`='Bob'"))
       )
       assert(
         hasNameFilter,
