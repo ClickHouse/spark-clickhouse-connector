@@ -1432,16 +1432,16 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   }
 
   test("decode VariantType - simple JSON objects") {
-    withKVTable("test_db", "test_variant_simple", valueColDef = "JSON") {
+    withKVTable("test_db", "test_variant_simple", valueColDef = "JSON") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_simple VALUES
-          |(1, '{"name": "Alice", "age": 30}'),
-          |(2, '{"name": "Bob", "age": 25}'),
-          |(3, '{"name": "Charlie", "age": 35}')
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, '{"name": "Alice", "age": 30}'),
+           |(2, '{"name": "Bob", "age": 25}'),
+           |(3, '{"name": "Charlie", "age": 35}')
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_simple ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       assert(df.schema.fields(1).dataType == VariantType)
 
       val result = df.collect()
@@ -1459,15 +1459,15 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   }
 
   test("decode VariantType - nested JSON objects") {
-    withKVTable("test_db", "test_variant_nested", valueColDef = "JSON") {
+    withKVTable("test_db", "test_variant_nested", valueColDef = "JSON") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_nested VALUES
-          |(1, '{"person": {"name": "Alice", "age": 30}, "city": "NYC"}'),
-          |(2, '{"person": {"name": "Bob", "age": 25}, "city": "LA"}')
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, '{"person": {"name": "Alice", "age": 30}, "city": "NYC"}'),
+           |(2, '{"person": {"name": "Bob", "age": 25}, "city": "LA"}')
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_nested ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       val result = df.collect()
       assert(result.length == 2)
 
@@ -1480,15 +1480,15 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   }
 
   test("decode VariantType - JSON with arrays") {
-    withKVTable("test_db", "test_variant_arrays", valueColDef = "JSON") {
+    withKVTable("test_db", "test_variant_arrays", valueColDef = "JSON") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_arrays VALUES
-          |(1, '{"tags": ["a", "b", "c"], "nums": [1, 2, 3]}'),
-          |(2, '{"tags": ["x", "y"], "nums": [10, 20]}')
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, '{"tags": ["a", "b", "c"], "nums": [1, 2, 3]}'),
+           |(2, '{"tags": ["x", "y"], "nums": [10, 20]}')
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_arrays ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       val result = df.collect()
       assert(result.length == 2)
 
@@ -1498,15 +1498,15 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   }
 
   test("decode VariantType - mixed types") {
-    withKVTable("test_db", "test_variant_mixed", valueColDef = "JSON") {
+    withKVTable("test_db", "test_variant_mixed", valueColDef = "JSON") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_mixed VALUES
-          |(1, '{"str": "text", "num": 42, "bool": true, "null": null}'),
-          |(2, '{"str": "data", "num": 3.14, "bool": false}')
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, '{"str": "text", "num": 42, "bool": true, "null": null}'),
+           |(2, '{"str": "data", "num": 3.14, "bool": false}')
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_mixed ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       val result = df.collect()
       assert(result.length == 2)
 
@@ -1517,33 +1517,34 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
 
   test("decode VariantType - NULL values") {
     withKVTable("test_db", "test_variant_nulls", valueColDef = "Nullable(JSON)") {
-      runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_nulls VALUES
-          |(1, '{"name": "Alice"}'),
-          |(2, NULL),
-          |(3, '{"name": "Charlie"}')
-          |""".stripMargin
-      )
+      (actualDb: String, actualTbl: String) =>
+        runClickHouseSQL(
+          s"""INSERT INTO $actualDb.$actualTbl VALUES
+             |(1, '{"name": "Alice"}'),
+             |(2, NULL),
+             |(3, '{"name": "Charlie"}')
+             |""".stripMargin
+        )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_nulls ORDER BY key")
-      val result = df.collect()
-      assert(result.length == 3)
-      assert(!result(0).isNullAt(1))
-      assert(result(1).isNullAt(1))
-      assert(!result(2).isNullAt(1))
+        val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
+        val result = df.collect()
+        assert(result.length == 3)
+        assert(!result(0).isNullAt(1))
+        assert(result(1).isNullAt(1))
+        assert(!result(2).isNullAt(1))
     }
   }
 
   test("decode VariantType - empty JSON object") {
-    withKVTable("test_db", "test_variant_empty", valueColDef = "JSON") {
+    withKVTable("test_db", "test_variant_empty", valueColDef = "JSON") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_empty VALUES
-          |(1, '{}'),
-          |(2, '{"empty": []}')
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, '{}'),
+           |(2, '{"empty": []}')
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_empty ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       val result = df.collect()
       assert(result.length == 2)
 
@@ -1556,15 +1557,15 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   }
 
   test("decode VariantType - numeric precision") {
-    withKVTable("test_db", "test_variant_numbers", valueColDef = "JSON") {
+    withKVTable("test_db", "test_variant_numbers", valueColDef = "JSON") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_numbers VALUES
-          |(1, '{"int": 42, "float": 3.14159, "large": 9223372036854775807}'),
-          |(2, '{"negative": -123, "zero": 0, "decimal": 0.123456789}')
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, '{"int": 42, "float": 3.14159, "large": 9223372036854775807}'),
+           |(2, '{"negative": -123, "zero": 0, "decimal": 0.123456789}')
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_numbers ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       val result = df.collect()
       assert(result.length == 2)
 
@@ -1577,15 +1578,15 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   }
 
   test("decode VariantType - special characters") {
-    withKVTable("test_db", "test_variant_special", valueColDef = "JSON") {
+    withKVTable("test_db", "test_variant_special", valueColDef = "JSON") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_special VALUES
-          |(1, '{"text": "Hello World", "emoji": "🎉"}'),
-          |(2, '{"unicode": "café", "symbol": "@#$%"}')
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, '{"text": "Hello World", "emoji": "🎉"}'),
+           |(2, '{"unicode": "café", "symbol": "@#$$%"}')
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_special ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       val result = df.collect()
       assert(result.length == 2)
       assert(!result(0).isNullAt(1))
@@ -1594,15 +1595,15 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   }
 
   test("decode VariantType - deeply nested structures") {
-    withKVTable("test_db", "test_variant_deep", valueColDef = "JSON") {
+    withKVTable("test_db", "test_variant_deep", valueColDef = "JSON") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_deep VALUES
-          |(1, '{"a": {"b": {"c": {"d": {"e": "deep"}}}}}'),
-          |(2, '{"x": [{"y": [{"z": "nested"}]}]}')
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, '{"a": {"b": {"c": {"d": {"e": "deep"}}}}}'),
+           |(2, '{"x": [{"y": [{"z": "nested"}]}]}')
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_deep ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       val result = df.collect()
       assert(result.length == 2)
 
@@ -1616,15 +1617,15 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
 
   test("decode VariantType - read JSON as string with config") {
     withSQLConf("spark.clickhouse.read.jsonAs" -> "string") {
-      withKVTable("test_db", "test_json_as_string", valueColDef = "JSON") {
+      withKVTable("test_db", "test_json_as_string", valueColDef = "JSON") { (actualDb: String, actualTbl: String) =>
         runClickHouseSQL(
-          """INSERT INTO test_db.test_json_as_string VALUES
-            |(1, '{"name": "Alice", "age": 30}'),
-            |(2, '{"name": "Bob", "age": 25}')
-            |""".stripMargin
+          s"""INSERT INTO $actualDb.$actualTbl VALUES
+             |(1, '{"name": "Alice", "age": 30}'),
+             |(2, '{"name": "Bob", "age": 25}')
+             |""".stripMargin
         )
 
-        val df = spark.sql("SELECT key, value FROM test_db.test_json_as_string ORDER BY key")
+        val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
         val result = df.collect()
 
         // Verify schema is StringType, not VariantType
@@ -1646,19 +1647,19 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       "test_db",
       "test_variant_mixed_types",
       valueColDef = "Variant(String, Int64, Float64, Bool, Array(String))"
-    ) {
+    ) { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_mixed_types VALUES
-          |(1, 42),
-          |(2, true),
-          |(3, 'hello'),
-          |(4, 3.14),
-          |(5, ['a', 'b', 'c']),
-          |(6, false)
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, 42),
+           |(2, true),
+           |(3, 'hello'),
+           |(4, 3.14),
+           |(5, ['a', 'b', 'c']),
+           |(6, false)
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_mixed_types")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl")
       assert(df.schema.fields(1).dataType == VariantType)
 
       val result = df.collect().sortBy(_.getInt(0))
@@ -1695,22 +1696,22 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       "test_db",
       "test_variant_with_json",
       valueColDef = "Variant(String, Int64, Float64, Bool, Array(String), JSON)"
-    ) {
+    ) { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL("SET allow_experimental_json_type = 1")
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_with_json VALUES
-          |(1, 42),
-          |(2, true),
-          |(3, 'hello'),
-          |(4, 3.14),
-          |(5, ['a', 'b', 'c']),
-          |(6, CAST('{"name": "Alice", "age": 30}' AS JSON)),
-          |(7, CAST('{"city": "NYC", "country": "USA"}' AS JSON)),
-          |(8, false)
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, 42),
+           |(2, true),
+           |(3, 'hello'),
+           |(4, 3.14),
+           |(5, ['a', 'b', 'c']),
+           |(6, CAST('{"name": "Alice", "age": 30}' AS JSON)),
+           |(7, CAST('{"city": "NYC", "country": "USA"}' AS JSON)),
+           |(8, false)
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_with_json")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl")
       assert(df.schema.fields(1).dataType == VariantType)
 
       val result = df.collect().sortBy(_.getInt(0))
@@ -1755,18 +1756,18 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       "test_db",
       "test_variant_mixed_explicit",
       valueColDef = "Variant(String, Int64, Bool)"
-    ) {
+    ) { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_mixed_explicit VALUES
-          |(1, 'hello'),
-          |(2, 42),
-          |(3, true),
-          |(4, 'world'),
-          |(5, 99)
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, 'hello'),
+           |(2, 42),
+           |(3, true),
+           |(4, 'world'),
+           |(5, 99)
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_mixed_explicit ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       assert(df.schema.fields(1).dataType == VariantType)
 
       val result = df.collect()
@@ -1804,17 +1805,17 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       "test_db",
       "test_variant_empty_arrays",
       valueColDef = "Variant(String, Array(String), Array(Int64))"
-    ) {
+    ) { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_empty_arrays VALUES
-          |(1, []),
-          |(2, 'text'),
-          |(3, ['a', 'b']),
-          |(4, [])
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, []),
+           |(2, 'text'),
+           |(3, ['a', 'b']),
+           |(4, [])
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_empty_arrays ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       assert(df.schema.fields(1).dataType == VariantType)
 
       val result = df.collect()
@@ -1843,16 +1844,16 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       "test_db",
       "test_variant_nested_arrays",
       valueColDef = "Variant(String, Array(Array(String)))"
-    ) {
+    ) { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_nested_arrays VALUES
-          |(1, [['a', 'b'], ['c', 'd']]),
-          |(2, 'text'),
-          |(3, [[]])
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, [['a', 'b'], ['c', 'd']]),
+           |(2, 'text'),
+           |(3, [[]])
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_nested_arrays ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       assert(df.schema.fields(1).dataType == VariantType)
 
       val result = df.collect()
@@ -1875,17 +1876,17 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   test("decode VariantType - Variant with only JSON type (default behavior)") {
     // When no explicit variant types are specified in Spark DDL, it defaults to JSON
     // JSON type only accepts JSON objects (starting with '{')
-    withKVTable("test_db", "test_variant_json_only", valueColDef = "JSON") {
+    withKVTable("test_db", "test_variant_json_only", valueColDef = "JSON") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL("SET allow_experimental_json_type = 1")
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_json_only VALUES
-          |(1, '{"type": "object1", "value": 42}'),
-          |(2, '{"type": "object2", "nested": {"key": "value"}}'),
-          |(3, '{"type": "object3", "array": [1, 2, 3]}')
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, '{"type": "object1", "value": 42}'),
+           |(2, '{"type": "object2", "nested": {"key": "value"}}'),
+           |(3, '{"type": "object3", "array": [1, 2, 3]}')
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_json_only ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       assert(df.schema.fields(1).dataType == VariantType)
 
       val result = df.collect()
@@ -1910,16 +1911,16 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       "test_db",
       "test_variant_numeric",
       valueColDef = "Variant(String, Int64, Float64)"
-    ) {
+    ) { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO test_db.test_variant_numeric VALUES
-          |(1, '127'),
-          |(2, CAST(9223372036854775807 AS Int64)),
-          |(3, CAST(2.718281828 AS Float64))
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.$actualTbl VALUES
+           |(1, '127'),
+           |(2, CAST(9223372036854775807 AS Int64)),
+           |(3, CAST(2.718281828 AS Float64))
+           |""".stripMargin
       )
 
-      val df = spark.sql("SELECT key, value FROM test_db.test_variant_numeric ORDER BY key")
+      val df = spark.sql(s"SELECT key, value FROM $actualDb.$actualTbl ORDER BY key")
       assert(df.schema.fields(1).dataType == VariantType)
 
       val result = df.collect()
