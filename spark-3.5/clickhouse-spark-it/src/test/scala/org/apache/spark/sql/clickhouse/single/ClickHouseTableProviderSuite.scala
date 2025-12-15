@@ -263,7 +263,7 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
       val recentQueries2 = recentQueries2DF.collect().map(_.getString(0))
 
       val hasNameFilter = recentQueries2.exists(query =>
-        query.contains("WHERE") && (query.contains("`name` = 'Bob'") || query.contains("`name`='Bob'"))
+        query.contains("WHERE") && query.contains("`name` = 'Bob'")
       )
       assert(
         hasNameFilter,

@@ -254,6 +254,7 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
            |WHERE type = 'QueryFinish' 
            |  AND query LIKE '%$dbName%test_filter%'
            |  AND query LIKE '%SELECT%'
+           |  AND query LIKE '%name%'
            |  AND event_time > now() - INTERVAL 10 SECOND
            |ORDER BY event_time DESC
            |LIMIT 5""".stripMargin
