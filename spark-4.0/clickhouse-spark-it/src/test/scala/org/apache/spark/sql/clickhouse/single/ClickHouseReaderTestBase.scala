@@ -1331,9 +1331,9 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
         val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint64_null ORDER BY key")
         val result = df.collect()
         assert(result.length == 3)
-        assert(result(0).getLong(1) == 0L)
+        assert(result(0).getDecimal(1).longValue() == 0L)
         assert(result(1).isNullAt(1))
-        assert(result(2).getLong(1) == 9223372036854775807L)
+        assert(result(2).getDecimal(1).longValue() == 9223372036854775807L)
     }
   }
   test("decode UInt64 - unsigned 64-bit integers") {
@@ -1349,10 +1349,10 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint64 ORDER BY key")
       val result = df.collect()
       assert(result.length == 3)
-      assert(result(0).getLong(1) == 0L)
-      assert(result(1).getLong(1) == 1234567890L)
+      assert(result(0).getDecimal(1).longValue() == 0L)
+      assert(result(1).getDecimal(1).longValue() == 1234567890L)
       // Max value that fits in signed Long
-      assert(result(2).getLong(1) == 9223372036854775807L)
+      assert(result(2).getDecimal(1).longValue() == 9223372036854775807L)
     }
   }
 
