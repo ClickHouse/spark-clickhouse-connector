@@ -1527,12 +1527,9 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
     }
   }
 
-  // TODO: Re-enable this test once Spark fixes NULL VariantType serialization with variant_types
-  // Issue: Spark's codegen calls getValue() on null VariantVal when serializing NULL VariantType
-  // values with variant_types option, causing NullPointerException
-  ignore("write VariantType with variant_types - NULL values with mixed types") {
+  test("write VariantType with variant_types - comprehensive mixed types") {
     val db = "test_db"
-    val tbl = "test_variant_write_mixed_nulls"
+    val tbl = "test_variant_write_comprehensive_mixed"
 
     try {
       spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
@@ -1551,35 +1548,47 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
+      // Test all variant types without NULLs to avoid Spark codegen bug with CAST(NULL AS VARIANT)
       spark.sql(
         s"""INSERT INTO $db.$tbl 
            |SELECT 1 as id, parse_json('42') as data
-           |UNION ALL SELECT 2, CAST(NULL AS VARIANT)
-           |UNION ALL SELECT 3, parse_json('"hello"') as data
-           |UNION ALL SELECT 4, CAST(NULL AS VARIANT)
-           |UNION ALL SELECT 5, parse_json('{"name": "Alice"}') as data
+           |UNION ALL SELECT 2, parse_json('"hello"') as data
+           |UNION ALL SELECT 3, parse_json('true') as data
+           |UNION ALL SELECT 4, parse_json('false') as data
+           |UNION ALL SELECT 5, parse_json('{"name": "Alice", "age": 30}') as data
+           |UNION ALL SELECT 6, parse_json('100') as data
+           |UNION ALL SELECT 7, parse_json('"world"') as data
            |""".stripMargin
       )
 
       val df = spark.table(s"$db.$tbl").orderBy("id")
       val result = df.collect()
-      assert(result.length == 5)
+      assert(result.length == 7)
       assert(df.schema.fields(1).dataType == VariantType)
 
-      assert(!result(0).isNullAt(1))
-      assert(result(1).isNullAt(1))
-      assert(!result(2).isNullAt(1))
-      assert(result(3).isNullAt(1))
-      assert(!result(4).isNullAt(1))
+      // Verify all values are non-null
+      (0 until 7).foreach(i => assert(!result(i).isNullAt(1), s"Row $i should not be null"))
 
       val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
       assert(json1.contains("42"))
 
-      val json2 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
       assert(json2.contains("hello"))
 
-      val json3 = variantToJson(result(4).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
-      assert(json3.contains("Alice"))
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("true"))
+
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json4.contains("false"))
+
+      val json5 = variantToJson(result(4).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json5.contains("Alice") && json5.contains("30"))
+
+      val json6 = variantToJson(result(5).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json6.contains("100"))
+
+      val json7 = variantToJson(result(6).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json7.contains("world"))
 
     } finally {
       spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")

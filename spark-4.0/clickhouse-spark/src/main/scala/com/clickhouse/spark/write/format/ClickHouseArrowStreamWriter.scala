@@ -29,7 +29,6 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
 
   override def format: String = "ArrowStream"
 
-  // Get the original schema from parent class (before VariantType conversion)
   private val originalDataSchema: StructType = StructType(
     writeJob.dataSetSchema.map { field =>
       writeJob.tableSchema.find(_.name == field.name) match {
@@ -60,14 +59,12 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
       }
     )
 
-  // Track which field indices are VariantType (need conversion)
   private val variantFieldIndices: Set[Int] =
     originalDataSchema.fields.zipWithIndex
       .filter(_._1.dataType == VariantType)
       .map(_._2)
       .toSet
 
-  // Helper to convert VariantVal to JSON string
   private def variantToJsonString(variantVal: VariantVal): UTF8String = {
     val variant = new org.apache.spark.types.variant.Variant(variantVal.getValue, variantVal.getMetadata)
     val jsonStr = variant.toJson(java.time.ZoneId.of("UTC"))
@@ -77,10 +74,8 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
   // Convert InternalRow: replace VariantType values with JSON strings
   private def convertVariantToJson(record: InternalRow): InternalRow =
     if (variantFieldIndices.isEmpty) {
-      // No VariantType fields, return as-is
       record
     } else {
-      // Create a new row with VariantType fields converted to JSON strings
       val values = Array.tabulate(record.numFields) { i =>
         if (variantFieldIndices.contains(i)) {
           if (record.isNullAt(i)) {
@@ -90,7 +85,6 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
             variantToJsonString(variantVal)
           }
         } else {
-          // Use original schema for non-VariantType fields
           record.get(i, originalDataSchema.fields(i).dataType)
         }
       }
