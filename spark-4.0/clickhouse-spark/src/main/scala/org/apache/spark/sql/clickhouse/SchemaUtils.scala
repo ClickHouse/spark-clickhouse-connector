@@ -43,7 +43,8 @@ object SchemaUtils extends SQLConfHelper {
         else ShortType
       case Int16 => ShortType
       case UInt16 | Int32 => IntegerType
-      case UInt32 | Int64 | UInt64 => LongType
+      case UInt32 | Int64 => LongType
+      case UInt64 => DecimalType(20, 0)
       case Int128 | UInt128 | Int256 | UInt256 => DecimalType(38, 0)
       case Float32 => FloatType
       case Float64 => DoubleType

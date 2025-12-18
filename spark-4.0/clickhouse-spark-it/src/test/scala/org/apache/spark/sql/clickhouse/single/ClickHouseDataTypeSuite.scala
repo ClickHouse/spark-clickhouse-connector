@@ -95,8 +95,8 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     ("Int32", -2147483648, 2147483647),
     ("UInt32", 0L, 4294967295L),
     ("Int64", -9223372036854775808L, 9223372036854775807L),
-    // Only overlapping value range of both the ClickHouse type and the Spark type is supported
-    ("UInt64", 0L, 4294967295L),
+    // UInt64 is mapped to DecimalType(20, 0) to support the full range: 0 to 18446744073709551615
+    ("UInt64", BigDecimal(0), BigDecimal("18446744073709551615")),
     ("Int128", BigDecimal("-" + "9" * 38), BigDecimal("9" * 38)),
     ("UInt128", BigDecimal(0), BigDecimal("9" * 38)),
     ("Int256", BigDecimal("-" + "9" * 38), BigDecimal("9" * 38)),

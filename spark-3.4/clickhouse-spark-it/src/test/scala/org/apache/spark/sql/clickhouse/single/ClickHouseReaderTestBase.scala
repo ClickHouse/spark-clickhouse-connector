@@ -1325,16 +1325,23 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
           s"""INSERT INTO $actualDb.test_uint64_null VALUES
              |(1, 0),
              |(2, NULL),
-             |(3, 9223372036854775807)
+             |(3, 9223372036854775808),
+             |(4, 15000000000000000000),
+             |(5, 18446744073709551615)
              |""".stripMargin
         )
 
         val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint64_null ORDER BY key")
         val result = df.collect()
-        assert(result.length == 3)
-        assert(result(0).getLong(1) == 0L)
+        assert(result.length == 5)
+        assert(result(0).getDecimal(1) == BigDecimal(0))
         assert(result(1).isNullAt(1))
-        assert(result(2).getLong(1) == 9223372036854775807L)
+        // Test value just above Long.MAX_VALUE
+        assert(result(2).getDecimal(1) == BigDecimal("9223372036854775808"))
+        // Test large value in the middle range
+        assert(result(3).getDecimal(1) == BigDecimal("15000000000000000000"))
+        // Test maximum UInt64 value (2^64 - 1)
+        assert(result(4).getDecimal(1) == BigDecimal("18446744073709551615"))
     }
   }
   test("decode UInt64 - unsigned 64-bit integers") {
@@ -1343,17 +1350,26 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
         s"""INSERT INTO $actualDb.test_uint64 VALUES
            |(1, 0),
            |(2, 1234567890),
-           |(3, 9223372036854775807)
+           |(3, 9223372036854775807),
+           |(4, 9223372036854775808),
+           |(5, 15000000000000000000),
+           |(6, 18446744073709551615)
            |""".stripMargin
       )
 
       val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint64 ORDER BY key")
       val result = df.collect()
-      assert(result.length == 3)
-      assert(result(0).getLong(1) == 0L)
-      assert(result(1).getLong(1) == 1234567890L)
+      assert(result.length == 6)
+      assert(result(0).getDecimal(1) == BigDecimal(0))
+      assert(result(1).getDecimal(1) == BigDecimal("1234567890"))
       // Max value that fits in signed Long
-      assert(result(2).getLong(1) == 9223372036854775807L)
+      assert(result(2).getDecimal(1) == BigDecimal("9223372036854775807"))
+      // Test value just above Long.MAX_VALUE (proves DecimalType works)
+      assert(result(3).getDecimal(1) == BigDecimal("9223372036854775808"))
+      // Test large value in the middle range
+      assert(result(4).getDecimal(1) == BigDecimal("15000000000000000000"))
+      // Test maximum UInt64 value (2^64 - 1)
+      assert(result(5).getDecimal(1) == BigDecimal("18446744073709551615"))
     }
   }
 
