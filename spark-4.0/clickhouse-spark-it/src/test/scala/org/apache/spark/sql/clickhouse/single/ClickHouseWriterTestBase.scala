@@ -1308,4 +1308,280 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
     }
   }
 
+  // ============================================================================
+  // VariantType Write Tests with variant_types option (mixed types)
+  // ============================================================================
+
+  test("write VariantType with variant_types - mixed primitives and JSON") {
+    val db = "test_db"
+    val tbl = "test_variant_write_mixed_types"
+
+    try {
+      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+      spark.sql("SET allow_experimental_json_type = 1")
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id INT,
+           |  data VARIANT
+           |) USING clickhouse
+           |TBLPROPERTIES (
+           |  'clickhouse.column.data.variant_types' = 'String, Int64, Bool, JSON',
+           |  engine = 'MergeTree()',
+           |  order_by = 'id',
+           |  settings.allow_nullable_key = 1
+           |)
+           |""".stripMargin
+      )
+
+      // Write primitives and JSON objects
+      spark.sql(
+        s"""INSERT INTO $db.$tbl 
+           |SELECT 1 as id, parse_json('42') as data
+           |UNION ALL SELECT 2, parse_json('"hello"') as data
+           |UNION ALL SELECT 3, parse_json('true') as data
+           |UNION ALL SELECT 4, parse_json('{"name": "Alice", "age": 30}') as data
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$db.$tbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 4)
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("42"))
+
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("hello"))
+
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("true"))
+
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json4.contains("Alice") && json4.contains("30"))
+
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
+  test("write VariantType with variant_types - String and Int64 only") {
+    val db = "test_db"
+    val tbl = "test_variant_write_string_int"
+
+    try {
+      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id INT,
+           |  data VARIANT
+           |) USING clickhouse
+           |TBLPROPERTIES (
+           |  'clickhouse.column.data.variant_types' = 'String, Int64',
+           |  engine = 'MergeTree()',
+           |  order_by = 'id',
+           |  settings.allow_nullable_key = 1
+           |)
+           |""".stripMargin
+      )
+
+      spark.sql(
+        s"""INSERT INTO $db.$tbl 
+           |SELECT 1 as id, parse_json('42') as data
+           |UNION ALL SELECT 2, parse_json('"hello"') as data
+           |UNION ALL SELECT 3, parse_json('100') as data
+           |UNION ALL SELECT 4, parse_json('"world"') as data
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$db.$tbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 4)
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("42"))
+
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("hello"))
+
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("100"))
+
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json4.contains("world"))
+
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
+  test("write VariantType with variant_types - Bool, Float64, and JSON") {
+    val db = "test_db"
+    val tbl = "test_variant_write_bool_float_json"
+
+    try {
+      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+      spark.sql("SET allow_experimental_json_type = 1")
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id INT,
+           |  data VARIANT
+           |) USING clickhouse
+           |TBLPROPERTIES (
+           |  'clickhouse.column.data.variant_types' = 'Bool, Float64, JSON',
+           |  engine = 'MergeTree()',
+           |  order_by = 'id',
+           |  settings.allow_nullable_key = 1
+           |)
+           |""".stripMargin
+      )
+
+      spark.sql(
+        s"""INSERT INTO $db.$tbl 
+           |SELECT 1 as id, parse_json('true') as data
+           |UNION ALL SELECT 2, parse_json('3.14159') as data
+           |UNION ALL SELECT 3, parse_json('false') as data
+           |UNION ALL SELECT 4, parse_json('{"value": 42.5}') as data
+           |UNION ALL SELECT 5, parse_json('2.71828') as data
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$db.$tbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 5)
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("true"))
+
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("3.14"))
+
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("false"))
+
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json4.contains("value") && json4.contains("42.5"))
+
+      val json5 = variantToJson(result(4).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json5.contains("2.71"))
+
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
+  test("write VariantType with variant_types - Array types") {
+    val db = "test_db"
+    val tbl = "test_variant_write_array_types"
+
+    try {
+      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id INT,
+           |  data VARIANT
+           |) USING clickhouse
+           |TBLPROPERTIES (
+           |  'clickhouse.column.data.variant_types' = 'String, Int64, Array(String)',
+           |  engine = 'MergeTree()',
+           |  order_by = 'id',
+           |  settings.allow_nullable_key = 1
+           |)
+           |""".stripMargin
+      )
+
+      spark.sql(
+        s"""INSERT INTO $db.$tbl 
+           |SELECT 1 as id, parse_json('"hello"') as data
+           |UNION ALL SELECT 2, parse_json('42') as data
+           |UNION ALL SELECT 3, parse_json('["a", "b", "c"]') as data
+           |UNION ALL SELECT 4, parse_json('100') as data
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$db.$tbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 4)
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("hello"))
+
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("42"))
+
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("a") && json3.contains("b") && json3.contains("c"))
+
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json4.contains("100"))
+
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
+  test("write VariantType with variant_types - NULL values with mixed types") {
+    val db = "test_db"
+    val tbl = "test_variant_write_mixed_nulls"
+
+    try {
+      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+      spark.sql("SET allow_experimental_json_type = 1")
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id INT,
+           |  data VARIANT
+           |) USING clickhouse
+           |TBLPROPERTIES (
+           |  'clickhouse.column.data.variant_types' = 'String, Int64, Bool, JSON',
+           |  engine = 'MergeTree()',
+           |  order_by = 'id',
+           |  settings.allow_nullable_key = 1
+           |)
+           |""".stripMargin
+      )
+
+      spark.sql(
+        s"""INSERT INTO $db.$tbl 
+           |SELECT 1 as id, parse_json('42') as data
+           |UNION ALL SELECT 2, CAST(NULL AS VARIANT)
+           |UNION ALL SELECT 3, parse_json('"hello"') as data
+           |UNION ALL SELECT 4, CAST(NULL AS VARIANT)
+           |UNION ALL SELECT 5, parse_json('{"name": "Alice"}') as data
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$db.$tbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 5)
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      assert(!result(0).isNullAt(1))
+      assert(result(1).isNullAt(1))
+      assert(!result(2).isNullAt(1))
+      assert(result(3).isNullAt(1))
+      assert(!result(4).isNullAt(1))
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("42"))
+
+      val json2 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("hello"))
+
+      val json3 = variantToJson(result(4).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json3.contains("Alice"))
+
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
 }
