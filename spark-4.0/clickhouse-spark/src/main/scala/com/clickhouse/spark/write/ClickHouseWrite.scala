@@ -49,14 +49,6 @@ class ClickHouseWriteBuilder(writeJob: WriteJobDescription)
       case _: AlwaysTrue => true
       case _ => false
     }
-
-    if (hasPartitionFilters) {
-      log.warn(
-        s"Conditional overwrite with partition filters is not fully supported, filters: ${filters.mkString(", ")}"
-      )
-    } else {
-      log.info("Full table overwrite (no partition filters)")
-    }
     this
   }
 }
@@ -114,11 +106,9 @@ class ClickHouseBatchWrite(
       writeJob.tableEngineSpec match {
         case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
           val sql = s"TRUNCATE TABLE IF EXISTS `$local_db`.`$local_table` ON CLUSTER `$cluster`"
-          log.info(s"Executing: $sql")
           nodeClient.syncQueryAndCheckOutputJSONEachRow(sql)
         case _ =>
           val sql = s"TRUNCATE TABLE IF EXISTS `${writeJob.targetDatabase(false)}`.`${writeJob.targetTable(false)}`"
-          log.info(s"Executing: $sql")
           nodeClient.syncQueryAndCheckOutputJSONEachRow(sql)
       }
     }

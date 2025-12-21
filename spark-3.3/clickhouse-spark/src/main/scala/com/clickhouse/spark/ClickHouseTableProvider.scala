@@ -128,29 +128,33 @@ class ClickHouseTableProvider extends TableProvider
     val hasOrderBy = props.contains("order_by") || props.contains("local.order_by")
 
     if (!hasOrderBy) {
-      addDefaultOrderBy(schema, props)
-    } else {
-      ensureNullableKeySupport(schema, props)
+      throw new IllegalArgumentException(
+        "Required option 'order_by' is missing when creating a new table. " +
+          "Please provide it via .option('order_by', 'column_name') or .option('order_by', 'col1, col2'). " +
+          "The ORDER BY clause specifies the sorting key for the ClickHouse table."
+      )
     }
-  }
 
-  private def addDefaultOrderBy(schema: StructType, props: Map[String, String]): Map[String, String] = {
-    log.info(s"Schema fields: ${schema.fields.map(f => s"${f.name}(nullable=${f.nullable})").mkString(", ")}")
+    // Validate that order_by columns exist in the schema
+    val orderByKey = props.getOrElse("order_by", props.getOrElse("local.order_by", ""))
+    val orderByColumns = orderByKey
+      .split(",")
+      .map(_.trim)
+      .filter(_.nonEmpty)
 
-    val orderByColumn = schema.fields
-      .find(!_.nullable)
-      .map(_.name)
-      .getOrElse {
-        throw new IllegalArgumentException(
-          "Cannot auto-generate ORDER BY clause: all columns are nullable. " +
-            "ClickHouse Cloud requires non-nullable columns in ORDER BY. " +
-            "Please either: (1) make at least one column non-nullable, or " +
-            "(2) explicitly set 'order_by' option to specify which column(s) to use."
-        )
-      }
+    val schemaFieldNames = schema.fields.map(_.name).toSet
+    val missingColumns = orderByColumns.filterNot(colName =>
+      schemaFieldNames.exists(_.equalsIgnoreCase(colName))
+    )
 
-    log.info(s"Auto-generated ORDER BY clause: $orderByColumn")
-    props + ("order_by" -> orderByColumn)
+    if (missingColumns.nonEmpty) {
+      throw new IllegalArgumentException(
+        s"ORDER BY column(s) not found in schema: ${missingColumns.mkString(", ")}. " +
+          s"Available columns: ${schema.fields.map(_.name).mkString(", ")}"
+      )
+    }
+
+    ensureNullableKeySupport(schema, props)
   }
 
   private def ensureNullableKeySupport(schema: StructType, props: Map[String, String]): Map[String, String] = {

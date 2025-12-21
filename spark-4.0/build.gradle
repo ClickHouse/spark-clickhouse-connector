@@ -44,16 +44,23 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
             exclude group: "org.slf4j", module: "slf4j-api"
             exclude group: "org.apache.commons", module: "commons-lang3"
             exclude group: "com.clickhouse", module: "clickhouse-jdbc"
-            exclude group: "com.fasterxml.jackson.core"
-            exclude group: "com.fasterxml.jackson.datatype"
-            exclude group: "com.fasterxml.jackson.module"
         }
+
+        // Include Jackson dependencies to be bundled and shaded in the runtime jar
+        // This ensures we use our version and avoid conflicts with external versions (e.g., Databricks Hudi)
+        implementation "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
+        implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
+        implementation "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
     }
 
     shadowJar {
         zip64=true
         archiveClassifier=null
 
+        // Relocate Jackson classes to avoid conflicts with external versions (e.g., from Databricks Hudi)
+        // This ensures we use our bundled Jackson version and prevents class conflicts.
+        relocate "com.fasterxml.jackson", "com.clickhouse.spark.shaded.jackson"
+        
         mergeServiceFiles()
     }
 
