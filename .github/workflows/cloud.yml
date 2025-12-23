@@ -19,10 +19,6 @@ on:
     branches:
       - "branch-*"
       - "main"
-  pull_request:
-    branches:
-      - "branch-*"
-      - "main"
   workflow_dispatch:
 
 jobs:
