@@ -69,3 +69,4 @@ Run single test
 Test against custom ClickHouse image
 
 `CLICKHOUSE_IMAGE=custom-org/clickhouse-server:custom-tag ./gradlew test`
+
