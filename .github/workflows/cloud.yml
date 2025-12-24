@@ -20,6 +20,7 @@ on:
       - "branch-*"
       - "main"
   pull_request:
+    types: [opened, synchronize, reopened]
     branches:
       - "branch-*"
       - "main"
@@ -29,7 +30,6 @@ jobs:
   run-tests-with-clickhouse-cloud:
     runs-on: ubuntu-22.04
     # Only run on main repository where secrets are available
-    if: github.repository == 'ClickHouse/spark-clickhouse-connector'
     strategy:
       fail-fast: false
       matrix:
