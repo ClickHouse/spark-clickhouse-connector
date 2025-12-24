@@ -36,6 +36,7 @@ object SimpleBatchExample {
     val user = sys.env.getOrElse("CH_USER", "default")
     val password = sys.env.getOrElse("CH_PASSWORD", "")
     val database = sys.env.getOrElse("CH_DATABASE", "default")
+    print(user)
 
     val spark = SparkSession.builder()
       .appName("ClickHouse Simple Batch Example")
