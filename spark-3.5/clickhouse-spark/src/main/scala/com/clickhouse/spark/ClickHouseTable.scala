@@ -115,6 +115,7 @@ case class ClickHouseTable(
       BATCH_READ,
       BATCH_WRITE,
       TRUNCATE,
+      OVERWRITE_BY_FILTER,
       ACCEPT_ANY_SCHEMA // TODO check schema and handle extra columns before writing
     ).asJava
 
