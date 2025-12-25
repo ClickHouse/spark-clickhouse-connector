@@ -17,13 +17,11 @@ name: "ClickHouse Cloud"
 on:
   push:
     branches:
-      - "branch-*"
       - "main"
-  pull_request:
+  pull_request_target:
+    types: [ opened, synchronize, reopened ]
     branches:
-      - "branch-*"
       - "main"
-  workflow_dispatch:
 
 jobs:
   run-tests-with-clickhouse-cloud:
