@@ -25,6 +25,7 @@ class FunctionRegistrySuite extends AnyFunSuite {
   dynamicFunctionRegistry.register("clickhouse_xxHash64", ClickHouseXxHash64)
 
   test("check StaticFunctionRegistry mappings") {
+    print(123)
     assert(staticFunctionRegistry.sparkToClickHouseFunc.forall { case (k, v) =>
       staticFunctionRegistry.load(k).get.asInstanceOf[ClickhouseEquivFunction].ckFuncNames.contains(v)
     })
