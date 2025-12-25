@@ -28,6 +28,7 @@ class SchemaUtilsSuite extends AnyFunSuite {
       test(s"ch2spark - $chTypeStr") {
         val chCols = ClickHouseColumn.parse(s"`col` $chTypeStr")
         assert(chCols.size == 1)
+        print(123)
         val (actualSparkType, actualNullable) = fromClickHouseType(chCols.get(0))
         assert(actualSparkType === expectedSparkType)
         assert(actualNullable === expectedNullable)
