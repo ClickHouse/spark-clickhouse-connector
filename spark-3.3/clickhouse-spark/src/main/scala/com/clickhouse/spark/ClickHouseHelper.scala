@@ -71,6 +71,7 @@ trait ClickHouseHelper extends Logging {
   }
 
   def queryClusterSpecs(nodeSpec: NodeSpec)(implicit nodeClient: NodeClient): Seq[ClusterSpec] = {
+    print(123)
     val clustersOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
       """ SELECT
         |   `cluster`,                 -- String
