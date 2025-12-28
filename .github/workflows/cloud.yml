@@ -25,6 +25,7 @@ on:
 jobs:
   run-tests-with-clickhouse-cloud:
     runs-on: ubuntu-22.04
+    environment: cloud-tests
     strategy:
       fail-fast: false
       matrix:
