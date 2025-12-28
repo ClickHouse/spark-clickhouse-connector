@@ -202,6 +202,10 @@ project(':clickhouse-core') {
         srcDirs += "src/main/scala-$scala_binary_version"
     }
 
+    sourceSets.testFixtures.resources {
+        srcDirs += "src/testFixtures/conf"
+    }
+
     configurations {
         api {
             // workaround for https://github.com/gradle/gradle/issues/820
