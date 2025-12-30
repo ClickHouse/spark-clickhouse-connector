@@ -204,10 +204,14 @@ class ClickHouseTableProvider extends TableProvider
       Constants.CATALOG_PROP_USER -> optionsMap.getOrElse("user", "default"),
       Constants.CATALOG_PROP_PASSWORD -> optionsMap.getOrElse("password", "")
     ) ++ (
-      if (optionsMap.contains("ssl")) {
-        Map(Constants.CATALOG_PROP_OPTION_PREFIX + "ssl" -> optionsMap("ssl"))
+      if (optionsMap.contains("timezone")) {
+        Map(Constants.CATALOG_PROP_TZ -> optionsMap("timezone"))
       } else {
         Map.empty[String, String]
+      }
+    ) ++ (
+      optionsMap.view.filterKeys(key => key == "ssl" || key == "ssl_mode").toMap.map {
+        case (key, value) => Constants.CATALOG_PROP_OPTION_PREFIX + key -> value
       }
     )
 
