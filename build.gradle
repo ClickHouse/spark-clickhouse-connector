@@ -19,6 +19,7 @@ import org.codehaus.groovy.runtime.GStringImpl
 buildscript {
     repositories {
         maven { url = "https://plugins.gradle.org/m2/" }
+        maven { url = "$mavenCentralMirror" }
     }
     dependencies {
         // Only add SonarQube to classpath if explicitly enabled
@@ -28,6 +29,10 @@ buildscript {
         if (JavaVersion.current() >= JavaVersion.VERSION_11) {
             classpath 'com.gradleup.nmcp:nmcp:0.0.8'
         }
+        // Use newer ASM version that supports Java 21 (class file major version 65)
+        // This allows the shadow plugin to relocate Java 21 compiled classes
+        classpath 'org.ow2.asm:asm:9.6'
+        classpath 'org.ow2.asm:asm-commons:9.6'
     }
 }
 
