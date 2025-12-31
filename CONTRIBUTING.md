@@ -158,9 +158,10 @@ CLICKHOUSE_IMAGE=custom-org/clickhouse-server:custom-tag ./gradlew test
 
 If your changes affect user-facing functionality:
 * Update user-facing documentation in the [ClickHouse documentation repository](https://github.com/ClickHouse/clickhouse-docs)
-* Update developer documentation in the local `docs/` directory if your changes affect build, testing, or release processes
 * Update the README if necessary
 * Add examples if introducing new features
+
+> **Note:** The local `docs/` directory in this repository is no longer maintained and will be migrated to clickhouse.com. Please do not update documentation in the local `docs/` directory.
 
 ### 2. Update CHANGELOG.md
 
@@ -186,7 +187,7 @@ Add an entry to `CHANGELOG.md` describing your changes. Place it under the `[Unr
 2. Create a pull request from your forked repository to the main repository
 
 3. In your PR description, include:
-   * A clear description of the changes
+   * A clear, human-readable description written with care. You may use AI tools for drafting, but please ensure the final text is reviewed, personalized, and accurately represents the change.
    * Link to related issues (e.g., "Closes #123")
    * Any breaking changes or migration notes
    * Screenshots or examples if applicable
@@ -206,7 +207,7 @@ If this is your first contribution, make sure to sign ClickHouse's Contributor L
 
 * `clickhouse-core/`: Core functionality shared across Spark versions
 * `spark-3.3/`, `spark-3.4/`, `spark-3.5/`, `spark-4.0/`: Spark version-specific implementations
-* `docs/`: Documentation
+* `docs/`: Documentation (Note: This documentation is no longer maintained and will be merged into clickhouse.com soon)
 * `docker/`: Docker configuration for development and testing
 
 ### Supported Spark Versions
