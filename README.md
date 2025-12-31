@@ -1,5 +1,6 @@
 Spark ClickHouse Connector
 ===
+
 [![Maven Central](https://maven-badges.herokuapp.com/maven-central/com.clickhouse.spark/clickhouse-spark-runtime-3.5_2.12/badge.svg)](https://search.maven.org/search?q=clickhouse-spark-runtime)
 [![License](https://img.shields.io/github/license/clickhouse/spark-clickhouse-connector)](https://github.com/ClickHouse/spark-clickhouse-connector/blob/main/LICENSE)
 
@@ -18,6 +19,7 @@ See the [documentation](https://clickhouse.com/docs/en/integrations/apache-spark
 - Apache Spark 3.3, 3.4, 3.5, or 4.0
 
 Notes:
+
 1. As of 0.5.0, this connector switches from ClickHouse raw gRPC Client to 
    [ClickHouse Official Java Client](https://github.com/ClickHouse/clickhouse-jdbc), which brings HTTP protocol support,
    extends the range of supported versions of ClickHouse Server.
