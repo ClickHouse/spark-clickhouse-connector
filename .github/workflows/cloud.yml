@@ -18,15 +18,11 @@ on:
   push:
     branches:
       - "main"
-  pull_request:
-    branches:
-      - "branch-*"
-      - "main"
+  workflow_dispatch:
 
 jobs:
   run-tests-with-clickhouse-cloud:
     runs-on: ubuntu-22.04
-    environment: clickhouse-cloud-testing
     strategy:
       fail-fast: false
       matrix:
