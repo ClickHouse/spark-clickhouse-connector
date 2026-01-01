@@ -23,12 +23,6 @@ on:
       - "branch-*"
       - "main"
   workflow_dispatch:
-    inputs:
-      ref:
-        description: 'Branch, tag, or PR ref to test (default: main)'
-        required: false
-        default: 'main'
-        type: string
 
 jobs:
   run-tests-with-clickhouse-cloud:
@@ -76,15 +70,11 @@ jobs:
               const approver = approvalComments[approvalComments.length - 1].user.login;
               console.log(`✓ Approved by @${approver}. Running cloud tests...`);
             }
-      - name: Show test target
-        if: github.event_name == 'workflow_dispatch'
-        run: |
-          echo "Testing ref: ${{ github.event.inputs.ref || 'main (default)' }}"
       - uses: actions/checkout@v4
         # For pull_request_target, checkout the PR head to test the actual changes
-        # For workflow_dispatch, use the provided ref, otherwise use the default
+        # For workflow_dispatch, GitHub automatically uses the selected branch
         with:
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || (github.event_name == 'workflow_dispatch' && github.event.inputs.ref) || github.ref }}
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
