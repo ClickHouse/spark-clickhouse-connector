@@ -18,10 +18,6 @@ on:
   push:
     branches:
       - "main"
-  pull_request_target:
-    branches:
-      - "branch-*"
-      - "main"
   workflow_dispatch:
 
 jobs:
@@ -44,37 +40,7 @@ jobs:
       CLICKHOUSE_CLOUD_HOST: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT }}
       CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
     steps:
-      - name: Check approval for external PRs
-        if: github.event_name == 'pull_request_target' && github.event.pull_request.head.repo.full_name != github.repository
-        uses: actions/github-script@v7
-        with:
-          script: |
-            // Check for approval comment from maintainers
-            const { data: comments } = await github.rest.issues.listComments({
-              owner: context.repo.owner,
-              repo: context.repo.repo,
-              issue_number: context.payload.pull_request.number,
-            });
-            
-            const approvalComments = comments.filter(comment => 
-              comment.user.type === 'User' && 
-              (comment.body.includes('/test-cloud') || comment.body.includes('/approve-cloud-tests'))
-            );
-            
-            if (approvalComments.length === 0) {
-              core.setFailed(
-                'External PR detected. A maintainer must comment "/test-cloud" or "/approve-cloud-tests" on this PR to run cloud tests.\n' +
-                'This workflow runs with main repository secrets and will test the PR code.'
-              );
-            } else {
-              const approver = approvalComments[approvalComments.length - 1].user.login;
-              console.log(`✓ Approved by @${approver}. Running cloud tests...`);
-            }
       - uses: actions/checkout@v4
-        # For pull_request_target, checkout the PR head to test the actual changes
-        # For workflow_dispatch, GitHub automatically uses the selected branch
-        with:
-          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
