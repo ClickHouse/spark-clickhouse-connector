@@ -14,71 +14,171 @@
 
 package com.clickhouse.spark.read.format
 
-import com.clickhouse.data.value.ClickHouseStringValue
-import com.clickhouse.data.{ClickHouseRecord, ClickHouseValue}
+import com.clickhouse.client.api.data_formats.internal.BinaryStreamReader
+import com.clickhouse.client.api.data_formats.{ClickHouseBinaryFormatReader, RowBinaryWithNamesAndTypesFormatReader}
+import com.clickhouse.client.api.query.{GenericRecord, Records}
+
+import java.util.Collections
+import com.clickhouse.data.value.{
+  ClickHouseArrayValue,
+  ClickHouseBoolValue,
+  ClickHouseDoubleValue,
+  ClickHouseFloatValue,
+  ClickHouseIntegerValue,
+  ClickHouseLongValue,
+  ClickHouseMapValue,
+  ClickHouseStringValue
+}
+import com.clickhouse.data.{ClickHouseArraySequence, ClickHouseRecord, ClickHouseValue}
+import com.clickhouse.spark.exception.CHClientException
+import com.clickhouse.spark.read.{ClickHouseInputPartition, ClickHouseReader, ScanJobDescription}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
 import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, GenericArrayData}
 import org.apache.spark.sql.types._
 import org.apache.spark.unsafe.types.UTF8String
-import com.clickhouse.spark.exception.CHClientException
-import com.clickhouse.spark.read.{ClickHouseInputPartition, ClickHouseReader, ScanJobDescription}
 
-import java.time.ZoneOffset
+import java.io.InputStream
+import java.time.{LocalDate, ZoneOffset, ZonedDateTime}
+import java.util
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 
 class ClickHouseBinaryReader(
   scanJob: ScanJobDescription,
   part: ClickHouseInputPartition
-) extends ClickHouseReader[ClickHouseRecord](scanJob, part) {
+) extends ClickHouseReader[GenericRecord](scanJob, part) {
 
   override val format: String = "RowBinaryWithNamesAndTypes"
 
-  lazy val streamOutput: Iterator[ClickHouseRecord] = resp.records().asScala.iterator
+  lazy val streamOutput: Iterator[GenericRecord] = {
+    val inputString: InputStream = resp.getInputStream
+    val cbfr: ClickHouseBinaryFormatReader = new RowBinaryWithNamesAndTypesFormatReader(
+      inputString,
+      resp.getSettings,
+      new BinaryStreamReader.DefaultByteBufferAllocator
+    )
+    val r = new Records(resp, cbfr)
+    r.asScala.iterator
+  }
 
-  override def decode(record: ClickHouseRecord): InternalRow = {
-    val values: Array[Any] = new Array[Any](record.size)
+  override def decode(record: GenericRecord): InternalRow = {
+    val size = record.getSchema.getColumns.size()
+    val values: Array[Any] = new Array[Any](size)
     if (readSchema.nonEmpty) {
       var i: Int = 0
-      while (i < record.size) {
-        values(i) = decodeValue(record.getValue(i), readSchema.fields(i))
+      while (i < size) {
+        val v: Object = record.getObject(i + 1)
+        values(i) = decodeValue(v, readSchema.fields(i))
         i = i + 1
       }
     }
     new GenericInternalRow(values)
   }
 
-  private def decodeValue(value: ClickHouseValue, structField: StructField): Any = {
-    if (value == null || value.isNullOrEmpty && value.isNullable) {
+  private def decodeValue(value: Object, structField: StructField): Any = {
+    if (value == null) {
       // should we check `structField.nullable`?
       return null
     }
 
     structField.dataType match {
-      case BooleanType => value.asBoolean
-      case ByteType => value.asByte
-      case ShortType => value.asShort
-      case IntegerType => value.asInteger
-      case LongType => value.asLong
-      case FloatType => value.asFloat
-      case DoubleType => value.asDouble
-      case d: DecimalType => Decimal(value.asBigDecimal(d.scale))
+      case BooleanType => value.asInstanceOf[Boolean]
+      case ByteType => value.asInstanceOf[Byte]
+      case ShortType => value.asInstanceOf[Short]
+//        case IntegerType if value.getClass.toString.equals("class java.lang.Long") =>
+      case IntegerType if value.isInstanceOf[java.lang.Long] =>
+        val v: Integer = Integer.valueOf(value.asInstanceOf[Long].toInt)
+        v.intValue()
+      case IntegerType =>
+        value.asInstanceOf[Integer].intValue()
+      case LongType if value.isInstanceOf[java.math.BigInteger] =>
+        value.asInstanceOf[java.math.BigInteger].longValue()
+      case LongType =>
+        value.asInstanceOf[Long]
+      case FloatType => value.asInstanceOf[Float]
+      case DoubleType => value.asInstanceOf[Double]
+      case d: DecimalType =>
+        // Java client returns BigInteger for Int256/UInt256, BigDecimal for Decimal types
+        val dec: BigDecimal = value match {
+          case bi: java.math.BigInteger => BigDecimal(bi)
+          case bd: java.math.BigDecimal => BigDecimal(bd)
+        }
+        Decimal(dec.setScale(d.scale))
       case TimestampType =>
-        var _instant = value.asZonedDateTime.withZoneSameInstant(ZoneOffset.UTC)
+        var _instant = value.asInstanceOf[ZonedDateTime].withZoneSameInstant(ZoneOffset.UTC)
         TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
-      case StringType if value.isInstanceOf[ClickHouseStringValue] => UTF8String.fromBytes(value.asBinary)
-      case StringType => UTF8String.fromString(value.asString)
-      case DateType => value.asDate.toEpochDay.toInt
-      case BinaryType => value.asBinary
+      case StringType =>
+        val strValue = value match {
+          case uuid: java.util.UUID => uuid.toString
+          case inet: java.net.InetAddress => inet.getHostAddress
+          case s: String => s
+          case enumValue: BinaryStreamReader.EnumValue => enumValue.toString
+          case _ => value.toString
+        }
+        UTF8String.fromString(strValue)
+      case DateType =>
+        val localDate = value match {
+          case ld: LocalDate => ld
+          case zdt: ZonedDateTime => zdt.toLocalDate
+          case _ => value.asInstanceOf[LocalDate]
+        }
+        localDate.toEpochDay.toInt
+      case BinaryType => value.asInstanceOf[String].getBytes
       case ArrayType(_dataType, _nullable) =>
-        // TODO https://github.com/ClickHouse/clickhouse-jdbc/issues/1088
-        new GenericArrayData(value.asArray())
-      case MapType(StringType, _valueType, _valueNullable) =>
-        // TODO https://github.com/ClickHouse/clickhouse-jdbc/issues/1088
-        ArrayBasedMapData(value.asMap.asScala)
+        // Java client returns BinaryStreamReader.ArrayValue for arrays
+        val arrayVal = value.asInstanceOf[BinaryStreamReader.ArrayValue]
+        val arrayValue = arrayVal.getArrayOfObjects().toSeq.asInstanceOf[Seq[Object]]
+        val convertedArray = Array.tabulate(arrayValue.length) { i =>
+          decodeValue(
+            arrayValue(i),
+            StructField("element", _dataType, _nullable)
+          )
+        }
+        new GenericArrayData(convertedArray)
+      case MapType(_keyType, _valueType, _valueNullable) =>
+        // Java client returns util.Map (LinkedHashMap or EmptyMap)
+        val javaMap = value.asInstanceOf[util.Map[Object, Object]]
+        val convertedMap =
+          javaMap.asScala.map { case (rawKey, rawValue) =>
+            val decodedKey = decodeValue(rawKey, StructField("key", _keyType, false))
+            val decodedValue =
+              decodeValue(rawValue, StructField("value", _valueType, _valueNullable))
+            (decodedKey, decodedValue)
+          }
+        ArrayBasedMapData(convertedMap)
+      case struct: StructType =>
+        // ClickHouse Java client can return tuples as either:
+        // - Array[Object] for unnamed tuples
+        // - util.List[Object] for named tuples
+        val fieldValues = value match {
+          case arr: Array[Object] =>
+            if (arr.length != struct.fields.length) {
+              throw CHClientException(
+                s"Tuple length mismatch: expected ${struct.fields.length} fields " +
+                  s"but got ${arr.length} values for struct ${struct.simpleString}"
+              )
+            }
+            struct.fields.zip(arr).map { case (field, rawValue) =>
+              decodeValue(rawValue, field)
+            }
+          case list: util.List[_] =>
+            if (list.size() != struct.fields.length) {
+              throw CHClientException(
+                s"Tuple length mismatch: expected ${struct.fields.length} fields " +
+                  s"but got ${list.size()} values for struct ${struct.simpleString}"
+              )
+            }
+            struct.fields.zipWithIndex.map { case (field, idx) =>
+              decodeValue(list.get(idx).asInstanceOf[Object], field)
+            }
+          case _ =>
+            throw CHClientException(s"Unexpected tuple type: ${value.getClass}, expected Array or List")
+        }
+        new GenericInternalRow(fieldValues)
       case _ =>
         throw CHClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
     }
   }
+
 }

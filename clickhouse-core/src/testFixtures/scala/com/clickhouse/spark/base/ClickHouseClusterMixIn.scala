@@ -30,7 +30,7 @@ trait ClickHouseClusterMixIn extends AnyFunSuite with ForAllTestContainer {
 
   protected val CLICKHOUSE_IMAGE: String = Utils.load(
     "CLICKHOUSE_IMAGE",
-    "clickhouse/clickhouse-server:23.8"
+    "clickhouse/clickhouse-server:25.3"
   )
 
   protected val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)

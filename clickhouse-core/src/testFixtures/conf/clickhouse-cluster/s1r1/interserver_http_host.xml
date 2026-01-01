@@ -12,6 +12,6 @@
   See the License for the specific language governing permissions and
   limitations under the License. See accompanying LICENSE file.
 -->
-<yandex>
+<clickhouse>
     <interserver_http_host>clickhouse-s1r1</interserver_http_host>
-</yandex>
+</clickhouse>

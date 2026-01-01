@@ -85,16 +85,48 @@ class ClickHouseJsonReader(
         TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
       case StringType => UTF8String.fromString(jsonNode.asText)
       case DateType => LocalDate.parse(jsonNode.asText, dateFmt).toEpochDay.toInt
-      case BinaryType => jsonNode.binaryValue
+      case BinaryType if jsonNode.isTextual =>
+        // ClickHouse JSON format returns FixedString as plain text, not Base64
+        jsonNode.asText.getBytes("UTF-8")
+      case BinaryType =>
+        // True binary data is Base64 encoded in JSON format
+        jsonNode.binaryValue
       case ArrayType(_dataType, _nullable) =>
         val _structField = StructField(s"${structField.name}__array_element__", _dataType, _nullable)
-        new GenericArrayData(jsonNode.asScala.map(decodeValue(_, _structField)))
+        new GenericArrayData(jsonNode.asScala.map(decodeValue(_, _structField)).toArray)
       case MapType(StringType, _valueType, _valueNullable) =>
         val mapData = jsonNode.fields.asScala.map { entry =>
           val _structField = StructField(s"${structField.name}__map_value__", _valueType, _valueNullable)
           UTF8String.fromString(entry.getKey) -> decodeValue(entry.getValue, _structField)
         }.toMap
         ArrayBasedMapData(mapData)
+      case struct: StructType =>
+        // ClickHouse represents tuples in JSON format based on whether they are named or unnamed:
+        // - Array format: [value1, value2, ...] - for unnamed tuples
+        // - Object format: {"field1": value1, "field2": value2} - for named tuples
+        val fieldValues = if (jsonNode.isArray) {
+          if (jsonNode.size() != struct.fields.length) {
+            throw CHClientException(
+              s"Tuple length mismatch: expected ${struct.fields.length} fields " +
+                s"but got ${jsonNode.size()} values for struct ${struct.simpleString}"
+            )
+          }
+          struct.fields.zipWithIndex.map { case (field, idx) =>
+            decodeValue(jsonNode.get(idx), field)
+          }
+        } else if (jsonNode.isObject) {
+          struct.fields.map { field =>
+            val fieldNode = jsonNode.get(field.name)
+            if (fieldNode != null && !fieldNode.isNull) {
+              decodeValue(fieldNode, field)
+            } else {
+              null
+            }
+          }
+        } else {
+          throw CHClientException(s"Expected array or object for tuple, got: ${jsonNode.getNodeType}")
+        }
+        new GenericInternalRow(fieldValues)
       case _ =>
         throw CHClientException(s"Unsupported catalyst type ${structField.name}[${structField.dataType}]")
     }

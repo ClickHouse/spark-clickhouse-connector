@@ -12,7 +12,14 @@
   See the License for the specific language governing permissions and
   limitations under the License. See accompanying LICENSE file.
 -->
-<yandex>
+<clickhouse>
+    <!-- User configuration path - REQUIRED for ClickHouse 24 -->
+    <user_directories>
+        <users_xml>
+            <path>/etc/clickhouse-server/users.xml</path>
+        </users_xml>
+    </user_directories>
+
     <logger>
         <level>debug</level>
         <log>/var/log/clickhouse-server/clickhouse-server.log</log>
@@ -67,8 +74,6 @@
     <!-- Directory in <clickhouse-path> containing schema files for various input formats. The directory will be created if it doesn't exist. -->
     <format_schema_path>/var/lib/clickhouse/format_schema/</format_schema_path>
 
-    <users_config>users.xml</users_config>
-
     <default_profile>default</default_profile>
     <default_database>default</default_database>
 
@@ -95,4 +100,4 @@
     </distributed_ddl>
     <default_replica_path>/clickhouse/tables/{shard}/{database}/{table}</default_replica_path>
     <default_replica_name>{replica}</default_replica_name>
-</yandex>
+</clickhouse>

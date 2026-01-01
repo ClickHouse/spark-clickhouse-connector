@@ -1,0 +1,58 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+plugins {
+    id "scala"
+    id "idea"
+}
+
+dependencies {
+    implementation "org.scala-lang:scala-library:${scala_version}"
+
+    // Note: For production Spark applications, use 'compileOnly' instead of 'implementation'
+    implementation "org.apache.spark:spark-sql_${scala_binary_version}:${spark_version}"
+    implementation "org.apache.spark:spark-streaming_${scala_binary_version}:${spark_version}"
+
+    // Use connector project classes, and include shaded runtime on classpath
+    implementation project(":clickhouse-spark-${spark_binary_version}_${scala_binary_version}")
+    runtimeOnly project(":clickhouse-spark-runtime-${spark_binary_version}_${scala_binary_version}")
+}
+
+sourceCompatibility = JavaVersion.VERSION_17
+
+tasks.withType(ScalaCompile).configureEach {
+    scalaCompileOptions.additionalParameters = [
+            "-deprecation",
+            "-feature"
+    ]
+}
+
+// Application convenience tasks
+tasks.register("runStreaming", JavaExec) {
+    group = "application"
+    description = "Run StreamingRateExample"
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "examples.StreamingRateExample"
+    jvmArgs "-Dspark_binary_version=${spark_binary_version}", "-Dscala_binary_version=${scala_binary_version}",
+            "--add-opens=java.base/java.nio=ALL-UNNAMED"
+}
+
+tasks.register("runBatch", JavaExec) {
+    group = "application"
+    description = "Run SimpleBatchExample"
+    classpath = sourceSets.main.runtimeClasspath
+    mainClass = "examples.SimpleBatchExample"
+    jvmArgs "-Dspark_binary_version=${spark_binary_version}", "-Dscala_binary_version=${scala_binary_version}",
+            "--add-opens=java.base/java.nio=ALL-UNNAMED"
+}

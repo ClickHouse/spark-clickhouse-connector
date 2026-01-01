@@ -1,0 +1,105 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+project.ext {
+    spark_version = project.getProperty("spark_40_version")
+    spark_binary_version = "4.0"
+}
+
+
+project(":clickhouse-spark-${spark_binary_version}_$scala_binary_version") {
+    dependencies {
+        api project(":clickhouse-core")
+
+        compileOnly "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
+
+        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
+        testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
+        testRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
+    }
+}
+
+project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version") {
+    apply plugin: "com.github.johnrengelman.shadow"
+
+    tasks.jar.dependsOn tasks.shadowJar
+
+    dependencies {
+        compileOnly "org.scala-lang:scala-library:$scala_version"
+
+        implementation(project(":clickhouse-spark-${spark_binary_version}_$scala_binary_version")) {
+            exclude group: "org.antlr", module: "antlr4-runtime"
+            exclude group: "org.scala-lang", module: "scala-library"
+            exclude group: "org.slf4j", module: "slf4j-api"
+            exclude group: "org.apache.commons", module: "commons-lang3"
+            exclude group: "com.clickhouse", module: "clickhouse-jdbc"
+            exclude group: "com.fasterxml.jackson.core"
+            exclude group: "com.fasterxml.jackson.datatype"
+            exclude group: "com.fasterxml.jackson.module"
+        }
+    }
+
+    shadowJar {
+        zip64=true
+        archiveClassifier=null
+
+        mergeServiceFiles()
+    }
+
+    jar {
+        archiveClassifier="empty"
+        manifest {
+            attributes(
+                    'Implementation-Title': 'Spark-ClickHouse-Connector',
+                    'Implementation-Version': "${spark_binary_version}_${scala_binary_version}_${getProjectVersion()}"
+            )
+        }
+    }
+}
+
+project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version") {
+    dependencies {
+        implementation "org.scala-lang:scala-library:$scala_version" // for scala plugin detect scala binary version
+
+        testImplementation project(":clickhouse-spark-${spark_binary_version}_$scala_binary_version")
+        testImplementation project(path: ":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version", configuration: "shadow")
+        testImplementation(testFixtures(project(":clickhouse-core"))) {
+            exclude module: "clickhouse-core"
+        }
+
+        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
+
+        testImplementation "org.apache.spark:spark-core_$scala_binary_version:$spark_version:tests"
+        testImplementation "org.apache.spark:spark-catalyst_$scala_binary_version:$spark_version:tests"
+        testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version:tests"
+
+        testImplementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
+
+        testImplementation("com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version:all") { transitive = false }
+
+        testImplementation "org.apache.kyuubi:kyuubi-spark-connector-tpcds_${scala_binary_version}:$kyuubi_version"
+    }
+
+    test {
+        classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
+    }
+
+    slowTest {
+        classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
+    }
+
+    cloudTest {
+        classpath += files("${project(':clickhouse-core').projectDir}/src/testFixtures/conf")
+    }
+}

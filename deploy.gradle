@@ -15,20 +15,60 @@
 subprojects {
     apply plugin: "maven-publish"
     apply plugin: 'signing'
+    if (JavaVersion.current() >= JavaVersion.VERSION_11) {
+        apply plugin: 'com.gradleup.nmcp'
+    }
     afterEvaluate {
         publishing {
             if (project.name.contains("-runtime")) {
+                // Determine the corresponding implementation project name
+                def implProjectName = project.name.replace("-runtime", "")
+                def implProject = project.parent.findProject(":${implProjectName}")
+
                 tasks.register('sourceJar', Jar) {
-                    dependsOn classes
                     archiveClassifier.set('sources')
-                    from sourceSets.main.allSource
+
+                    if (implProject != null) {
+                        // Include the sources from the implementation project
+                        from implProject.sourceSets.main.allSource
+
+                        // Also include the sources from clickhouse-core
+                        def coreProject = project.parent.findProject(":clickhouse-core")
+                        if (coreProject != null) {
+                            // Safely declare dependency on generateGrammarSource task if it exists
+                            if (coreProject.tasks.findByName('generateGrammarSource') != null) {
+                                dependsOn coreProject.tasks.generateGrammarSource
+                            }
+                            from coreProject.sourceSets.main.allSource
+                        }
+                    } else {
+                        // Fallback to an empty jar if implementation project was not found
+                        from sourceSets.main.allSource
+                    }
+
                     group 'build'
                 }
 
                 tasks.register('javadocJar', Jar) {
-                    dependsOn javadoc
                     archiveClassifier.set('javadoc')
-                    from javadoc.destinationDir
+
+                    if (implProject != null) {
+                        // Include the javadoc from the implementation project
+                        dependsOn implProject.javadoc
+                        from implProject.javadoc.destinationDir
+
+                        // Optionally include javadoc from clickhouse-core
+                        def coreProject = project.parent.findProject(":clickhouse-core")
+                        if (coreProject != null) {
+                            dependsOn coreProject.javadoc
+                            from coreProject.javadoc.destinationDir
+                        }
+                    } else {
+                        // Fallback to the current project's javadoc
+                        dependsOn javadoc
+                        from javadoc.destinationDir
+                    }
+
                     group 'build'
                 }
 
@@ -71,23 +111,25 @@ subprojects {
                     }
                 }
             }
-
-            repositories {
-                maven {
-                    allowInsecureProtocol = true
-                    url = project.version.endsWith("-SNAPSHOT") ? "$mavenSnapshotsRepo" : "$mavenReleasesRepo"
-
-                    credentials {
-                        username = project.hasProperty("mavenUser") ? "$mavenUser" : ""
-                        password = project.hasProperty("mavenPassword") ? "$mavenPassword" : ""
-                    }
-                }
-            }
         }
         if (project.hasProperty('release') && project.name.contains("-runtime")) {
             signing {
-                useGpgCmd()
-                sign publishing.publications.shadow
+                def signingKey = System.getenv("SIGNING_KEY")
+                def signingPassword = System.getenv("SIGNING_PASSWORD")
+                if (signingKey != null && signingPassword != null) {
+                    useInMemoryPgpKeys(signingKey, signingPassword)
+                    sign publishing.publications.shadow
+                }
+            }
+
+            if (JavaVersion.current() >= JavaVersion.VERSION_11 && !project.version.endsWith("-SNAPSHOT")) {
+                nmcp {
+                    publish('shadow') {
+                        username = System.getenv('NMCP_USERNAME')
+                        password = System.getenv('NMCP_PASSWORD')
+                        publicationType = 'USER_MANAGED'
+                    }
+                }
             }
         }
     }

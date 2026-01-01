@@ -76,6 +76,7 @@ trait ClickHouseHelper extends Logging {
       username = options.getOrDefault(CATALOG_PROP_USER, "default"),
       password = options.getOrDefault(CATALOG_PROP_PASSWORD, ""),
       database = options.getOrDefault(CATALOG_PROP_DATABASE, "default"),
+      infer_runtime_env = options.getOrDefault(CATALOG_INFER_RUNTIME_ENV, "true"),
       options = new JHashMap(clientOpts.asJava)
     )
   }

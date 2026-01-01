@@ -173,7 +173,7 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
            |)
            |""".stripMargin
       )
-
+      Thread.sleep(3000)
       if (writeData) {
         val tblSchema = spark.table(s"$db.$tbl_dist").schema
         val dataDF = spark.createDataFrame(Seq(
@@ -189,6 +189,7 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
         spark.createDataFrame(dataDF.rdd, tblSchema)
           .writeTo(s"$db.$tbl_dist")
           .append
+        Thread.sleep(2000)
       }
       f(cluster, db, tbl_dist, tbl_local)
     }

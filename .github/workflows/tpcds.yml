@@ -30,14 +30,22 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        spark: [ 3.3, 3.4, 3.5 ]
-        scala: [ 2.12, 2.13 ]
+        spark: [ '3.3', '3.4', '3.5', '4.0' ]
+        scala: [ '2.12', '2.13' ]
+        java: [ 8, 17 ]
+        exclude:
+          # Spark 4.0 only supports Scala 2.13
+          - spark: '4.0'
+            scala: '2.12'
+          # Spark 4.0 requires Java 17+
+          - spark: '4.0'
+            java: 8
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
-          java-version: 8
+          java-version: ${{ matrix.java }}
           cache: gradle
       - run: >-
           ./gradlew clean slowTest --no-daemon --refresh-dependencies
@@ -46,9 +54,9 @@ jobs:
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
       - name: Upload test logs
         if: failure()
-        uses: actions/upload-artifact@v3
+        uses: actions/upload-artifact@v4
         with:
-          name: log-tpcds-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}
+          name: log-tpcds-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}-java-${{ matrix.java }}
           path: |
             **/build/unit-tests.log
             log/**

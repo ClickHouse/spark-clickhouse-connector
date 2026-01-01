@@ -14,14 +14,35 @@ import org.codehaus.groovy.runtime.GStringImpl
  * limitations under the License.
  */
 
+
+// Add buildscript block for conditional SonarQube
+buildscript {
+    repositories {
+        maven { url = "https://plugins.gradle.org/m2/" }
+    }
+    dependencies {
+        // Only add SonarQube to classpath if explicitly enabled
+        if (project.hasProperty('enableSonar')) {
+            classpath "org.sonarsource.scanner.gradle:sonarqube-gradle-plugin:4.4.1.3373"
+        }
+        if (JavaVersion.current() >= JavaVersion.VERSION_11) {
+            classpath 'com.gradleup.nmcp:nmcp:0.0.8'
+        }
+    }
+}
+
 plugins {
     id "idea"
     id "org.scoverage" version "8.1" apply false
-    id "org.sonarqube" version "3.4.0.2513"
     id "com.diffplug.spotless" version "6.12.1" apply false
     id "org.nosphere.apache.rat" version "0.8.1"
     id "com.github.maiflai.scalatest" version "0.32" apply false
     id "com.github.johnrengelman.shadow" version "8.1.1" apply false
+}
+
+// Apply SonarQube plugin only when property is set
+if (project.hasProperty('enableSonar')) {
+    apply plugin: 'org.sonarqube'
 }
 
 project.ext {
@@ -31,8 +52,8 @@ project.ext {
     spark_prefix = "spark_${spark_binary_version.replace('.', '')}"
     scala_prefix = "scala_${scala_binary_version.replace('.', '')}"
 
-    scala_212_version = project.getProperty("${spark_prefix}_scala_212_version")
-    scala_213_version = project.getProperty("${spark_prefix}_scala_213_version")
+    scala_212_version = project.findProperty("${spark_prefix}_scala_212_version") ?: "2.12.18"
+    scala_213_version = project.findProperty("${spark_prefix}_scala_213_version") ?: "2.13.8"
     scala_version = project.getProperty("${scala_prefix}_version")
 
     antlr_version = project.getProperty("${spark_prefix}_antlr_version")
@@ -72,14 +93,27 @@ allprojects {
     version = getProjectVersion()
 
     repositories {
-        maven { url = "$mavenCentralMirror" }
+        maven {
+            url = "$mavenCentralMirror"
+        }
+
+        maven {
+            url = "$mavenSnapshotsRepo"
+            mavenContent {
+                snapshotsOnly()
+            }
+        }
     }
 }
 
 subprojects {
     apply plugin: "scala"
     apply plugin: "java-library"
-    apply plugin: "org.scoverage"
+    // Disable scoverage when running Metals' bloopInstall to avoid plugin resolution issues
+    def isBloopInstall = gradle.startParameter.taskNames.any { it.contains('bloopInstall') }
+    if (!project.hasProperty('disableScoverage') && !isBloopInstall) {
+        apply plugin: "org.scoverage"
+    }
     apply plugin: "com.diffplug.spotless"
     apply plugin: "com.github.maiflai.scalatest"
 
@@ -141,11 +175,13 @@ subprojects {
         }
     }
 
-    scoverage {
-        scoverageVersion = "2.0.11"
-        reportDir.set(file("${rootProject.buildDir}/reports/scoverage"))
-        highlighting.set(false)
-        minimumRate.set(0.0)
+    if (plugins.hasPlugin('org.scoverage')) {
+        scoverage {
+            scoverageVersion = "2.0.11"
+            reportDir.set(file("${rootProject.buildDir}/reports/scoverage"))
+            highlighting.set(false)
+            minimumRate.set(0.0)
+        }
     }
 
     spotless {
@@ -200,9 +236,7 @@ project(':clickhouse-core') {
         api "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
         api "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
 
-        api("com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version:all") { transitive = false }
-
-        compileOnly "jakarta.annotation:jakarta.annotation-api:$jakarta_annotation_api_version"
+        api("com.clickhouse:client-v2:${clickhouse_client_v2_version}:all") { transitive = false }
 
         testFixturesApi "org.slf4j:slf4j-api:$slf4j_version"
         testFixturesApi "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
@@ -221,6 +255,7 @@ project(":clickhouse-core-it") {
         testImplementation(testFixtures(project(":clickhouse-core")))
 
         testImplementation("com.clickhouse:clickhouse-jdbc:$clickhouse_jdbc_version:all") { transitive = false }
+
         testImplementation "org.slf4j:slf4j-log4j12:$slf4j_version"
     }
 

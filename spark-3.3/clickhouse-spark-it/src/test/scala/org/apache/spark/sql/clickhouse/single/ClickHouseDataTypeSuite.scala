@@ -50,7 +50,7 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     )
     val db = "t_w_s_db"
     val tbl = "t_w_s_tbl"
-    withTable(db, tbl, schema) {
+    withTable(db, tbl, schema) { (actualDb: String, actualTbl: String) =>
       val tblSchema = spark.table(s"$db.$tbl").schema
       val respectNullable = SPARK_43390_ENABLED && !spark.conf.get(USE_NULLABLE_QUERY_SCHEMA)
       if (respectNullable) {
@@ -94,8 +94,8 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     ("Int32", -2147483648, 2147483647),
     ("UInt32", 0L, 4294967295L),
     ("Int64", -9223372036854775808L, 9223372036854775807L),
-    // Only overlapping value range of both the ClickHouse type and the Spark type is supported
-    ("UInt64", 0L, 4294967295L),
+    // UInt64 is mapped to DecimalType(20, 0) to support the full range: 0 to 18446744073709551615
+    ("UInt64", BigDecimal(0), BigDecimal("18446744073709551615")),
     ("Int128", BigDecimal("-" + "9" * 38), BigDecimal("9" * 38)),
     ("UInt128", BigDecimal(0), BigDecimal("9" * 38)),
     ("Int256", BigDecimal("-" + "9" * 38), BigDecimal("9" * 38)),
@@ -187,7 +187,7 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     if (!clickhouseVersion.isNewerOrEqualTo("23.3") || isCloud) {
       Thread.sleep(1000)
     }
-    withKVTable(db, tbl, valueColDef = valueColDef) {
+    withKVTable(db, tbl, valueColDef = valueColDef) { (actualDb: String, actualTbl: String) =>
       prepare(db, tbl)
       val df = spark.sql(s"SELECT key, value FROM $db.$tbl ORDER BY key")
       validate(df)

@@ -42,3 +42,11 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
 include ":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version"
 project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version").projectDir = file("spark-${spark_binary_version}/clickhouse-spark-it")
 project(":clickhouse-spark-it-${spark_binary_version}_$scala_binary_version").name = "clickhouse-spark-it-${spark_binary_version}_$scala_binary_version"
+
+// Examples module for running/debugging sample apps in IDE
+// Only include examples for Spark versions that have them
+if (spark_binary_version == "4.0") {
+    include ":examples-scala-spark-${spark_binary_version}"
+    project(":examples-scala-spark-${spark_binary_version}").projectDir = file("examples/scala/spark-${spark_binary_version}")
+    project(":examples-scala-spark-${spark_binary_version}").name = "examples-scala-spark-${spark_binary_version}"
+}

@@ -27,8 +27,12 @@ jobs:
       matrix:
         branch:
           - "main"
-        scala: [ 2.12, 2.13 ]
-        spark: [ 3.3, 3.4, 3.5 ]
+        scala: [ '2.12', '2.13' ]
+        spark: [ '3.3', '3.4', '3.5', '4.0' ]
+        exclude:
+          # Spark 4.0 only supports Scala 2.13
+          - spark: '4.0'
+            scala: '2.12'
     steps:
       - uses: actions/checkout@v4
         with:
@@ -36,12 +40,16 @@ jobs:
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
-          java-version: 8
+          java-version: 17
           cache: gradle
       - name: Publish Snapshot - ${{ matrix.branch }}
+        env:
+          NMCP_USERNAME: ${{ secrets.NMCP_USERNAME }}
+          NMCP_PASSWORD: ${{ secrets.NMCP_PASSWORD }}
+          SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
+          SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
         run: >-
-          ./gradlew clean publish --no-daemon --refresh-dependencies
+          ./gradlew clean publishAllPublicationsToCentralPortal 
           -Dscala_binary_version=${{ matrix.scala }}
           -Dspark_binary_version=${{ matrix.spark }}
-          -PmavenUser='${{ secrets.NEXUS_USER }}'
-          -PmavenPassword='${{ secrets.NEXUS_PW }}'
+          -Prelease
