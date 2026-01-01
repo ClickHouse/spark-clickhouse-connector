@@ -35,14 +35,16 @@ object TableEngineUtils extends Logging {
     macrosSpecs: Seq[MacrosSpec]
   ): ClusterSpec = {
     val clusterName = if (distributedEngineSpec.cluster.contains("{")) {
-macrosSpecs.foldLeft(value) { (result, macro) =>
-    result.replace(s"{${macro.name}}", macro.substitution)
-  }
+      macrosSpecs.foldLeft(distributedEngineSpec.cluster) { (clusterName, macroSpec) =>
+        clusterName.replace(s"{${macroSpec.name}}", macroSpec.substitution)
+      }
     } else {
       distributedEngineSpec.cluster
     }
 
     clusterSpecs.find(_.name == clusterName)
-      .getOrElse(throw CHClientException(s"Unknown cluster: resolved name '${clusterName}' (original: '${distributedEngineSpec.cluster}')"))
+      .getOrElse(throw CHClientException(
+        s"Unknown cluster: resolved name '${clusterName}' (original: '${distributedEngineSpec.cluster}')"
+      ))
   }
 }
