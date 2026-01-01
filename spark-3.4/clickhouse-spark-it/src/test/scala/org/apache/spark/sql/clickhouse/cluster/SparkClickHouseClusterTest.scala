@@ -99,6 +99,52 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
     }
   }
 
+  def withSimpleDistTableUsingMacro(
+                                     cluster_macro: String,
+                                     actual_cluster: String,
+                                     db: String,
+                                     tbl_dist: String,
+                                     writeData: Boolean = false
+                                   )(f: (String, String, String, String) => Unit): Unit =
+    autoCleanupDistTable(actual_cluster, db, tbl_dist) { (cluster, db, tbl_dist, tbl_local) =>
+      runClickHouseSQL(
+        s"""CREATE TABLE IF NOT EXISTS $db.$tbl_local ON CLUSTER '$cluster_macro' (
+           |  create_time DateTime64(3),
+           |  y           int   COMMENT 'shard key',
+           |  m           int   COMMENT 'part key',
+           |  id          Int64 COMMENT 'sort key',
+           |  value       Nullable(String)
+           |) engine MergeTree()
+           | PARTITION BY (m)
+           | ORDER BY (id)
+           | SETTINGS index_granularity = 8192;
+           |""".stripMargin
+      )
+      runClickHouseSQL(
+        s"""CREATE TABLE IF NOT EXISTS $db.$tbl_dist ON CLUSTER '$cluster_macro' (
+           |  create_time DateTime64(3),
+           |  y           int          COMMENT 'shard key',
+           |  m           int          COMMENT 'part key',
+           |  id          Int64        COMMENT 'sort key',
+           |  value       Nullable(String)
+           |) engine Distributed('$cluster_macro', '$db', '$tbl_local', y)
+           |""".stripMargin
+      )
+      if (writeData) {
+
+        runClickHouseSQL(
+          s"""INSERT INTO $db.$tbl_dist (create_time, y, m, id, value)
+             | VALUES
+             |('2021-01-01 10:10:10', 2021, 1, 1, '1'),
+             |('2022-02-02 10:10:10', 2022, 2, 2, '2'),
+             |('2023-03-03 10:10:10', 2023, 3, 3, '3'),
+             |('2024-04-04 10:10:10', 2024, 4, 4, '4');
+             |""".stripMargin
+        )
+      }
+      f(cluster, db, tbl_dist, tbl_local)
+    }
+
   def withSimpleDistTable(
     cluster: String,
     db: String,

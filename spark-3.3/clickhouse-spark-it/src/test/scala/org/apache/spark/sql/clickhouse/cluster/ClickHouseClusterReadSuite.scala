@@ -87,6 +87,45 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
     }
   }
 
+  test("push down aggregation - distributed table with cluster macros") {
+    withSimpleDistTableUsingMacro("{cluster}", "single_replica", "db_agg_col", "t_dist", true) { (_, db, tbl_dist, _) =>
+      checkAnswer(
+        spark.sql(s"SELECT COUNT(id) FROM $db.$tbl_dist"),
+        Seq(Row(4))
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT MIN(id) FROM $db.$tbl_dist"),
+        Seq(Row(1))
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT MAX(id) FROM $db.$tbl_dist"),
+        Seq(Row(4))
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT m, COUNT(DISTINCT id) FROM $db.$tbl_dist GROUP BY m"),
+        Seq(
+          Row(1, 1),
+          Row(2, 1),
+          Row(3, 1),
+          Row(4, 1)
+        )
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT m, SUM(DISTINCT id) FROM $db.$tbl_dist GROUP BY m"),
+        Seq(
+          Row(1, 1),
+          Row(2, 2),
+          Row(3, 3),
+          Row(4, 4)
+        )
+      )
+    }
+  }
+
   test("runtime filter - distributed table") {
     withSimpleDistTable("single_replica", "runtime_db", "runtime_tbl", true) { (_, db, tbl_dist, _) =>
       spark.sql("set spark.clickhouse.read.runtimeFilter.enabled=false")
