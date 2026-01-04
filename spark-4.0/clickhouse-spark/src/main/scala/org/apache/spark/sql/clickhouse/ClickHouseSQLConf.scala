@@ -210,6 +210,19 @@ object ClickHouseSQLConf {
       .transform(_.toLowerCase)
       .createWithDefault("binary")
 
+  val READ_JSON_AS: ConfigEntry[String] =
+    buildConf("spark.clickhouse.read.jsonAs")
+      .doc("[Spark 4.0+ only] Read ClickHouse JSON type as the specified Spark data type. " +
+        "Supported types: variant (VariantType), string")
+      .version("0.9.0")
+      .stringConf
+      .transform(_.toLowerCase)
+      .checkValue(
+        v => v == "variant" || v == "string",
+        "`spark.clickhouse.read.jsonAs` must be either 'variant' or 'string'"
+      )
+      .createWithDefault("variant")
+
   val READ_SETTINGS: OptionalConfigEntry[String] =
     buildConf("spark.clickhouse.read.settings")
       .doc("Settings when read from ClickHouse. e.g. `final=1, max_execution_time=5`")

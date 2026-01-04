@@ -25,4 +25,15 @@ abstract class ClickHouseArrowWriterSuite extends ClickHouseWriterTestBase {
     .set("spark.clickhouse.write.format", "arrow")
     .set("spark.clickhouse.read.format", "json")
 
+  // Arrow writer supports VariantType for JSON-only data (via workaround),
+  // but does not support mixed types with variant_types option - skip those tests
+  override def test(testName: String, testTags: org.scalatest.Tag*)(testFun: => Any)(implicit
+    pos: org.scalactic.source.Position
+  ): Unit =
+    if (testName.contains("variant_types")) {
+      ignore(testName, testTags: _*)(testFun)(pos)
+    } else {
+      super.test(testName, testTags: _*)(testFun)(pos)
+    }
+
 }

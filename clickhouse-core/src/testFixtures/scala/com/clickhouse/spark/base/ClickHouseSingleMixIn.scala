@@ -30,7 +30,7 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with BeforeAndAfterAll with ForA
 
   private val logger = LoggerFactory.getLogger(getClass)
   // format: off
-  private val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:23.8")
+  private val CLICKHOUSE_IMAGE:    String = Utils.load("CLICKHOUSE_IMAGE", "clickhouse/clickhouse-server:25.3")
   private val CLICKHOUSE_USER:     String = Utils.load("CLICKHOUSE_USER", "default")
   private val CLICKHOUSE_PASSWORD: String = Utils.load("CLICKHOUSE_PASSWORD", "")
   private val CLICKHOUSE_DB:       String = Utils.load("CLICKHOUSE_DB", "")
