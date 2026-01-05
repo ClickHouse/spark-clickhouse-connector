@@ -211,7 +211,7 @@ class ClickHouseTableProvider extends TableProvider
         Map.empty[String, String]
       }
     ) ++ (
-      optionsMap.view.filterKeys(key => key == "ssl" || key == "ssl_mode").toMap.map {
+      optionsMap.filter { case (key, _) => key == "ssl" || key == "ssl_mode" }.map {
         case (key, value) => Constants.CATALOG_PROP_OPTION_PREFIX + key -> value
       }
     )
