@@ -62,6 +62,8 @@ class ClickHouseWrite(
     with SQLConfHelper
     with Logging {
 
+  override def distributionStrictlyRequired: Boolean = writeJob.writeOptions.repartitionStrictly
+
   override def description: String =
     s"ClickHouseWrite(database=${writeJob.targetDatabase(false)}, table=${writeJob.targetTable(false)})})"
 
