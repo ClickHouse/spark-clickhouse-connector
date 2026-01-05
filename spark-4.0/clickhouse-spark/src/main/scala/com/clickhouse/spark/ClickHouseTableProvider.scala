@@ -204,8 +204,8 @@ class ClickHouseTableProvider extends TableProvider
       Constants.CATALOG_PROP_USER -> optionsMap.getOrElse("user", "default"),
       Constants.CATALOG_PROP_PASSWORD -> optionsMap.getOrElse("password", "")
     ) ++ (
-      if (optionsMap.contains("timezone")) {
-        Map(Constants.CATALOG_PROP_TZ -> optionsMap("timezone"))
+      if (optionsMap.contains(Constants.CATALOG_PROP_TZ)) {
+        Map(Constants.CATALOG_PROP_TZ -> optionsMap(Constants.CATALOG_PROP_TZ))
       } else {
         Map.empty[String, String]
       }
