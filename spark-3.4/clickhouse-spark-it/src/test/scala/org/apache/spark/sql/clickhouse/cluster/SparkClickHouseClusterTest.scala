@@ -100,12 +100,12 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
   }
 
   def withSimpleDistTableUsingMacro(
-                                     cluster_macro: String,
-                                     actual_cluster: String,
-                                     db: String,
-                                     tbl_dist: String,
-                                     writeData: Boolean = false
-                                   )(f: (String, String, String, String) => Unit): Unit =
+    cluster_macro: String,
+    actual_cluster: String,
+    db: String,
+    tbl_dist: String,
+    writeData: Boolean = false
+  )(f: (String, String, String, String) => Unit): Unit =
     autoCleanupDistTable(actual_cluster, db, tbl_dist) { (cluster, db, tbl_dist, tbl_local) =>
       runClickHouseSQL(
         s"""CREATE TABLE IF NOT EXISTS $db.$tbl_local ON CLUSTER '$cluster_macro' (
