@@ -81,6 +81,23 @@ trait ClickHouseHelper extends Logging {
     )
   }
 
+  def queryMacrosSpec()(implicit nodeClient: NodeClient): Seq[MacrosSpec] = {
+    val macrosOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
+      """ SELECT
+        |  `macro`,       -- String
+        |  `substitution` -- String
+        | FROM `system`.`macros`
+        |""".stripMargin
+    )
+
+    macrosOutput.records
+      .map { row =>
+        val name = row.get("macro").asText
+        val substitution = row.get("substitution").asText
+        MacrosSpec(name, substitution)
+      }
+  }
+
   def queryClusterSpecs(nodeSpec: NodeSpec)(implicit nodeClient: NodeClient): Seq[ClusterSpec] = {
     val clustersOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
       """ SELECT
