@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse.single
 
-import org.apache.spark.sql.Row
+import org.apache.spark.sql.{DataFrame, Row}
 
 /**
  * Shared test cases for both JSON and Binary readers.
@@ -24,6 +24,60 @@ import org.apache.spark.sql.Row
  * Each type includes comprehensive coverage of edge cases and null handling.
  */
 trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
+
+  /**
+   * Reads a table using both the Catalog API and TableProvider API,
+   * verifies they return the same data, and returns the DataFrame.
+   * 
+   * @param db Database name
+   * @param tbl Table name
+   * @param columns Column selection (default: "*")
+   * @param orderBy Optional ORDER BY clause
+   * @return DataFrame from the Catalog API
+   */
+  def readTableWithBothAPIs(
+    db: String,
+    tbl: String,
+    columns: String = "*",
+    orderBy: Option[String] = None
+  ): DataFrame = {
+    import org.apache.spark.sql.functions.col
+
+    val catalogQuery = orderBy match {
+      case Some(order) => s"SELECT $columns FROM $db.$tbl ORDER BY $order"
+      case None => s"SELECT $columns FROM $db.$tbl"
+    }
+    val catalogDF = spark.sql(catalogQuery)
+
+    val tableProviderDFBase = spark.read
+      .format("clickhouse")
+      .option("host", clickhouseHost)
+      .option("http_port", clickhouseHttpPort.toString)
+      .option("protocol", "http")
+      .option("user", clickhouseUser)
+      .option("password", clickhousePassword)
+      .option("database", db)
+      .option("table", tbl)
+      .load()
+
+    val tableProviderDFSelected = if (columns == "*") {
+      tableProviderDFBase
+    } else {
+      val columnList = columns.split(",").map(_.trim)
+      tableProviderDFBase.select(columnList.map(col): _*)
+    }
+
+    val tableProviderDF = orderBy match {
+      case Some(order) =>
+        val orderColumns = order.split(",").map(_.trim).map(col)
+        tableProviderDFSelected.orderBy(orderColumns: _*)
+      case None => tableProviderDFSelected
+    }
+
+    checkAnswer(catalogDF, tableProviderDF.collect())
+
+    catalogDF
+  }
 
   // ============================================================================
   // ArrayType Tests
@@ -39,7 +93,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_array_int ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getSeq[Int](1) == Seq(1, 2, 3))
@@ -58,7 +112,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_array_string ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getSeq[String](1) == Seq("hello", "world"))
@@ -77,7 +131,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_array_nullable ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         // Verify arrays can be read
@@ -96,7 +150,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_empty_array ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getSeq[Int](1).isEmpty)
@@ -115,7 +169,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_nested_array ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         // Verify nested arrays can be read
@@ -135,7 +189,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_fixedstring ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 2)
         // FixedString should be readable
@@ -154,7 +208,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_fixedstring_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).get(1) != null)
@@ -180,7 +234,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_bool ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 4)
       // Check the value - handle both Boolean (JSON) and Short (Binary) formats
@@ -211,7 +265,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_bool_null ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(1).isNullAt(1))
@@ -243,7 +297,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_byte ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
         Row(1, -128.toByte) :: Row(2, 0.toByte) :: Row(3, 127.toByte) :: Nil
@@ -260,7 +314,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_byte_null ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
         Row(1, -128.toByte) :: Row(2, null) :: Row(3, 127.toByte) :: Nil
@@ -276,7 +330,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_datetime32 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 2)
       assert(result(0).getTimestamp(1) != null)
@@ -294,7 +348,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_datetime32_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getTimestamp(1) != null)
@@ -312,7 +366,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_date ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getDate(1) != null)
@@ -330,7 +384,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_date32 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getDate(1) != null)
@@ -349,7 +403,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_date32_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getDate(1) != null)
@@ -367,7 +421,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_date_null ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getDate(1) != null)
@@ -387,7 +441,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_decimal128 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       // Decimal128(20) means 20 decimal places, total precision up to 38 digits
@@ -407,7 +461,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_decimal128_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getDecimal(1) != null)
@@ -425,7 +479,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_decimal32 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getDecimal(1).doubleValue() == 12345.6789)
@@ -444,7 +498,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_decimal32_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getDecimal(1) != null)
@@ -464,7 +518,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_decimal64 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(math.abs(result(0).getDecimal(1).doubleValue() - 1234567.0123456789) < 0.0001)
@@ -483,7 +537,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_decimal64_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getDecimal(1) != null)
@@ -502,7 +556,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_double_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(math.abs(result(0).getDouble(1) - 1.23) < 0.0001)
@@ -520,7 +574,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_double ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(math.abs(result(0).getDouble(1) - -3.141592653589793) < 0.000001)
@@ -539,7 +593,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_enum16 ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getString(1) == "small")
@@ -561,7 +615,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_enum16_null ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getString(1) == "small")
@@ -580,7 +634,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_enum8_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getString(1) == "red")
@@ -599,7 +653,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_enum8 ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getString(1) == "red")
@@ -618,7 +672,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_float_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(math.abs(result(0).getFloat(1) - 1.5f) < 0.01f)
@@ -636,7 +690,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_float ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(math.abs(result(0).getFloat(1) - -3.14f) < 0.01f)
@@ -654,7 +708,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_int128 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getDecimal(1).toBigInteger.longValue == 0L)
@@ -673,7 +727,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_int128_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getDecimal(1).toBigInteger.longValue == 0L)
@@ -692,7 +746,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_int256_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getDecimal(1).toBigInteger.longValue == 0L)
@@ -709,7 +763,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_int256 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 2)
       assert(result(0).getDecimal(1).toBigInteger.longValue == 0L)
@@ -726,7 +780,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_int ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
         Row(1, -2147483648) :: Row(2, 0) :: Row(3, 2147483647) :: Nil
@@ -743,7 +797,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_int_null ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
         Row(1, -2147483648) :: Row(2, null) :: Row(3, 2147483647) :: Nil
@@ -760,7 +814,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_ipv4 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getString(1) == "127.0.0.1")
@@ -778,7 +832,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_ipv4_null ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getString(1) == "127.0.0.1")
@@ -796,7 +850,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_ipv6 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getString(1) != null)
@@ -814,7 +868,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_ipv6_null ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getString(1) != null)
@@ -833,7 +887,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
             |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_json_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getString(1).contains("Alice"))
@@ -851,7 +905,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
           |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_json ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getString(1).contains("Alice"))
@@ -869,7 +923,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_long ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
         Row(1, -9223372036854775808L) :: Row(2, 0L) :: Row(3, 9223372036854775807L) :: Nil
@@ -886,7 +940,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_long_null ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
         Row(1, -9223372036854775808L) :: Row(2, null) :: Row(3, 9223372036854775807L) :: Nil
@@ -904,7 +958,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint32_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         checkAnswer(
           df,
           Row(1, 0L) :: Row(2, null) :: Row(3, 4294967295L) :: Nil
@@ -921,7 +975,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint32 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
         Row(1, 0L) :: Row(2, 2147483648L) :: Row(3, 4294967295L) :: Nil
@@ -938,7 +992,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_map ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getMap[String, Int](1) == Map("a" -> 1, "b" -> 2))
@@ -957,7 +1011,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_map_nullable ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         // Verify maps can be read
@@ -976,7 +1030,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_short ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
         Row(1, -32768.toShort) :: Row(2, 0.toShort) :: Row(3, 32767.toShort) :: Nil
@@ -994,7 +1048,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_short_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         checkAnswer(
           df,
           Row(1, -32768.toShort) :: Row(2, null) :: Row(3, 32767.toShort) :: Nil
@@ -1012,7 +1066,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint8_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         checkAnswer(
           df,
           Row(1, 0.toShort) :: Row(2, null) :: Row(3, 255.toShort) :: Nil
@@ -1029,7 +1083,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint8 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
         Row(1, 0.toShort) :: Row(2, 128.toShort) :: Row(3, 255.toShort) :: Nil
@@ -1046,7 +1100,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_empty_string ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getString(1) == "")
@@ -1065,7 +1119,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_string_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         checkAnswer(
           df,
           Row(1, "hello") :: Row(2, null) :: Row(3, "world") :: Nil
@@ -1083,7 +1137,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_string ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
         Row(1, "hello") :: Row(2, "") :: Row(3, "world with spaces") :: Row(4, "special chars: !@#$$%^&*()") :: Nil
@@ -1099,7 +1153,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uuid ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 2)
       assert(result(0).getString(1) == "550e8400-e29b-41d4-a716-446655440000")
@@ -1116,7 +1170,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uuid_null ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getString(1) == "550e8400-e29b-41d4-a716-446655440000")
@@ -1133,7 +1187,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_long_string ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 1)
       assert(result(0).getString(1).length == 10000)
@@ -1149,7 +1203,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_datetime ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getTimestamp(1) != null)
@@ -1167,7 +1221,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_datetime64 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 3)
       assert(result(0).getTimestamp(1) != null)
@@ -1186,7 +1240,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_datetime64_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getTimestamp(1) != null)
@@ -1205,7 +1259,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_datetime_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getTimestamp(1) != null)
@@ -1222,7 +1276,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint128 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 2)
       assert(result(0).getDecimal(1).toBigInteger.longValue == 0L)
@@ -1240,7 +1294,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint128_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getDecimal(1).toBigInteger.longValue == 0L)
@@ -1259,7 +1313,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint16_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         checkAnswer(
           df,
           Row(1, 0) :: Row(2, null) :: Row(3, 65535) :: Nil
@@ -1276,7 +1330,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint16 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
         Row(1, 0) :: Row(2, 32768) :: Row(3, 65535) :: Nil
@@ -1294,7 +1348,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint256_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 3)
         assert(result(0).getDecimal(1).toBigInteger.longValue == 0L)
@@ -1311,7 +1365,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint256 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 2)
       assert(result(0).getDecimal(1).toBigInteger.longValue == 0L)
@@ -1331,7 +1385,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
              |""".stripMargin
         )
 
-        val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint64_null ORDER BY key")
+        val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 5)
         assert(result(0).getDecimal(1) == BigDecimal(0))
@@ -1357,7 +1411,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
            |""".stripMargin
       )
 
-      val df = spark.sql(s"SELECT key, value FROM $actualDb.test_uint64 ORDER BY key")
+      val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 6)
       assert(result(0).getDecimal(1) == BigDecimal(0))
@@ -1401,7 +1455,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       )
 
       // Read via Spark - should infer schema with field names _1, _2, _3
-      val result = spark.table(s"$db.$tbl").sort("id").collect()
+      val result = readTableWithBothAPIs(db, tbl, columns = "*", orderBy = Some("id")).collect()
 
       assert(result.length === 3)
 

@@ -170,7 +170,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
     db: String,
     tbl: String,
     writeData: Boolean = false
-  )(f: => Unit): Unit = {
+  )(f: (String, String) => Unit): Unit = {
     val actualDb = if (useSuiteLevelDatabase) testDatabaseName else db
     try {
       if (!useSuiteLevelDatabase) {
@@ -208,7 +208,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
           .append
       }
 
-      f
+      f(actualDb, tbl)
     } finally
       if (useSuiteLevelDatabase) {
         dropTableWithRetry(actualDb, tbl)

@@ -89,7 +89,7 @@ class AstVisitor extends ClickHouseSQLBaseVisitor[AnyRef] with Logging {
       .getOrElse(Map.empty)
 
     engine match {
-      case eg: String if "MergeTree" equalsIgnoreCase eg =>
+      case eg: String if ("MergeTree" equalsIgnoreCase eg) || ("SharedMergeTree" equalsIgnoreCase eg) =>
         MergeTreeEngineSpec(
           engine_clause = engineExpr,
           _sorting_key = tupleIfNeeded(orderByOpt.toList),
