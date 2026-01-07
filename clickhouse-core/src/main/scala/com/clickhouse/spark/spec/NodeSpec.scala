@@ -60,7 +60,7 @@ case class NodeSpec(
     case unsupported => throw new IllegalArgumentException(s"Unsupported protocol: $unsupported")
   }
 
-  override def toString: String = s"[$protocol]$username@$host:$port}/$database"
+  override def toString: String = s"[$protocol]$username@$host:$port/$database"
 
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = Array(this)
 }
