@@ -106,7 +106,7 @@ object ClickHouseSQLConf {
       .doc("When writing Distributed table, write local table instead of itself. " +
         "If `true`, ignore `spark.clickhouse.write.distributed.useClusterNodes`. " +
         "This bypasses ClickHouse's native routing, requiring Spark to evaluate the sharding key. " +
-        s"When using unsupported sharding expressions, set `${IGNORE_UNSUPPORTED_TRANSFORM.key}` " +
+        "When using unsupported sharding expressions, set `spark.clickhouse.ignoreUnsupportedTransform` " +
         "to `false` to prevent silent data distribution errors.")
       .version("0.1.0")
       .booleanConf
