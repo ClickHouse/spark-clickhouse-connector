@@ -63,15 +63,18 @@ object ExprUtils extends SQLConfHelper with Logging {
         )
     }
 
-  def toSparkTransformOpt(expr: Expr): Option[Transform] = Try(toSparkTransform(expr)) match {
-    case Success(t) => Some(t)
-    case Failure(cause) if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) =>
-      log.warn(s"Ignoring unsupported ClickHouse partition/sharding expression: $expr. " +
-        s"Spark-side repartitioning will be skipped for this expression. " +
-        s"To fail on unsupported expressions, set ${IGNORE_UNSUPPORTED_TRANSFORM.key}=false. " +
-        s"Reason: ${cause.getMessage}")
-      None
-    case Failure(rethrow) => throw new AnalysisException(rethrow.getMessage, cause = Some(rethrow))
+  def toSparkTransformOpt(expr: Expr): Option[Transform] = expr match {
+    case FuncExpr("tuple", Nil) => None // tuple() means no partitioning
+    case _ => Try(toSparkTransform(expr)) match {
+      case Success(t) => Some(t)
+      case Failure(cause) if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) =>
+        log.warn(s"Ignoring unsupported ClickHouse partition/sharding expression: $expr. " +
+          s"Spark-side repartitioning will be skipped for this expression. " +
+          s"To fail on unsupported expressions, set ${IGNORE_UNSUPPORTED_TRANSFORM.key}=false. " +
+          s"Reason: ${cause.getMessage}")
+        None
+      case Failure(rethrow) => throw new AnalysisException(rethrow.getMessage, cause = Some(rethrow))
+    }
   }
 
   // Some functions of ClickHouse which match Spark pre-defined Transforms

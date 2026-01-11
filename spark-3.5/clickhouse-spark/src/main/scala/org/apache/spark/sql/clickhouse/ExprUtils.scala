@@ -165,17 +165,20 @@ object ExprUtils extends SQLConfHelper with Serializable with Logging {
     }
 
   def toSparkTransformOpt(expr: Expr, functionRegistry: FunctionRegistry): Option[Transform] =
-    Try(toSparkExpression(expr, functionRegistry)) match {
-      // need this function because spark `Table`'s `partitioning` field should be `Transform`
-      case Success(t: Transform) => Some(t)
-      case Success(_) => None
-      case Failure(cause) if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) =>
-        log.warn(s"Ignoring unsupported ClickHouse partition/sharding expression: $expr. " +
-          s"Spark-side repartitioning will be skipped for this expression. " +
-          s"To fail on unsupported expressions, set ${IGNORE_UNSUPPORTED_TRANSFORM.key}=false. " +
-          s"Reason: ${cause.getMessage}")
-        None
-      case Failure(rethrow) => throw new AnalysisException(rethrow.getMessage, cause = Some(rethrow))
+    expr match {
+      case FuncExpr("tuple", Nil) => None // tuple() means no partitioning
+      case _ => Try(toSparkExpression(expr, functionRegistry)) match {
+        // need this function because spark `Table`'s `partitioning` field should be `Transform`
+        case Success(t: Transform) => Some(t)
+        case Success(_) => None
+        case Failure(cause) if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) =>
+          log.warn(s"Ignoring unsupported ClickHouse partition/sharding expression: $expr. " +
+            s"Spark-side repartitioning will be skipped for this expression. " +
+            s"To fail on unsupported expressions, set ${IGNORE_UNSUPPORTED_TRANSFORM.key}=false. " +
+            s"Reason: ${cause.getMessage}")
+          None
+        case Failure(rethrow) => throw new AnalysisException(rethrow.getMessage, cause = Some(rethrow))
+      }
     }
 
   def toSparkExpression(expr: Expr, functionRegistry: FunctionRegistry): V2Expression =

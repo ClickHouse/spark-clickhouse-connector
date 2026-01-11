@@ -169,7 +169,9 @@ object ExprUtils extends SQLConfHelper with Serializable with Logging {
     }
 
   def toSparkTransformOpt(expr: Expr, functionRegistry: FunctionRegistry): Option[Transform] =
-    Try(toSparkExpression(expr, functionRegistry)) match {
+    expr match {
+      case FuncExpr("tuple", Nil) => None // tuple() means no partitioning
+      case _ => Try(toSparkExpression(expr, functionRegistry)) match {
       // need this function because spark `Table`'s `partitioning` field should be `Transform`
       case Success(t: Transform) => Some(t)
       case Success(_) => None
@@ -184,6 +186,7 @@ object ExprUtils extends SQLConfHelper with Serializable with Logging {
           s"Unsupported transform expression: ${rethrow.getMessage}",
           cause = Some(rethrow)
         )
+      }
     }
 
   def toSparkExpression(expr: Expr, functionRegistry: FunctionRegistry): V2Expression =

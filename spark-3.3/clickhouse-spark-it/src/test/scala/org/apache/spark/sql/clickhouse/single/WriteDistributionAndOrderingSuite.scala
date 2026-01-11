@@ -120,7 +120,7 @@ abstract class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTe
     }
   }
 
-  test("write to table with PARTITION BY tuple() succeeds with warning") {
+  test("write to table with PARTITION BY tuple() succeeds") {
     val db = if (useSuiteLevelDatabase) testDatabaseName else "db_tuple_partition"
     val tbl = "tbl_tuple_partition"
 
