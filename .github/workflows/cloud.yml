@@ -18,11 +18,16 @@ on:
   push:
     branches:
       - "main"
+  pull_request_target:
+    branches:
+      - "branch-*"
+      - "main"
   workflow_dispatch:
 
 jobs:
   run-tests-with-clickhouse-cloud:
     runs-on: ubuntu-22.04
+    environment: clickhouse-cloud-testing
     strategy:
       fail-fast: false
       matrix:
@@ -41,6 +46,8 @@ jobs:
       CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
