@@ -108,6 +108,8 @@ jobs:
   remove-label:
     runs-on: ubuntu-22.04
     needs: run-tests-with-clickhouse-cloud
+    permissions:
+      pull-requests: write
     if: |
       always() &&
       needs.run-tests-with-clickhouse-cloud.result != 'skipped' &&
