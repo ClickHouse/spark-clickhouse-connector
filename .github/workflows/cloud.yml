@@ -110,6 +110,7 @@ jobs:
     needs: run-tests-with-clickhouse-cloud
     if: |
       always() &&
+      needs.run-tests-with-clickhouse-cloud.result != 'skipped' &&
       github.event_name == 'pull_request_target' &&
       github.event.pull_request.head.repo.full_name != github.repository &&
       contains(github.event.pull_request.labels.*.name, 'run-cloud-tests')
