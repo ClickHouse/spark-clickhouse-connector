@@ -38,7 +38,7 @@ jobs:
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'pull_request_target' && (
         github.event.pull_request.head.repo.full_name == github.repository ||
-        (github.event.action == 'labeled' && contains(github.event.pull_request.labels.*.name, 'run-cloud-tests'))
+        (github.event.action == 'labeled' && github.event.label.name == 'run-cloud-tests')
       ))
     strategy:
       fail-fast: false
@@ -103,3 +103,24 @@ jobs:
           path: |
             **/build/unit-tests.log
             log/**
+
+  # Remove the label after tests complete (for external PRs)
+  remove-label:
+    runs-on: ubuntu-22.04
+    needs: run-tests-with-clickhouse-cloud
+    if: |
+      always() &&
+      github.event_name == 'pull_request_target' &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'run-cloud-tests')
+    steps:
+      - name: Remove run-cloud-tests label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            await github.rest.issues.removeLabel({
+              owner: context.repo.owner,
+              repo: context.repo.repo,
+              issue_number: context.payload.pull_request.number,
+              name: 'run-cloud-tests'
+            });
