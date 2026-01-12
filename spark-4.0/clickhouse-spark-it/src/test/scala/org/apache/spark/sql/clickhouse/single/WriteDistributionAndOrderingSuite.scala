@@ -163,4 +163,98 @@ abstract class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTe
         sql(s"DROP DATABASE IF EXISTS `$db`")
       }
   }
+
+  test("write to table with unsupported PARTITION BY substring() succeeds with warning") {
+    val db = if (useSuiteLevelDatabase) testDatabaseName else "db_substring_partition"
+    val tbl = "tbl_substring_partition"
+
+    try {
+      if (!useSuiteLevelDatabase) {
+        sql(s"CREATE DATABASE IF NOT EXISTS `$db`")
+      }
+
+      runClickHouseSQL(
+        s"""CREATE TABLE `$db`.`$tbl` (
+           |  `id` String,
+           |  `value` String
+           |) ENGINE = MergeTree()
+           |ORDER BY id
+           |PARTITION BY substring(id, 1, 1)
+           |""".stripMargin
+      )
+
+      val df = spark.createDataFrame(Seq(
+        ("abc", "1"),
+        ("def", "2"),
+        ("ghi", "3")
+      )).toDF("id", "value")
+
+      val options = cmdRunnerOptions ++ Map("database" -> db, "table" -> tbl)
+
+      // With default ignoreUnsupportedTransform=true, write succeeds with warning
+      df.write
+        .format("clickhouse")
+        .mode(SaveMode.Append)
+        .options(options)
+        .save()
+
+      val result = spark.read
+        .format("clickhouse")
+        .options(options)
+        .load()
+
+      assert(result.count() == 3)
+    } finally
+      if (useSuiteLevelDatabase) {
+        dropTableWithRetry(db, tbl)
+      } else {
+        sql(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
+        sql(s"DROP DATABASE IF EXISTS `$db`")
+      }
+  }
+
+  test("write to table with unsupported PARTITION BY substring() fails when ignoreUnsupportedTransform=false") {
+    val db = if (useSuiteLevelDatabase) testDatabaseName else "db_substring_partition_fail"
+    val tbl = "tbl_substring_partition_fail"
+
+    try {
+      if (!useSuiteLevelDatabase) {
+        sql(s"CREATE DATABASE IF NOT EXISTS `$db`")
+      }
+
+      runClickHouseSQL(
+        s"""CREATE TABLE `$db`.`$tbl` (
+           |  `id` String,
+           |  `value` String
+           |) ENGINE = MergeTree()
+           |ORDER BY id
+           |PARTITION BY substring(id, 1, 1)
+           |""".stripMargin
+      )
+
+      val df = spark.createDataFrame(Seq(
+        ("abc", "1"),
+        ("def", "2")
+      )).toDF("id", "value")
+
+      val options = cmdRunnerOptions ++ Map("database" -> db, "table" -> tbl)
+
+      withSQLConf(IGNORE_UNSUPPORTED_TRANSFORM.key -> "false") {
+        val ex = intercept[Exception] {
+          df.write
+            .format("clickhouse")
+            .mode(SaveMode.Append)
+            .options(options)
+            .save()
+        }
+        assert(ex.getMessage.contains("substring") || ex.getCause.getMessage.contains("substring"))
+      }
+    } finally
+      if (useSuiteLevelDatabase) {
+        dropTableWithRetry(db, tbl)
+      } else {
+        sql(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
+        sql(s"DROP DATABASE IF EXISTS `$db`")
+      }
+  }
 }
