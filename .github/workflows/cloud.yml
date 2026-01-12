@@ -22,7 +22,7 @@ on:
     branches:
       - "branch-*"
       - "main"
-    types: [labeled]
+    types: [opened, reopened, synchronize, labeled]
   workflow_dispatch:
 
 jobs:
