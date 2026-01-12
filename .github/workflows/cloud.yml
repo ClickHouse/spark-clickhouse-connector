@@ -22,12 +22,17 @@ on:
     branches:
       - "branch-*"
       - "main"
+    types: [labeled]
   workflow_dispatch:
 
 jobs:
   run-tests-with-clickhouse-cloud:
     runs-on: ubuntu-22.04
-    environment: clickhouse-cloud-testing
+    # Only run for: push to main, workflow_dispatch, or PRs with 'run-cloud-tests' label
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && contains(github.event.pull_request.labels.*.name, 'run-cloud-tests'))
     strategy:
       fail-fast: false
       matrix:
