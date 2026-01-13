@@ -22,12 +22,24 @@ on:
     branches:
       - "branch-*"
       - "main"
+    types: [opened, reopened, synchronize, labeled]
   workflow_dispatch:
 
 jobs:
   run-tests-with-clickhouse-cloud:
     runs-on: ubuntu-22.04
-    environment: clickhouse-cloud-testing
+    # Run for:
+    # - push to main
+    # - workflow_dispatch
+    # - Internal PRs (from repo collaborators): auto-run on open/reopen/sync (NOT on random label additions)
+    # - External PRs (from forks): only when 'run-cloud-tests' label is added (secure, no auto-run on new commits)
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && (
+        (github.event.pull_request.head.repo.full_name == github.repository && github.event.action != 'labeled') ||
+        (github.event.action == 'labeled' && github.event.label.name == 'run-cloud-tests')
+      ))
     strategy:
       fail-fast: false
       matrix:
@@ -91,3 +103,34 @@ jobs:
           path: |
             **/build/unit-tests.log
             log/**
+
+  # Remove the label after tests complete (for external PRs)
+  remove-label:
+    runs-on: ubuntu-22.04
+    needs: run-tests-with-clickhouse-cloud
+    if: |
+      always() &&
+      needs.run-tests-with-clickhouse-cloud.result != 'skipped' &&
+      github.event_name == 'pull_request_target' &&
+      github.event.pull_request.head.repo.full_name != github.repository &&
+      contains(github.event.pull_request.labels.*.name, 'run-cloud-tests')
+    steps:
+      - name: Remove run-cloud-tests label
+        uses: actions/github-script@v7
+        with:
+          script: |
+            try {
+              await github.rest.issues.removeLabel({
+                owner: context.repo.owner,
+                repo: context.repo.repo,
+                issue_number: context.payload.pull_request.number,
+                name: 'run-cloud-tests'
+              });
+              console.log('Label removed successfully');
+            } catch (error) {
+              if (error.status === 404) {
+                console.log('Label was already removed');
+              } else {
+                throw error;
+              }
+            }
