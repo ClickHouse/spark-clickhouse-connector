@@ -25,14 +25,14 @@ Changes that have been merged but not yet released will be documented here.
 
 ### Added
 - Variant type support ([#456](https://github.com/ClickHouse/spark-clickhouse-connector/pull/456)). Added support for Spark 4.0's `VariantType` mapped to ClickHouse's `JSON`/`Variant` type. Requires Spark 4.0+ and ClickHouse 25.3+.
-- TableProvider API support ([#XXX](https://github.com/ClickHouse/spark-clickhouse-connector/pull/XXX)). Added `ClickHouseTableProvider` implementation enabling format-based access pattern (`.format("clickhouse")`), making the connector compatible with Databricks Unity Catalog and other environments that require TableProvider API.
-- Support for macros in cluster names ([#XXX](https://github.com/ClickHouse/spark-clickhouse-connector/pull/XXX)). The connector now resolves ClickHouse macros (e.g., `{cluster}`) in Distributed table cluster names, allowing dynamic cluster resolution based on node-specific macro definitions.
+- TableProvider API support ([#471](https://github.com/ClickHouse/spark-clickhouse-connector/pull/471)). Added `ClickHouseTableProvider` implementation enabling format-based access pattern (`.format("clickhouse")`), making the connector compatible with Databricks Unity Catalog and other environments that require TableProvider API.
+- Support for macros in cluster names ([#400](https://github.com/ClickHouse/spark-clickhouse-connector/pull/400)). The connector now resolves ClickHouse macros (e.g., `{cluster}`) in Distributed table cluster names, allowing dynamic cluster resolution based on node-specific macro definitions.
 
 ### Changed
 - **Breaking Change**: Default value of `spark.clickhouse.ignoreUnsupportedTransform` changed from `false` to `true` ([#499](https://github.com/ClickHouse/spark-clickhouse-connector/pull/499)). Writes to tables with unsupported partition/sharding expressions (e.g., `PARTITION BY tuple()`, `PARTITION BY substring(...)`) now log a warning and continue instead of failing. To restore the old fail-fast behavior, set `spark.clickhouse.ignoreUnsupportedTransform=false`. **Warning**: For Distributed tables with `spark.clickhouse.write.distributed.convertLocal=true`, unsupported sharding keys may cause data corruption. The connector validates this and throws an error by default. To allow it, explicitly set `spark.clickhouse.write.distributed.convertLocal.allowUnsupportedSharding=true`.
 
 ### Fixed
-- Fixed UInt64 type mapping to prevent data loss and overflow ([#XXX](https://github.com/ClickHouse/spark-clickhouse-connector/pull/XXX)). ClickHouse `UInt64` type (range: 0 to 18446744073709551615) is now mapped to Spark `DecimalType(20, 0)` instead of `LongType` to safely handle the full value range without overflow. Previously, values greater than 9223372036854775807 (Long.MAX_VALUE) would overflow or lose precision.
+- Fixed UInt64 type mapping to prevent data loss and overflow ([#477](https://github.com/ClickHouse/spark-clickhouse-connector/pull/477)). ClickHouse `UInt64` type (range: 0 to 18446744073709551615) is now mapped to Spark `DecimalType(20, 0)` instead of `LongType` to safely handle the full value range without overflow. Previously, values greater than 9223372036854775807 (Long.MAX_VALUE) would overflow or lose precision.
 
 ## [0.9.0] - 2025-12-01
 
