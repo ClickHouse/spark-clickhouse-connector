@@ -14,8 +14,10 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
+import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.Row
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.types._
 
 abstract class BaseClusterWriteSuite extends SparkClickHouseClusterTest {
@@ -77,4 +79,126 @@ class ConvertDistToLocalWriteSuite extends BaseClusterWriteSuite {
     .set("spark.clickhouse.write.write.repartitionNum", "0")
     .set("spark.clickhouse.write.distributed.useClusterNodes", "true")
     .set("spark.clickhouse.write.distributed.convertLocal", "true")
+
+  test(
+    "write to distributed table with unsupported sharding key fails when convertLocal=true and ignoreUnsupportedTransform=true"
+  ) {
+    val db = "db_unsupported_sharding"
+    val tbl_dist = "t_dist_unsupported"
+    val tbl_local = "t_local_unsupported"
+
+    try {
+      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS `$db` ON CLUSTER 'single_replica'")
+
+      runClickHouseSQL(
+        s"""CREATE TABLE IF NOT EXISTS `$db`.`$tbl_local` ON CLUSTER 'single_replica' (
+           |  `id` Int64,
+           |  `date_col` Date
+           |) ENGINE = MergeTree()
+           |ORDER BY id
+           |SETTINGS index_granularity = 8192
+           |""".stripMargin
+      )
+
+      // toQuarter returns integer but is not supported by Spark, making it a good test case for unsupported sharding keys
+      runClickHouseSQL(
+        s"""CREATE TABLE IF NOT EXISTS `$db`.`$tbl_dist` (
+           |  `id` Int64,
+           |  `date_col` Date
+           |) ENGINE = Distributed('single_replica', '$db', '$tbl_local', toQuarter(date_col))
+           |""".stripMargin
+      )
+
+      Thread.sleep(2000)
+
+      val table = spark.table(s"clickhouse_s1r1.$db.$tbl_dist")
+      assert(table.schema.nonEmpty, "Table should be accessible")
+
+      import org.apache.spark.sql.functions._
+      val testData = spark.range(3)
+        .toDF("id")
+        .withColumn("date_col", date_add(to_date(lit("2024-01-01")), col("id").cast("int")))
+
+      val cause = intercept[CHClientException] {
+        testData.writeTo(s"clickhouse_s1r1.$db.$tbl_dist").append()
+      }
+      assert(cause.getMessage.contains("may cause data corruption"))
+      assert(
+        cause.getMessage.contains("spark.clickhouse.write.distributed.convertLocal.allowUnsupportedSharding=true")
+      )
+      assert(cause.getMessage.contains("toQuarter"))
+
+      withSQLConf(
+        WRITE_DISTRIBUTED_CONVERT_LOCAL_ALLOW_UNSUPPORTED_SHARDING.key -> "true"
+      ) {
+        testData.writeTo(s"clickhouse_s1r1.$db.$tbl_dist").append()
+        Thread.sleep(1000)
+        val count = spark.sql(s"SELECT COUNT(*) FROM clickhouse_s1r1.$db.$tbl_dist").collect()(0).getLong(0)
+        assert(count >= 3)
+      }
+
+      withSQLConf(
+        IGNORE_UNSUPPORTED_TRANSFORM.key -> "false"
+      ) {
+        runClickHouseSQL(s"TRUNCATE TABLE IF EXISTS `$db`.`$tbl_dist`")
+        Thread.sleep(1000)
+
+        val cause = intercept[Exception] {
+          testData.writeTo(s"clickhouse_s1r1.$db.$tbl_dist").append()
+        }
+        assert(cause.getMessage.contains("Unsupported") || cause.isInstanceOf[CHClientException])
+      }
+
+    } finally {
+      runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl_dist` ON CLUSTER 'single_replica'")
+      runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl_local` ON CLUSTER 'single_replica'")
+      runClickHouseSQL(s"DROP DATABASE IF EXISTS `$db` ON CLUSTER 'single_replica'")
+    }
+  }
+
+  test("write to distributed table with supported sharding key succeeds regardless of configs") {
+    val db = "db_supported_sharding"
+    val tbl_dist = "t_dist_supported"
+    val tbl_local = "t_local_supported"
+
+    try {
+      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS `$db` ON CLUSTER 'single_replica'")
+
+      runClickHouseSQL(
+        s"""CREATE TABLE IF NOT EXISTS `$db`.`$tbl_local` ON CLUSTER 'single_replica' (
+           |  `id` Int64,
+           |  `value` String
+           |) ENGINE = MergeTree()
+           |ORDER BY id
+           |SETTINGS index_granularity = 8192
+           |""".stripMargin
+      )
+
+      runClickHouseSQL(
+        s"""CREATE TABLE IF NOT EXISTS `$db`.`$tbl_dist` (
+           |  `id` Int64,
+           |  `value` String
+           |) ENGINE = Distributed('single_replica', '$db', '$tbl_local', id)
+           |""".stripMargin
+      )
+
+      Thread.sleep(2000)
+
+      // Create test data
+      import org.apache.spark.sql.functions._
+      val testData = spark.range(3)
+        .toDF("id")
+        .withColumn("value", col("id").cast("string"))
+
+      testData.writeTo(s"clickhouse_s1r1.$db.$tbl_dist").append()
+      Thread.sleep(1000)
+      val count = spark.sql(s"SELECT COUNT(*) FROM clickhouse_s1r1.$db.$tbl_dist").collect()(0).getLong(0)
+      assert(count >= 3)
+
+    } finally {
+      runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl_dist` ON CLUSTER 'single_replica'")
+      runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl_local` ON CLUSTER 'single_replica'")
+      runClickHouseSQL(s"DROP DATABASE IF EXISTS `$db` ON CLUSTER 'single_replica'")
+    }
+  }
 }

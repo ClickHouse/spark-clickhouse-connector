@@ -29,6 +29,7 @@ spark.clickhouse.useNullableQuerySchema|false|If `true`, mark all the fields of 
 spark.clickhouse.write.batchSize|10000|The number of records per batch on writing to ClickHouse.|0.1.0
 spark.clickhouse.write.compression.codec|lz4|The codec used to compress data for writing. Supported codecs: none, lz4.|0.3.0
 spark.clickhouse.write.distributed.convertLocal|false|When writing Distributed table, write local table instead of itself. If `true`, ignore `spark.clickhouse.write.distributed.useClusterNodes`. This bypasses ClickHouse's native routing, requiring Spark to evaluate the sharding key. When using unsupported sharding expressions, set `spark.clickhouse.ignoreUnsupportedTransform` to `false` to prevent silent data distribution errors.|0.1.0
+spark.clickhouse.write.distributed.convertLocal.allowUnsupportedSharding|false|Allow writing to Distributed tables with `convertLocal=true` and `ignoreUnsupportedTransform=true` when the sharding key is unsupported. This is dangerous and may cause data corruption due to incorrect sharding. Only set to `true` if you understand the risks and have verified your data distribution. By default, this combination will throw an error to prevent silent data corruption.|0.9.0
 spark.clickhouse.write.distributed.useClusterNodes|true|Write to all nodes of cluster when writing Distributed table.|0.1.0
 spark.clickhouse.write.format|arrow|Serialize format for writing. Supported formats: json, arrow|0.4.0
 spark.clickhouse.write.localSortByKey|true|If `true`, do local sort by sort keys before writing.|0.3.0

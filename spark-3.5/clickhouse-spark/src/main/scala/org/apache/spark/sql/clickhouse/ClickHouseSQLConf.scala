@@ -112,6 +112,16 @@ object ClickHouseSQLConf {
       .booleanConf
       .createWithDefault(false)
 
+  val WRITE_DISTRIBUTED_CONVERT_LOCAL_ALLOW_UNSUPPORTED_SHARDING: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.write.distributed.convertLocal.allowUnsupportedSharding")
+      .doc("Allow writing to Distributed tables with `convertLocal=true` and `ignoreUnsupportedTransform=true` " +
+        "when the sharding key is unsupported. This is dangerous and may cause data corruption due to incorrect " +
+        "sharding. Only set to `true` if you understand the risks and have verified your data distribution. " +
+        "By default, this combination will throw an error to prevent silent data corruption.")
+      .version("0.9.0")
+      .booleanConf
+      .createWithDefault(false)
+
   val READ_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.read.distributed.convertLocal")
       .doc("When reading Distributed table, read local table instead of itself. " +
