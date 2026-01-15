@@ -62,20 +62,9 @@ case class WriteJobDescription(
     case _ => None
   }
 
-  // For SharedMergeTree, filter out unsupported partition expressions while keeping supported ones.
-  private lazy val isSharedMergeTree: Boolean =
-    tableEngineSpec.engine_clause.toLowerCase.contains("sharedmergetree")
-
-  private def filterSupportedPartitionExprs(exprs: Option[List[Expr]]): Option[List[Expr]] = {
-    if (!isSharedMergeTree) return exprs
-    exprs.map(_.flatMap { expr =>
-      scala.util.Try(ExprUtils.toSparkTransform(expr)).toOption.map(_ => expr)
-    })
-  }
-
   def sparkSplits: Array[Transform] = {
     val _partitionKey = if (writeOptions.repartitionByPartition) {
-      filterSupportedPartitionExprs(partitionKey)
+      partitionKey
     } else {
       None
     }
@@ -84,7 +73,7 @@ case class WriteJobDescription(
 
   def sparkSortOrders: Array[SortOrder] = {
     val _partitionKey = if (writeOptions.localSortByPartition) {
-      filterSupportedPartitionExprs(partitionKey)
+      partitionKey
     } else {
       None
     }
