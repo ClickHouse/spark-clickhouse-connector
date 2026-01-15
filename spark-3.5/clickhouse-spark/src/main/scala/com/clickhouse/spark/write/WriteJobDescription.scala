@@ -105,17 +105,17 @@ case class WriteJobDescription(
     )
   }
 
-  def validateDistributedTableSharding(): Unit = {
+  def validateDistributedTableSharding(): Unit =
     tableEngineSpec match {
       case _: DistributedEngineSpec if writeOptions.convertDistributedToLocal =>
         val ignoreUnsupported = writeOptions.conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM)
-        
+
         if (ignoreUnsupported) {
           val shardingKeySupported = shardingKeyIgnoreRand match {
             case Some(expr) => ExprUtils.toSparkTransformOpt(expr, functionRegistry).isDefined
             case None => true
           }
-          
+
           if (!shardingKeySupported && !writeOptions.allowUnsupportedShardingWithConvertLocal) {
             throw CHClientException(
               s"Writing to Distributed table with unsupported sharding key while " +
@@ -130,5 +130,4 @@ case class WriteJobDescription(
         }
       case _ =>
     }
-  }
 }
