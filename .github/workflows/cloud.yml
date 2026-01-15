@@ -75,6 +75,7 @@ jobs:
           
           while [ $attempt -le $max_attempts ]; do
             echo "Attempt $attempt of $max_attempts"
+            echo "CLICKHOUSE_CLOUD_HOST: ${CLICKHOUSE_CLOUD_HOST}"
             if curl -sS "https://${CLICKHOUSE_CLOUD_HOST}:8443/?query=SELECT+1" \
                  --user "default:${CLICKHOUSE_PASSWORD}" \
                  --max-time 60 > /dev/null; then
