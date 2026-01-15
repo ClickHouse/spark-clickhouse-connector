@@ -22,7 +22,7 @@ import org.apache.spark.sql.types._
 
 abstract class BaseClusterWriteSuite extends SparkClickHouseClusterTest {
 
-  private val WAIT_MS = 2000
+  protected val WAIT_MS = 2000
 
   test("clickhouse write cluster") {
     withSimpleDistTable("single_replica", "db_w", "t_dist", true) { (_, db, tbl_dist, tbl_local) =>
