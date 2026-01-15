@@ -22,6 +22,8 @@ import org.apache.spark.sql.types._
 
 abstract class BaseClusterWriteSuite extends SparkClickHouseClusterTest {
 
+  private val WAIT_MS = 2000
+
   test("clickhouse write cluster") {
     withSimpleDistTable("single_replica", "db_w", "t_dist", true) { (_, db, tbl_dist, tbl_local) =>
       val tblSchema = spark.table(s"$db.$tbl_dist").schema
@@ -109,7 +111,7 @@ class ConvertDistToLocalWriteSuite extends BaseClusterWriteSuite {
            |""".stripMargin
       )
 
-      Thread.sleep(2000)
+      Thread.sleep(WAIT_MS)
 
       val table = spark.table(s"clickhouse_s1r1.$db.$tbl_dist")
       assert(table.schema.nonEmpty, "Table should be accessible")
@@ -132,7 +134,7 @@ class ConvertDistToLocalWriteSuite extends BaseClusterWriteSuite {
         WRITE_DISTRIBUTED_CONVERT_LOCAL_ALLOW_UNSUPPORTED_SHARDING.key -> "true"
       ) {
         testData.writeTo(s"clickhouse_s1r1.$db.$tbl_dist").append()
-        Thread.sleep(1000)
+        Thread.sleep(WAIT_MS)
         val count = spark.sql(s"SELECT COUNT(*) FROM clickhouse_s1r1.$db.$tbl_dist").collect()(0).getLong(0)
         assert(count >= 3)
       }
@@ -141,7 +143,7 @@ class ConvertDistToLocalWriteSuite extends BaseClusterWriteSuite {
         IGNORE_UNSUPPORTED_TRANSFORM.key -> "false"
       ) {
         runClickHouseSQL(s"TRUNCATE TABLE IF EXISTS `$db`.`$tbl_dist`")
-        Thread.sleep(1000)
+        Thread.sleep(WAIT_MS)
 
         val cause = intercept[Exception] {
           testData.writeTo(s"clickhouse_s1r1.$db.$tbl_dist").append()
@@ -182,7 +184,7 @@ class ConvertDistToLocalWriteSuite extends BaseClusterWriteSuite {
            |""".stripMargin
       )
 
-      Thread.sleep(2000)
+      Thread.sleep(WAIT_MS)
 
       // Create test data
       import org.apache.spark.sql.functions._
@@ -191,7 +193,7 @@ class ConvertDistToLocalWriteSuite extends BaseClusterWriteSuite {
         .withColumn("value", col("id").cast("string"))
 
       testData.writeTo(s"clickhouse_s1r1.$db.$tbl_dist").append()
-      Thread.sleep(1000)
+      Thread.sleep(WAIT_MS)
       val count = spark.sql(s"SELECT COUNT(*) FROM clickhouse_s1r1.$db.$tbl_dist").collect()(0).getLong(0)
       assert(count >= 3)
 
