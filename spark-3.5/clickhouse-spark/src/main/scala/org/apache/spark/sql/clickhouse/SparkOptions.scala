@@ -80,6 +80,12 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
   def convertDistributedToLocal: Boolean =
     eval(WRITE_DISTRIBUTED_CONVERT_LOCAL.key, WRITE_DISTRIBUTED_CONVERT_LOCAL)
 
+  def allowUnsupportedShardingWithConvertLocal: Boolean =
+    eval(
+      WRITE_DISTRIBUTED_CONVERT_LOCAL_ALLOW_UNSUPPORTED_SHARDING.key,
+      WRITE_DISTRIBUTED_CONVERT_LOCAL_ALLOW_UNSUPPORTED_SHARDING
+    )
+
   def localSortByPartition: Boolean =
     eval(WRITE_LOCAL_SORT_BY_PARTITION.key, WRITE_LOCAL_SORT_BY_PARTITION)
 

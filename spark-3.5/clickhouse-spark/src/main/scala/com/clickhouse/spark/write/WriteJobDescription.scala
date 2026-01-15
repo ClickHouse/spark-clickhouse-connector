@@ -15,11 +15,13 @@
 package com.clickhouse.spark.write
 
 import com.clickhouse.spark.expr.{Expr, FuncExpr, OrderExpr}
+import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.func.FunctionRegistry
 import com.clickhouse.spark.spec.{ClusterSpec, DistributedEngineSpec, NodeSpec, TableEngineSpec, TableSpec}
 
 import java.time.ZoneId
 import org.apache.spark.sql.clickhouse.{ExprUtils, WriteOptions}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.IGNORE_UNSUPPORTED_TRANSFORM
 import org.apache.spark.sql.connector.expressions.{Expression, SortOrder, Transform}
 import org.apache.spark.sql.types.StructType
 import com.clickhouse.spark.spec._
@@ -102,4 +104,30 @@ case class WriteJobDescription(
       functionRegistry
     )
   }
+
+  def validateDistributedTableSharding(): Unit =
+    tableEngineSpec match {
+      case _: DistributedEngineSpec if writeOptions.convertDistributedToLocal =>
+        val ignoreUnsupported = writeOptions.conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM)
+
+        if (ignoreUnsupported) {
+          val shardingKeySupported = shardingKeyIgnoreRand match {
+            case Some(expr) => ExprUtils.toSparkTransformOpt(expr, functionRegistry).isDefined
+            case None => true
+          }
+
+          if (!shardingKeySupported && !writeOptions.allowUnsupportedShardingWithConvertLocal) {
+            throw CHClientException(
+              s"Writing to Distributed table with unsupported sharding key while " +
+                s"`spark.clickhouse.write.distributed.convertLocal=true` and " +
+                s"`spark.clickhouse.ignoreUnsupportedTransform=true` may cause data corruption " +
+                s"due to incorrect sharding. " +
+                s"To allow this dangerous combination, set " +
+                s"`spark.clickhouse.write.distributed.convertLocal.allowUnsupportedSharding=true`. " +
+                s"Sharding key: ${shardingKeyIgnoreRand.getOrElse("none")}"
+            )
+          }
+        }
+      case _ =>
+    }
 }

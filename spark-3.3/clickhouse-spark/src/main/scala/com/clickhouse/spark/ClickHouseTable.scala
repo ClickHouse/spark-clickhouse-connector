@@ -176,6 +176,8 @@ case class ClickHouseTable(
       writeOptions = new WriteOptions(info.options.asCaseSensitiveMap())
     )
 
+    writeJob.validateDistributedTableSharding()
+
     new ClickHouseWriteBuilder(writeJob)
   }
 

@@ -104,8 +104,21 @@ object ClickHouseSQLConf {
   val WRITE_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.write.distributed.convertLocal")
       .doc("When writing Distributed table, write local table instead of itself. " +
-        "If `true`, ignore `spark.clickhouse.write.distributed.useClusterNodes`.")
+        "If `true`, ignore `spark.clickhouse.write.distributed.useClusterNodes`. " +
+        "This bypasses ClickHouse's native routing, requiring Spark to evaluate the sharding key. " +
+        "When using unsupported sharding expressions, set `spark.clickhouse.ignoreUnsupportedTransform` " +
+        "to `false` to prevent silent data distribution errors.")
       .version("0.1.0")
+      .booleanConf
+      .createWithDefault(false)
+
+  val WRITE_DISTRIBUTED_CONVERT_LOCAL_ALLOW_UNSUPPORTED_SHARDING: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.write.distributed.convertLocal.allowUnsupportedSharding")
+      .doc("Allow writing to Distributed tables with `convertLocal=true` and `ignoreUnsupportedTransform=true` " +
+        "when the sharding key is unsupported. This is dangerous and may cause data corruption due to incorrect " +
+        "sharding. Only set to `true` if you understand the risks and have verified your data distribution. " +
+        "By default, this combination will throw an error to prevent silent data corruption.")
+      .version("0.9.0")
       .booleanConf
       .createWithDefault(false)
 
@@ -144,12 +157,12 @@ object ClickHouseSQLConf {
     buildConf("spark.clickhouse.ignoreUnsupportedTransform")
       .doc("ClickHouse supports using complex expressions as sharding keys or partition values, " +
         "e.g. `cityHash64(col_1, col_2)`, and those can not be supported by Spark now. If `true`, " +
-        "ignore the unsupported expressions, otherwise fail fast w/ an exception. Note, when " +
-        s"`${WRITE_DISTRIBUTED_CONVERT_LOCAL.key}` is enabled, ignore unsupported sharding keys " +
-        "may corrupt the data.")
+        "ignore the unsupported expressions and log a warning, otherwise fail fast w/ an exception. " +
+        s"Note, when `${WRITE_DISTRIBUTED_CONVERT_LOCAL.key}` is enabled, ignoring unsupported " +
+        "sharding keys may corrupt the data.")
       .version("0.4.0")
       .booleanConf
-      .createWithDefault(false)
+      .createWithDefault(true)
 
   val READ_COMPRESSION_CODEC: ConfigEntry[String] =
     buildConf("spark.clickhouse.read.compression.codec")

@@ -28,6 +28,7 @@ import org.apache.spark.sql.connector.catalog.functions.{BoundFunction, ScalarFu
 import org.apache.spark.sql.connector.expressions.Expressions._
 import org.apache.spark.sql.connector.expressions.{Expression => V2Expression, SortOrder => V2SortOrder, _}
 import org.apache.spark.sql.types.{StructField, StructType}
+import com.clickhouse.spark.Logging
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.expr._
 import com.clickhouse.spark.func.FunctionRegistry
@@ -35,7 +36,7 @@ import com.clickhouse.spark.spec.ClusterSpec
 
 import scala.util.{Failure, Success, Try}
 
-object ExprUtils extends SQLConfHelper with Serializable {
+object ExprUtils extends SQLConfHelper with Serializable with Logging {
 
   def toSparkPartitions(
     partitionKey: Option[List[Expr]],
@@ -163,12 +164,20 @@ object ExprUtils extends SQLConfHelper with Serializable {
     }
 
   def toSparkTransformOpt(expr: Expr, functionRegistry: FunctionRegistry): Option[Transform] =
-    Try(toSparkExpression(expr, functionRegistry)) match {
-      // need this function because spark `Table`'s `partitioning` field should be `Transform`
-      case Success(t: Transform) => Some(t)
-      case Success(_) => None
-      case Failure(_) if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) => None
-      case Failure(rethrow) => throw new AnalysisException(rethrow.getMessage, cause = Some(rethrow))
+    expr match {
+      case FuncExpr("tuple", Nil) => None // tuple() means no partitioning
+      case _ => Try(toSparkExpression(expr, functionRegistry)) match {
+          // need this function because spark `Table`'s `partitioning` field should be `Transform`
+          case Success(t: Transform) => Some(t)
+          case Success(_) => None
+          case Failure(cause) if conf.getConf(IGNORE_UNSUPPORTED_TRANSFORM) =>
+            log.warn(s"Ignoring unsupported ClickHouse partition/sharding expression: $expr. " +
+              s"Spark-side repartitioning will be skipped for this expression. " +
+              s"To fail on unsupported expressions, set ${IGNORE_UNSUPPORTED_TRANSFORM.key}=false. " +
+              s"Reason: ${cause.getMessage}")
+            None
+          case Failure(rethrow) => throw new AnalysisException(rethrow.getMessage, cause = Some(rethrow))
+        }
     }
 
   def toSparkExpression(expr: Expr, functionRegistry: FunctionRegistry): V2Expression =

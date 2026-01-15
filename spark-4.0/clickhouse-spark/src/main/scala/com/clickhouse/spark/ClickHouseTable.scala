@@ -190,6 +190,8 @@ case class ClickHouseTable(
       functionRegistry = functionRegistry
     )
 
+    writeJob.validateDistributedTableSharding()
+
     new ClickHouseWriteBuilder(writeJob)
   }
 
