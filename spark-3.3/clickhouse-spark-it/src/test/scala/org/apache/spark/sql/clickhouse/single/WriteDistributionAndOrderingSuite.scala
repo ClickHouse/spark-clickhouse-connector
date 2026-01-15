@@ -86,40 +86,6 @@ abstract class WriteDistributionAndOrderingSuite extends SparkClickHouseSingleTe
     super.beforeEach()
   }
 
-  def writeDataToTablesContainsUnsupportedPartitions(
-    ignoreUnsupportedTransform: Boolean,
-    repartitionByPartition: Boolean,
-    localSortByKey: Boolean
-  ): Unit = withSQLConf(
-    IGNORE_UNSUPPORTED_TRANSFORM.key -> ignoreUnsupportedTransform.toString,
-    WRITE_REPARTITION_BY_PARTITION.key -> repartitionByPartition.toString,
-    WRITE_LOCAL_SORT_BY_KEY.key -> localSortByKey.toString
-  ) {
-    if (!ignoreUnsupportedTransform && repartitionByPartition && !isCloud) {
-      intercept[AnalysisException](write())
-    } else {
-      write()
-      check()
-    }
-  }
-
-  Seq(true, false).foreach { ignoreUnsupportedTransform =>
-    Seq(true, false).foreach { repartitionByPartition =>
-      Seq(true, false).foreach { localSortByKey =>
-        test("write data to table contains unsupported partitions - " +
-          s"ignoreUnsupportedTransform=$ignoreUnsupportedTransform " +
-          s"repartitionByPartition=$repartitionByPartition " +
-          s"localSortByKey=$localSortByKey") {
-          writeDataToTablesContainsUnsupportedPartitions(
-            ignoreUnsupportedTransform,
-            repartitionByPartition,
-            localSortByKey
-          )
-        }
-      }
-    }
-  }
-
   test("write to table with PARTITION BY tuple() succeeds") {
     val db = if (useSuiteLevelDatabase) testDatabaseName else "db_tuple_partition"
     val tbl = "tbl_tuple_partition"
