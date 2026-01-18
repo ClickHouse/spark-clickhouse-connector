@@ -133,6 +133,11 @@ subprojects {
         options.forkOptions.jvmArgs += ["-Xss8M"]
     }
 
+    // TODO: Remove when https://github.com/ClickHouse/spark-clickhouse-connector/issues/503 is resolved
+    // Workaround for testcontainers 0.41.4 breaking with new Docker versions
+    // Sets Docker API version via system property (defaults to 1.44, override via DOCKER_API_VERSION)
+    def dockerApiVersion = System.getenv('DOCKER_API_VERSION') ?: '1.44'
+
     def extraJvmArgs = [
             "-XX:+IgnoreUnrecognizedVMOptions",
             "--add-opens=java.base/java.lang=ALL-UNNAMED",
@@ -151,6 +156,9 @@ subprojects {
             "--add-opens=java.base/sun.util.calendar=ALL-UNNAMED",
             "-Djdk.reflect.useDirectMethodHandle=false"
     ]
+    
+    // TODO: Remove when https://github.com/ClickHouse/spark-clickhouse-connector/issues/503 is resolved
+    extraJvmArgs += "-Dapi.version=${dockerApiVersion}"
 
     test {
         jvmArgs += extraJvmArgs
