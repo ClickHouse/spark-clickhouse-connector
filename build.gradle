@@ -24,7 +24,7 @@ buildscript {
     dependencies {
         // Only add SonarQube to classpath if explicitly enabled
         if (project.hasProperty('enableSonar')) {
-            classpath "org.sonarsource.scanner.gradle:sonarqube-gradle-plugin:4.4.1.3373"
+            classpath "org.sonarsource.scanner.gradle:sonarqube-gradle-plugin:7.2.2.6593"
         }
         if (JavaVersion.current() >= JavaVersion.VERSION_11) {
             classpath 'com.gradleup.nmcp:nmcp:1.4.3'
