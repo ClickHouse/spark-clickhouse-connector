@@ -23,6 +23,8 @@ jobs:
   sonar-report:
     if: ${{ startsWith(github.repository, 'clickhouse/') }}
     runs-on: ubuntu-22.04
+    env:
+      DOCKER_MIN_API_VERSION: "1.24"
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
