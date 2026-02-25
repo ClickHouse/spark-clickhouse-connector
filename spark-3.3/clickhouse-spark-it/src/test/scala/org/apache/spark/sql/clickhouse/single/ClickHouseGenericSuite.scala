@@ -122,7 +122,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         StructField("id", LongType, false) ::
           StructField("date", DateType, false) :: Nil
       )
-    withTable(db, tbl, schema, partKeys = Seq("date")) {
+    withTable(db, tbl, schema, partKeys = Seq("date")) { (_, _) =>
       spark.sql(
         s"""INSERT INTO `$db`.`$tbl`
            |VALUES
@@ -167,7 +167,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           StructField("part_1", StringType, false) ::
           StructField("part_2", IntegerType, false) :: Nil
       )
-    withTable(db, tbl, schema, partKeys = Seq("part_1", "part_2")) {
+    withTable(db, tbl, schema, partKeys = Seq("part_1", "part_2")) { (_, _) =>
       spark.sql(
         s"""INSERT INTO `$db`.`$tbl`
            |VALUES
@@ -212,7 +212,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           StructField("part_1", DateType, false) ::
           StructField("part_2", IntegerType, false) :: Nil
       )
-    withTable(db, tbl, schema, partKeys = Seq("part_1", "part_2")) {
+    withTable(db, tbl, schema, partKeys = Seq("part_1", "part_2")) { (_, _) =>
       spark.sql(
         s"""INSERT INTO `$db`.`$tbl`
            |VALUES
@@ -292,7 +292,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           StructField("sort_2", StringType, false) ::
           StructField("sort_3", IntegerType, false) :: Nil
       )
-    withTable(db, tbl, schema, sortKeys = Seq("sort_2", "sort_3")) {
+    withTable(db, tbl, schema, sortKeys = Seq("sort_2", "sort_3")) { (_, _) =>
       spark.sql(
         s"""INSERT INTO `$db`.`$tbl`
            |VALUES
