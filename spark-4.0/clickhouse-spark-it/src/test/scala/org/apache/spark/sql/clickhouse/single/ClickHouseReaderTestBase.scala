@@ -59,6 +59,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       .option("password", clickhousePassword)
       .option("database", db)
       .option("table", tbl)
+      .option("ssl", isSslEnabled.toString)
       .load()
 
     val tableProviderDFSelected = if (columns == "*") {
