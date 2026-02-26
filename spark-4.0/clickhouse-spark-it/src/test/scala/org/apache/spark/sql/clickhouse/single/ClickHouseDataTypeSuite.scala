@@ -51,7 +51,7 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
     val db = "t_w_s_db"
     val tbl = "t_w_s_tbl"
     withTable(db, tbl, schema) { (actualDb: String, actualTbl: String) =>
-      val tblSchema = spark.table(s"$db.$tbl").schema
+      val tblSchema = spark.table(s"$actualDb.$actualTbl").schema
       val respectNullable = SPARK_43390_ENABLED && !spark.conf.get(USE_NULLABLE_QUERY_SCHEMA)
       if (respectNullable) {
         // TODO nested field does not respect nullable
@@ -68,11 +68,11 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
       )).toDF("id", "col_string", "col_date", "col_array_string", "col_map_string_string")
 
       spark.createDataFrame(dataDF.rdd, tblSchema)
-        .writeTo(s"$db.$tbl")
+        .writeTo(s"$actualDb.$actualTbl")
         .append
 
       checkAnswer(
-        spark.table(s"$db.$tbl").sort("id"),
+        spark.table(s"$actualDb.$actualTbl").sort("id"),
         Row(1L, "a", date("1996-06-06"), Seq("a", "b", "c"), Map("a" -> "x")) ::
           Row(2L, "A", date("2022-04-12"), Seq("A", "B", "C"), Map("A" -> "X")) :: Nil
       )
