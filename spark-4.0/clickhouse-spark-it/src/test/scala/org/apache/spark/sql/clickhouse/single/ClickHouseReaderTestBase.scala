@@ -1433,12 +1433,14 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   // ============================================================================
 
   test("decode StructType - unnamed tuple created directly in ClickHouse") {
-    val db = "test_db"
+    val db = if (useSuiteLevelDatabase) testDatabaseName else "test_db"
     val tbl = "test_read_unnamed_tuple"
 
     try {
-      // Create database
-      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
+      // Create database only if not using suite level database
+      if (!useSuiteLevelDatabase) {
+        runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
+      }
 
       // Create table directly in ClickHouse with unnamed tuple
       runClickHouseSQL(
@@ -1489,8 +1491,12 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(data2.getInt(1) === 35)
       assert(data2.getString(2) === "SF")
 
-    } finally
-      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
+    } finally {
+      dropTableWithRetry(db, tbl)
+      if (!useSuiteLevelDatabase) {
+        runClickHouseSQL(s"DROP DATABASE IF EXISTS $db")
+      }
+    }
   }
 
   // ============================================================================
