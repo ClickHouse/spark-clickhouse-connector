@@ -104,7 +104,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider
     engine: String = "MergeTree()",
     sortKeys: Seq[String] = "id" :: Nil,
     partKeys: Seq[String] = Seq.empty
-  )(f: => Unit): Unit = {
+  )(f: (String, String) => Unit): Unit = {
     val actualDb = if (useSuiteLevelDatabase) testDatabaseName else db
     try {
       if (!useSuiteLevelDatabase) {
@@ -125,7 +125,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider
 
       if (isCloud) Thread.sleep(1000)
 
-      f
+      f(actualDb, tbl)
     } finally
       if (useSuiteLevelDatabase) {
         dropTableWithRetry(actualDb, tbl)
@@ -140,7 +140,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider
     tbl: String,
     keyColDef: String = "Int32",
     valueColDef: String
-  )(f: => Unit): Unit = {
+  )(f: (String, String) => Unit): Unit = {
     val actualDb = if (useSuiteLevelDatabase) testDatabaseName else db
     try {
       if (!useSuiteLevelDatabase) {
@@ -157,7 +157,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider
 
       if (isCloud) Thread.sleep(1000)
 
-      f
+      f(actualDb, tbl)
     } finally
       if (useSuiteLevelDatabase) {
         dropTableWithRetry(actualDb, tbl)

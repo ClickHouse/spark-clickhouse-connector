@@ -36,7 +36,7 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
   ))
 
   test("write and read using format API") {
-    withTable("format_api_db", "test_format_api", testSchema) {
+    withTable("format_api_db", "test_format_api", testSchema) { (_, _) =>
       val writeData = Seq(
         (1, "Alice", 95.5, timestamp("2024-01-15T10:00:00Z")),
         (2, "Bob", 87.3, timestamp("2024-02-20T14:30:00Z")),
@@ -75,7 +75,7 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
   }
 
   test("append mode adds data without replacing existing") {
-    withTable("append_db", "test_append", testSchema) {
+    withTable("append_db", "test_append", testSchema) { (_, _) =>
       val initialData = Seq(
         (1, "Alice", 95.5, timestamp("2024-01-15T10:00:00Z")),
         (2, "Bob", 87.3, timestamp("2024-02-20T14:30:00Z"))
@@ -108,7 +108,7 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
   }
 
   test("overwrite mode replaces all existing data") {
-    withTable("overwrite_db", "test_overwrite", testSchema) {
+    withTable("overwrite_db", "test_overwrite", testSchema) { (_, _) =>
       val initialData = Seq(
         (1, "Alice", 95.5, timestamp("2024-01-15T10:00:00Z")),
         (2, "Bob", 87.3, timestamp("2024-02-20T14:30:00Z")),
@@ -198,7 +198,7 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
   }
 
   test("predicate pushdown filters data server-side") {
-    withTable("filter_db", "test_filter", testSchema) {
+    withTable("filter_db", "test_filter", testSchema) { (_, _) =>
       val writeData = Seq(
         (1, "Alice", 95.5, timestamp("2024-01-15T10:00:00Z")),
         (2, "Bob", 87.3, timestamp("2024-02-20T14:30:00Z")),
@@ -308,7 +308,7 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
   }
 
   test("column pruning reduces data transfer") {
-    withTable("prune_db", "test_prune", testSchema) {
+    withTable("prune_db", "test_prune", testSchema) { (_, _) =>
       val writeData = Seq(
         (1, "Alice", 95.5, timestamp("2024-01-15T10:00:00Z")),
         (2, "Bob", 87.3, timestamp("2024-02-20T14:30:00Z"))
@@ -370,7 +370,7 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
       StructField("value", DoubleType, nullable = true)
     ))
 
-    withTable("null_db", "test_nulls", nullableSchema) {
+    withTable("null_db", "test_nulls", nullableSchema) { (_, _) =>
       val writeData = Seq(
         (1, Some("Alice"), Some(95.5)),
         (2, None, Some(87.3)),
@@ -402,7 +402,7 @@ abstract class ClickHouseTableProviderSuite extends SparkClickHouseSingleTest {
   }
 
   test("write empty dataframe") {
-    withTable("empty_db", "test_empty", testSchema) {
+    withTable("empty_db", "test_empty", testSchema) { (_, _) =>
       // Create empty DataFrame with proper schema
       val emptyData = Seq.empty[(Int, String, Double, java.sql.Timestamp)]
         .toDF("id", "name", "value", "created")

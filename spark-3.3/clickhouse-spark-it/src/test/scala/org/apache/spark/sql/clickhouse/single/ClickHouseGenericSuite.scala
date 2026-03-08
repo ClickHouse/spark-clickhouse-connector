@@ -122,9 +122,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         StructField("id", LongType, false) ::
           StructField("date", DateType, false) :: Nil
       )
-    withTable(db, tbl, schema, partKeys = Seq("date")) {
+    withTable(db, tbl, schema, partKeys = Seq("date")) { (actualDb, actualTbl) =>
       spark.sql(
-        s"""INSERT INTO `$db`.`$tbl`
+        s"""INSERT INTO `$actualDb`.`$actualTbl`
            |VALUES
            |  (11L, "2022-04-11"),
            |  (12L, "2022-04-12") AS tab(id, date)
@@ -135,10 +135,10 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         (22L, date("2022-04-22"))
       ))
         .toDF("id", "date")
-        .writeTo(s"$db.$tbl").append
+        .writeTo(s"$actualDb.$actualTbl").append
 
       checkAnswer(
-        spark.table(s"$db.$tbl").orderBy($"id"),
+        spark.table(s"$actualDb.$actualTbl").orderBy($"id"),
         Row(11L, date("2022-04-11")) ::
           Row(12L, date("2022-04-12")) ::
           Row(21L, date("2022-04-21")) ::
@@ -146,7 +146,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
       )
 
       checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
         Seq(
           Row("date=2022-04-11"),
           Row("date=2022-04-12"),
@@ -167,9 +167,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           StructField("part_1", StringType, false) ::
           StructField("part_2", IntegerType, false) :: Nil
       )
-    withTable(db, tbl, schema, partKeys = Seq("part_1", "part_2")) {
+    withTable(db, tbl, schema, partKeys = Seq("part_1", "part_2")) { (actualDb, actualTbl) =>
       spark.sql(
-        s"""INSERT INTO `$db`.`$tbl`
+        s"""INSERT INTO `$actualDb`.`$actualTbl`
            |VALUES
            |  (11L, 'one_one', '1', 1),
            |  (12L, 'one_two', '1', 2) AS tab(id, value, part_1, part_2)
@@ -181,10 +181,10 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         (22L, "two_two", "2", 2)
       ))
         .toDF("id", "value", "part_1", "part_2")
-        .writeTo(s"$db.$tbl").append
+        .writeTo(s"$actualDb.$actualTbl").append
 
       checkAnswer(
-        spark.table(s"$db.$tbl").orderBy($"id"),
+        spark.table(s"$actualDb.$actualTbl").orderBy($"id"),
         Row(11L, "one_one", "1", 1) ::
           Row(12L, "one_two", "1", 2) ::
           Row(21L, "two_one", "2", 1) ::
@@ -192,7 +192,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
       )
 
       checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
         Seq(
           Row("part_1=1/part_2=1"),
           Row("part_1=1/part_2=2"),
@@ -212,9 +212,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           StructField("part_1", DateType, false) ::
           StructField("part_2", IntegerType, false) :: Nil
       )
-    withTable(db, tbl, schema, partKeys = Seq("part_1", "part_2")) {
+    withTable(db, tbl, schema, partKeys = Seq("part_1", "part_2")) { (actualDb, actualTbl) =>
       spark.sql(
-        s"""INSERT INTO `$db`.`$tbl`
+        s"""INSERT INTO `$actualDb`.`$actualTbl`
            |VALUES
            |  (11L, "2022-04-11", 1),
            |  (12L, "2022-04-12", 2) AS tab(id, part_1, part_2)
@@ -224,10 +224,10 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         (21L, "2022-04-21", 1),
         (22L, "2022-04-22", 2)
       )).toDF("id", "part_1", "part_2")
-        .writeTo(s"$db.$tbl").append
+        .writeTo(s"$actualDb.$actualTbl").append
 
       checkAnswer(
-        spark.table(s"$db.$tbl").orderBy($"id"),
+        spark.table(s"$actualDb.$actualTbl").orderBy($"id"),
         Row(11L, date("2022-04-11"), 1) ::
           Row(12L, date("2022-04-12"), 2) ::
           Row(21L, date("2022-04-21"), 1) ::
@@ -235,7 +235,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
       )
 
       checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
         Seq(
           Row("part_1=2022-04-11/part_2=1"),
           Row("part_1=2022-04-12/part_2=2"),
@@ -292,9 +292,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           StructField("sort_2", StringType, false) ::
           StructField("sort_3", IntegerType, false) :: Nil
       )
-    withTable(db, tbl, schema, sortKeys = Seq("sort_2", "sort_3")) {
+    withTable(db, tbl, schema, sortKeys = Seq("sort_2", "sort_3")) { (actualDb, actualTbl) =>
       spark.sql(
-        s"""INSERT INTO `$db`.`$tbl`
+        s"""INSERT INTO `$actualDb`.`$actualTbl`
            |VALUES
            |  (11L, 'one_one', '1', 1),
            |  (12L, 'one_two', '1', 2) AS tab(id, value, sort_2, sort_3)
@@ -306,10 +306,10 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         (22L, "two_two", "2", 2)
       ))
         .toDF("id", "value", "sort_2", "sort_3")
-        .writeTo(s"$db.$tbl").append
+        .writeTo(s"$actualDb.$actualTbl").append
 
       checkAnswer(
-        spark.table(s"$db.$tbl").orderBy($"id"),
+        spark.table(s"$actualDb.$actualTbl").orderBy($"id"),
         Row(11L, "one_one", "1", 1) ::
           Row(12L, "one_two", "1", 2) ::
           Row(21L, "two_one", "2", 1) ::

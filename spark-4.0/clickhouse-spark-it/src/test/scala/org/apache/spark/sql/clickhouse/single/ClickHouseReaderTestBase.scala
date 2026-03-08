@@ -59,6 +59,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       .option("password", clickhousePassword)
       .option("database", db)
       .option("table", tbl)
+      .option("ssl", isSslEnabled.toString)
       .load()
 
     val tableProviderDFSelected = if (columns == "*") {
@@ -255,7 +256,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       }
     }
   }
-  test("decode BooleanType - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode BooleanType - nullable with null values") {
     withKVTable("test_db", "test_bool_null", valueColDef = "Nullable(Bool)") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_bool_null VALUES
@@ -304,7 +305,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       )
     }
   }
-  test("decode ByteType - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode ByteType - nullable with null values") {
     withKVTable("test_db", "test_byte_null", valueColDef = "Nullable(Int8)") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_byte_null VALUES
@@ -337,7 +338,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(1).getTimestamp(1) != null)
     }
   }
-  test("decode DateTime32 - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode DateTime32 - nullable with null values") {
     withKVTable("test_db", "test_datetime32_null", valueColDef = "Nullable(DateTime32)") {
       (actualDb: String, actualTbl: String) =>
         runClickHouseSQL(
@@ -374,7 +375,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(2).getDate(1) != null)
     }
   }
-  test("decode DateType - Date32") { (actualDb: String, actualTbl: String) =>
+  test("decode DateType - Date32") {
     withKVTable("test_db", "test_date32", valueColDef = "Date32") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_date32 VALUES
@@ -392,7 +393,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(2).getDate(1) != null)
     }
   }
-  test("decode DateType - Date32 nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode DateType - Date32 nullable with null values") {
     withKVTable("test_db", "test_date32_null", valueColDef = "Nullable(Date32)") {
       (actualDb: String, actualTbl: String) =>
         runClickHouseSQL(
@@ -582,7 +583,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(math.abs(result(2).getDouble(1) - 3.141592653589793) < 0.000001)
     }
   }
-  test("decode Enum16 - large enum") { (actualDb: String, actualTbl: String) =>
+  test("decode Enum16 - large enum") {
     withKVTable("test_db", "test_enum16", valueColDef = "Enum16('small' = 1, 'medium' = 100, 'large' = 1000)") {
       (actualDb: String, actualTbl: String) =>
         runClickHouseSQL(
@@ -698,7 +699,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(math.abs(result(2).getFloat(1) - 3.14f) < 0.01f)
     }
   }
-  test("decode Int128 - large integers as Decimal") { (actualDb: String, actualTbl: String) =>
+  test("decode Int128 - large integers as Decimal") {
     withKVTable("test_db", "test_int128", valueColDef = "Int128") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_int128 VALUES
@@ -716,7 +717,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(2).getDecimal(1) != null)
     }
   }
-  test("decode Int128 - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode Int128 - nullable with null values") {
     withKVTable("test_db", "test_int128_null", valueColDef = "Nullable(Int128)") {
       (actualDb: String, actualTbl: String) =>
         runClickHouseSQL(
@@ -770,7 +771,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(1).getDecimal(1) != null)
     }
   }
-  test("decode IntegerType - min and max values") { (actualDb: String, actualTbl: String) =>
+  test("decode IntegerType - min and max values") {
     withKVTable("test_db", "test_int", valueColDef = "Int32") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_int VALUES
@@ -787,7 +788,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       )
     }
   }
-  test("decode IntegerType - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode IntegerType - nullable with null values") {
     withKVTable("test_db", "test_int_null", valueColDef = "Nullable(Int32)") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_int_null VALUES
@@ -822,7 +823,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(2).getString(1) == "8.8.8.8")
     }
   }
-  test("decode IPv4 - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode IPv4 - nullable with null values") {
     withKVTable("test_db", "test_ipv4_null", valueColDef = "Nullable(IPv4)") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_ipv4_null VALUES
@@ -858,7 +859,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(2).getString(1) != null)
     }
   }
-  test("decode IPv6 - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode IPv6 - nullable with null values") {
     withKVTable("test_db", "test_ipv6_null", valueColDef = "Nullable(IPv6)") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_ipv6_null VALUES
@@ -880,11 +881,11 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
     withKVTable("test_db", "test_json_null", valueColDef = "Nullable(String)") {
       (actualDb: String, actualTbl: String) =>
         runClickHouseSQL(
-          """INSERT INTO $actualDb.test_json_null VALUES
-            |(1, '{"name": "Alice", "age": 30}'),
-            |(2, NULL),
-            |(3, '{"name": "Charlie", "age": 35}')
-            |""".stripMargin
+          s"""INSERT INTO $actualDb.test_json_null VALUES
+             |(1, '{"name": "Alice", "age": 30}'),
+             |(2, NULL),
+             |(3, '{"name": "Charlie", "age": 35}')
+             |""".stripMargin
         )
 
         val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
@@ -898,11 +899,11 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   test("decode JSON - semi-structured data") {
     withKVTable("test_db", "test_json", valueColDef = "String") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
-        """INSERT INTO $actualDb.test_json VALUES
-          |(1, '{"name": "Alice", "age": 30}'),
-          |(2, '{"name": "Bob", "age": 25}'),
-          |(3, '{"name": "Charlie", "age": 35}')
-          |""".stripMargin
+        s"""INSERT INTO $actualDb.test_json VALUES
+           |(1, '{"name": "Alice", "age": 30}'),
+           |(2, '{"name": "Bob", "age": 25}'),
+           |(3, '{"name": "Charlie", "age": 35}')
+           |""".stripMargin
       )
 
       val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
@@ -913,7 +914,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(2).getString(1).contains("Charlie"))
     }
   }
-  test("decode LongType - min and max values") { (actualDb: String, actualTbl: String) =>
+  test("decode LongType - min and max values") {
     withKVTable("test_db", "test_long", valueColDef = "Int64") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_long VALUES
@@ -930,7 +931,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       )
     }
   }
-  test("decode LongType - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode LongType - nullable with null values") {
     withKVTable("test_db", "test_long_null", valueColDef = "Nullable(Int64)") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_long_null VALUES
@@ -982,7 +983,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       )
     }
   }
-  test("decode MapType - Map of String to Int") { (actualDb: String, actualTbl: String) =>
+  test("decode MapType - Map of String to Int") {
     withKVTable("test_db", "test_map", valueColDef = "Map(String, Int32)") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_map VALUES
@@ -1037,7 +1038,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       )
     }
   }
-  test("decode ShortType - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode ShortType - nullable with null values") {
     withKVTable("test_db", "test_short_null", valueColDef = "Nullable(Int16)") {
       (actualDb: String, actualTbl: String) =>
         runClickHouseSQL(
@@ -1090,7 +1091,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       )
     }
   }
-  test("decode StringType - empty strings") { (actualDb: String, actualTbl: String) =>
+  test("decode StringType - empty strings") {
     withKVTable("test_db", "test_empty_string", valueColDef = "String") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_empty_string VALUES
@@ -1108,7 +1109,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(2).getString(1) == "")
     }
   }
-  test("decode StringType - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode StringType - nullable with null values") {
     withKVTable("test_db", "test_string_null", valueColDef = "Nullable(String)") {
       (actualDb: String, actualTbl: String) =>
         runClickHouseSQL(
@@ -1140,11 +1141,11 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       checkAnswer(
         df,
-        Row(1, "hello") :: Row(2, "") :: Row(3, "world with spaces") :: Row(4, "special chars: !@#$$%^&*()") :: Nil
+        Row(1, "hello") :: Row(2, "") :: Row(3, "world with spaces") :: Row(4, "special chars: !@#$%^&*()") :: Nil
       )
     }
   }
-  test("decode StringType - UUID") { (actualDb: String, actualTbl: String) =>
+  test("decode StringType - UUID") {
     withKVTable("test_db", "test_uuid", valueColDef = "UUID") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_uuid VALUES
@@ -1160,7 +1161,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(1).getString(1) == "6ba7b810-9dad-11d1-80b4-00c04fd430c8")
     }
   }
-  test("decode StringType - UUID nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode StringType - UUID nullable with null values") {
     withKVTable("test_db", "test_uuid_null", valueColDef = "Nullable(UUID)") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_uuid_null VALUES
@@ -1193,7 +1194,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(0).getString(1).length == 10000)
     }
   }
-  test("decode TimestampType - DateTime") { (actualDb: String, actualTbl: String) =>
+  test("decode TimestampType - DateTime") {
     withKVTable("test_db", "test_datetime", valueColDef = "DateTime") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_datetime VALUES
@@ -1211,7 +1212,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(2).getTimestamp(1) != null)
     }
   }
-  test("decode TimestampType - DateTime64") { (actualDb: String, actualTbl: String) =>
+  test("decode TimestampType - DateTime64") {
     withKVTable("test_db", "test_datetime64", valueColDef = "DateTime64(3)") { (actualDb: String, actualTbl: String) =>
       runClickHouseSQL(
         s"""INSERT INTO $actualDb.test_datetime64 VALUES
@@ -1283,7 +1284,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(1).getDecimal(1) != null)
     }
   }
-  test("decode UInt128 - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode UInt128 - nullable with null values") {
     withKVTable("test_db", "test_uint128_null", valueColDef = "Nullable(UInt128)") {
       (actualDb: String, actualTbl: String) =>
         runClickHouseSQL(
@@ -1337,7 +1338,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       )
     }
   }
-  test("decode UInt256 - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode UInt256 - nullable with null values") {
     withKVTable("test_db", "test_uint256_null", valueColDef = "Nullable(UInt256)") {
       (actualDb: String, actualTbl: String) =>
         runClickHouseSQL(
@@ -1372,7 +1373,7 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(result(1).getDecimal(1) != null)
     }
   }
-  test("decode UInt64 - nullable with null values") { (actualDb: String, actualTbl: String) =>
+  test("decode UInt64 - nullable with null values") {
     withKVTable("test_db", "test_uint64_null", valueColDef = "Nullable(UInt64)") {
       (actualDb: String, actualTbl: String) =>
         runClickHouseSQL(
@@ -1388,14 +1389,14 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
         val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
         val result = df.collect()
         assert(result.length == 5)
-        assert(result(0).getDecimal(1) == BigDecimal(0))
+        assert(BigDecimal(result(0).getDecimal(1)) == BigDecimal(0))
         assert(result(1).isNullAt(1))
         // Test value just above Long.MAX_VALUE
-        assert(result(2).getDecimal(1) == BigDecimal("9223372036854775808"))
+        assert(BigDecimal(result(2).getDecimal(1)) == BigDecimal("9223372036854775808"))
         // Test large value in the middle range
-        assert(result(3).getDecimal(1) == BigDecimal("15000000000000000000"))
+        assert(BigDecimal(result(3).getDecimal(1)) == BigDecimal("15000000000000000000"))
         // Test maximum UInt64 value (2^64 - 1)
-        assert(result(4).getDecimal(1) == BigDecimal("18446744073709551615"))
+        assert(BigDecimal(result(4).getDecimal(1)) == BigDecimal("18446744073709551615"))
     }
   }
   test("decode UInt64 - unsigned 64-bit integers") {
@@ -1414,16 +1415,16 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       val df = readTableWithBothAPIs(actualDb, actualTbl, columns = "key, value", orderBy = Some("key"))
       val result = df.collect()
       assert(result.length == 6)
-      assert(result(0).getDecimal(1) == BigDecimal(0))
-      assert(result(1).getDecimal(1) == BigDecimal("1234567890"))
+      assert(BigDecimal(result(0).getDecimal(1)) == BigDecimal(0))
+      assert(BigDecimal(result(1).getDecimal(1)) == BigDecimal("1234567890"))
       // Max value that fits in signed Long
-      assert(result(2).getDecimal(1) == BigDecimal("9223372036854775807"))
+      assert(BigDecimal(result(2).getDecimal(1)) == BigDecimal("9223372036854775807"))
       // Test value just above Long.MAX_VALUE (proves DecimalType works)
-      assert(result(3).getDecimal(1) == BigDecimal("9223372036854775808"))
+      assert(BigDecimal(result(3).getDecimal(1)) == BigDecimal("9223372036854775808"))
       // Test large value in the middle range
-      assert(result(4).getDecimal(1) == BigDecimal("15000000000000000000"))
+      assert(BigDecimal(result(4).getDecimal(1)) == BigDecimal("15000000000000000000"))
       // Test maximum UInt64 value (2^64 - 1)
-      assert(result(5).getDecimal(1) == BigDecimal("18446744073709551615"))
+      assert(BigDecimal(result(5).getDecimal(1)) == BigDecimal("18446744073709551615"))
     }
   }
 
@@ -1431,13 +1432,15 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
   // StructType Tests
   // ============================================================================
 
-  test("decode StructType - unnamed tuple created directly in ClickHouse") { (actualDb: String, actualTbl: String) =>
-    val db = "test_db"
+  test("decode StructType - unnamed tuple created directly in ClickHouse") {
+    val db = if (useSuiteLevelDatabase) testDatabaseName else "test_db"
     val tbl = "test_read_unnamed_tuple"
 
     try {
-      // Create database
-      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
+      // Create database only if not using suite level database
+      if (!useSuiteLevelDatabase) {
+        runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db")
+      }
 
       // Create table directly in ClickHouse with unnamed tuple
       runClickHouseSQL(
@@ -1488,8 +1491,12 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
       assert(data2.getInt(1) === 35)
       assert(data2.getString(2) === "SF")
 
-    } finally
-      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl")
+    } finally {
+      dropTableWithRetry(db, tbl)
+      if (!useSuiteLevelDatabase) {
+        runClickHouseSQL(s"DROP DATABASE IF EXISTS $db")
+      }
+    }
   }
 
   // ============================================================================

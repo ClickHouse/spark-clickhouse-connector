@@ -779,7 +779,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         schema
       )
 
-      dataDF.writeTo("$actualDb.test_write_simple_struct").append()
+      dataDF.writeTo(s"$actualDb.test_write_simple_struct").append()
 
       val result = spark.table(s"$actualDb.test_write_simple_struct").sort("id").collect()
 
@@ -828,7 +828,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         schema
       )
 
-      dataDF.writeTo("$actualDb.test_write_nested_struct").append()
+      dataDF.writeTo(s"$actualDb.test_write_nested_struct").append()
 
       val result = spark.table(s"$actualDb.test_write_nested_struct").sort("id").collect()
 
@@ -867,7 +867,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         schema
       )
 
-      dataDF.writeTo("$actualDb.test_write_nullable_struct").append()
+      dataDF.writeTo(s"$actualDb.test_write_nullable_struct").append()
 
       val result = spark.table(s"$actualDb.test_write_nullable_struct").sort("id").collect()
 
@@ -905,7 +905,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         schema
       )
 
-      dataDF.writeTo("$actualDb.test_write_complex_struct").append()
+      dataDF.writeTo(s"$actualDb.test_write_complex_struct").append()
 
       val result = spark.table(s"$actualDb.test_write_complex_struct").sort("id").collect()
 
@@ -952,7 +952,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         schema
       )
 
-      dataDF.writeTo("$actualDb.test_write_struct_array").append()
+      dataDF.writeTo(s"$actualDb.test_write_struct_array").append()
 
       val result = spark.table(s"$actualDb.test_write_struct_array").sort("id").collect()
 
