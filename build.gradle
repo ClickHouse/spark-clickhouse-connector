@@ -74,6 +74,7 @@ rat {
             ".github/pull_request_template.md",
             "**/README.md",
             "CODE_OF_CONDUCT.md",
+            "AI_POLICY.md",
             "version.txt",
             "clickhouse-core/src/main/scala-2.12/scala/util/Using.scala",
             "**/.gitkeep",
