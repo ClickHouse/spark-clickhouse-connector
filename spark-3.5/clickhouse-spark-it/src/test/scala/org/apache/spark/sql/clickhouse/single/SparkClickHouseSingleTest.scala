@@ -75,7 +75,8 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider
     .set("spark.sql.catalog.clickhouse.user", clickhouseUser)
     .set("spark.sql.catalog.clickhouse.password", clickhousePassword)
     .set("spark.sql.catalog.clickhouse.database", clickhouseDatabase)
-    .set("spark.sql.catalog.clickhouse.option.custom_http_params", "async_insert=1,wait_for_async_insert=1")
+    .set("spark.sql.catalog.clickhouse.option.clickhouse_setting_wait_for_async_insert", "1")
+    .set("spark.sql.catalog.clickhouse.option.clickhouse_setting_async_insert_deduplicate", "0")
     .set("spark.sql.catalog.clickhouse.option.ssl", isSslEnabled.toString)
     // extended configurations
     .set("spark.clickhouse.write.batchSize", "2")
@@ -93,7 +94,8 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider
     "user" -> clickhouseUser,
     "password" -> clickhousePassword,
     "database" -> clickhouseDatabase,
-    "option.custom_http_params" -> "async_insert=1,wait_for_async_insert=1",
+    "option.clickhouse_setting_wait_for_async_insert" -> "1",
+    "option.clickhouse_setting_async_insert_deduplicate" -> "0",
     "option.ssl" -> isSslEnabled.toString
   )
 
