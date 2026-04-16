@@ -54,12 +54,36 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider
 
   override protected def createDatabaseWithRetry(db: String, maxRetries: Int = 5): Unit = {
     super.createDatabaseWithRetry(db, maxRetries)
-    if (isCloud) Thread.sleep(2000)
+    if (isCloud) waitForDatabaseVisible(db)
   }
 
   override protected def dropTableWithRetry(db: String, tbl: String, maxRetries: Int = 5): Unit = {
     super.dropTableWithRetry(db, tbl, maxRetries)
-    if (isCloud) Thread.sleep(500)
+    if (isCloud) waitForTableGone(db, tbl)
+  }
+
+  private def waitForDatabaseVisible(db: String, timeoutMs: Long = 30000): Unit = {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    var visible = false
+    while (!visible && System.currentTimeMillis() < deadline) {
+      visible = Try(
+        spark.sql("SHOW DATABASES").collect().exists(_.getString(0) == db)
+      ).getOrElse(false)
+      if (!visible) Thread.sleep(1000)
+    }
+    if (!visible)
+      throw new RuntimeException(s"Database $db not visible after ${timeoutMs}ms")
+  }
+
+  private def waitForTableGone(db: String, tbl: String, timeoutMs: Long = 15000): Unit = {
+    val deadline = System.currentTimeMillis() + timeoutMs
+    var gone = false
+    while (!gone && System.currentTimeMillis() < deadline) {
+      gone = Try(
+        !spark.sql(s"SHOW TABLES IN $db").collect().exists(_.getString(1) == tbl)
+      ).getOrElse(true)
+      if (!gone) Thread.sleep(1000)
+    }
   }
 
   override protected def sparkConf: SparkConf = super.sparkConf
