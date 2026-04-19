@@ -54,8 +54,18 @@ abstract class ClickHouseDataTypeSuite extends SparkClickHouseSingleTest {
       val tblSchema = spark.table(s"$actualDb.$actualTbl").schema
       val respectNullable = SPARK_43390_ENABLED && !spark.conf.get(USE_NULLABLE_QUERY_SCHEMA)
       if (respectNullable) {
-        // TODO nested field does not respect nullable
-        // assert(StructType(schema) === tblSchema)
+        // SPARK-43390 preserves top-level field nullability (all should be false here).
+        // However, Spark SQL DDL does not preserve containsNull for ArrayType and
+        // valueContainsNull for MapType, so these are normalized to true when
+        // the table is created through Spark SQL.
+        val expectedFields = schema.fields.map { f =>
+          f.copy(dataType = f.dataType match {
+            case ArrayType(et, _) => ArrayType(et, containsNull = true)
+            case MapType(kt, vt, _) => MapType(kt, vt, valueContainsNull = true)
+            case other => other
+          })
+        }
+        assert(StructType(expectedFields) === tblSchema)
       } else {
         val nullableFields =
           schema.fields.map(structField => structField.copy(dataType = structField.dataType.asNullable))

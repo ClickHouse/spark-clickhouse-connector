@@ -23,7 +23,7 @@ import scala.collection.JavaConverters._
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
 import org.apache.spark.sql.clickhouse.{ExprUtils, ReadOptions, WriteOptions}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_DISTRIBUTED_CONVERT_LOCAL, USE_NULLABLE_QUERY_SCHEMA}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.expressions.Transform
@@ -95,9 +95,6 @@ case class ClickHouseTable(
   }
 
   override def name: String = s"${wrapBackQuote(spec.database)}.${wrapBackQuote(spec.name)}"
-
-  // for SPARK-43390
-  def useNullableQuerySchema: Boolean = conf.getConf(USE_NULLABLE_QUERY_SCHEMA)
 
   override def capabilities(): util.Set[TableCapability] =
     Set(
