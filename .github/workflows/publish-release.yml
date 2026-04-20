@@ -53,8 +53,30 @@ jobs:
           SIGNING_PASSWORD: ${{ secrets.SIGNING_PASSWORD }}
           SIGNING_KEY: ${{ secrets.SIGNING_KEY }}
         run: >-
-          ./gradlew clean publishAllPublicationsToCentralPortal 
+          ./gradlew clean publishAllPublicationsToCentralPortal
           -Dscala_binary_version=${{ matrix.scala }}
           -Dspark_binary_version=${{ matrix.spark }}
-          -Prelease 
+          -Prelease
 
+  dispatch-glue-build:
+    needs: publish-release
+    runs-on: ubuntu-latest
+    steps:
+      - name: Generate token
+        id: generate-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.WORKFLOW_AUTH_PUBLIC_APP_ID }}
+          private-key: ${{ secrets.WORKFLOW_AUTH_PUBLIC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: "spark-clickhouse-connector,clickhouse-glue"
+
+      - name: Dispatch spark-release to clickhouse-glue
+        run: |
+          VERSION="${{ github.event.inputs.version || github.ref_name }}"
+          VERSION="${VERSION#v}"
+          gh api repos/ClickHouse/clickhouse-glue/dispatches \
+            -f event_type=spark-release \
+            -F client_payload[version]="$VERSION"
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
