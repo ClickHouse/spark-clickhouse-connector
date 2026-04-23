@@ -31,8 +31,8 @@ buildscript {
         }
         // Use newer ASM version that supports Java 21 (class file major version 65)
         // This allows the shadow plugin to relocate Java 21 compiled classes
-        classpath 'org.ow2.asm:asm:9.6'
-        classpath 'org.ow2.asm:asm-commons:9.6'
+        classpath 'org.ow2.asm:asm:9.9.1'
+        classpath 'org.ow2.asm:asm-commons:9.9.1'
     }
 }
 
