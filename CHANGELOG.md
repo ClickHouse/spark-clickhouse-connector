@@ -122,6 +122,11 @@ Changes that have been merged but not yet released will be documented here.
 ### Removed
 - gzip and zstd write compression support has been removed (currently supported codecs are `none`, `lz4` (default))
 
+## [Unreleased]
+
+### Fixed
+- Preventing extra quotes in filter expr when col having special characters
+
 [Unreleased]: https://github.com/ClickHouse/spark-clickhouse-connector/compare/v0.9.0...HEAD
 [0.9.0]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.9.0
 [0.8.1]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.8.1

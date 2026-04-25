@@ -16,6 +16,7 @@ package com.clickhouse.spark
 
 import java.sql.{Date, Timestamp}
 import java.time.{Instant, LocalDate, LocalDateTime, ZoneId}
+import java.util.regex.Pattern
 import org.apache.commons.lang3.StringUtils
 import org.apache.spark.sql.connector.expressions.aggregate._
 import org.apache.spark.sql.connector.expressions.NamedReference
@@ -25,7 +26,13 @@ import Utils._
 
 trait SQLHelper {
 
-  def quoted(token: String) = s"`$token`"
+  private val validIdentPattern = Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_]*")
+
+  private def alreadyQuoted(part: String): Boolean =
+    !validIdentPattern.matcher(part).matches()
+
+  def quoted(token: String): String =
+    if (alreadyQuoted(token)) token else s"`$token`"
 
   // null => null, ' => ''
   def escapeSql(value: String): String = StringUtils.replace(value, "'", "''")
