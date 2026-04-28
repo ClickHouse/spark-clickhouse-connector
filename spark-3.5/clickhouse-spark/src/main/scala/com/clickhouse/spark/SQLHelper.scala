@@ -26,13 +26,10 @@ import Utils._
 
 trait SQLHelper {
 
-  private val validIdentPattern = Pattern.compile("^[a-zA-Z_][a-zA-Z0-9_]*")
-
-  private def alreadyQuoted(part: String): Boolean =
-    !validIdentPattern.matcher(part).matches()
-
-  def quoted(token: String): String =
-    if (alreadyQuoted(token)) token else s"`$token`"
+  def quoted(token: String): String = token match {
+    case t if t.startsWith("`") && t.endsWith("`") => t
+    case t => s"`$t`"
+  }
 
   // null => null, ' => ''
   def escapeSql(value: String): String = StringUtils.replace(value, "'", "''")
