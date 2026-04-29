@@ -16,7 +16,6 @@ package com.clickhouse.spark
 
 import java.sql.{Date, Timestamp}
 import java.time.{Instant, LocalDate, LocalDateTime, ZoneId}
-import java.util.regex.Pattern
 import org.apache.commons.lang3.StringUtils
 import org.apache.spark.sql.connector.expressions.aggregate._
 import org.apache.spark.sql.connector.expressions.NamedReference
