@@ -25,7 +25,10 @@ import Utils._
 
 trait SQLHelper {
 
-  def quoted(token: String) = s"`$token`"
+  def quoted(token: String): String = token match {
+    case t if t.startsWith("`") && t.endsWith("`") => t
+    case t => s"`$t`"
+  }
 
   // null => null, ' => ''
   def escapeSql(value: String): String = StringUtils.replace(value, "'", "''")

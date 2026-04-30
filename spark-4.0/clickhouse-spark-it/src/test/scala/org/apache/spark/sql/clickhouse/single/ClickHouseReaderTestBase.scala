@@ -14,6 +14,7 @@
 
 package org.apache.spark.sql.clickhouse.single
 
+import org.apache.spark.sql.functions.col
 import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.types._
 
@@ -2013,6 +2014,41 @@ trait ClickHouseReaderTestBase extends SparkClickHouseSingleTest {
 
       val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
       assert(json3.contains("2.718"))
+    }
+  }
+
+  test("decode SpecialChar Cols: cols having space and applying filter") {
+    val schema: StructType = StructType(Seq(
+      StructField("id", IntegerType, nullable = false),
+      StructField("`space col`", StringType, nullable = true),
+      StructField("`1col`", StringType, nullable = true),
+      StructField("`hyphen-col`", StringType, nullable = true)
+    ))
+    withTable("test_db", "special_char_col", schema) {
+      (actualDb: String, actualTbl: String) =>
+        runClickHouseSQL(
+          s"""INSERT INTO $actualDb.special_char_col VALUES
+             |(1, NULL, NULL, NULL),
+             |(2, 'Bob', 'Bob2', 'Bob3')
+             |""".stripMargin
+        )
+
+        var df = readTableWithBothAPIs(
+          actualDb,
+          actualTbl,
+          columns = "id, `space col`, `1col`, `hyphen-col`",
+          orderBy = Some("id")
+        )
+        df = df.filter(col("space col").isNotNull)
+          .filter(col("1col").isNotNull)
+          .filter(col("hyphen-col").isNotNull)
+
+        val result = df.collect()
+        assert(result.length == 1)
+
+        assert(result(0).getString(1) == "Bob")
+        assert(result(0).getString(2) == "Bob2")
+        assert(result(0).getString(3) == "Bob3")
     }
   }
 
