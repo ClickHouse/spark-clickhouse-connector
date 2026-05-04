@@ -105,12 +105,21 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider
     schema: StructType,
     engine: String = "MergeTree()",
     sortKeys: Seq[String] = "id" :: Nil,
-    partKeys: Seq[String] = Seq.empty
+    partKeys: Seq[String] = Seq.empty,
+    extraProperties: Map[String, String] = Map.empty
   )(f: (String, String) => Unit): Unit = {
     val actualDb = if (useSuiteLevelDatabase) testDatabaseName else db
     try {
       if (!useSuiteLevelDatabase) {
         runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS `$actualDb`")
+      }
+
+      val tblProperties: String = {
+        val props =
+          sortKeys.headOption.map(_ => s"order_by = '${sortKeys.mkString(", ")}'").toSeq ++
+            Seq(s"engine = '$engine'") ++
+            extraProperties.toSeq.map { case (k, v) => s"'$k' = '$v'" }
+        props.mkString(",\n  ")
       }
 
       spark.sql(
@@ -119,8 +128,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider
            |) USING ClickHouse
            |${if (partKeys.isEmpty) "" else partKeys.mkString("PARTITIONED BY(", ", ", ")")}
            |TBLPROPERTIES (
-           |  ${if (sortKeys.isEmpty) "" else sortKeys.mkString("order_by = '", ", ", "',")}
-           |  engine = '$engine'
+           |  $tblProperties
            |)
            |""".stripMargin
       )
