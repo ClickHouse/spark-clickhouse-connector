@@ -50,10 +50,8 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
   val root: VectorSchemaRoot = VectorSchemaRoot.create(arrowSchema, allocator)
   val arrowWriter: ArrowWriter = ArrowWriter.create(root)
 
-  override def writeRow(record: InternalRow): Unit = {
-    // TODO: Remove the jsonifyVariantsInRow call once ClickHouse supports reading variant/json from Arrow format
+  override def writeRow(record: InternalRow): Unit =
     arrowWriter.write(VariantUtils.jsonifyVariantsInRow(record, originalDataSchema))
-  }
 
   override def doSerialize(): Array[Byte] = {
     arrowWriter.finish()

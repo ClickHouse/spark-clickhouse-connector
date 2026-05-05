@@ -15,11 +15,11 @@
 package org.apache.spark.sql.clickhouse
 
 import org.apache.spark.sql.catalyst.InternalRow
-import org.apache.spark.sql.catalyst.expressions.SpecializedGetters
+import org.apache.spark.sql.catalyst.expressions.{GenericInternalRow, SpecializedGetters}
 import org.apache.spark.sql.catalyst.util.{ArrayBasedMapData, ArrayData, GenericArrayData, MapData}
 import org.apache.spark.sql.types.{ArrayType, DataType, MapType, StringType, StructType, VariantType}
+import org.apache.spark.types.variant.Variant
 import org.apache.spark.unsafe.types.{UTF8String, VariantVal}
-
 
 object VariantUtils {
 
@@ -29,25 +29,25 @@ object VariantUtils {
    * unchanged.
    */
   def replaceVariantInType(dt: DataType): DataType = dt match {
-    case VariantType        => StringType
+    case VariantType => StringType
     case ArrayType(elem, n) => ArrayType(replaceVariantInType(elem), n)
-    case MapType(k, v, n)   => MapType(replaceVariantInType(k), replaceVariantInType(v), n)
-    case st: StructType     => StructType(st.fields.map(f => f.copy(dataType = replaceVariantInType(f.dataType))))
-    case other              => other
+    case MapType(k, v, n) => MapType(replaceVariantInType(k), replaceVariantInType(v), n)
+    case st: StructType => StructType(st.fields.map(f => f.copy(dataType = replaceVariantInType(f.dataType))))
+    case other => other
   }
 
   /** True iff `dt` contains a `VariantType` at any depth. */
   def containsVariant(dt: DataType): Boolean = dt match {
-    case VariantType      => true
-    case ArrayType(e, _)  => containsVariant(e)
+    case VariantType => true
+    case ArrayType(e, _) => containsVariant(e)
     case MapType(k, v, _) => containsVariant(k) || containsVariant(v)
-    case st: StructType   => st.fields.exists(f => containsVariant(f.dataType))
-    case _                => false
+    case st: StructType => st.fields.exists(f => containsVariant(f.dataType))
+    case _ => false
   }
 
   /** Convert a single `VariantVal` to a UTF-8 JSON string. */
   def variantToJsonString(variantVal: VariantVal): UTF8String = {
-    val variant = new org.apache.spark.types.variant.Variant(variantVal.getValue, variantVal.getMetadata)
+    val variant = new Variant(variantVal.getValue, variantVal.getMetadata)
     UTF8String.fromString(variant.toJson(java.time.ZoneId.of("UTC")))
   }
 
@@ -69,7 +69,7 @@ object VariantUtils {
       new ArrayBasedMapData(new GenericArrayData(newKeys), new GenericArrayData(newValues))
     case (row: InternalRow, st: StructType) if containsVariant(st) =>
       val out = Array.tabulate[Any](st.fields.length)(i => convertAt(row, i, st.fields(i).dataType))
-      InternalRow.fromSeq(out.toIndexedSeq)
+      new GenericInternalRow(out)
     case (other, _) => other
   }
 
@@ -85,6 +85,6 @@ object VariantUtils {
     if (!schema.fields.exists(f => containsVariant(f.dataType))) record
     else {
       val out = Array.tabulate[Any](record.numFields)(i => convertAt(record, i, schema.fields(i).dataType))
-      InternalRow.fromSeq(out.toIndexedSeq)
+      new GenericInternalRow(out)
     }
 }

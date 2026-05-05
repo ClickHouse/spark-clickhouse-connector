@@ -1287,9 +1287,8 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         val m1 = result(1).getMap[String, VariantVal](1)
         assert(m1.keySet == Set("only"))
         assert(variantToJson(m1("only")) == """{"v":99}""")
-      } finally {
+      } finally
         spark.conf.unset("spark.clickhouse.read.settings")
-      }
     }
   }
 
@@ -1370,9 +1369,8 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         assert(variantToJson(arr(0).get(1).asInstanceOf[VariantVal]) == """{"x":1}""")
         assert(arr(1).getString(0) == "second")
         assert(variantToJson(arr(1).get(1).asInstanceOf[VariantVal]) == """{"x":2}""")
-      } finally {
+      } finally
         spark.conf.unset("spark.clickhouse.read.settings")
-      }
     }
   }
 
