@@ -28,6 +28,9 @@ trait SparkOptions extends SQLConfHelper with Serializable {
 
   protected def eval[T](key: String, entry: ConfigEntry[T]): T =
     Option(options.get(key)).map(entry.valueConverter).getOrElse(conf.getConf(entry))
+
+  def clientQueryTimeout: Long =
+    eval(CLIENT_QUERY_TIMEOUT.key, CLIENT_QUERY_TIMEOUT)
 }
 
 class ReadOptions(_options: JMap[String, String]) extends SparkOptions {

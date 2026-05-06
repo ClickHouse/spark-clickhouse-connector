@@ -14,6 +14,8 @@
 
 package org.apache.spark.sql.clickhouse
 
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.CLIENT_QUERY_TIMEOUT
+import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.scalatest.funsuite.AnyFunSuite
 import com.clickhouse.spark.ClickHouseHelper
@@ -32,5 +34,15 @@ class ClickHouseHelperSuite extends AnyFunSuite with ClickHouseHelper {
     )
     assert(nodeSpec.database === "testing")
     assert(nodeSpec.options.get("ssl") === "true")
+  }
+
+  test("client query timeout uses SQLConf") {
+    val conf = SQLConf.get
+    val original = conf.getConf(CLIENT_QUERY_TIMEOUT)
+    try {
+      conf.setConfString(CLIENT_QUERY_TIMEOUT.key, "1234ms")
+      assert(clientQueryTimeoutMs === 1234L)
+    } finally
+      conf.setConfString(CLIENT_QUERY_TIMEOUT.key, s"${original}ms")
   }
 }
