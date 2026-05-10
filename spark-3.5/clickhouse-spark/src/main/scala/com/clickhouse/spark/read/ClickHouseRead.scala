@@ -19,9 +19,10 @@ import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
 import com.clickhouse.spark.spec.{DistributedEngineSpec, NoPartitionSpec, TableEngineSpec}
 import com.clickhouse.spark.{BlocksReadMetric, BytesReadMetric, ClickHouseHelper, Logging, SQLHelper, Utils}
-import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
+import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
-import org.apache.spark.sql.connector.expressions.{Expressions, NamedReference, Transform}
+import org.apache.spark.sql.connector.expressions.{Expressions, NamedReference, SortOrder => V2SortOrder, Transform}
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
 import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read._
@@ -29,6 +30,7 @@ import org.apache.spark.sql.connector.read.partitioning.{Partitioning, UnknownPa
 import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types.StructType
 import com.clickhouse.spark._
+import com.clickhouse.spark.expr.OrderExpr
 import com.clickhouse.spark.spec._
 
 import java.time.ZoneId
@@ -40,12 +42,14 @@ class ClickHouseScanBuilder(
   metadataSchema: StructType,
   partitionTransforms: Array[Transform]
 ) extends ScanBuilder
+    with SupportsPushDownTopN
     with SupportsPushDownLimit
     with SupportsPushDownFilters
     with SupportsPushDownAggregates
     with SupportsPushDownRequiredColumns
     with ClickHouseHelper
     with SQLHelper
+    with SQLConfHelper
     with Logging {
 
   implicit private val tz: ZoneId = scanJob.tz
@@ -64,6 +68,34 @@ class ClickHouseScanBuilder(
     this._limit = Some(limit)
     true
   }
+
+  private var _orderByClause: Option[String] = None
+
+  private def renderOrderExpr(o: OrderExpr): String = {
+    val exprSql = o.expr match {
+      case com.clickhouse.spark.expr.FieldRef(name) => s"`$name`"
+      case other => other.sql
+    }
+    val direction = if (o.asc) "ASC" else "DESC"
+    val nulls = if (o.nullFirst) "NULLS FIRST" else "NULLS LAST"
+    s"$exprSql $direction $nulls"
+  }
+
+  override def pushTopN(orders: Array[V2SortOrder], limit: Int): Boolean = {
+    if (!conf.getConf(READ_PUSHDOWN_TOP_N)) return false
+
+    val translated = orders.map(o => ExprUtils.toClickHouseSortOrderOpt(o, scanJob.functionRegistry))
+    if (translated.exists(_.isEmpty)) return false
+
+    this._orderByClause = Some(translated.flatten.map(renderOrderExpr).mkString("ORDER BY ", ", ", ""))
+    this._limit = Some(limit)
+    true
+  }
+
+  // Each ClickHouse input partition runs its own `ORDER BY ... LIMIT n`, returning a local
+  // top-N. Spark must perform the final global merge across partitions, so we always
+  // report the pushdown as partial.
+  override def isPartiallyPushed: Boolean = true
 
   private var _pushedFilters = Array.empty[Filter]
 
@@ -123,6 +155,7 @@ class ClickHouseScanBuilder(
     readSchema = _readSchema,
     filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
     groupByClause = _groupByClause,
+    orderByClause = _orderByClause,
     limit = _limit
   ))
 }
