@@ -22,6 +22,7 @@ spark.clickhouse.read.distributed.convertLocal|true|When reading Distributed tab
 spark.clickhouse.read.fixedStringAs|binary|Read ClickHouse FixedString type as the specified Spark data type. Supported types: binary, string|0.8.0
 spark.clickhouse.read.format|json|Serialize format for reading. Supported formats: json, binary|0.6.0
 spark.clickhouse.read.jsonAs|variant|[Spark 4.0+ only] Read ClickHouse JSON type as the specified Spark data type. Supported types: variant (VariantType), string|0.9.0
+spark.clickhouse.read.pushdown.topN|true|Whether to push down `ORDER BY ... LIMIT n` (top-N) to ClickHouse. When `true`, eligible sort orders combined with a LIMIT are translated into a ClickHouse `ORDER BY ... LIMIT n` clause and Spark performs a final merge across input partitions. When `false`, only the LIMIT (without ORDER BY) is pushed down.|0.10.1
 spark.clickhouse.read.runtimeFilter.enabled|false|Enable runtime filter for reading.|0.8.0
 spark.clickhouse.read.settings|<undefined>|Settings when read from ClickHouse. e.g. `final=1, max_execution_time=5`|0.9.0
 spark.clickhouse.read.splitByPartitionId|true|If `true`, construct input partition filter by virtual column `_partition_id`, instead of partition value. There are known bugs to assemble SQL predication by partition value. This feature requires ClickHouse Server v21.6+|0.4.0

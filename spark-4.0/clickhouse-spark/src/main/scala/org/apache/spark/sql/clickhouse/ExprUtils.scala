@@ -211,6 +211,23 @@ object ExprUtils extends SQLConfHelper with Serializable with Logging {
     case other: Transform => throw CHClientException(s"Unsupported transform: $other")
   }
 
+  def toClickHouseSortOrderOpt(
+    sortOrder: V2SortOrder,
+    functionRegistry: FunctionRegistry
+  ): Option[OrderExpr] = {
+    val asc       = sortOrder.direction()    == SortDirection.ASCENDING
+    val nullFirst = sortOrder.nullOrdering() == NullOrdering.NULLS_FIRST
+    sortOrder.expression() match {
+      // length == 1 restricts to top-level columns and to exclude nested paths.
+      case ref: NamedReference if ref.fieldNames().length == 1 =>
+        Some(OrderExpr(FieldRef(ref.fieldNames().head), asc, nullFirst))
+      case t: Transform =>
+        try Some(OrderExpr(toClickHouse(t, functionRegistry), asc, nullFirst))
+        catch { case _: CHClientException => None }
+      case _ => None
+    }
+  }
+
   def inferTransformSchema(
     primarySchema: StructType,
     secondarySchema: StructType,
