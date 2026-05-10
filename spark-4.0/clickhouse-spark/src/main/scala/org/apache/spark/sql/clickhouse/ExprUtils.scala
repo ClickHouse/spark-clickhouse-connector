@@ -215,7 +215,7 @@ object ExprUtils extends SQLConfHelper with Serializable with Logging {
     sortOrder: V2SortOrder,
     functionRegistry: FunctionRegistry
   ): Option[OrderExpr] = {
-    val asc       = sortOrder.direction()    == SortDirection.ASCENDING
+    val asc = sortOrder.direction() == SortDirection.ASCENDING
     val nullFirst = sortOrder.nullOrdering() == NullOrdering.NULLS_FIRST
     sortOrder.expression() match {
       // length == 1 restricts to top-level columns and to exclude nested paths.
