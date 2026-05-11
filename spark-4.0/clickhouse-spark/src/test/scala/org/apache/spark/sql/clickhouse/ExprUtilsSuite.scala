@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
-import com.clickhouse.spark.expr.{FieldRef, FuncExpr, OrderExpr}
+import com.clickhouse.spark.expr.{FieldRef, FuncExpr, OrderExpr, SQLExpr}
 import com.clickhouse.spark.func.{ClickHouseXxHash64, DynamicFunctionRegistry, StaticFunctionRegistry}
 import org.apache.spark.sql.connector.expressions.{
   Expressions,
@@ -71,11 +71,9 @@ class ExprUtilsSuite extends AnyFunSuite {
       NullOrdering.NULLS_LAST
     )
     val translated = ExprUtils.toClickHouseSortOrderOpt(sort, registry)
-    assert(translated.isDefined)
-    val OrderExpr(expr, asc, nullFirst) = translated.get
-    assert(asc && !nullFirst)
-    val funcExpr = expr.asInstanceOf[FuncExpr]
-    assert(funcExpr.name === "xxHash64")
+    assert(translated === Some(
+      OrderExpr(FuncExpr("xxHash64", List(SQLExpr("k"))), asc = true, nullFirst = false)
+    ))
   }
 
   test("toClickHouseSortOrderOpt: function transform NOT in registry returns None") {

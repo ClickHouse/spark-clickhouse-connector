@@ -14,7 +14,7 @@
 
 package org.apache.spark.sql.clickhouse
 
-import com.clickhouse.spark.expr.{FieldRef, FuncExpr, OrderExpr}
+import com.clickhouse.spark.expr.{FieldRef, FuncExpr, OrderExpr, SQLExpr}
 import org.apache.spark.sql.connector.expressions.{
   Expressions,
   GeneralScalarExpression,
@@ -58,18 +58,14 @@ class ExprUtilsSuite extends AnyFunSuite {
   }
 
   test("toClickHouseSortOrderOpt: ApplyTransform passes through (no registry in 3.3)") {
-    // In Spark 3.3 ExprUtils.toClickHouse is permissive: any ApplyTransform becomes
-    // a FuncExpr with the same name, regardless of whether the function is registered.
     val sort = Expressions.sort(
       Expressions.apply("xxHash64", Expressions.column("k")),
       SortDirection.ASCENDING,
       NullOrdering.NULLS_LAST
     )
-    val translated = ExprUtils.toClickHouseSortOrderOpt(sort)
-    assert(translated.isDefined)
-    val OrderExpr(expr, asc, nullFirst) = translated.get
-    assert(asc && !nullFirst)
-    assert(expr.asInstanceOf[FuncExpr].name === "xxHash64")
+    assert(ExprUtils.toClickHouseSortOrderOpt(sort) === Some(
+      OrderExpr(FuncExpr("xxHash64", List(SQLExpr("k"))), asc = true, nullFirst = false)
+    ))
   }
 
   test("toClickHouseSortOrderOpt: literal expression returns None") {

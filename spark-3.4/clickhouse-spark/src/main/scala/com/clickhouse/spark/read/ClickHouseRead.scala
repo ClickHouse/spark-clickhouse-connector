@@ -27,7 +27,7 @@ import org.apache.spark.sql.types.StructType
 import com.clickhouse.spark._
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.exception.CHClientException
-import com.clickhouse.spark.expr.OrderExpr
+import com.clickhouse.spark.expr.{Expr, FieldRef, OrderExpr}
 import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
 import com.clickhouse.spark.spec._
 
@@ -70,13 +70,13 @@ class ClickHouseScanBuilder(
   private var _orderByClause: Option[String] = None
 
   private def renderOrderExpr(o: OrderExpr): String = {
-    val exprSql = o.expr match {
-      case com.clickhouse.spark.expr.FieldRef(name) => s"`$name`"
-      case other => other.sql
-    }
     val direction = if (o.asc) "ASC" else "DESC"
     val nulls = if (o.nullFirst) "NULLS FIRST" else "NULLS LAST"
-    s"$exprSql $direction $nulls"
+    val sql = o.expr match {
+      case FieldRef(name) => Utils.wrapBackQuote(name)
+      case other => other.sql
+    }
+    s"$sql $direction $nulls"
   }
 
   override def pushTopN(orders: Array[V2SortOrder], limit: Int): Boolean = {
