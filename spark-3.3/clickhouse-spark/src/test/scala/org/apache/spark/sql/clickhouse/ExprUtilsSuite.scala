@@ -15,6 +15,7 @@
 package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.spark.expr.{FieldRef, FuncExpr, OrderExpr, SQLExpr}
+import com.clickhouse.spark.read.ClickHouseScanBuilder
 import org.apache.spark.sql.connector.expressions.{
   Expressions,
   GeneralScalarExpression,
@@ -57,15 +58,48 @@ class ExprUtilsSuite extends AnyFunSuite {
       Some(OrderExpr(FieldRef("k"), asc = true, nullFirst = false)))
   }
 
-  test("toClickHouseSortOrderOpt: ApplyTransform passes through (no registry in 3.3)") {
+  test("toClickHouseSortOrderOpt: ApplyTransform outside hardcoded allow-list returns None (3.3)") {
+    // 3.3 has no FunctionRegistry, so the sort-pushdown path refuses any
+    // ApplyTransform whose name isn't one of the four hardcoded mappings --
+    // forwarding an arbitrary name would risk emitting SQL the server rejects.
     val sort = Expressions.sort(
       Expressions.apply("xxHash64", Expressions.column("k")),
       SortDirection.ASCENDING,
       NullOrdering.NULLS_LAST
     )
-    assert(ExprUtils.toClickHouseSortOrderOpt(sort) === Some(
-      OrderExpr(FuncExpr("xxHash64", List(SQLExpr("k"))), asc = true, nullFirst = false)
-    ))
+    assert(ExprUtils.toClickHouseSortOrderOpt(sort).isEmpty)
+  }
+
+  test("renderOrderExpr: bare field name that is a CH reserved word is back-quoted") {
+    val rendered = ClickHouseScanBuilder.renderOrderExpr(
+      OrderExpr(FieldRef("order"), asc = true, nullFirst = false)
+    )
+    assert(rendered === "`order` ASC NULLS LAST")
+  }
+
+  test("renderOrderExpr: function-transform leaf field is back-quoted") {
+    val rendered = ClickHouseScanBuilder.renderOrderExpr(
+      OrderExpr(FuncExpr("xxHash64", List(FieldRef("order"))), asc = true, nullFirst = false)
+    )
+    assert(rendered === "xxHash64(`order`) ASC NULLS LAST")
+  }
+
+  test("renderOrderExpr: SQLExpr leaf is emitted verbatim (e.g. literal arg)") {
+    val rendered = ClickHouseScanBuilder.renderOrderExpr(
+      OrderExpr(FuncExpr("toStartOfInterval", List(FieldRef("ts"), SQLExpr("INTERVAL 1 HOUR"))), asc = false)
+    )
+    assert(rendered === "toStartOfInterval(`ts`,INTERVAL 1 HOUR) DESC NULLS LAST")
+  }
+
+  test("toClickHouseSortOrderOpt + renderOrderExpr: end-to-end with reserved-word column under IdentityTransform") {
+    val sort = Expressions.sort(
+      Expressions.identity("order"),
+      SortDirection.ASCENDING,
+      NullOrdering.NULLS_LAST
+    )
+    val translated = ExprUtils.toClickHouseSortOrderOpt(sort)
+    assert(translated.isDefined)
+    assert(ClickHouseScanBuilder.renderOrderExpr(translated.get) === "`order` ASC NULLS LAST")
   }
 
   test("toClickHouseSortOrderOpt: literal expression returns None") {

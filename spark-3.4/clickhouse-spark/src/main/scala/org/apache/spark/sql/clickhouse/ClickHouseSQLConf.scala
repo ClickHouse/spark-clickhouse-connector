@@ -236,7 +236,8 @@ object ClickHouseSQLConf {
       .doc("Whether to push down `ORDER BY ... LIMIT n` (top-N) to ClickHouse. " +
         "When `true`, eligible sort orders combined with a LIMIT are translated into a " +
         "ClickHouse `ORDER BY ... LIMIT n` clause and Spark performs a final merge across " +
-        "input partitions. When `false`, only the LIMIT (without ORDER BY) is pushed down.")
+        "input partitions. When `false`, the `ORDER BY ... LIMIT n` is left for Spark to " +
+        "evaluate; plain `LIMIT n` queries (no `ORDER BY`) are unaffected.")
       .version("0.10.1")
       .booleanConf
       .createWithDefault(true)

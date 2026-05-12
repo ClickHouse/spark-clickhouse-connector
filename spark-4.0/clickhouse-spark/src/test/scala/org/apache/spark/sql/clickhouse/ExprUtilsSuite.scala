@@ -16,6 +16,7 @@ package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.spark.expr.{FieldRef, FuncExpr, OrderExpr, SQLExpr}
 import com.clickhouse.spark.func.{ClickHouseXxHash64, DynamicFunctionRegistry, StaticFunctionRegistry}
+import com.clickhouse.spark.read.ClickHouseScanBuilder
 import org.apache.spark.sql.connector.expressions.{
   Expressions,
   GeneralScalarExpression,
@@ -72,8 +73,40 @@ class ExprUtilsSuite extends AnyFunSuite {
     )
     val translated = ExprUtils.toClickHouseSortOrderOpt(sort, registry)
     assert(translated === Some(
-      OrderExpr(FuncExpr("xxHash64", List(SQLExpr("k"))), asc = true, nullFirst = false)
+      OrderExpr(FuncExpr("xxHash64", List(FieldRef("k"))), asc = true, nullFirst = false)
     ))
+  }
+
+  test("renderOrderExpr: bare field name that is a CH reserved word is back-quoted") {
+    val rendered = ClickHouseScanBuilder.renderOrderExpr(
+      OrderExpr(FieldRef("order"), asc = true, nullFirst = false)
+    )
+    assert(rendered === "`order` ASC NULLS LAST")
+  }
+
+  test("renderOrderExpr: function-transform leaf field is back-quoted") {
+    val rendered = ClickHouseScanBuilder.renderOrderExpr(
+      OrderExpr(FuncExpr("xxHash64", List(FieldRef("order"))), asc = true, nullFirst = false)
+    )
+    assert(rendered === "xxHash64(`order`) ASC NULLS LAST")
+  }
+
+  test("renderOrderExpr: SQLExpr leaf is emitted verbatim (e.g. literal arg)") {
+    val rendered = ClickHouseScanBuilder.renderOrderExpr(
+      OrderExpr(FuncExpr("toStartOfInterval", List(FieldRef("ts"), SQLExpr("INTERVAL 1 HOUR"))), asc = false)
+    )
+    assert(rendered === "toStartOfInterval(`ts`,INTERVAL 1 HOUR) DESC NULLS LAST")
+  }
+
+  test("toClickHouseSortOrderOpt + renderOrderExpr: end-to-end with reserved-word column under xxHash64") {
+    val sort = Expressions.sort(
+      Expressions.apply("ck_xx_hash64", Expressions.column("order")),
+      SortDirection.ASCENDING,
+      NullOrdering.NULLS_LAST
+    )
+    val translated = ExprUtils.toClickHouseSortOrderOpt(sort, registry)
+    assert(translated.isDefined)
+    assert(ClickHouseScanBuilder.renderOrderExpr(translated.get) === "xxHash64(`order`) ASC NULLS LAST")
   }
 
   test("toClickHouseSortOrderOpt: function transform NOT in registry returns None") {
@@ -101,5 +134,56 @@ class ExprUtilsSuite extends AnyFunSuite {
       NullOrdering.NULLS_LAST
     )
     assert(ExprUtils.toClickHouseSortOrderOpt(sort, StaticFunctionRegistry).isEmpty)
+  }
+
+  test("toClickHouseSortOrderOpt: nested function transform recurses and back-quotes leaf") {
+    val sort = Expressions.sort(
+      Expressions.apply("ck_xx_hash64", Expressions.apply("ck_xx_hash64", Expressions.column("order"))),
+      SortDirection.ASCENDING,
+      NullOrdering.NULLS_LAST
+    )
+    val translated = ExprUtils.toClickHouseSortOrderOpt(sort, registry)
+    assert(translated === Some(
+      OrderExpr(
+        FuncExpr("xxHash64", List(FuncExpr("xxHash64", List(FieldRef("order"))))),
+        asc = true,
+        nullFirst = false
+      )
+    ))
+    assert(ClickHouseScanBuilder.renderOrderExpr(translated.get) ===
+      "xxHash64(xxHash64(`order`)) ASC NULLS LAST")
+  }
+
+  test("toClickHouseSortOrderOpt: literal arg inside function transform is preserved") {
+    val sort = Expressions.sort(
+      Expressions.apply("ck_xx_hash64", LiteralValue(42, IntegerType)),
+      SortDirection.ASCENDING,
+      NullOrdering.NULLS_LAST
+    )
+    val translated = ExprUtils.toClickHouseSortOrderOpt(sort, registry)
+    assert(translated === Some(
+      OrderExpr(FuncExpr("xxHash64", List(SQLExpr("42"))), asc = true, nullFirst = false)
+    ))
+  }
+
+  test("toClickHouseSortOrderOpt: nested unregistered function transform returns None") {
+    val sort = Expressions.sort(
+      Expressions.apply("ck_xx_hash64", Expressions.apply("totally_unknown_func", Expressions.column("k"))),
+      SortDirection.ASCENDING,
+      NullOrdering.NULLS_LAST
+    )
+    assert(ExprUtils.toClickHouseSortOrderOpt(sort, registry).isEmpty)
+  }
+
+  test("toClickHouseSortOrderOpt: arbitrary V2 expression as function arg returns None") {
+    val sort = Expressions.sort(
+      Expressions.apply(
+        "ck_xx_hash64",
+        new GeneralScalarExpression("+", Array(Expressions.column("k"), LiteralValue(1, IntegerType)))
+      ),
+      SortDirection.ASCENDING,
+      NullOrdering.NULLS_LAST
+    )
+    assert(ExprUtils.toClickHouseSortOrderOpt(sort, registry).isEmpty)
   }
 }
