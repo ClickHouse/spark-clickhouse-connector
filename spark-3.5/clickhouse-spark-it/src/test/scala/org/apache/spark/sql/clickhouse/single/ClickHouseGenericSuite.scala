@@ -390,6 +390,65 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     )
   }
 
+  test("push down top N") {
+    val db = "db_topn"
+    // Table name is suffixed with nanoTime so the system.query_log scan below
+    // matches only this run's queries.
+    val tbl = s"tbl_topn_${System.nanoTime()}"
+    // Sort column is named `interval` -- a ClickHouse reserved keyword. this is to check the back-quoting fix.
+    val schema = StructType(
+      StructField("id", LongType, nullable = false) ::
+        StructField("interval", LongType, nullable = true) :: Nil
+    )
+    withTable(db, tbl, schema) { (actualDb, actualTbl) =>
+      runClickHouseSQL(
+        s"""INSERT INTO `$actualDb`.`$actualTbl` VALUES
+           |  (1, 10),
+           |  (2, 20),
+           |  (3, 30),
+           |  (4, 40),
+           |  (5, NULL)
+           |""".stripMargin
+      ).collect()
+
+      checkAnswer(
+        spark.sql(s"SELECT interval FROM $actualDb.$actualTbl ORDER BY interval DESC NULLS LAST LIMIT 2"),
+        Seq(Row(40L), Row(30L))
+      )
+
+      runClickHouseSQL("SYSTEM FLUSH LOGS").collect()
+      val recentQueries = runClickHouseSQL(
+        s"""SELECT query FROM system.query_log
+           |WHERE type = 'QueryFinish'
+           |  AND query LIKE '%$actualDb%$actualTbl%'
+           |  AND query LIKE '%SELECT%'
+           |  AND event_time > now() - INTERVAL 60 SECOND
+           |ORDER BY event_time DESC
+           |LIMIT 5""".stripMargin
+      ).collect().map(_.getString(0))
+      val pushedTopN = recentQueries.exists { q =>
+        q.contains("ORDER BY `interval` DESC NULLS LAST") && q.contains("LIMIT 2")
+      }
+      assert(
+        pushedTopN,
+        "Pushed query should include 'ORDER BY `interval` DESC NULLS LAST' and 'LIMIT 2'. " +
+          s"Recent queries: ${recentQueries.mkString("; ")}"
+      )
+
+      checkAnswer(
+        spark.sql(s"SELECT interval FROM $actualDb.$actualTbl ORDER BY interval ASC NULLS FIRST LIMIT 2"),
+        Seq(Row(null), Row(10L))
+      )
+
+      withSQLConf("spark.clickhouse.read.pushdown.topN" -> "false") {
+        checkAnswer(
+          spark.sql(s"SELECT interval FROM $actualDb.$actualTbl ORDER BY interval DESC NULLS LAST LIMIT 2"),
+          Seq(Row(40L), Row(30L))
+        )
+      }
+    }
+  }
+
   test("push down aggregation") {
     val db = "db_agg_col"
     val tbl = "tbl_agg_col"
