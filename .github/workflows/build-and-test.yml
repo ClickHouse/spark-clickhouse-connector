@@ -27,6 +27,9 @@ on:
     - cron: '0 2 * * *'
   workflow_dispatch:
 
+permissions:
+  contents: read
+
 jobs:
   run-tests:
     runs-on: ubuntu-22.04

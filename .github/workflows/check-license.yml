@@ -23,6 +23,9 @@ on:
       - "branch-*"
       - "main"
 
+permissions:
+  contents: read
+
 jobs:
   check-license:
     runs-on: ubuntu-22.04
