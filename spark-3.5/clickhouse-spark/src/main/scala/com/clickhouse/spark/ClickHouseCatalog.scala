@@ -78,7 +78,7 @@ class ClickHouseCatalog extends TableCatalog
     this.catalogName = name
     this.nodeSpec = buildNodeSpec(options)
     this.currentDb = nodeSpec.database
-    this.nodeClient = NodeClient(nodeSpec)
+    this.nodeClient = NodeClient(nodeSpec, clientQueryTimeoutMs)
 
     this.nodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT 1")
 

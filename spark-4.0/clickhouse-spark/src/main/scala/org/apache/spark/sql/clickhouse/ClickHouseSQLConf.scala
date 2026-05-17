@@ -244,4 +244,14 @@ object ClickHouseSQLConf {
       .transform(_.toLowerCase)
       .createOptional
 
+  val CLIENT_QUERY_TIMEOUT: ConfigEntry[Long] =
+    buildConf("spark.clickhouse.client.queryTimeout")
+      .doc("The maximum time the ClickHouse client will wait for a single query or ping " +
+        "operation to complete on a NodeClient. Applied as a future-handle timeout on every " +
+        "client.query(...) and client.ping(...) call.")
+      .version("0.10.1")
+      .timeConf(TimeUnit.MILLISECONDS)
+      .checkValue(_ > 0, "`spark.clickhouse.client.queryTimeout` should be positive.")
+      .createWithDefaultString("60s")
+
 }
