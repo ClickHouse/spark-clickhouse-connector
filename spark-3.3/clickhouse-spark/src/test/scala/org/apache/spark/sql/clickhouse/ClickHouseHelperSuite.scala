@@ -39,6 +39,7 @@ class ClickHouseHelperSuite extends AnyFunSuite with ClickHouseHelper {
   test("client query timeout uses SQLConf") {
     val conf = SQLConf.get
     val original = conf.getConf(CLIENT_QUERY_TIMEOUT)
+    assert(original === 60000L)
     try {
       conf.setConfString(CLIENT_QUERY_TIMEOUT.key, "1234ms")
       assert(clientQueryTimeoutMs === 1234L)
