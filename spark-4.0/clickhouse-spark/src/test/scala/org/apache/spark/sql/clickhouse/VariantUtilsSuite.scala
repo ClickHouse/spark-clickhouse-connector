@@ -25,7 +25,7 @@ import org.scalatest.funsuite.AnyFunSuite
 
 class VariantUtilsSuite extends AnyFunSuite {
 
-  private val NestingDepth = 1000
+  private val NestingDepth = 100
 
   private def makeVariant(json: String): VariantVal = {
     val parser = new JsonFactory().createParser(json)

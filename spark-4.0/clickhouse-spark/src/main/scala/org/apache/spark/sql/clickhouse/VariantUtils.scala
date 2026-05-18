@@ -21,7 +21,11 @@ import org.apache.spark.sql.types.{ArrayType, DataType, MapType, StringType, Str
 import org.apache.spark.types.variant.Variant
 import org.apache.spark.unsafe.types.{UTF8String, VariantVal}
 
+import java.time.ZoneId
+
 object VariantUtils {
+
+  private val UTC: ZoneId = ZoneId.of("UTC")
 
   /**
    * Recursively rewrite a Spark DataType, replacing every `VariantType` (top-level or nested
@@ -48,7 +52,7 @@ object VariantUtils {
   /** Convert a single `VariantVal` to a UTF-8 JSON string. */
   def variantToJsonString(variantVal: VariantVal): UTF8String = {
     val variant = new Variant(variantVal.getValue, variantVal.getMetadata)
-    UTF8String.fromString(variant.toJson(java.time.ZoneId.of("UTC")))
+    UTF8String.fromString(variant.toJson(UTC))
   }
 
   /**
