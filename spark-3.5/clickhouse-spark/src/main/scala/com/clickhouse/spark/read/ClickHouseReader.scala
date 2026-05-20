@@ -24,7 +24,6 @@ import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
 import com.clickhouse.spark.Metrics.{BLOCKS_READ, BYTES_READ}
-import com.clickhouse.client.ClickHouseResponse
 import com.clickhouse.client.api.query.QueryResponse
 
 abstract class ClickHouseReader[Record](

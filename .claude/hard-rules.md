@@ -20,7 +20,7 @@ concrete examples, and the per-PR checklist.
 ## Rules with rationale
 
 These are the failure modes the project has hit before and you must not
-repeat. Numbering matches `AGENTS.md` where possible.
+repeat.
 
 1. **Don't edit only one Spark version.** If a file exists in multiple
    `spark-<v>/` trees, decide upfront which versions you'll touch. The CI
