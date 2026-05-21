@@ -29,11 +29,30 @@ class ClickHouseHelperSuite extends AnyFunSuite with ClickHouseHelper {
       new CaseInsensitiveStringMap(Map(
         "database" -> "testing",
         "option.database" -> "production",
+        "option.use_time_zone" -> "Asia/Shanghai",
         "option.ssl" -> "true"
       ).asJava)
     )
     assert(nodeSpec.database === "testing")
+    assert(!nodeSpec.options.containsKey("use_time_zone"))
     assert(nodeSpec.options.get("ssl") === "true")
+  }
+
+  test("catalog timezone uses ClickHouse client option as fallback") {
+    val options = new CaseInsensitiveStringMap(Map(
+      "option.use_time_zone" -> "Asia/Shanghai"
+    ).asJava)
+
+    assert(catalogTimeZone(options) === "Asia/Shanghai")
+  }
+
+  test("catalog timezone takes precedence over ClickHouse client option") {
+    val options = new CaseInsensitiveStringMap(Map(
+      "timezone" -> "client",
+      "option.use_time_zone" -> "Asia/Shanghai"
+    ).asJava)
+
+    assert(catalogTimeZone(options) === "client")
   }
 
   test("client query timeout uses SQLConf") {
