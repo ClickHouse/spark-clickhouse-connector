@@ -16,6 +16,7 @@ package org.apache.spark.sql.clickhouse.single
 
 import org.apache.spark.sql.{Row, SaveMode}
 import org.apache.spark.sql.types._
+import org.apache.spark.unsafe.types.VariantVal
 
 /**
  * Shared test cases for both JSON and Binary writers.
@@ -1076,7 +1077,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
   // ============================================================================
 
   // Helper to extract JSON string from VariantVal
-  private def variantToJson(variantVal: org.apache.spark.unsafe.types.VariantVal): String = {
+  private def variantToJson(variantVal: VariantVal): String = {
     val variant = new org.apache.spark.types.variant.Variant(variantVal.getValue, variantVal.getMetadata)
     variant.toJson(java.time.ZoneId.of("UTC"))
   }
@@ -1218,6 +1219,161 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
     }
   }
 
+  test("write Array of VariantType") {
+    val schema = StructType(Seq(
+      StructField("id", IntegerType),
+      StructField("data", ArrayType(VariantType))
+    ))
+
+    withTable(
+      "test_db",
+      "test_array_of_variant",
+      schema,
+      extraProperties = Map("settings.allow_nullable_key" -> "1")
+    ) { (actualDb, actualTbl) =>
+      spark.sql(
+        s"""INSERT INTO $actualDb.$actualTbl
+           |SELECT 1 as id, array(parse_json('{"p": 0.57}'), parse_json('{"p": 0.58}')) as data
+           |UNION ALL SELECT 2, array(parse_json('{"p": 0.1}'))
+           |UNION ALL SELECT 3, array()
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$actualDb.$actualTbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 3)
+      val arr0 = result(0).getSeq[VariantVal](1)
+      assert(arr0.length == 2)
+      assert(variantToJson(arr0(0)) == """{"p":0.57}""")
+      assert(variantToJson(arr0(1)) == """{"p":0.58}""")
+      val arr1 = result(1).getSeq[VariantVal](1)
+      assert(arr1.length == 1)
+      assert(variantToJson(arr1(0)) == """{"p":0.1}""")
+      val arr2 = result(2).getSeq[VariantVal](1)
+      assert(arr2.isEmpty)
+    }
+  }
+
+  test("write Map of String to VariantType") {
+    val schema = StructType(Seq(
+      StructField("id", IntegerType),
+      StructField("data", MapType(StringType, VariantType))
+    ))
+
+    withTable(
+      "test_db",
+      "test_map_of_variant",
+      schema,
+      extraProperties = Map("settings.allow_nullable_key" -> "1")
+    ) { (actualDb, actualTbl) =>
+      spark.sql(
+        s"""INSERT INTO $actualDb.$actualTbl
+           |SELECT 1 as id, map('a', parse_json('{"v": 1}'), 'b', parse_json('{"v": 2}')) as data
+           |UNION ALL SELECT 2, map('only', parse_json('{"v": 99}'))
+           |""".stripMargin
+      )
+
+      // Disable CH's default integer-quoting in JSON output so VariantBuilder.parseJson
+      // round-trips integer paths as Int, not ShortString.
+      spark.conf.set("spark.clickhouse.read.settings", "output_format_json_quote_64bit_integers=0")
+      try {
+        val df = spark.table(s"$actualDb.$actualTbl").orderBy("id")
+        val result = df.collect()
+        assert(result.length == 2)
+        val m0 = result(0).getMap[String, VariantVal](1)
+        assert(m0.keySet == Set("a", "b"))
+        assert(variantToJson(m0("a")) == """{"v":1}""")
+        assert(variantToJson(m0("b")) == """{"v":2}""")
+        val m1 = result(1).getMap[String, VariantVal](1)
+        assert(m1.keySet == Set("only"))
+        assert(variantToJson(m1("only")) == """{"v":99}""")
+      } finally
+        spark.conf.unset("spark.clickhouse.read.settings")
+    }
+  }
+
+  test("write Struct containing VariantType field") {
+    val schema = StructType(Seq(
+      StructField("id", IntegerType),
+      StructField(
+        "data",
+        StructType(Seq(
+          StructField("n", IntegerType),
+          StructField("payload", VariantType)
+        ))
+      )
+    ))
+
+    withTable(
+      "test_db",
+      "test_struct_of_variant",
+      schema,
+      extraProperties = Map("settings.allow_nullable_key" -> "1")
+    ) { (actualDb, actualTbl) =>
+      spark.sql(
+        s"""INSERT INTO $actualDb.$actualTbl
+           |SELECT 1 as id, named_struct('n', 10, 'payload', parse_json('{"k": "v1"}')) as data
+           |UNION ALL SELECT 2, named_struct('n', 20, 'payload', parse_json('{"k": "v2"}'))
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$actualDb.$actualTbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 2)
+      val row0 = result(0).getStruct(1)
+      assert(row0.getInt(0) == 10)
+      assert(variantToJson(row0.get(1).asInstanceOf[VariantVal]) == """{"k":"v1"}""")
+      val row1 = result(1).getStruct(1)
+      assert(row1.getInt(0) == 20)
+      assert(variantToJson(row1.get(1).asInstanceOf[VariantVal]) == """{"k":"v2"}""")
+    }
+  }
+
+  test("write Array of Struct containing VariantType - deep nesting") {
+    val schema = StructType(Seq(
+      StructField("id", IntegerType),
+      StructField(
+        "data",
+        ArrayType(StructType(Seq(
+          StructField("label", StringType),
+          StructField("value", VariantType)
+        )))
+      )
+    ))
+
+    withTable(
+      "test_db",
+      "test_array_struct_variant",
+      schema,
+      extraProperties = Map("settings.allow_nullable_key" -> "1")
+    ) { (actualDb, actualTbl) =>
+      spark.sql(
+        s"""INSERT INTO $actualDb.$actualTbl
+           |SELECT 1 as id, array(
+           |  named_struct('label', 'first', 'value', parse_json('{"x": 1}')),
+           |  named_struct('label', 'second', 'value', parse_json('{"x": 2}'))
+           |) as data
+           |""".stripMargin
+      )
+
+      // Disable CH's default integer-quoting in JSON output so VariantBuilder.parseJson
+      // round-trips integer paths as Int, not ShortString.
+      spark.conf.set("spark.clickhouse.read.settings", "output_format_json_quote_64bit_integers=0")
+      try {
+        val df = spark.table(s"$actualDb.$actualTbl").orderBy("id")
+        val result = df.collect()
+        assert(result.length == 1)
+        val arr = result(0).getSeq[Row](1)
+        assert(arr.length == 2)
+        assert(arr(0).getString(0) == "first")
+        assert(variantToJson(arr(0).get(1).asInstanceOf[VariantVal]) == """{"x":1}""")
+        assert(arr(1).getString(0) == "second")
+        assert(variantToJson(arr(1).get(1).asInstanceOf[VariantVal]) == """{"x":2}""")
+      } finally
+        spark.conf.unset("spark.clickhouse.read.settings")
+    }
+  }
+
   // ============================================================================
   // VariantType Write Tests with variant_types option (mixed types)
   // ============================================================================
@@ -1252,16 +1408,16 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       assert(result.length == 4)
       assert(df.schema.fields(1).dataType == VariantType)
 
-      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[VariantVal])
       assert(json1.contains("42"))
 
-      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[VariantVal])
       assert(json2.contains("hello"))
 
-      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[VariantVal])
       assert(json3.contains("true"))
 
-      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[VariantVal])
       assert(json4.contains("Alice") && json4.contains("30"))
     }
   }
@@ -1295,16 +1451,16 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       assert(result.length == 4)
       assert(df.schema.fields(1).dataType == VariantType)
 
-      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[VariantVal])
       assert(json1.contains("42"))
 
-      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[VariantVal])
       assert(json2.contains("hello"))
 
-      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[VariantVal])
       assert(json3.contains("100"))
 
-      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[VariantVal])
       assert(json4.contains("world"))
     }
   }
@@ -1340,19 +1496,19 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       assert(result.length == 5)
       assert(df.schema.fields(1).dataType == VariantType)
 
-      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[VariantVal])
       assert(json1.contains("true"))
 
-      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[VariantVal])
       assert(json2.contains("3.14"))
 
-      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[VariantVal])
       assert(json3.contains("false"))
 
-      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[VariantVal])
       assert(json4.contains("value") && json4.contains("42.5"))
 
-      val json5 = variantToJson(result(4).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json5 = variantToJson(result(4).get(1).asInstanceOf[VariantVal])
       assert(json5.contains("2.71"))
     }
   }
@@ -1386,16 +1542,16 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       assert(result.length == 4)
       assert(df.schema.fields(1).dataType == VariantType)
 
-      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[VariantVal])
       assert(json1.contains("hello"))
 
-      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[VariantVal])
       assert(json2.contains("42"))
 
-      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[VariantVal])
       assert(json3.contains("a") && json3.contains("b") && json3.contains("c"))
 
-      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[VariantVal])
       assert(json4.contains("100"))
     }
   }
@@ -1436,25 +1592,25 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
 
       (0 until 7).foreach(i => assert(!result(i).isNullAt(1), s"Row $i should not be null"))
 
-      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[VariantVal])
       assert(json1.contains("42"))
 
-      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[VariantVal])
       assert(json2.contains("hello"))
 
-      val json3 = variantToJson(result(2).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json3 = variantToJson(result(2).get(1).asInstanceOf[VariantVal])
       assert(json3.contains("true"))
 
-      val json4 = variantToJson(result(3).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json4 = variantToJson(result(3).get(1).asInstanceOf[VariantVal])
       assert(json4.contains("false"))
 
-      val json5 = variantToJson(result(4).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json5 = variantToJson(result(4).get(1).asInstanceOf[VariantVal])
       assert(json5.contains("Alice") && json5.contains("30"))
 
-      val json6 = variantToJson(result(5).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json6 = variantToJson(result(5).get(1).asInstanceOf[VariantVal])
       assert(json6.contains("100"))
 
-      val json7 = variantToJson(result(6).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      val json7 = variantToJson(result(6).get(1).asInstanceOf[VariantVal])
       assert(json7.contains("world"))
     }
   }
