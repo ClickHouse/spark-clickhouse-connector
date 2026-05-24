@@ -21,7 +21,7 @@ import com.clickhouse.spark.client.NodeClient
 class ClickHouseCommandRunner extends ExternalCommandRunner with ClickHouseHelper {
 
   override def executeCommand(sql: String, options: CaseInsensitiveStringMap): Array[String] =
-    Utils.tryWithResource(NodeClient(buildNodeSpec(options))) { nodeClient =>
+    Utils.tryWithResource(NodeClient(buildNodeSpec(options), clientQueryTimeoutMs)) { nodeClient =>
       nodeClient.syncQueryAndCheckOutputJSONEachRow(sql).records.map(_.toString).toArray
     }
 }

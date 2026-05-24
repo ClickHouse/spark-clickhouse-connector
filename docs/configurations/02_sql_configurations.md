@@ -16,6 +16,7 @@ license: |
 <!--begin-include-->
 |Key | Default | Description | Since
 |--- | ------- | ----------- | -----
+spark.clickhouse.client.queryTimeout|60s|The maximum time the ClickHouse client will wait for a single query or ping operation to complete on a NodeClient. Applied as a future-handle timeout on every client.query(...) and client.ping(...) call.|0.10.1
 spark.clickhouse.ignoreUnsupportedTransform|true|ClickHouse supports using complex expressions as sharding keys or partition values, e.g. `cityHash64(col_1, col_2)`, and those can not be supported by Spark now. If `true`, ignore the unsupported expressions and log a warning, otherwise fail fast w/ an exception. Note, when `spark.clickhouse.write.distributed.convertLocal` is enabled, ignoring unsupported sharding keys may corrupt the data.|0.4.0
 spark.clickhouse.read.compression.codec|lz4|The codec used to decompress data for reading. Supported codecs: none, lz4.|0.5.0
 spark.clickhouse.read.distributed.convertLocal|true|When reading Distributed table, read local table instead of itself. If `true`, ignore `spark.clickhouse.read.distributed.useClusterNodes`.|0.1.0

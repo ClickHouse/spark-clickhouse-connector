@@ -974,11 +974,6 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
   }
 
   test("write StructType - full round-trip with Spark-created table") {
-    // This test verifies the complete cycle: Spark creates table, writes data, reads it back
-    val db = "test_db"
-    val tbl = "test_struct_roundtrip"
-
-    // Create schema with various struct configurations
     val schema = StructType(
       StructField("id", LongType, false) ::
         StructField(
@@ -1001,24 +996,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         ) :: Nil
     )
 
-    try {
-      // Create database via Spark
-      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
-
-      // Create table via Spark with explicit schema
-      spark.sql(
-        s"""CREATE TABLE IF NOT EXISTS $db.$tbl (
-           |  id BIGINT NOT NULL,
-           |  user_info STRUCT<name: STRING, age: INT, active: BOOLEAN> NOT NULL,
-           |  metadata STRUCT<created: DATE, score: DOUBLE, tags: ARRAY<STRING>> NOT NULL
-           |) USING clickhouse
-           |TBLPROPERTIES (
-           |  engine = 'MergeTree()',
-           |  order_by = 'id'
-           |)
-           |""".stripMargin
-      )
-      // Write data via Spark
+    withTable("test_db", "test_struct_roundtrip", schema) { (actualDb, actualTbl) =>
       val writeData = Seq(
         Row(
           1L,
@@ -1042,22 +1020,19 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         schema
       )
 
-      writeDF.writeTo(s"$db.$tbl").append()
+      writeDF.writeTo(s"$actualDb.$actualTbl").append()
 
-      // Read data back via Spark
-      val readDF = spark.table(s"$db.$tbl").sort("id")
+      val readDF = spark.table(s"$actualDb.$actualTbl").sort("id")
       val result = readDF.collect()
 
-      // Verify schema structure (note: array containsNull may change to true in ClickHouse)
+      // Note: array containsNull may change to true in ClickHouse
       assert(readDF.schema.fields.length === schema.fields.length)
       assert(readDF.schema.fields(0).name === "id")
       assert(readDF.schema.fields(1).name === "user_info")
       assert(readDF.schema.fields(2).name === "metadata")
 
-      // Verify data integrity
       assert(result.length === 3)
 
-      // Verify first row
       val row0 = result(0)
       assert(row0.getLong(0) === 1L)
       val userInfo0 = row0.getStruct(1)
@@ -1069,7 +1044,6 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       assert(metadata0.getDouble(1) === 95.5)
       assert(metadata0.getSeq[String](2) === Seq("premium", "verified"))
 
-      // Verify second row
       val row1 = result(1)
       assert(row1.getLong(0) === 2L)
       val userInfo1 = row1.getStruct(1)
@@ -1081,7 +1055,6 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       assert(metadata1.getDouble(1) === 87.3)
       assert(metadata1.getSeq[String](2) === Seq("basic"))
 
-      // Verify third row
       val row2 = result(2)
       assert(row2.getLong(0) === 3L)
       val userInfo2 = row2.getStruct(1)
@@ -1092,11 +1065,6 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       assert(metadata2.getDate(0) === date("2024-03-10"))
       assert(metadata2.getDouble(1) === 92.1)
       assert(metadata2.getSeq[String](2) === Seq("premium", "admin", "verified"))
-
-    } finally {
-      // Clean up: drop table and database
-      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
-      spark.sql(s"DROP DATABASE IF EXISTS $db")
     }
   }
 }

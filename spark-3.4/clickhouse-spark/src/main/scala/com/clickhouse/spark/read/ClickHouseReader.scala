@@ -44,7 +44,7 @@ abstract class ClickHouseReader[Record](
 //  val codec: ClickHouseCompression = scanJob.readOptions.compressionCodec
   val readSchema: StructType = scanJob.readSchema
 
-  private lazy val nodesClient = NodesClient(part.candidateNodes)
+  private lazy val nodesClient = NodesClient(part.candidateNodes, scanJob.readOptions.clientQueryTimeout)
 
   def nodeClient: NodeClient = nodesClient.node
 
