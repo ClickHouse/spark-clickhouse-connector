@@ -22,9 +22,9 @@ import org.apache.spark.sql.types._
 import org.scalatest.tags.Cloud
 
 @Cloud
-class ClickHouseCloudGenericSuite extends ClickHouseDataTypeSuite with ClickHouseCloudMixIn
+class ClickHouseCloudGenericSuite extends ClickHouseGenericSuite with ClickHouseCloudMixIn
 
-class ClickHouseSingleGenericSuite extends ClickHouseDataTypeSuite with ClickHouseSingleMixIn
+class ClickHouseSingleGenericSuite extends ClickHouseGenericSuite with ClickHouseSingleMixIn
 
 abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
@@ -392,8 +392,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
   test("push down top N") {
     val db = "db_topn"
-    // Table name is suffixed with nanoTime so the system.query_log scan below
-    // matches only this run's queries.
+    // Avoid CREATE TABLE collisions across parallel Spark profiles in CI.
     val tbl = s"tbl_topn_${System.nanoTime()}"
     // Sort column is named `interval` -- a ClickHouse reserved keyword. this is to check the back-quoting fix.
     val schema = StructType(
@@ -411,18 +410,20 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
            |""".stripMargin
       ).collect()
 
-      checkAnswer(
-        spark.sql(s"SELECT interval FROM $actualDb.$actualTbl ORDER BY interval DESC NULLS LAST LIMIT 2"),
-        Seq(Row(40L), Row(30L))
-      )
+      // Tag the query so we can pull it from system.query_log by log_comment.
+      val topNLogTag = java.util.UUID.randomUUID().toString
+      withSQLConf("spark.clickhouse.read.settings" -> s"log_comment='$topNLogTag'") {
+        checkAnswer(
+          spark.sql(s"SELECT interval FROM $actualDb.$actualTbl ORDER BY interval DESC NULLS LAST LIMIT 2"),
+          Seq(Row(40L), Row(30L))
+        )
+      }
 
       runClickHouseSQL("SYSTEM FLUSH LOGS").collect()
       val recentQueries = runClickHouseSQL(
         s"""SELECT query FROM system.query_log
            |WHERE type = 'QueryFinish'
-           |  AND query LIKE '%$actualDb%$actualTbl%'
-           |  AND query LIKE '%SELECT%'
-           |  AND event_time > now() - INTERVAL 60 SECOND
+           |  AND log_comment = '$topNLogTag'
            |ORDER BY event_time DESC
            |LIMIT 5""".stripMargin
       ).collect().map(_.getString(0))
