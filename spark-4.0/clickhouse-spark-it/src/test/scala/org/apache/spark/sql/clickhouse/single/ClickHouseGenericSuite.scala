@@ -31,8 +31,13 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
   import testImplicits._
 
   test("clickhouse command runner") {
+    // Pin the JSON formatting of UInt64 (visibleWidth returns UInt64). ClickHouse
+    // flipped the default of `output_format_json_quote_64bit_integers` from 1 to 0
+    // around 25.7+, which changes the output from `"4"` to bare `4`.
     checkAnswer(
-      runClickHouseSQL("SELECT visibleWidth(NULL)"),
+      runClickHouseSQL(
+        "SELECT visibleWidth(NULL) SETTINGS output_format_json_quote_64bit_integers=1"
+      ),
       Row("""{"visibleWidth(NULL)":"4"}""") :: Nil
     )
   }
