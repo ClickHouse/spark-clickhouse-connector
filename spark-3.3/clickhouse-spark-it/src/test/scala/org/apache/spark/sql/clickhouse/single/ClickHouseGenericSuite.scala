@@ -43,12 +43,15 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
   }
 
   test("clickhouse catalog") {
-    withDatabase("db_t1", "db_t2") {
-      spark.sql("CREATE DATABASE db_t1")
-      spark.sql("CREATE DATABASE db_t2")
+    val prefix = if (useSuiteLevelDatabase) s"${testDatabaseName}_cat" else "db_t"
+    val db1 = s"${prefix}1"
+    val db2 = s"${prefix}2"
+    withDatabase(db1, db2) {
+      spark.sql(s"CREATE DATABASE $db1")
+      spark.sql(s"CREATE DATABASE $db2")
       checkAnswer(
-        spark.sql("SHOW DATABASES LIKE 'db_t*'"),
-        Row("db_t1") :: Row("db_t2") :: Nil
+        spark.sql(s"SHOW DATABASES LIKE '${prefix}*'"),
+        Row(db1) :: Row(db2) :: Nil
       )
       spark.sql("USE system")
       checkAnswer(
@@ -431,9 +434,15 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         )
       }
 
-      runClickHouseSQL("SYSTEM FLUSH LOGS").collect()
+      runClickHouseSQL(
+        if (isCloud) "SYSTEM FLUSH LOGS ON CLUSTER 'default'"
+        else "SYSTEM FLUSH LOGS"
+      ).collect()
+      val queryLogRef =
+        if (isCloud) "clusterAllReplicas('default', system, query_log)"
+        else "system.query_log"
       val recentQueries = runClickHouseSQL(
-        s"""SELECT query FROM system.query_log
+        s"""SELECT query FROM $queryLogRef
            |WHERE type = 'QueryFinish'
            |  AND log_comment = '$topNLogTag'
            |ORDER BY event_time DESC
