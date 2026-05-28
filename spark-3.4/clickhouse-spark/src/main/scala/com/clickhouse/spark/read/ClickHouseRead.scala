@@ -27,27 +27,12 @@ import org.apache.spark.sql.types.StructType
 import com.clickhouse.spark._
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.exception.CHClientException
-import com.clickhouse.spark.expr.{Expr, FieldRef, FuncExpr, OrderExpr}
+import com.clickhouse.spark.expr.ExprRender
 import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
 import com.clickhouse.spark.spec._
 
 import java.time.ZoneId
 import scala.util.control.NonFatal
-
-object ClickHouseScanBuilder {
-
-  def renderClickHouseSql(expr: Expr): String = expr match {
-    case FieldRef(name) => Utils.wrapBackQuote(name)
-    case FuncExpr(name, args) => s"$name(${args.map(renderClickHouseSql).mkString(",")})"
-    case other => other.sql
-  }
-
-  def renderOrderExpr(o: OrderExpr): String = {
-    val direction = if (o.asc) "ASC" else "DESC"
-    val nulls = if (o.nullFirst) "NULLS FIRST" else "NULLS LAST"
-    s"${renderClickHouseSql(o.expr)} $direction $nulls"
-  }
-}
 
 class ClickHouseScanBuilder(
   scanJob: ScanJobDescription,
@@ -91,7 +76,7 @@ class ClickHouseScanBuilder(
     if (translated.exists(_.isEmpty)) return false
 
     this._orderByClause =
-      Some(translated.flatten.map(ClickHouseScanBuilder.renderOrderExpr).mkString("ORDER BY ", ", ", ""))
+      Some(translated.flatten.map(ExprRender.renderOrder).mkString("ORDER BY ", ", ", ""))
     this._limit = Some(limit)
     true
   }

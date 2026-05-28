@@ -16,7 +16,7 @@ package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.spark.expr.{FieldRef, FuncExpr, OrderExpr, SQLExpr}
 import com.clickhouse.spark.func.{ClickHouseXxHash64, DynamicFunctionRegistry, StaticFunctionRegistry}
-import com.clickhouse.spark.read.ClickHouseScanBuilder
+import com.clickhouse.spark.expr.ExprRender
 import org.apache.spark.sql.connector.expressions.{
   Expressions,
   GeneralScalarExpression,
@@ -77,28 +77,28 @@ class ExprUtilsSuite extends AnyFunSuite {
     ))
   }
 
-  test("renderOrderExpr: bare field name that is a CH reserved word is back-quoted") {
-    val rendered = ClickHouseScanBuilder.renderOrderExpr(
+  test("renderOrder: bare field name that is a CH reserved word is back-quoted") {
+    val rendered = ExprRender.renderOrder(
       OrderExpr(FieldRef("order"), asc = true, nullFirst = false)
     )
     assert(rendered === "`order` ASC NULLS LAST")
   }
 
-  test("renderOrderExpr: function-transform leaf field is back-quoted") {
-    val rendered = ClickHouseScanBuilder.renderOrderExpr(
+  test("renderOrder: function-transform leaf field is back-quoted") {
+    val rendered = ExprRender.renderOrder(
       OrderExpr(FuncExpr("xxHash64", List(FieldRef("order"))), asc = true, nullFirst = false)
     )
     assert(rendered === "xxHash64(`order`) ASC NULLS LAST")
   }
 
-  test("renderOrderExpr: SQLExpr leaf is emitted verbatim (e.g. literal arg)") {
-    val rendered = ClickHouseScanBuilder.renderOrderExpr(
+  test("renderOrder: SQLExpr leaf is emitted verbatim (e.g. literal arg)") {
+    val rendered = ExprRender.renderOrder(
       OrderExpr(FuncExpr("toStartOfInterval", List(FieldRef("ts"), SQLExpr("INTERVAL 1 HOUR"))), asc = false)
     )
     assert(rendered === "toStartOfInterval(`ts`,INTERVAL 1 HOUR) DESC NULLS LAST")
   }
 
-  test("toClickHouseSortOrderOpt + renderOrderExpr: end-to-end with reserved-word column under xxHash64") {
+  test("toClickHouseSortOrderOpt + renderOrder: end-to-end with reserved-word column under xxHash64") {
     val sort = Expressions.sort(
       Expressions.apply("ck_xx_hash64", Expressions.column("order")),
       SortDirection.ASCENDING,
@@ -106,7 +106,7 @@ class ExprUtilsSuite extends AnyFunSuite {
     )
     val translated = ExprUtils.toClickHouseSortOrderOpt(sort, registry)
     assert(translated.isDefined)
-    assert(ClickHouseScanBuilder.renderOrderExpr(translated.get) === "xxHash64(`order`) ASC NULLS LAST")
+    assert(ExprRender.renderOrder(translated.get) === "xxHash64(`order`) ASC NULLS LAST")
   }
 
   test("toClickHouseSortOrderOpt: function transform NOT in registry returns None") {
@@ -150,7 +150,7 @@ class ExprUtilsSuite extends AnyFunSuite {
         nullFirst = false
       )
     ))
-    assert(ClickHouseScanBuilder.renderOrderExpr(translated.get) ===
+    assert(ExprRender.renderOrder(translated.get) ===
       "xxHash64(xxHash64(`order`)) ASC NULLS LAST")
   }
 
