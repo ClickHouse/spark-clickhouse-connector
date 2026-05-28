@@ -68,52 +68,51 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
   test("clickhouse partition") {
     val db = "db_part"
-    val tbl = "tbl_part"
 
     // DROP + PURGE
-    withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
+    withSimpleTable(db, "tbl_part_purge", true) { (actualDb: String, actualTbl: String) =>
       checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
         Seq(Row("m=1"), Row("m=2"))
       )
       checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl PARTITION(m = 2)"),
+        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl PARTITION(m = 2)"),
         Seq(Row("m=2"))
       )
 
-      spark.sql(s"ALTER TABLE $db.$tbl DROP PARTITION(m = 2)")
+      spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
       checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
         Seq(Row("m=1"))
       )
 
-      spark.sql(s"ALTER TABLE $db.$tbl DROP PARTITION(m = 1) PURGE")
+      spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 1) PURGE")
       checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
         Seq()
       )
     }
 
     // DROP + TRUNCATE
-    withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
+    withSimpleTable(db, "tbl_part_truncate", true) { (actualDb: String, actualTbl: String) =>
       checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
         Seq(Row("m=1"), Row("m=2"))
       )
       checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl PARTITION(m = 2)"),
+        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl PARTITION(m = 2)"),
         Seq(Row("m=2"))
       )
 
-      spark.sql(s"ALTER TABLE $db.$tbl DROP PARTITION(m = 2)")
+      spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
       checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
         Seq(Row("m=1"))
       )
 
-      spark.sql(s"TRUNCATE TABLE $db.$tbl PARTITION(m = 1)")
+      spark.sql(s"TRUNCATE TABLE $actualDb.$actualTbl PARTITION(m = 1)")
       checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
         Seq()
       )
     }
@@ -253,9 +252,10 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
   // TODO remove this hack version
   test("clickhouse partition toYYYYMMDD(toDate(col))") {
-    val db = "db_part_toYYYYMMDD_toDate"
+    val db = if (useSuiteLevelDatabase) testDatabaseName else "db_part_toYYYYMMDD_toDate"
     val tbl = "tbl_part_toYYYYMMDD_toDate"
-    autoCleanupTable(db, tbl) { case (db, tbl) =>
+    try {
+      if (!useSuiteLevelDatabase) runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS `$db`")
       runClickHouseSQL(
         s"""CREATE TABLE IF NOT EXISTS `$db`.`$tbl` (
            |    `id` Int64,
@@ -284,7 +284,12 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           Row(2L, "2022-06-07")
         )
       )
-    }
+    } finally
+      if (useSuiteLevelDatabase) dropTableWithRetry(db, tbl)
+      else {
+        runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
+        runClickHouseSQL(s"DROP DATABASE IF EXISTS `$db`")
+      }
   }
 
   test("clickhouse multi sort columns") {
@@ -324,20 +329,22 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
   }
 
   test("clickhouse truncate table") {
-    withClickHouseSingleIdTable("db_trunc", "tbl_trunc") { (db, tbl) =>
-      spark.range(10).toDF("id").writeTo(s"$db.$tbl").append
-      assert(spark.table(s"$db.$tbl").count == 10)
-      spark.sql(s"TRUNCATE TABLE $db.$tbl")
-      assert(spark.table(s"$db.$tbl").count == 0)
+    val schema = StructType(StructField("id", LongType, nullable = false) :: Nil)
+    withTable("db_trunc", "tbl_trunc", schema) { (actualDb: String, actualTbl: String) =>
+      spark.range(10).toDF("id").writeTo(s"$actualDb.$actualTbl").append
+      assert(spark.table(s"$actualDb.$actualTbl").count == 10)
+      spark.sql(s"TRUNCATE TABLE $actualDb.$actualTbl")
+      assert(spark.table(s"$actualDb.$actualTbl").count == 0)
     }
   }
 
   test("clickhouse delete") {
-    withClickHouseSingleIdTable("db_del", "tbl_db_del") { (db, tbl) =>
-      spark.range(10).toDF("id").writeTo(s"$db.$tbl").append
-      assert(spark.table(s"$db.$tbl").count == 10)
-      spark.sql(s"DELETE FROM $db.$tbl WHERE id < 5")
-      assert(spark.table(s"$db.$tbl").count == 5)
+    val schema = StructType(StructField("id", LongType, nullable = false) :: Nil)
+    withTable("db_del", "tbl_db_del", schema) { (actualDb: String, actualTbl: String) =>
+      spark.range(10).toDF("id").writeTo(s"$actualDb.$actualTbl").append
+      assert(spark.table(s"$actualDb.$actualTbl").count == 10)
+      spark.sql(s"DELETE FROM $actualDb.$actualTbl WHERE id < 5")
+      assert(spark.table(s"$actualDb.$actualTbl").count == 5)
     }
   }
 
@@ -346,7 +353,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     val tbl = "tbl_rw"
 
     withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
-      val tblSchema = spark.table(s"$db.$tbl").schema
+      val tblSchema = spark.table(s"$actualDb.$actualTbl").schema
       assert(tblSchema == StructType(
         StructField("id", DataTypes.LongType, false) ::
           StructField("value", DataTypes.StringType, true) ::
@@ -355,7 +362,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
       ))
 
       checkAnswer(
-        spark.table(s"$db.$tbl").sort("m"),
+        spark.table(s"$actualDb.$actualTbl").sort("m"),
         Seq(
           Row(1L, "1", timestamp("2021-01-01T10:10:10Z"), 1),
           Row(2L, "2", timestamp("2022-02-02T10:10:10Z"), 2)
@@ -363,11 +370,11 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
       )
 
       checkAnswer(
-        spark.table(s"$db.$tbl").filter($"id" > 1),
+        spark.table(s"$actualDb.$actualTbl").filter($"id" > 1),
         Row(2L, "2", timestamp("2022-02-02T10:10:10Z"), 2) :: Nil
       )
 
-      assert(spark.table(s"$db.$tbl").filter($"id" > 1).count === 1)
+      assert(spark.table(s"$actualDb.$actualTbl").filter($"id" > 1).count === 1)
 
     // infiniteLoop()
     }
@@ -379,7 +386,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
     withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
       checkAnswer(
-        spark.sql(s"SELECT m, _partition_id FROM $db.$tbl ORDER BY m"),
+        spark.sql(s"SELECT m, _partition_id FROM $actualDb.$actualTbl ORDER BY m"),
         Seq(
           Row(1, "1"),
           Row(2, "2")
@@ -461,22 +468,22 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
     withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
       checkAnswer(
-        spark.sql(s"SELECT COUNT(id) FROM $db.$tbl"),
+        spark.sql(s"SELECT COUNT(id) FROM $actualDb.$actualTbl"),
         Seq(Row(2))
       )
 
       checkAnswer(
-        spark.sql(s"SELECT MIN(id) FROM $db.$tbl"),
+        spark.sql(s"SELECT MIN(id) FROM $actualDb.$actualTbl"),
         Seq(Row(1))
       )
 
       checkAnswer(
-        spark.sql(s"SELECT MAX(id) FROM $db.$tbl"),
+        spark.sql(s"SELECT MAX(id) FROM $actualDb.$actualTbl"),
         Seq(Row(2))
       )
 
       checkAnswer(
-        spark.sql(s"SELECT m, COUNT(DISTINCT id) FROM $db.$tbl GROUP BY m"),
+        spark.sql(s"SELECT m, COUNT(DISTINCT id) FROM $actualDb.$actualTbl GROUP BY m"),
         Seq(
           Row(1, 1),
           Row(2, 1)
@@ -484,7 +491,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
       )
 
       checkAnswer(
-        spark.sql(s"SELECT m, SUM(DISTINCT id) FROM $db.$tbl GROUP BY m"),
+        spark.sql(s"SELECT m, SUM(DISTINCT id) FROM $actualDb.$actualTbl GROUP BY m"),
         Seq(
           Row(1, 1),
           Row(2, 2)
@@ -494,7 +501,10 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
   }
 
   test("create or replace table") {
-    autoCleanupTable("db_cor", "tbl_cor") { (db, tbl) =>
+    val db = if (useSuiteLevelDatabase) testDatabaseName else "db_cor"
+    val tbl = "tbl_cor"
+    try {
+      if (!useSuiteLevelDatabase) runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS `$db`")
       def createOrReplaceTable(): Unit = spark.sql(
         s"""CREATE OR REPLACE TABLE `$db`.`$tbl` (
            |  id Long NOT NULL
@@ -508,7 +518,12 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
       )
       createOrReplaceTable()
       createOrReplaceTable()
-    }
+    } finally
+      if (useSuiteLevelDatabase) dropTableWithRetry(db, tbl)
+      else {
+        runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
+        runClickHouseSQL(s"DROP DATABASE IF EXISTS `$db`")
+      }
   }
 
   test("cache table") {
@@ -517,12 +532,12 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
     withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
       try {
-        spark.sql(s"CACHE TABLE $db.$tbl")
-        val cachedPlan = spark.sql(s"SELECT * FROM $db.$tbl").queryExecution.commandExecuted
+        spark.sql(s"CACHE TABLE $actualDb.$actualTbl")
+        val cachedPlan = spark.sql(s"SELECT * FROM $actualDb.$actualTbl").queryExecution.commandExecuted
           .find(node => spark.sharedState.cacheManager.lookupCachedData(node).isDefined)
         assert(cachedPlan.isDefined)
       } finally
-        spark.sql(s"UNCACHE TABLE $db.$tbl")
+        spark.sql(s"UNCACHE TABLE $actualDb.$actualTbl")
     }
   }
 
@@ -533,24 +548,24 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     withSimpleTable(db, tbl, true) { (actualDb: String, actualTbl: String) =>
       spark.sql("set spark.clickhouse.read.runtimeFilter.enabled=false")
       checkAnswer(
-        spark.sql(s"SELECT id FROM $db.$tbl " +
+        spark.sql(s"SELECT id FROM $actualDb.$actualTbl " +
           s"WHERE id IN (" +
-          s"  SELECT id FROM $db.$tbl " +
+          s"  SELECT id FROM $actualDb.$actualTbl " +
           s"  WHERE DATE_FORMAT(create_time, 'yyyy-MM-dd') between '2021-01-01' and '2022-01-01'" +
           s")"),
         Row(1)
       )
 
       spark.sql("set spark.clickhouse.read.runtimeFilter.enabled=true")
-      val df = spark.sql(s"SELECT id FROM $db.$tbl " +
+      val df = spark.sql(s"SELECT id FROM $actualDb.$actualTbl " +
         s"WHERE id IN (" +
-        s"  SELECT id FROM $db.$tbl " +
+        s"  SELECT id FROM $actualDb.$actualTbl " +
         s"  WHERE DATE_FORMAT(create_time, 'yyyy-MM-dd') between '2021-01-01' and '2022-01-01'" +
         s")")
       checkAnswer(df, Row(1))
       val runtimeFilterExists = df.queryExecution.sparkPlan.exists {
         case BatchScanExec(_, _, runtimeFilters, _, _, table, _, _, _)
-            if table.name() == TableIdentifier(tbl, Some(db)).quotedString
+            if table.name() == TableIdentifier(actualTbl, Some(actualDb)).quotedString
               && runtimeFilters.nonEmpty => true
         case _ => false
       }
