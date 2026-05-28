@@ -19,7 +19,9 @@ import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 import org.apache.spark.sql.types._
+import org.scalatest.concurrent.Eventually._
 import org.scalatest.tags.Cloud
+import org.scalatest.time.SpanSugar._
 
 @Cloud
 class ClickHouseCloudGenericSuite extends ClickHouseGenericSuite with ClickHouseCloudMixIn
@@ -29,6 +31,11 @@ class ClickHouseSingleGenericSuite extends ClickHouseGenericSuite with ClickHous
 abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
   import testImplicits._
+
+  // Cloud's multi-replica compute can serve reads from a replica whose part / mutation cache
+  // has not yet caught up with a recent write or DELETE. Retry the assertion until reads converge.
+  private def eventuallyOnCloud(body: => Unit): Unit =
+    if (isCloud) eventually(timeout(15.seconds), interval(500.millis))(body) else body
 
   test("clickhouse command runner") {
     // Pin the JSON formatting of UInt64 (visibleWidth returns UInt64). ClickHouse
@@ -74,50 +81,66 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
     // DROP + PURGE
     withSimpleTable(db, "tbl_part_purge", true) { (actualDb: String, actualTbl: String) =>
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq(Row("m=1"), Row("m=2"))
-      )
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl PARTITION(m = 2)"),
-        Seq(Row("m=2"))
-      )
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq(Row("m=1"), Row("m=2"))
+        )
+      }
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl PARTITION(m = 2)"),
+          Seq(Row("m=2"))
+        )
+      }
 
       spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq(Row("m=1"))
-      )
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq(Row("m=1"))
+        )
+      }
 
       spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 1) PURGE")
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq()
-      )
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq()
+        )
+      }
     }
 
     // DROP + TRUNCATE
     withSimpleTable(db, "tbl_part_truncate", true) { (actualDb: String, actualTbl: String) =>
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq(Row("m=1"), Row("m=2"))
-      )
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl PARTITION(m = 2)"),
-        Seq(Row("m=2"))
-      )
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq(Row("m=1"), Row("m=2"))
+        )
+      }
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl PARTITION(m = 2)"),
+          Seq(Row("m=2"))
+        )
+      }
 
       spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq(Row("m=1"))
-      )
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq(Row("m=1"))
+        )
+      }
 
       spark.sql(s"TRUNCATE TABLE $actualDb.$actualTbl PARTITION(m = 1)")
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq()
-      )
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq()
+        )
+      }
     }
   }
 
@@ -345,9 +368,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     val schema = StructType(StructField("id", LongType, nullable = false) :: Nil)
     withTable("db_del", "tbl_db_del", schema) { (actualDb: String, actualTbl: String) =>
       spark.range(10).toDF("id").writeTo(s"$actualDb.$actualTbl").append
-      assert(spark.table(s"$actualDb.$actualTbl").count == 10)
+      eventuallyOnCloud(assert(spark.table(s"$actualDb.$actualTbl").count == 10))
       spark.sql(s"DELETE FROM $actualDb.$actualTbl WHERE id < 5")
-      assert(spark.table(s"$actualDb.$actualTbl").count == 5)
+      eventuallyOnCloud(assert(spark.table(s"$actualDb.$actualTbl").count == 5))
     }
   }
 
