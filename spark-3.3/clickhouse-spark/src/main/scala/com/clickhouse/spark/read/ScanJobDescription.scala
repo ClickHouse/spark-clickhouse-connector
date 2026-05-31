@@ -35,6 +35,7 @@ case class ScanJobDescription(
   // into Scan tasks because the check happens in planing phase on driver side.
   filtersExpr: String = "1=1",
   groupByClause: Option[String] = None,
+  orderByClause: Option[String] = None,
   limit: Option[Int] = None
 ) {
 

@@ -231,6 +231,17 @@ object ClickHouseSQLConf {
       .transform(_.toLowerCase)
       .createOptional
 
+  val READ_PUSHDOWN_TOP_N: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.read.pushdown.topN")
+      .doc("Whether to push down `ORDER BY ... LIMIT n` (top-N) to ClickHouse. " +
+        "When `true`, eligible sort orders combined with a LIMIT are translated into a " +
+        "ClickHouse `ORDER BY ... LIMIT n` clause and Spark performs a final merge across " +
+        "input partitions. When `false`, the `ORDER BY ... LIMIT n` is left for Spark to " +
+        "evaluate; plain `LIMIT n` queries (no `ORDER BY`) are unaffected.")
+      .version("0.10.1")
+      .booleanConf
+      .createWithDefault(true)
+
   val CLIENT_QUERY_TIMEOUT: ConfigEntry[Long] =
     buildConf("spark.clickhouse.client.queryTimeout")
       .doc("The maximum time the ClickHouse client will wait for a single query or ping " +

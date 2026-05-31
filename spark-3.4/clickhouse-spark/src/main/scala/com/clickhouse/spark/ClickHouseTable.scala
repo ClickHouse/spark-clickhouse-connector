@@ -152,7 +152,8 @@ case class ClickHouseTable(
       cluster = cluster,
       localTableSpec = localTableSpec,
       localTableEngineSpec = localTableEngineSpec,
-      readOptions = new ReadOptions(options.asCaseSensitiveMap())
+      readOptions = new ReadOptions(options.asCaseSensitiveMap()),
+      functionRegistry = functionRegistry
     )
     // TODO schema of partitions
     val partTransforms = Array[Transform]()
