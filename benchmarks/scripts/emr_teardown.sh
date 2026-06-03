@@ -12,12 +12,8 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-# Idempotent: terminating an already-terminated cluster returns success.
 set -euo pipefail
 
-# CLUSTER_ID is only exported after a successful provision step, but the
-# teardown workflow step runs with if:always(). If provisioning failed, no
-# cluster exists and CLUSTER_ID is unset - no-op instead of tripping `set -u`.
 if [[ -z "${CLUSTER_ID:-}" ]]; then
   echo "CLUSTER_ID is unset; no cluster to terminate"
   exit 0

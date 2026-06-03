@@ -12,18 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Apply all CREATE DATABASE / TABLE DDL the benchmark depends on (idempotent).
-
-Every DDL is `IF NOT EXISTS`, so this is safe to run on every workflow
-invocation. Bootstraps:
-  target service:    clickbench database + clickbench.hits
-  metrics service:   perf database + perf.runs + perf.metrics + perf.ch_inserts
-
-In v1 target == metrics on one service. Supports them being different (v2):
-target DDLs go to TARGET_CH_*, perf DDLs go to METRICS_CH_*.
-
-Uses clickhouse-connect (HTTPS 8443).
-
+"""
 Required env: TARGET_CH_HOST, TARGET_CH_USER, TARGET_CH_PASSWORD,
               METRICS_CH_HOST, METRICS_CH_USER, METRICS_CH_PASSWORD
 """

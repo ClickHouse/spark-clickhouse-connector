@@ -125,17 +125,22 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
     AND type IN ('ExceptionBeforeStart', 'ExceptionWhileProcessing')
     AND has(tables, {table_qualified:String})
   UNION ALL
-  -- TOO_MANY_PARTS (252) is the canonical "batches too small" error.
+  -- TOO_MANY_PARTS (252) is the canonical "batches too small" error. Scope to
+  -- insert/flush kinds so unrelated queries on the table (selects, our own
+  -- metric reads) hitting 252 in the window don't inflate the count.
   SELECT 'ch_too_many_parts_errors', 'count', toFloat64(count())
   FROM remoteSecure({target_addr:String}, system.query_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String})
+    AND query_kind IN ('Insert', 'AsyncInsertFlush')
     AND exception_code = 252
     AND has(tables, {table_qualified:String})
   UNION ALL
   -- NETWORK_ERROR (209), SOCKET_TIMEOUT (210) cover Spark-side timeout symptoms.
+  -- Same insert/flush scoping as above.
   SELECT 'ch_socket_errors', 'count', toFloat64(count())
   FROM remoteSecure({target_addr:String}, system.query_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String})
+    AND query_kind IN ('Insert', 'AsyncInsertFlush')
     AND exception_code IN (209, 210)
     AND has(tables, {table_qualified:String})
 );

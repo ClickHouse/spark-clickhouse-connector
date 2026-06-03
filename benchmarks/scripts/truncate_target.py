@@ -12,11 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Truncate the target table before a benchmark run (clickhouse-connect, HTTPS).
-
-Assumes the service is already awake (bootstrap_schema.py runs first in the
-workflow). Set SKIP_TRUNCATE=1 to bypass (accumulate-rows experiments).
-
+"""
 Required env: TARGET_CH_HOST, TARGET_CH_USER, TARGET_CH_PASSWORD,
               CH_DATABASE, CH_TABLE
 """

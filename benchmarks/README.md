@@ -13,8 +13,17 @@ table for trend analysis.
   and passed to Spark via `--jars`. Spark 3.5 / Scala 2.12 (matches EMR 7.13.0;
   EMR doesn't ship Spark 4 yet).
 - **Metrics**: ClickHouse pulls the Spark event log directly from S3 via the
-  `s3()` table function. CH-side numbers come from `system.query_log` via
-  `remote()`.
+  `s3()` table function. CH-side numbers come from the target's system tables
+  (`query_log`, `metric_log`, `part_log`) via `remoteSecure()` on the
+  native-secure port 9440 (the target is ClickHouse Cloud).
+- **Credentials**: the Spark job reads the target ClickHouse password from AWS
+  Secrets Manager at runtime, so it never appears in the EMR step args or the
+  node environment. Before submit the workflow creates the `CH_SECRET_ID` secret
+  from `CLICKBENCH_TARGET_CH_PASSWORD` only if it doesn't already exist (an
+  existing secret is left as-is — rotate it in Secrets Manager directly).
+  Requires the OIDC role to allow `secretsmanager:DescribeSecret` /
+  `CreateSecret` and the EMR instance profile to allow
+  `secretsmanager:GetSecretValue`.
 
 ## Testing model
 
@@ -30,8 +39,6 @@ If you change `clickbench_ingest.py` or `10_insert_from_event_log.sql`, fire a
 | --------------------------------------- | ----------------------------------------------- |
 | `CLICKBENCH_AWS_ROLE_ARN`               | OIDC role assumed by the workflow               |
 | `CLICKBENCH_S3_BUCKET`                  | Bucket for jars / scripts / event logs / EMR logs |
-| `CLICKBENCH_S3_READ_ACCESS_KEY`         | IAM key used by CH `s3()` to read the event log |
-| `CLICKBENCH_S3_READ_SECRET_KEY`         | IAM secret used by CH `s3()`                    |
 | `CLICKBENCH_EMR_SUBNET_ID`              | VPC subnet for EMR ENIs                         |
 | `CLICKBENCH_EMR_KEY_NAME`               | EC2 key-pair name for EMR nodes                 |
 | `CLICKBENCH_EMR_SERVICE_ROLE`           | EMR service role                                |
@@ -58,7 +65,7 @@ METRICS_CH_HOST=<host> METRICS_CH_USER=<u> METRICS_CH_PASSWORD=<p> \
   python benchmarks/scripts/bootstrap_schema.py
 ```
 
-(In v1 the target and metrics services are the same, so the two host/user/
+(The target and metrics services are currently the same, so the two host/user/
 password trios point at the same place.)
 
 ## Manual run
@@ -68,12 +75,13 @@ gh workflow run clickbench-load-test.yml \
   -f input_parquet_glob='s3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_0.parquet'
 ```
 
-Single-file glob = cheap smoke (~5 min, ~$0.50). Omit the flag for the full run.
+Single-file glob = cheap smoke (~5 min job; ~$1, since the ~8-min cluster
+bootstrap dominates). Omit the flag for the full run.
 
 ## Local iteration
 
 ```bash
-# 1. Build the shaded connector runtime jar.
+# 1. Build the shaded connector runtime jar (needs JDK 17 on JAVA_HOME).
 ./gradlew -Dspark_binary_version=3.5 -Dscala_binary_version=2.12 \
   :clickhouse-spark-runtime-3.5_2.12:shadowJar
 
@@ -99,7 +107,10 @@ aws s3 cp --no-sign-request \
 
 # 6. Submit.
 REPO=$(pwd)
-PYSPARK_HOME=$REPO/benchmarks/.local-run/venv/lib/python3.11/site-packages/pyspark
+# Spark's event-log writer requires the dir to already exist; it won't create it.
+mkdir -p "$REPO/benchmarks/.local-run/spark-events"
+# Resolve the venv's pyspark dir without hardcoding the python minor version.
+PYSPARK_HOME=$(echo "$REPO"/benchmarks/.local-run/venv/lib/python*/site-packages/pyspark)
 JAR=$(ls spark-3.5/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-3.5_2.12-*.jar | head -1)
 export SPARK_HOME=$PYSPARK_HOME
 export PYSPARK_PYTHON=$REPO/benchmarks/.local-run/venv/bin/python
@@ -117,21 +128,22 @@ $PYSPARK_HOME/bin/spark-submit --master 'local[*]' --jars "$JAR" \
 
 ## Validating the parser SQL locally
 
-The captured event log under `benchmarks/.local-run/spark-events/` is a directory
-tree (`eventlog_v2_<appId>/events_N_<appId>`). To validate
-`10_insert_from_event_log.sql` against it:
+Run locally (no rolling event log configured), Spark 3.5 writes a single flat
+file `benchmarks/.local-run/spark-events/local-<timestamp>` — not the rolling
+`eventlog_v2_<appId>/events_N_<appId>` directory tree EMR/Spark 4 produces. To
+validate `10_insert_from_event_log.sql` against it:
 
 ```bash
-LOG=$(find benchmarks/.local-run/spark-events -type f -name 'events_*' | head -1)
+LOG=$(find benchmarks/.local-run/spark-events -type f | head -1)
 docker cp "$LOG" ch-local:/var/lib/clickhouse/user_files/spark_event_log.jsonl
 # On macOS Docker the copied file is owned by the host UID; CH cannot read it
 # until we re-own it as the clickhouse user inside the container:
 docker exec -u 0 ch-local chown clickhouse:clickhouse \
   /var/lib/clickhouse/user_files/spark_event_log.jsonl
 
-# Swap the s3(...) call for file(...) and run.
+# Swap the s3(...) call for file(...) and bind the run_id parameter inline.
 sed -e "s|s3([^)]*)|file('spark_event_log.jsonl', JSONAsString, 'json String')|" \
-    -e "s|{run_id}|local-validate|g" \
+    -e "s|{run_id:String}|'local-validate'|g" \
     benchmarks/sql/perf/10_insert_from_event_log.sql > /tmp/parse_local.sql
 curl -sS --fail-with-body -X POST 'http://localhost:18123/' --data-binary @/tmp/parse_local.sql
 
@@ -140,45 +152,9 @@ curl -sS 'http://localhost:18123/' --data-binary "
   WHERE run_id='local-validate' ORDER BY metric_name FORMAT PrettyCompactMonoBlock"
 ```
 
-Expected: 11 rows with finite non-negative values.
-
-## Watching the Spark UI live during a run
-
-YARN's proxy hands back URLs using the EMR master's internal AWS hostname
-(`ip-172-31-*.ec2.internal`), which doesn't resolve from outside AWS. The
-AWS-documented pattern: open an SSH SOCKS5 tunnel and let your browser route
-the relevant hostname patterns through it.
-
-**Recommended: dedicated Chrome window pinned to the SOCKS proxy.** This is
-more reliable than FoxyProxy because Chrome's `proxyDNS` flag is honored
-inconsistently — with `--proxy-server=socks5://...` DNS is always tunneled.
-
-```bash
-# 1. Open the SSH SOCKS5 tunnel (terminal stays open while you browse).
-ssh -i ~/.ssh/aws-key-pair.pem -ND 8157 hadoop@<master-public-dns>
-
-# 2. Launch a fresh Chrome window scoped to the proxy.
-"/Applications/Google Chrome.app/Contents/MacOS/Google Chrome" \
-  --user-data-dir=/tmp/chrome-emr \
-  --proxy-server="socks5://localhost:8157" \
-  "http://<master-public-dns>:8088"
-```
-
-From the YARN RM page click the running app → **ApplicationMaster** → live
-Spark driver UI. Or jump straight to
-`http://<master-public-dns>:20888/proxy/<application_id>/`.
-
-A `--user-data-dir` outside your normal Chrome profile keeps the proxy from
-leaking into other tabs. Close that Chrome window when done.
-
-The SSH key for the EMR cluster is the EC2 key pair named in the
-`CLICKBENCH_EMR_KEY_NAME` secret; keep the matching `.pem` locally. The master
-public DNS for any cluster is available via:
-
-```bash
-aws emr describe-cluster --region us-east-1 --cluster-id <id> \
-  --query 'Cluster.MasterPublicDnsName' --output text
-```
+Expected: 13 rows (11 `base` + 2 `derived` throughput metrics), all non-negative.
+`peak_jvm_heap_bytes` and `peak_jvm_offheap_bytes` come back `0` under `local[*]`
+(executor memory metrics aren't captured locally) — that's expected, not a failure.
 
 ## Reading results
 
@@ -191,9 +167,9 @@ ORDER BY run_id, metric_name;
 
 ## Truncating between runs
 
-Each scheduled / `workflow_dispatch` run starts with a `TRUNCATE TABLE clickbench.hits`
-so row counts and metrics describe that run only. The truncate step is the first
-thing the workflow does — if it fails, EMR is never provisioned.
+Each scheduled / `workflow_dispatch` run truncates `clickbench.hits` so row counts
+and metrics describe that run only. The truncate step runs after the schema
+bootstrap but before EMR is provisioned, so if it fails no cluster is launched.
 
 Override with a repository variable `SKIP_TRUNCATE=1` if you want to accumulate
 data across runs (e.g. for steady-state experiments).
@@ -206,21 +182,3 @@ TARGET_CH_HOST=<host> TARGET_CH_USER=<user> TARGET_CH_PASSWORD=<pwd> \
   python benchmarks/scripts/truncate_target.py
 ```
 
-## Known v1 limitations
-
-- Passwords pass through `spark.yarn.appMasterEnv.*` (visible in node env).
-  Revisit with Secrets Manager fetch in `main()`.
-- `ch_errors` / `ch_parts_active` are absolute values, not deltas — meaningful
-  only if the target CH is single-tenant for the benchmark run.
-- ClickBench source schema is pinned at plan-authoring time; upstream drift
-  needs a `02_create_hits.sql` update.
-- Hyperdx dashboards are intentionally not wired (deferred to v2).
-- This branch also includes a connector-side patch in
-  `spark-4.0/clickhouse-spark/src/main/scala/org/apache/spark/sql/clickhouse/ExprUtils.scala`
-  (kept for when EMR ships Spark 4; on the 3.5 path used today, the connector
-  emits `Ignoring unsupported ClickHouse partition/sharding expression` WARNs
-  but writes still succeed because the PySpark job pre-aligns via `repartition`)
-  that maps `toYear`, `toYYYYMM`, `toStartOfYear`, `toStartOfMonth`, `intHash32`,
-  and `intHash64` to identity transforms so the partition-aware write path
-  fires on tables that use them. Pull this out into a separate PR if the
-  benchmark is merged independently.

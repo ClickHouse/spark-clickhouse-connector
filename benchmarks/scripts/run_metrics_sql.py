@@ -12,12 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Run a parser SQL file against the metrics CH service via clickhouse-connect.
-
-The SQL files use ClickHouse server-side query parameters ({name:Type}); this
-binds them from env vars through clickhouse-connect's `parameters` dict - no
-string interpolation, so values containing commas/quotes are safe.
-
+"""
 Required env: METRICS_CH_HOST, METRICS_CH_USER, METRICS_CH_PASSWORD,
               RUN_ID, RUN_START, RUN_END, TARGET_CH_HOST, TARGET_CH_USER,
               TARGET_CH_PASSWORD, CH_DATABASE, CH_TABLE

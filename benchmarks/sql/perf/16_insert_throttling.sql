@@ -47,11 +47,13 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
   -- MEMORY_LIMIT_EXCEEDED (241): the OTHER way inserts fail under pressure.
   -- Big batches × high write concurrency on a small server OOM here rather
   -- than tripping TOO_MANY_PARTS. Counted over the insert window (query_log),
-  -- scoped to our table. Code 33 (CANNOT_READ_ALL_DATA) is usually a
-  -- downstream symptom of the same OOM, so count it too.
+  -- scoped to our table and to insert/flush kinds so unrelated queries hitting
+  -- the same codes don't inflate it. Code 33 (CANNOT_READ_ALL_DATA) is usually
+  -- a downstream symptom of the same OOM, so count it too.
   SELECT 'ch_memory_limit_errors', 'count', toFloat64(count())
   FROM remoteSecure({target_addr:String}, system.query_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String})
+    AND query_kind IN ('Insert', 'AsyncInsertFlush')
     AND exception_code IN (241, 33)
     AND has(tables, {table_qualified:String})
   UNION ALL

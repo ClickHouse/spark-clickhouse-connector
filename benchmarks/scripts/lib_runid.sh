@@ -11,10 +11,7 @@
 # WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
 # See the License for the specific language governing permissions and
 # limitations under the License.
-#
-# Source this file to export RUN_ID and RUN_START.
-# RUN_ID format: YYYY-MM-DDTHH-MM-SSZ-<short-sha>
-# RUN_START format: ISO 8601 UTC, compatible with CH parseDateTimeBestEffort.
+
 _short_sha="$(git rev-parse --short HEAD 2>/dev/null || echo nogit)"
 _ts="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
 export RUN_ID="${_ts}-${_short_sha}"

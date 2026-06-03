@@ -11,13 +11,6 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Shared ClickHouse helpers for the benchmark scripts.
-
-All benchmark scripts talk to ClickHouse through clickhouse-connect (HTTPS,
-port 8443) - a single client, rather than mixing the clickhouse-client CLI
-and the Python client. Import this module from sibling scripts; Python puts
-the script's own directory on sys.path[0], so `import ch_common` resolves.
-"""
 import os
 import sys
 
@@ -26,9 +19,6 @@ import clickhouse_connect
 
 def require(name: str) -> str:
     """Return env var `name`, or exit 1 if it is not set.
-
-    Uses presence (`not in`) not truthiness, so a legitimately empty value -
-    e.g. an empty password for a passwordless local CH user - is accepted.
     """
     if name not in os.environ:
         print(f"ERROR: required env var {name} is not set", file=sys.stderr)
@@ -37,7 +27,6 @@ def require(name: str) -> str:
 
 
 def get_client(host_var: str, user_var: str, password_var: str):
-    """Build a clickhouse-connect client from the named env vars (HTTPS 8443)."""
     return clickhouse_connect.get_client(
         host=require(host_var),
         port=8443,

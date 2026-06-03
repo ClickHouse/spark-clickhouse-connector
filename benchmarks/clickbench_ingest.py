@@ -21,24 +21,48 @@ runs locally (master=local[*], spark.eventLog.dir on disk) and on EMR
 via spark-submit --conf, not here.
 
 Required env vars:
-  CH_HOST, CH_PORT, CH_PROTOCOL, CH_USER, CH_PASSWORD,
+  CH_HOST, CH_PORT, CH_PROTOCOL, CH_USER,
   CH_DATABASE, CH_TABLE, INPUT_PARQUET_GLOB, RUN_ID
+
+Password resolution:
+  CH_SECRET_ID  AWS Secrets Manager secret holding the CH password, read at
+                runtime via the instance profile (used on EMR - the password is
+                never passed through the env or the spark-submit args).
+  CH_PASSWORD   fallback used only when CH_SECRET_ID is unset (local runs; may
+                be empty for a passwordless local ClickHouse).
 """
+import json
 import os
 import sys
 from pyspark.sql import SparkSession
 
 
 REQUIRED = (
-    "CH_HOST", "CH_PORT", "CH_PROTOCOL", "CH_USER", "CH_PASSWORD",
+    "CH_HOST", "CH_PORT", "CH_PROTOCOL", "CH_USER",
     "CH_DATABASE", "CH_TABLE", "INPUT_PARQUET_GLOB", "RUN_ID",
 )
 
 
+def resolve_password(env):
+    secret_id = env.get("CH_SECRET_ID")
+    if secret_id:
+        import boto3  # only on the EMR path; not installed in the local venv
+        region = env.get("AWS_REGION") or env.get("AWS_DEFAULT_REGION") or "us-east-1"
+        value = boto3.client("secretsmanager", region_name=region) \
+            .get_secret_value(SecretId=secret_id)["SecretString"]
+        try:
+            parsed = json.loads(value)
+        except (ValueError, TypeError):
+            return value
+        if isinstance(parsed, dict) and "password" in parsed:
+            return parsed["password"]
+        return value
+    if "CH_PASSWORD" in env:
+        return env["CH_PASSWORD"]
+    sys.exit("set CH_SECRET_ID (Secrets Manager) or CH_PASSWORD (local)")
+
+
 def load_config(env):
-    # Use `k not in env` rather than `not env.get(k)` so that legitimate empty
-    # values (e.g. an empty CH_PASSWORD for a passwordless local user) are not
-    # rejected.
     missing = [k for k in REQUIRED if k not in env]
     if missing:
         sys.exit(f"missing required env vars: {missing}")
@@ -46,7 +70,9 @@ def load_config(env):
         int(env["CH_PORT"])
     except ValueError:
         sys.exit(f"CH_PORT must be an integer, got: {env['CH_PORT']}")
-    return {k: env[k] for k in REQUIRED}
+    cfg = {k: env[k] for k in REQUIRED}
+    cfg["CH_PASSWORD"] = resolve_password(env)
+    return cfg
 
 
 def main():
@@ -64,10 +90,6 @@ def main():
         .config("spark.sql.catalog.clickhouse.database", cfg["CH_DATABASE"])
         .config("spark.sql.catalog.clickhouse.option.ssl",
                 str(cfg["CH_PROTOCOL"] == "https").lower())
-        # Force synchronous inserts. CH Cloud defaults to async_insert=1, which
-        # masks the connector's real per-insert behaviour and makes runs
-        # non-comparable across services. The `option.clickhouse_setting_*`
-        # prefix passes through as a server-level query setting.
         .config("spark.sql.catalog.clickhouse.option.clickhouse_setting_async_insert", "0")
         .config("spark.sql.catalog.clickhouse.option.clickhouse_setting_wait_for_async_insert", "0")
         .getOrCreate()
@@ -80,11 +102,6 @@ def main():
 
     target = f"clickhouse.{cfg['CH_DATABASE']}.{cfg['CH_TABLE']}"
     print(f"[clickbench_ingest] writing to: {target}")
-    # No manual repartition - the connector reads the CH table's partition
-    # transform via ExprUtils.toSparkTransformOpt and Spark's V2 write planner
-    # adds the appropriate Exchange. With PARTITION BY toYear(EventDate) the
-    # connector's identity-mapping patch gives Spark IdentityTransform(EventDate),
-    # which Spark uses for partition-aware writes.
     df.writeTo(target).append()
 
     spark.stop()

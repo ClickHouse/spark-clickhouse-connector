@@ -16,31 +16,14 @@
 #
 # Required env: AWS_REGION, CLUSTER_ID, JAR_S3_URI, SCRIPT_S3_URI, RUN_ID,
 #               EVENT_LOG_DIR_SPARK,
-#               CH_HOST, CH_PORT, CH_PROTOCOL, CH_USER, CH_PASSWORD,
+#               CH_HOST, CH_PORT, CH_PROTOCOL, CH_USER, CH_SECRET_ID,
 #               CH_DATABASE, CH_TABLE, INPUT_PARQUET_GLOB
-#
-# EMR detects Python from the .py file extension and routes to spark-submit
-# automatically. CH_* vars go to the driver via spark.yarn.appMasterEnv.*:
-# clickbench_ingest.py's main() (driver-only, since deploy-mode=cluster runs
-# it in the YARN AM) reads them to build the SparkSession. Executors do NOT
-# need them - the connector's write tasks read the broadcast catalog config
-# (spark.sql.catalog.clickhouse.*), not env vars.
-#
-# The step is submitted as JSON (not the comma-delimited Args=[...] shorthand)
-# and assembled with jq, so values containing commas or quotes - e.g. a
-# CH_PASSWORD with a comma - stay intact instead of being split into separate
-# spark-submit arguments.
 set -euo pipefail
 
-# Spark's EventLogFileWriter verifies the event log directory exists at startup.
-# S3 has no implicit directories, so pre-create the prefix with a placeholder
-# file. EVENT_LOG_DIR_SPARK is the s3a:// URL with trailing slash; strip the
-# scheme and use s3:// for the put.
+
 _ev_path="${EVENT_LOG_DIR_SPARK#s3a://}"
 aws s3api put-object --bucket "${_ev_path%%/*}" --key "${_ev_path#*/}.keep" >/dev/null
 
-# Build the spark-submit Args as a bash array (each element is one argument,
-# so embedded commas/spaces/quotes are preserved verbatim).
 ARGS=(
   --deploy-mode cluster
   --jars "$JAR_S3_URI"
@@ -49,13 +32,12 @@ ARGS=(
   --conf spark.eventLog.logStageExecutorMetrics=true
   --conf spark.executor.metrics.pollingInterval=10000
   --conf spark.eventLog.compress=false
-)
-ARGS+=(
   --conf "spark.yarn.appMasterEnv.CH_HOST=${CH_HOST}"
   --conf "spark.yarn.appMasterEnv.CH_PORT=${CH_PORT}"
   --conf "spark.yarn.appMasterEnv.CH_PROTOCOL=${CH_PROTOCOL}"
   --conf "spark.yarn.appMasterEnv.CH_USER=${CH_USER}"
-  --conf "spark.yarn.appMasterEnv.CH_PASSWORD=${CH_PASSWORD}"
+  --conf "spark.yarn.appMasterEnv.CH_SECRET_ID=${CH_SECRET_ID}"
+  --conf "spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION}"
   --conf "spark.yarn.appMasterEnv.CH_DATABASE=${CH_DATABASE}"
   --conf "spark.yarn.appMasterEnv.CH_TABLE=${CH_TABLE}"
   --conf "spark.yarn.appMasterEnv.INPUT_PARQUET_GLOB=${INPUT_PARQUET_GLOB}"
@@ -63,13 +45,14 @@ ARGS+=(
   "$SCRIPT_S3_URI"
 )
 
-# Each array element -> a JSON string element; jq -s slurps them into an array.
-args_json=$(printf '%s\n' "${ARGS[@]}" | jq -R . | jq -s .)
-steps_json=$(jq -n --argjson args "$args_json" '[{
+# One raw line per arg -> jq's [inputs] collects them into the Args array,
+# so values with commas/quotes (e.g. CH_PASSWORD) survive intact. (Raw input,
+# not jq --args, because --args still option-parses values starting with '--'.)
+steps_json=$(printf '%s\n' "${ARGS[@]}" | jq -nR '[{
   Type: "Spark",
   Name: "ClickBenchIngest",
   ActionOnFailure: "TERMINATE_CLUSTER",
-  Args: $args
+  Args: [inputs]
 }]')
 
 STEP_ID=$(aws emr add-steps \
