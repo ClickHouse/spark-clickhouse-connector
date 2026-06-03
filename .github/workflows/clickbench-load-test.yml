@@ -1,0 +1,211 @@
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: "ClickBench Load Test"
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # Mondays 06:00 UTC - Placeholder, replace with actual schedule
+  workflow_dispatch:
+    inputs:
+      input_parquet_glob:
+        description: "Override input glob (default = full 100 files)"
+        required: false
+        default: "s3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet"
+
+jobs:
+  load-test:
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: us-east-1
+      # EMR 7.13.0 ships Spark 3.5.6 + Scala 2.12. As of mid-2026 no EMR 7.x
+      # release bundles Spark 4, so the connector jar must be built for
+      # 3.5_2.12 to match. Bump this if a Spark-4 EMR release appears.
+      EMR_RELEASE_LABEL: emr-7.13.0
+      EMR_INSTANCE_TYPE: m6i.2xlarge
+      EMR_CORE_COUNT: "4"
+      CH_DATABASE: clickbench
+      CH_TABLE: hits
+      INPUT_PARQUET_GLOB: ${{ inputs.input_parquet_glob || 's3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ClickHouse client (clickhouse-connect)
+        # Single client for every CH interaction in this job (bootstrap,
+        # truncate, settle poll, run record, metric parsers) over HTTPS 8443.
+        run: pip install --quiet clickhouse-connect
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+          cache: gradle
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.CLICKBENCH_AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Build connector runtime jar
+        run: |
+          ./gradlew -Dspark_binary_version=3.5 -Dscala_binary_version=2.12 \
+            :clickhouse-spark-runtime-3.5_2.12:shadowJar --no-daemon
+
+      - name: Compute run id and S3 paths
+        run: |
+          source benchmarks/scripts/lib_runid.sh
+          echo "RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
+          echo "RUN_START=$RUN_START" >> "$GITHUB_ENV"
+          echo "EVENT_LOG_DIR_SPARK=s3a://${{ secrets.CLICKBENCH_S3_BUCKET }}/spark-event-logs/$RUN_ID/" >> "$GITHUB_ENV"
+          # EMR 7.13 ships Spark 3.5.6, which writes a single flat event-log
+          # file (application_<appId>_1) - rolling format (eventlog_v2_*/) is
+          # Spark 4.0+ only. Match the flat file. If we ever move to a Spark-4
+          # EMR release, switch this glob to eventlog_v2_*/events_*.
+          echo "EVENT_LOG_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/spark-event-logs/$RUN_ID/application_*" >> "$GITHUB_ENV"
+          echo "JAR_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/jars/$RUN_ID/clickhouse-spark-runtime.jar" >> "$GITHUB_ENV"
+          echo "SCRIPT_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/scripts/$RUN_ID/clickbench_ingest.py" >> "$GITHUB_ENV"
+
+      - name: Upload jar and script to S3
+        run: |
+          JAR=$(ls spark-3.5/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-3.5_2.12-*.jar | head -1)
+          aws s3 cp "$JAR" "$JAR_S3_URI"
+          aws s3 cp benchmarks/clickbench_ingest.py "$SCRIPT_S3_URI"
+
+      - name: Bootstrap schema (idempotent CREATE IF NOT EXISTS)
+        # Creates clickbench.hits on the target service and perf.{runs,
+        # metrics, ch_inserts} on the metrics service if any are missing.
+        # Every DDL is idempotent - cost on a healthy schema is ~2s of
+        # round-trips. Means future operators don't have to read the
+        # README to get a fresh CH service onboarded.
+        env:
+          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+        run: python benchmarks/scripts/bootstrap_schema.py
+
+      - name: Truncate target table
+        # Destructive: zeroes clickbench.hits so row counts and metrics
+        # describe THIS run only. Bootstrap step above already woke the
+        # service. Set repo variable SKIP_TRUNCATE=1 for accumulate-rows
+        # experiments.
+        env:
+          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          CH_DATABASE: clickbench
+          CH_TABLE: hits
+          SKIP_TRUNCATE: ${{ vars.SKIP_TRUNCATE || '0' }}
+        run: python benchmarks/scripts/truncate_target.py
+
+      - name: Provision EMR
+        env:
+          EMR_LOG_URI: s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/emr-logs/
+          EMR_SUBNET_ID: ${{ secrets.CLICKBENCH_EMR_SUBNET_ID }}
+          EMR_EC2_KEY_NAME: ${{ secrets.CLICKBENCH_EMR_KEY_NAME }}
+          EMR_SERVICE_ROLE: ${{ secrets.CLICKBENCH_EMR_SERVICE_ROLE }}
+          EMR_INSTANCE_PROFILE: ${{ secrets.CLICKBENCH_EMR_INSTANCE_PROFILE }}
+        run: |
+          CLUSTER_ID=$(benchmarks/scripts/emr_provision.sh)
+          echo "CLUSTER_ID=$CLUSTER_ID" >> "$GITHUB_ENV"
+
+      - name: Submit Spark step
+        env:
+          CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          CH_PORT: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
+          CH_PROTOCOL: https
+          CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+        run: benchmarks/scripts/emr_submit.sh
+
+      - name: Capture run end timestamp
+        if: always()
+        run: echo "RUN_END=$(date -u +%Y-%m-%dT%H:%M:%S)" >> "$GITHUB_ENV"
+
+      - name: Teardown EMR
+        if: always()
+        run: benchmarks/scripts/emr_teardown.sh
+
+      - name: Wait for merges to settle
+        # Polls active part count on the target until it stops dropping,
+        # then exports the wall-clock timestamp as SETTLE_END plus the
+        # delta from RUN_END as SETTLE_SECONDS. Both used by the parser
+        # SQL below (13 uses {settle_end} to widen the merge window;
+        # 14 records {settle_seconds} as ch_settle_seconds).
+        env:
+          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          CH_DATABASE: clickbench
+          CH_TABLE: hits
+        run: |
+          SETTLE_END=$(benchmarks/scripts/wait_for_settle.py)
+          echo "SETTLE_END=$SETTLE_END" >> "$GITHUB_ENV"
+          SETTLE_SECONDS=$(( $(date -u -d "$SETTLE_END" +%s) - $(date -u -d "$RUN_END" +%s) ))
+          echo "SETTLE_SECONDS=$SETTLE_SECONDS" >> "$GITHUB_ENV"
+          echo "settle took ${SETTLE_SECONDS}s (RUN_END=$RUN_END SETTLE_END=$SETTLE_END)"
+
+      - name: Insert run record
+        env:
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          export CONNECTOR_VERSION=$(cat version.txt)
+          python benchmarks/scripts/insert_run_record.py
+
+      - name: Capture metrics — Spark event log + CH query_log/metric_log/part_log
+        # Runs every parser. Order matters only for 04→15: 04 creates the
+        # perf.ch_inserts side table, 15 populates it. The other parsers are
+        # independent INSERTs into perf.metrics.
+        env:
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.CLICKBENCH_S3_READ_ACCESS_KEY }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.CLICKBENCH_S3_READ_SECRET_KEY }}
+          # Clear the OIDC session token exported by configure-aws-credentials.
+          # We override the access-key/secret with long-term S3-read IAM keys
+          # for CH's s3() call; a leftover session token from a different
+          # identity would make AWS reject the mismatched credential set and
+          # (under set -e) abort every parser after the first.
+          AWS_SESSION_TOKEN: ""
+          CH_DATABASE: clickbench
+          CH_TABLE: hits
+        run: |
+          for sql in \
+            benchmarks/sql/perf/10_insert_from_event_log.sql \
+            benchmarks/sql/perf/11_insert_from_query_log.sql \
+            benchmarks/sql/perf/12_insert_from_metric_log.sql \
+            benchmarks/sql/perf/13_insert_from_part_log.sql \
+            benchmarks/sql/perf/14_insert_settle_seconds.sql \
+            benchmarks/sql/perf/15_capture_raw_inserts.sql \
+            benchmarks/sql/perf/16_insert_throttling.sql
+          do
+            echo "=== $sql ==="
+            python benchmarks/scripts/run_metrics_sql.py "$sql"
+          done

@@ -2,6 +2,7 @@
 .DS_Store
 .cache
 tmp/
+benchmarks/.local-run/
 
 # intellij files
 .idea
