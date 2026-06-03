@@ -19,15 +19,18 @@
 
 INSERT INTO perf.metrics (run_id, metric_name, unit, value)
 SELECT {run_id:String}, metric_name, unit, value FROM (
-  -- Cumulative new connections opened during the window. Today ~= ch_insert_count.
+  -- New connections opened during the window. Today ~= ch_insert_count.
+  -- ProfileEvent_* in system.metric_log are cumulative counters since server
+  -- start, so the per-run delta is max()-min() over the window, not sum()
+  -- (summing every ~1s snapshot would massively inflate the value).
   SELECT 'ch_http_connections_created' AS metric_name, 'count' AS unit,
-         toFloat64(sum(ProfileEvent_HTTPConnectionsCreated)) AS value
+         toFloat64(max(ProfileEvent_HTTPConnectionsCreated) - min(ProfileEvent_HTTPConnectionsCreated)) AS value
   FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String})
   UNION ALL
   -- Keep-alive reuse counter. Today ~0. Healthy: bulk of requests.
   SELECT 'ch_http_connections_preserved', 'count',
-         toFloat64(sum(ProfileEvent_HTTPConnectionsPreserved))
+         toFloat64(max(ProfileEvent_HTTPConnectionsPreserved) - min(ProfileEvent_HTTPConnectionsPreserved))
   FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String})
   UNION ALL
@@ -35,7 +38,7 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
   -- 1.0 = one cold connection per insert (current behaviour).
   -- << 1.0 = one connection serves many inserts (target).
   SELECT 'ch_connections_per_insert', 'ratio',
-         (SELECT toFloat64(sum(ProfileEvent_HTTPConnectionsCreated))
+         (SELECT toFloat64(max(ProfileEvent_HTTPConnectionsCreated) - min(ProfileEvent_HTTPConnectionsCreated))
           FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
           WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String}))
          /

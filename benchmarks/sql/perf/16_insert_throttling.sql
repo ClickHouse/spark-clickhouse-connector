@@ -23,13 +23,16 @@
 INSERT INTO perf.metrics (run_id, metric_name, unit, value)
 SELECT {run_id:String}, metric_name, unit, value FROM (
   -- ====== Counter deltas from metric_log over the full settle window ======
+  -- ProfileEvent_* in system.metric_log are cumulative counters since server
+  -- start, so the window delta is max()-min(), not sum() (which would add up
+  -- every per-second snapshot and massively inflate the totals).
   SELECT 'ch_delayed_inserts_count' AS metric_name, 'count' AS unit,
-         toFloat64(sum(ProfileEvent_DelayedInserts)) AS value
+         toFloat64(max(ProfileEvent_DelayedInserts) - min(ProfileEvent_DelayedInserts)) AS value
   FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({settle_end:String})
   UNION ALL
   SELECT 'ch_delayed_inserts_total_ms', 'ms',
-         toFloat64(sum(ProfileEvent_DelayedInsertsMilliseconds))
+         toFloat64(max(ProfileEvent_DelayedInsertsMilliseconds) - min(ProfileEvent_DelayedInsertsMilliseconds))
   FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({settle_end:String})
   UNION ALL
@@ -37,7 +40,7 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
   -- this version is broader (counts server-side rejections including ones the
   -- connector might have retried away).
   SELECT 'ch_rejected_inserts_count', 'count',
-         toFloat64(sum(ProfileEvent_RejectedInserts))
+         toFloat64(max(ProfileEvent_RejectedInserts) - min(ProfileEvent_RejectedInserts))
   FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({settle_end:String})
   UNION ALL

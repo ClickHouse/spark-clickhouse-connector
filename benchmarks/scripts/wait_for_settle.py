@@ -55,6 +55,8 @@ def main() -> None:
     start = time.monotonic()
     prev = -1
     stable = 0
+    peak = -1
+    dropped = False
 
     while True:
         if time.monotonic() - start > settle_timeout:
@@ -67,13 +69,25 @@ def main() -> None:
             parameters={"db": db, "tbl": table},
         ).result_rows[0][0]
 
+        # The contract is to wait until the active part count stops *dropping*,
+        # which presupposes it dropped. A flat reading in the first polls -
+        # before background merges have begun reducing parts - must NOT count as
+        # settled, or we can declare victory ~30s after ingest while merges are
+        # still pending. Require at least one observed decrease from the peak
+        # before stability is accepted; SETTLE_TIMEOUT is the safety net for the
+        # rare case where no merge is ever needed.
+        if parts > peak:
+            peak = parts
+        if parts < peak:
+            dropped = True
+
         if parts == prev:
             stable += 1
         else:
             stable = 0
-        log(f"active parts: {parts} (stable {stable}/{stable_samples})")
+        log(f"active parts: {parts} (peak {peak}, stable {stable}/{stable_samples}, dropped {dropped})")
 
-        if stable >= stable_samples:
+        if dropped and stable >= stable_samples:
             log("merges settled")
             break
 

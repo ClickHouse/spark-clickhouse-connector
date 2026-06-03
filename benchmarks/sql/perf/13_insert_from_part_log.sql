@@ -112,9 +112,11 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
              parseDateTimeBestEffort({settle_end:String})))
   UNION ALL
   -- Sanity-check from metric_log: total merge-thread time (should be in the
-  -- same ballpark as ch_merge_total_duration_ms above).
+  -- same ballpark as ch_merge_total_duration_ms above). ProfileEvent_* in
+  -- system.metric_log are cumulative since server start, so use max()-min()
+  -- for the window delta, not sum().
   SELECT 'ch_merge_thread_time_ms', 'ms',
-         toFloat64(sum(ProfileEvent_MergeTotalMilliseconds))
+         toFloat64(max(ProfileEvent_MergeTotalMilliseconds) - min(ProfileEvent_MergeTotalMilliseconds))
   FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({settle_end:String})
 );
