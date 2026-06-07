@@ -58,17 +58,24 @@ class ClickHouseArrowStreamWriter(writeJob: WriteJobDescription) extends ClickHo
     baos.toByteArray
   }
 
+  // Reused across batches. ByteArrayOutputStream.reset() keeps the backing array, so after the
+  // first batch there is no re-grow/doubling churn. Lazy so the direct (non-coalesce) path, which
+  // never calls serializeRecordBatch, doesn't allocate it.
+  private lazy val recordBatchBuffer = new ByteArrayOutputStream(4 * 1024 * 1024)
+  private lazy val recordBatchUnloader = new VectorUnloader(root)
+
   // Serialize ONLY the current batch's record-batch message (uncompressed). Mirrors what
   // ArrowStreamWriter.writeBatch() emits, minus the schema/EOS framing (added by the assembler).
   override def serializeRecordBatch(): BatchPayload = {
     arrowWriter.finish()
-    val baos = new ByteArrayOutputStream()
-    val ch = new WriteChannel(Channels.newChannel(baos))
-    val unloader = new VectorUnloader(root)
-    val recordBatch = unloader.getRecordBatch
+    recordBatchBuffer.reset()
+    val ch = new WriteChannel(Channels.newChannel(recordBatchBuffer))
+    val recordBatch = recordBatchUnloader.getRecordBatch
     try MessageSerializer.serialize(ch, recordBatch)
     finally recordBatch.close()
-    new BytesPayload(baos.toByteArray)
+    // Copy required: the payload is held by the coordinator and read on the sender thread after
+    // this buffer is reset/refilled for the next batch (cross-thread ownership).
+    new BytesPayload(recordBatchBuffer.toByteArray)
   }
 
   override def coalesceSupported: Boolean = true

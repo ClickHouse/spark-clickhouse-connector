@@ -162,11 +162,14 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   val _totalWriteTime = new LongAdder
   def totalWriteTime: Long = _totalWriteTime.longValue
 
-  val serializedBuffer = new ByteArrayOutputStream(64 * 1024 * 1024)
+  // Lazily allocated: this 64 MB buffer and the output/compression chain below back the DIRECT
+  // (non-coalesce) serialization path only. In coalesce mode they are never used, so they are
+  // never instantiated (the ctor renew, reset(), and close() below are guarded by !coalesceActive).
+  lazy val serializedBuffer = new ByteArrayOutputStream(64 * 1024 * 1024)
 
   // it is not accurate when using http protocol, because we delegate compression to
   // clickhouse http client
-  private val observableSerializedOutput = new ObservableOutputStream(
+  private lazy val observableSerializedOutput = new ObservableOutputStream(
     serializedBuffer,
     Some(_lastSerializedBytesWritten),
     Some(_totalSerializedBytesWritten)
@@ -197,7 +200,10 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     compressedForwardingOutput.updateDelegate(compressedOutput)
   }
 
-  renewCompressedOutput()
+  // Only the direct path uses the compression chain; coalesce serializes via serializeRecordBatch.
+  // Guarding this (and reset()/close()) keeps the lazy 64 MB buffer from ever being allocated in
+  // coalesce mode, and wires the forwarding delegate before the first write on the direct path.
+  if (!coalesceActive) renewCompressedOutput()
 
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
     TaskMetric(RECORDS_WRITTEN, totalRecordsWritten),
@@ -252,8 +258,11 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     _lastSerializedBytesWritten.reset()
     _lastSerializeTime.reset()
     currentShardNum = None
-    serializedBuffer.reset()
-    renewCompressedOutput()
+    // The compression chain is unused in coalesce mode; don't force-allocate it on reset.
+    if (!coalesceActive) {
+      serializedBuffer.reset()
+      renewCompressedOutput()
+    }
   }
 
   def flush(force: Boolean, shardNum: Option[Int]): Unit =
@@ -342,5 +351,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   override def close(): Unit =
     // The shared NodeClientCache owns client lifetime (closed at executor shutdown). Only
     // per-task resources are released here; the Arrow root/allocator are closed by subclasses.
-    IOUtils.closeQuietly(output)
+    // In coalesce mode the output/compression chain is never instantiated, so skip it (avoids
+    // forcing the lazy 64 MB buffer and a null forwarding-delegate NPE at teardown).
+    if (!coalesceActive) IOUtils.closeQuietly(output)
 }
