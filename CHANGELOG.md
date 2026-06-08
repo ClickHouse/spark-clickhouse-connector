@@ -31,6 +31,9 @@ Changes that have been merged but not yet released will be documented here.
 ### Changed
 - **Breaking Change**: Default value of `spark.clickhouse.ignoreUnsupportedTransform` changed from `false` to `true` ([#499](https://github.com/ClickHouse/spark-clickhouse-connector/pull/499)). Writes to tables with unsupported partition/sharding expressions (e.g., `PARTITION BY tuple()`, `PARTITION BY substring(...)`) now log a warning and continue instead of failing. To restore the old fail-fast behavior, set `spark.clickhouse.ignoreUnsupportedTransform=false`. **Warning**: For Distributed tables with `spark.clickhouse.write.distributed.convertLocal=true`, unsupported sharding keys may cause data corruption. The connector validates this and throws an error by default. To allow it, explicitly set `spark.clickhouse.write.distributed.convertLocal.allowUnsupportedSharding=true`.
 
+### Dependencies
+- Updated clickhouse-java version from `0.9.5` to `0.9.8`
+
 ### Fixed
 - Fixed UInt64 type mapping to prevent data loss and overflow ([#477](https://github.com/ClickHouse/spark-clickhouse-connector/pull/477)). ClickHouse `UInt64` type (range: 0 to 18446744073709551615) is now mapped to Spark `DecimalType(20, 0)` instead of `LongType` to safely handle the full value range without overflow. Previously, values greater than 9223372036854775807 (Long.MAX_VALUE) would overflow or lose precision.
 
