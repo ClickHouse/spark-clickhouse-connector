@@ -111,7 +111,9 @@ REPO=$(pwd)
 mkdir -p "$REPO/benchmarks/.local-run/spark-events"
 # Resolve the venv's pyspark dir without hardcoding the python minor version.
 PYSPARK_HOME=$(echo "$REPO"/benchmarks/.local-run/venv/lib/python*/site-packages/pyspark)
-JAR=$(ls spark-3.5/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-3.5_2.12-*.jar | head -1)
+# shaded fat jar only: exclude thin -empty/-sources/-javadoc jars, pick the largest
+JAR=$(ls -S spark-3.5/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-3.5_2.12-*.jar \
+  | grep -Ev '(sources|javadoc|empty)\.jar$' | head -1)
 export SPARK_HOME=$PYSPARK_HOME
 export PYSPARK_PYTHON=$REPO/benchmarks/.local-run/venv/bin/python
 CH_HOST=localhost CH_PORT=18123 CH_PROTOCOL=http CH_USER=default CH_PASSWORD='' \

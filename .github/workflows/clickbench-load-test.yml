@@ -81,7 +81,12 @@ jobs:
 
       - name: Upload jar and script to S3
         run: |
-          JAR=$(ls spark-3.5/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-3.5_2.12-*.jar | head -1)
+          # The runtime build/libs may also hold thin -empty/-sources/-javadoc
+          # jars; the shaded fat jar is the one we need. Exclude those classifiers
+          # and pick the largest (the fat jar dwarfs them) to avoid uploading the
+          # wrong artifact.
+          JAR=$(ls -S spark-3.5/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-3.5_2.12-*.jar \
+                | grep -Ev '(sources|javadoc|empty)\.jar$' | head -1)
           aws s3 cp "$JAR" "$JAR_S3_URI"
           aws s3 cp benchmarks/clickbench_ingest.py "$SCRIPT_S3_URI"
 
