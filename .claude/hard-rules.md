@@ -121,6 +121,9 @@ Final pre-commit pass. If you can't tick a box, don't open the PR.
 - [ ] If user-facing docs need updating, the change is sent to
       [`ClickHouse/clickhouse-docs`](https://github.com/ClickHouse/clickhouse-docs),
       not the local `docs/`.
+- [ ] Before committing, request a code review from a subagent, then read its
+      feedback critically — fix the real issues and consciously dismiss false
+      positives rather than acting on every comment.
 
 ---
 
