@@ -14,4 +14,4 @@ limitations under the License.
 
 # CLAUDE.md
 
-Agent guidelines for this repository live in [`AGENTS.md`](AGENTS.md).
+Agent guidelines for this repository live in @AGENTS.md.

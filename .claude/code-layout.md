@@ -54,13 +54,15 @@ noted), under `clickhouse-spark/src/main/scala/`:
     MultiStringArgsHash) and the function registries.
 - `org/apache/spark/sql/clickhouse/`
   - `ClickHouseSQLConf.scala` — Spark `SQLConf` entries (`spark.clickhouse.*`).
-    Changes require a golden-file refresh (see AGENTS.md hard rule #5).
+    Changes require regenerating the `ConfigurationSuite` golden file (see
+    [`build-and-test.md`](build-and-test.md)).
   - `ExprUtils.scala` — Spark `Expression` ↔ ClickHouse expression mapping.
     **Most cross-version drift lives here. Review with extreme care.**
 
 Shared code lives in `clickhouse-core/src/main/scala/com/clickhouse/spark/`,
-notably `client/` (`NodeClient`, `ClusterClient` — both `AutoCloseable`) and
-`spec/` (`NodeSpec`, `ClusterSpec`, `TableSpec`, engines, partitioning).
+notably `client/` (`NodeClient`, `ClusterClient`), `spec/` (`NodeSpec`,
+`ClusterSpec`, `TableSpec`, engines, partitioning), and `expr/` (`ExprRender`
+— renders compiled expressions/sort orders into SQL).
 
 ---
 
@@ -83,6 +85,7 @@ Spark on the result rows. This is intentional, not an oversight.
 | `WHERE` filters | `ClickHouseScanBuilder.pushFilters` (mixes `SupportsPushDownFilters`) | `SQLHelper.compileFilter(f): Option[String]`. Unsupported filters are returned to Spark for post-filtering — `null`/`None` is the supported "not pushable" signal. |
 | `GROUP BY` + agg fns | `ClickHouseScanBuilder.pushAggregation` (mixes `SupportsPushDownAggregates`) | `SQLHelper.compileAggregate(AggregateFunc): Option[String]`. All-or-nothing per call. Limited to `MIN`/`MAX`/`COUNT`/`SUM`/`COUNT(*)` on a single-segment `NamedReference`. Issues a probe `... WHERE 1=0` to derive the output schema. |
 | `LIMIT n` | `ClickHouseScanBuilder.pushLimit` (mixes `SupportsPushDownLimit`) | Stored as `_limit`, threaded into the final SQL. |
+| `ORDER BY … LIMIT n` (top-N) | `ClickHouseScanBuilder.pushTopN` (mixes `SupportsPushDownTopN`, gated by `spark.clickhouse.read.pushdown.topN`, default `true`) | Each sort order is translated via `ExprUtils.toClickHouseSortOrderOpt` + `ExprRender.renderOrder` (shared `clickhouse-core/.../expr/`). All-or-nothing: if any order is untranslatable (or the conf is off), returns `false`. On success renders an `ORDER BY …` clause (threaded as `orderByClause`) and sets `_limit`. **Partial push-down** (`isPartiallyPushed = true`): each input partition runs its own `ORDER BY … LIMIT n` local top-N, and Spark performs the final global merge across partitions. |
 | Column pruning | `ClickHouseScanBuilder.pruneColumns` (mixes `SupportsPushDownRequiredColumns`) | Narrows `_readSchema` by name match. **No expression rewriting** — projections that are anything other than a column reference run in Spark. |
 | Runtime/DPP filters | `ClickHouseBatchScan.{filter, filterAttributes}` (mixes `SupportsRuntimeFiltering`, gated by `spark.clickhouse.read.runtimeFilter.enabled`) | At `createReader` time, `runtimeFilters` are `compileFilters`-rendered and `AND`-merged into the per-partition `filtersExpr`. |
 | Function lookup in expressions | `ExprUtils.toCatalyst` / `toSparkExpression` / `toSparkTransformOpt` + `FunctionRegistry` | V2 `ApplyTransform` whose name resolves in the `FunctionRegistry` is recognised; args walk recursively. |
@@ -121,14 +124,17 @@ The four trees diverge in narrow, predictable places. Diff carefully:
 - **`ExprUtils` function-translation signatures differ between 3.3 and
   3.4+.** 3.4 / 3.5 / 4.0 thread a `functionRegistry: FunctionRegistry`
   argument through `toCatalyst`, `toSparkTransformOpt`, `toSparkExpression`,
-  and `toClickHouse`. 3.3 has no `FunctionRegistry` parameter on these
-  signatures — `ApplyTransform` resolution is narrower as a result, and any
+  `toClickHouse`, and `toClickHouseSortOrderOpt` (so 3.3 calls
+  `pushTopN`'s `toClickHouseSortOrderOpt(o)` while 3.4+ call
+  `toClickHouseSortOrderOpt(o, scanJob.functionRegistry)`). 3.3 has no
+  `FunctionRegistry` parameter on these signatures — `ApplyTransform`
+  resolution is narrower as a result, and any
   push-down that wants to translate a Spark function call into a ClickHouse
   one must implement the 3.3 path more conservatively. Do not paste a 3.4+
   patch into 3.3 without auditing every call site.
 - **`SupportsPushDown*` mix-in list on `ClickHouseScanBuilder` is uniform
-  on `main` today** (Limit + Filters + Aggregates + RequiredColumns) but
-  is *not* guaranteed to stay uniform across versions if a future Spark
+  on `main` today** (TopN + Limit + Filters + Aggregates + RequiredColumns)
+  but is *not* guaranteed to stay uniform across versions if a future Spark
   release adds an interface only 4.0 implements. Always grep the actual
   `extends ScanBuilder with ...` line in each tree before assuming
   identical surface.
@@ -170,15 +176,14 @@ wraps `com.clickhouse.client.api.Client` from `com.clickhouse:client-v2`.
   `spark.clickhouse.read.settings=<k>=<v>,...` (literal `SETTINGS` clause on
   the SELECT). **There is no `spark.clickhouse.write.settings`** — for
   write-path server settings, use `option.clickhouse_setting_*`.
-- **Arrow write, Variant handling (Spark 4.0 only):**
-  `ClickHouseWriter.revisedDataSchema` exists in every version as the schema
-  the formats serialize against (a few generic Spark→CH-friendly rewrites).
-  In **`spark-4.0/clickhouse-spark/.../write/format/ClickHouseArrowStreamWriter.scala`**
-  it is **overridden** to additionally rewrite every `VariantType` field to
-  `StringType`, and the writer calls a local `variantToJsonString` helper to
-  serialize each value to JSON before handing it to the Arrow writer. This
-  is an intentional workaround, not dead code: ClickHouse's Arrow input
-  format does not recognise Arrow `Union`, the `arrow.variant` extension
-  type, or any other structural Variant encoding. Do not "clean it up"
-  without first verifying ClickHouse's Arrow reader can consume the new
-  encoding end-to-end.
+- **Arrow write Variant workaround (Spark 4.0 only):**
+  `spark-4.0/clickhouse-spark/.../write/format/ClickHouseArrowStreamWriter.scala`
+  overrides `revisedDataSchema` to rewrite every `VariantType` field to
+  `StringType`, then serializes each value via a local `variantToJsonString`
+  helper before handing it to the Arrow writer (see
+  [*`VariantType` is Spark 4.0-only*](#varianttype-is-spark-40-only) above for
+  why this lives only in `spark-4.0/`). Intentional, not dead code: ClickHouse's
+  Arrow input format does not recognise Arrow `Union`, the `arrow.variant`
+  extension type, or any other structural Variant encoding. Do not "clean it up"
+  without first verifying ClickHouse's Arrow reader can consume the new encoding
+  end-to-end.

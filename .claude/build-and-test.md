@@ -24,10 +24,11 @@ the failure modes you cannot infer from those commands.
 `...("scala_binary_version")` directly (and throws
 `Found unsupported Spark version: ...` on unknown values).
 `gradle.properties` seeds those system properties via `systemProp.` entries
-(currently `spark_binary_version=4.0`, `scala_binary_version=2.13`), so
-`-Pspark_binary_version=3.5` is **silently ignored** — Gradle builds the
-default (4.0 / 2.13) instead of 3.5, with no error. Always pass
-`-Dspark_binary_version=...` and `-Dscala_binary_version=...` explicitly.
+(currently `spark_binary_version=4.0`, `scala_binary_version=2.13`). A non-default
+`-P` value **fails configuration** (`settings.gradle` keeps the default `4.0`/`2.13`
+projects from the system props while `build.gradle` reads the `-P` project prop, so
+they disagree — e.g. `Project with path ':clickhouse-spark-3.3_2.12' could not be
+found`). Always pass `-Dspark_binary_version=...` and `-Dscala_binary_version=...`.
 
 **Subproject names embed the Scala suffix:** `:clickhouse-spark-<v>_<scala>:`,
 `:clickhouse-spark-it-<v>_<scala>:`, `:clickhouse-spark-runtime-<v>_<scala>:`
@@ -35,7 +36,7 @@ default (4.0 / 2.13) instead of 3.5, with no error. Always pass
 list. Direct task example:
 
 ```bash
-./gradlew :clickhouse-spark-3.5_2.13:test --tests=ClickHouseGenericSuite \
+./gradlew :clickhouse-spark-3.5_2.13:compileScala \
   -Dspark_binary_version=3.5 -Dscala_binary_version=2.13
 ```
 
@@ -65,12 +66,50 @@ Tag-partitioned:
   `org.scalatest.tags.Cloud`.
 - `./gradlew slowTest` — includes Slow-tagged tests (e.g. `TPCDSClusterSuite`).
 - `./gradlew cloudTest` — runs against a real ClickHouse Cloud instance.
-  Requires `CLICKHOUSE_CLOUD_HOST` / `_USER` / `_PASSWORD` (optionally
-  `_HTTP_PORT` defaulting to `8443`, `_TCP_PORT` defaulting to `9000`). See
-  `ClickHouseCloudMixIn`.
+  Requires `CLICKHOUSE_CLOUD_HOST` / `_PASSWORD` (optionally `_USER` defaulting
+  to `default`, `_HTTP_PORT` defaulting to `8443`, `_TCP_PORT` defaulting to
+  `9000`). See `ClickHouseCloudMixIn`.
 
 `maxParallelForks=1` is intentional — IT suites share container state and
 deadlock or cross-contaminate when run in parallel.
+
+### Running a single suite
+
+Use Gradle's `--tests=<SuiteName>` filter — **not** `-Dsuites`, which does not
+restrict anything (the whole project's suites run; verified —
+`-Dsuites='…SchemaUtilsSuite'` ran 33 tests vs 28 for the one suite).
+
+**Name a concrete suite, not an abstract base.** Many `-it` suites are abstract
+bases (`ClickHouseGenericSuite`, `ClickHouseDataTypeSuite`, `ClickHouseTableDDLSuite`,
+…) that ScalaTest never runs directly — filtering on one matches 0 tests while
+still printing `BUILD SUCCESSFUL`. The runnable suites are the concrete subclasses
+(`ClickHouseSingle*Suite`, `ClickHouseCloud*Suite`, `Cluster*Suite`). Always
+confirm `Total number of tests run: N` is non-zero — never trust the exit status.
+
+```bash
+# unit suite (clickhouse-spark)
+./gradlew :clickhouse-spark-3.5_2.13:test --tests=SchemaUtilsSuite \
+  -Dspark_binary_version=3.5 -Dscala_binary_version=2.13
+
+# integration suite (clickhouse-spark-it) — concrete subclass, needs Docker
+./gradlew :clickhouse-spark-it-3.5_2.13:test --tests=ClickHouseSingleTableDDLSuite \
+  -Dspark_binary_version=3.5 -Dscala_binary_version=2.13
+```
+
+### Regenerating `ClickHouseSQLConf` golden files
+
+Adding or changing a `ClickHouseSQLConf` entry requires regenerating the
+`docs/configurations/*.md` golden file, which `ConfigurationSuite` asserts
+against. Run it with `UPDATE=1` for every Spark version that exposes the entry
+(3.4 / 3.5 / 4.0; 3.3 predates `ConfigurationSuite`):
+
+```bash
+UPDATE=1 ./gradlew test --tests=ConfigurationSuite \
+  -Dspark_binary_version=<v> -Dscala_binary_version=<s>
+```
+
+`docs/configurations/*.md` is the one exception to the "don't hand-edit `docs/`"
+rule — it is test-owned, not hand-written (see hard-rules documentation policy).
 
 ### ClickHouse Cloud SharedMergeTree is eventually consistent
 
@@ -90,19 +129,16 @@ legacy approach this rule is intended to phase out, not a model to copy.
 
 ### Profile-switching pitfalls in one shell
 
-The Gradle daemon caches `System.getProperty` values from the JVM it started
-under, so back-to-back `for v in 3.3 3.4 3.5 4.0` loops can pick up the wrong
-profile. Run each profile as a separate invocation with `--no-daemon`, or
-call `./gradlew --stop` between profiles to evict the daemon. `--rerun-tasks`
-alone does **not** address this.
-
-Switching from Scala 2.13 to 2.12 (i.e. building 3.3 after 3.5) can also
+Switching from Scala 2.13 to 2.12 (i.e. building 3.3 after 3.5) can
 leave stale 2.13 `.class` files in `clickhouse-core/build/` that the 2.12
-compiler cannot read. On an unexplained Scala 2.12 compile failure in
-`clickhouse-core` after a profile switch:
+compiler cannot read. If the compiler fails with cryptic
+`error while loading ...` / `class file ... has wrong version` errors in
+`clickhouse-core` after a profile switch — rather than a genuine source error —
+clear that module's stale output. Prefer the Gradle task (`clickhouse-core` is
+profile-independent, so it cleans under any profile):
 
 ```bash
-rm -rf clickhouse-core/build/classes clickhouse-core/build/libs
+./gradlew :clickhouse-core:clean
 ```
 
 ### Knobs
@@ -132,6 +168,10 @@ Spark-version-specific suites must be duplicated across `spark-3.3` …
 
 ## Code style
 
+- Formatting is Spotless + scalafmt `3.6.1` with `maxColumn=120`, and every new
+  source file needs the Apache-2.0 header (RAT enforces it). These values live
+  in `.scalafmt.conf` / `build.gradle` — those config files are the source of
+  truth if they ever drift from this note.
 - `.scalafmt.conf` sets `runner.dialect=scala212` — this parses both 2.12 and
   2.13 sources. Do **not** change the dialect or the `scalaMajorVersion("2.12")`
   setting in `build.gradle` without testing the full matrix.
@@ -155,6 +195,14 @@ Workflows in `.github/workflows/`:
 - `check-license.yml` — RAT license-header check.
 - `cloud.yml` — `cloudTest` against real ClickHouse Cloud (uses secrets).
 - `tpcds.yml` — TPC-DS (slow).
+- `publish-release.yml` — publishes release artifacts to Maven Central
+  (`publishAllPublicationsToCentralPortal -Prelease`) on `v*` tag push or manual
+  dispatch, across the full Scala × Spark matrix (4.0 excludes 2.12). Signed
+  (`SIGNING_KEY`/`SIGNING_PASSWORD`, `NMCP_*` secrets).
+- `publish-snapshot.yml` — nightly (cron) snapshot publish of `main` to Maven
+  Central; same matrix and secrets as the release workflow.
+- `sonar.yml` — nightly + manual SonarQube analysis (`./gradlew sonar
+  -PenableSonar=true`).
 
 A green local build for one Spark version is not enough — multi-version
 divergence is exactly what the matrix is designed to catch.
