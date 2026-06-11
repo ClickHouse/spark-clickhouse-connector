@@ -59,6 +59,12 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     case _ => None
   }
 
+  def catalogTimeZone(options: CaseInsensitiveStringMap): String =
+    Option(options.get(CATALOG_PROP_TZ))
+      .filter(_.nonEmpty)
+      .orElse(Option(options.get(CATALOG_PROP_OPTION_TZ)).filter(_.nonEmpty))
+      .getOrElse("server")
+
   def buildNodeSpec(options: CaseInsensitiveStringMap): NodeSpec = {
     val clientOpts = options.asScala
       .filterKeys(_.startsWith(CATALOG_PROP_OPTION_PREFIX))
