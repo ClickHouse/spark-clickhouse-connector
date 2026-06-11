@@ -16,6 +16,12 @@ CREATE TABLE IF NOT EXISTS perf.runs (
   run_started_at    DateTime,
   run_ended_at      DateTime,
   git_sha           String,
+  -- Which connector produced the run (e.g. 'spark'); lets us add other
+  -- connectors later and filter by them.
+  connector          String DEFAULT 'spark',
+  -- Cluster sizing / tier label for the run (e.g. 'small', 'big'); lets us
+  -- compare runs across machine sizes.
+  run_profile        String DEFAULT '',
   spark_version      String,
   scala_version      String,
   connector_version  String,

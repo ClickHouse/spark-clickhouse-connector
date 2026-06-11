@@ -23,6 +23,14 @@ on:
         description: "Override input glob (default = full 100 files)"
         required: false
         default: "s3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet"
+      connector:
+        description: "Connector under test (tags the run)"
+        required: false
+        default: "spark"
+      run_profile:
+        description: "Cluster sizing / tier label (e.g. small, big)"
+        required: false
+        default: "small"
 
 jobs:
   load-test:
@@ -42,11 +50,14 @@ jobs:
       CH_TABLE: hits
       CH_SECRET_ID: clickbench-load-test/target-ch-password
       INPUT_PARQUET_GLOB: ${{ inputs.input_parquet_glob || 's3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet' }}
+      # Run dimensions recorded on perf.runs (and exported to the DWH).
+      CONNECTOR: ${{ inputs.connector || 'spark' }}
+      RUN_PROFILE: ${{ inputs.run_profile || 'small' }}
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install ClickHouse client (clickhouse-connect)
-        run: pip install --quiet clickhouse-connect
+      - name: Install ClickHouse client (clickhouse-connect) + boto3
+        run: pip install --quiet clickhouse-connect boto3
 
       - uses: actions/setup-java@v4
         with:
@@ -211,3 +222,16 @@ jobs:
             echo "=== $sql ==="
             python benchmarks/scripts/run_metrics_sql.py "$sql"
           done
+
+      - name: Export metrics to DWH bucket
+        if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
+        # Assumes the cross-account write role (clickbench-load-test-ci is a
+        # trusted principal) and has ClickHouse stream perf.runs/metrics/
+        # ch_inserts for this run to the DWH bucket as Parquet. The DWH side
+        # ingests the files (s3queue).
+        env:
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          DWH_ROLE_ARN: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
+        run: python benchmarks/scripts/export_metrics_to_dwh.py

@@ -16,7 +16,10 @@
 Required env: METRICS_CH_HOST, METRICS_CH_USER, METRICS_CH_PASSWORD,
               RUN_ID, RUN_START, RUN_END, GIT_SHA, EMR_RELEASE_LABEL,
               CONNECTOR_VERSION
+Optional env: CONNECTOR (default 'spark'), RUN_PROFILE (default '')
 """
+import os
+
 import ch_common
 
 
@@ -29,6 +32,7 @@ def main() -> None:
         """
         INSERT INTO perf.runs
           (run_id, run_started_at, run_ended_at, git_sha,
+           connector, run_profile,
            spark_version, scala_version, connector_version,
            clickhouse_version, emr_release)
         VALUES
@@ -36,6 +40,7 @@ def main() -> None:
            parseDateTimeBestEffort({run_start:String}),
            parseDateTimeBestEffort({run_end:String}),
            {git_sha:String},
+           {connector:String}, {run_profile:String},
            '3.5', '2.12', {connector_version:String},
            {clickhouse_version:String}, {emr_release:String})
         """,
@@ -44,6 +49,8 @@ def main() -> None:
             "run_start": ch_common.require("RUN_START"),
             "run_end": ch_common.require("RUN_END"),
             "git_sha": ch_common.require("GIT_SHA"),
+            "connector": os.environ.get("CONNECTOR", "spark"),
+            "run_profile": os.environ.get("RUN_PROFILE", ""),
             "connector_version": ch_common.require("CONNECTOR_VERSION"),
             "clickhouse_version": clickhouse_version,
             "emr_release": ch_common.require("EMR_RELEASE_LABEL"),
