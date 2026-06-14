@@ -90,7 +90,12 @@ def main() -> None:
         }
         if run_id:
             params["run_id"] = run_id
-        ch.command(sql, parameters=params)
+        # The DWH role is write-only (PutObject, no GetObject/ListBucket).
+        # ClickHouse's s3() insert otherwise HEADs the key first (existence /
+        # create-new-file probe), which 403s on a write-only role. Overwrite
+        # mode does a plain PutObject with no probe.
+        ch.command(sql, parameters=params,
+                   settings={"s3_truncate_on_insert": 1, "s3_create_new_file_on_insert": 0})
         print(f"exported perf.{table} -> s3://{bucket}/{key}")
 
     print("done")
