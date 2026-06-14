@@ -31,11 +31,6 @@ on:
         description: "Cluster sizing / tier label (e.g. small, big)"
         required: false
         default: "small"
-  # TEMP (remove before merge): smoke-test the new workflow pre-merge via push,
-  # since workflow_dispatch isn't available until the workflow is on the default
-  # branch. Uses a single-file glob (see INPUT_PARQUET_GLOB).
-  push:
-    branches: [clickbench-load-test]
 
 jobs:
   load-test:
@@ -54,7 +49,7 @@ jobs:
       CH_DATABASE: clickbench
       CH_TABLE: hits
       CH_SECRET_ID: clickbench-load-test/target-ch-password
-      INPUT_PARQUET_GLOB: ${{ inputs.input_parquet_glob || (github.event_name == 'push' && 's3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_0.parquet') || 's3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet' }}
+      INPUT_PARQUET_GLOB: ${{ inputs.input_parquet_glob || 's3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet' }}
       # Run dimensions recorded on perf.runs (and exported to the DWH).
       CONNECTOR: ${{ inputs.connector || 'spark' }}
       RUN_PROFILE: ${{ inputs.run_profile || 'small' }}
