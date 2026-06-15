@@ -28,9 +28,13 @@ on:
         required: false
         default: "spark"
       run_profile:
-        description: "Cluster sizing / tier label (e.g. small, big)"
+        description: "Cluster spec profile (drives EMR sizing; recorded on the run)"
         required: false
         default: "small"
+        type: choice
+        options:
+          - small
+          - large
 
 jobs:
   load-test:
@@ -44,8 +48,8 @@ jobs:
       # release bundles Spark 4, so the connector jar must be built for
       # 3.5_2.12 to match. Bump this if a Spark-4 EMR release appears.
       EMR_RELEASE_LABEL: emr-7.13.0
-      EMR_INSTANCE_TYPE: m6i.2xlarge
-      EMR_CORE_COUNT: "4"
+      # EMR_INSTANCE_TYPE / EMR_CORE_COUNT are derived from RUN_PROFILE by the
+      # "Resolve cluster specs from run profile" step below.
       CH_DATABASE: clickbench
       CH_TABLE: hits
       CH_SECRET_ID: clickbench-load-test/target-ch-password
@@ -123,6 +127,21 @@ jobs:
           SKIP_TRUNCATE: ${{ vars.SKIP_TRUNCATE || '0' }}
         run: python benchmarks/scripts/truncate_target.py
 
+      - name: Resolve cluster specs from run profile
+        # Maps the run_profile (default 'small') to concrete EMR sizing, so a
+        # bigger run is a one-click choice. To add a "bigger ClickHouse" tier,
+        # extend this with a per-profile target-CH secret. The chosen specs are
+        # recorded on the run (see runtime map in "Insert run record").
+        run: |
+          case "$RUN_PROFILE" in
+            small) IT=m6i.2xlarge; CC=4 ;;
+            large) IT=m6i.4xlarge; CC=8 ;;
+            *)     echo "unknown run_profile '$RUN_PROFILE', defaulting to small"; IT=m6i.2xlarge; CC=4 ;;
+          esac
+          echo "EMR_INSTANCE_TYPE=$IT" >> "$GITHUB_ENV"
+          echo "EMR_CORE_COUNT=$CC"   >> "$GITHUB_ENV"
+          echo "run_profile=$RUN_PROFILE -> ${CC} x ${IT}"
+
       - name: Provision EMR
         env:
           EMR_LOG_URI: s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/emr-logs/
@@ -196,7 +215,9 @@ jobs:
           # Spark/EMR runtime attrs go into the generic perf.runs.runtime map;
           # another connector would build its own RUNTIME json here.
           export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
-            '{spark_version: $sv, scala_version: $scv, emr_release: $emr}')
+            --arg it "$EMR_INSTANCE_TYPE" --arg cc "$EMR_CORE_COUNT" \
+            '{spark_version: $sv, scala_version: $scv, emr_release: $emr,
+              emr_instance_type: $it, emr_core_count: $cc}')
           python benchmarks/scripts/insert_run_record.py
 
       - name: Capture metrics — Spark event log + CH query_log/metric_log/part_log
