@@ -22,11 +22,12 @@ CREATE TABLE IF NOT EXISTS perf.runs (
   -- Cluster sizing / tier label for the run (e.g. 'small', 'big'); lets us
   -- compare runs across machine sizes.
   run_profile        String DEFAULT '',
-  spark_version      String,
-  scala_version      String,
   connector_version  String,
   clickhouse_version String DEFAULT '',
-  emr_release        String,
+  -- Connector/runtime-specific attributes, kept generic so new connectors
+  -- (kafka, ...) need no schema change. Spark fills e.g. spark_version,
+  -- scala_version, emr_release; another connector records its own keys.
+  runtime            Map(String, String),
   notes              String DEFAULT ''
 ) ENGINE = MergeTree
 ORDER BY (run_started_at, run_id);

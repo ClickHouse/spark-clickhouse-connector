@@ -193,6 +193,10 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           export CONNECTOR_VERSION=$(cat version.txt)
+          # Spark/EMR runtime attrs go into the generic perf.runs.runtime map;
+          # another connector would build its own RUNTIME json here.
+          export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
+            '{spark_version: $sv, scala_version: $scv, emr_release: $emr}')
           python benchmarks/scripts/insert_run_record.py
 
       - name: Capture metrics — Spark event log + CH query_log/metric_log/part_log
