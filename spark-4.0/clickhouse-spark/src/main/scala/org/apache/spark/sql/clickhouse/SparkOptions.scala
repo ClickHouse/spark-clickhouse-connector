@@ -22,7 +22,7 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 import java.time.Duration
 import java.util.{Locale, Map => JMap}
-import scala.collection.JavaConverters._
+import scala.jdk.CollectionConverters._
 
 trait SparkOptions extends SQLConfHelper with Serializable {
   protected def options: CaseInsensitiveStringMap

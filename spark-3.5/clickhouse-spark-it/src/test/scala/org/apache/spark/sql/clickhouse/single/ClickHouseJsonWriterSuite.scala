@@ -37,8 +37,8 @@ abstract class ClickHouseJsonWriterSuite extends ClickHouseWriterTestBase {
     withTable("test_db", "test_write_settings", schema) { (actualDb, actualTbl) =>
       val token1 = java.util.UUID.randomUUID().toString
       val token2 = java.util.UUID.randomUUID().toString
-      val comment1 = s"write_settings_$token1"
-      val comment2 = s"write_settings_$token2"
+      val comment1 = s"write_settings_${java.util.UUID.randomUUID()}"
+      val comment2 = s"write_settings_${java.util.UUID.randomUUID()}"
 
       Seq((1, "one")).toDF("id", "name").coalesce(1).writeTo(s"$actualDb.$actualTbl")
         .option("clickhouse_setting_insert_deduplication_token", token1)
@@ -59,7 +59,9 @@ abstract class ClickHouseJsonWriterSuite extends ClickHouseWriterTestBase {
         if (isCloud) "clusterAllReplicas('default', system, query_log)"
         else "system.query_log"
       val settings = runClickHouseSQL(
-        s"""SELECT log_comment, Settings['insert_deduplication_token']
+        s"""SELECT
+           |  log_comment,
+           |  Settings['insert_deduplication_token'] AS dedup_token
            |FROM $queryLogRef
            |WHERE type = 'QueryFinish'
            |  AND log_comment IN ('$comment1', '$comment2')
@@ -68,11 +70,15 @@ abstract class ClickHouseJsonWriterSuite extends ClickHouseWriterTestBase {
       ).collect().map(_.getString(0))
 
       assert(
-        settings.exists(row => row.contains(comment1) && row.contains(token1)),
+        settings.exists(row =>
+          row.contains(s""""log_comment":"$comment1"""") && row.contains(s""""dedup_token":"$token1"""")
+        ),
         s"Expected token $token1 in query_log. Found: ${settings.toList}"
       )
       assert(
-        settings.exists(row => row.contains(comment2) && row.contains(token2)),
+        settings.exists(row =>
+          row.contains(s""""log_comment":"$comment2"""") && row.contains(s""""dedup_token":"$token2"""")
+        ),
         s"Expected token $token2 in query_log. Found: ${settings.toList}"
       )
     }

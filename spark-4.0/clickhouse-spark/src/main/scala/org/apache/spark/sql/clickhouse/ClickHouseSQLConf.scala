@@ -246,7 +246,9 @@ object ClickHouseSQLConf {
 
   val WRITE_SETTINGS: OptionalConfigEntry[String] =
     buildConf("spark.clickhouse.write.settings")
-      .doc("Settings when writing to ClickHouse. e.g. `insert_deduplication_token=..., async_insert=1`")
+      .doc("Settings when writing to ClickHouse as comma-separated `k=v` entries. " +
+        "Per-write options `clickhouse_setting_<name>=<value>` override these settings. " +
+        "Precedence: SQLConf < write option `spark.clickhouse.write.settings` < `clickhouse_setting_*`.")
       .version("0.10.1")
       .stringConf
       .createOptional
