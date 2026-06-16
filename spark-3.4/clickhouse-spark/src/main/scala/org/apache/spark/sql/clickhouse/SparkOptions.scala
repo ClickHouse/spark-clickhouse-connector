@@ -21,7 +21,8 @@ import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 import java.time.Duration
-import java.util.{Map => JMap}
+import java.util.{Locale, Map => JMap}
+import scala.collection.JavaConverters._
 
 trait SparkOptions extends SQLConfHelper with Serializable {
   protected def options: CaseInsensitiveStringMap
@@ -59,6 +60,43 @@ class ReadOptions(_options: JMap[String, String]) extends SparkOptions {
 class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
 
   override protected def options: CaseInsensitiveStringMap = new CaseInsensitiveStringMap(_options)
+
+  private val writeSettingPrefix = "clickhouse_setting_"
+
+  private def parseSettings(settings: String): Map[String, String] =
+    settings
+      .split(",")
+      .map(_.trim)
+      .filter(_.nonEmpty)
+      .map { entry =>
+        val separator = entry.indexOf("=")
+        if (separator <= 0 || separator == entry.length - 1) {
+          throw new IllegalArgumentException(
+            s"Invalid ClickHouse write setting '$entry'. Expected comma-separated key=value entries."
+          )
+        }
+        val key = entry.substring(0, separator).trim
+        val value = entry.substring(separator + 1).trim
+        if (key.isEmpty || value.isEmpty) {
+          throw new IllegalArgumentException(
+            s"Invalid ClickHouse write setting '$entry'. Expected comma-separated key=value entries."
+          )
+        }
+        key -> value
+      }
+      .toMap
+
+  private def prefixedSettings: Map[String, String] =
+    options.asCaseSensitiveMap().asScala.collect {
+      case (key, value) if key.toLowerCase(Locale.ROOT).startsWith(writeSettingPrefix) =>
+        key.substring(writeSettingPrefix.length) -> value
+    }.toMap
+
+  def settings: Map[String, String] = {
+    val confSettings = conf.getConf(WRITE_SETTINGS).map(parseSettings).getOrElse(Map.empty)
+    val optionSettings = Option(options.get(WRITE_SETTINGS.key)).map(parseSettings).getOrElse(Map.empty)
+    confSettings ++ optionSettings ++ prefixedSettings
+  }
 
   def batchSize: Int = eval(WRITE_BATCH_SIZE.key, WRITE_BATCH_SIZE)
 

@@ -169,7 +169,7 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
     val sql = s"INSERT INTO `$database`.`$table` FORMAT $inputFormat"
     onExecuteQuery(queryId, sql)
     val insertSettings: InsertSettings = new InsertSettings();
-    settings.foreach { case (k, v) => insertSettings.setOption(k, v) }
+    settings.foreach { case (k, v) => insertSettings.serverSetting(k, v) }
     insertSettings.setDatabase(database)
     // TODO: check what type of compression is supported by the client v2
     insertSettings.compressClientRequest(true)

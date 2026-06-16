@@ -254,7 +254,13 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     ) {
       var startWriteTime = System.currentTimeMillis
       // , codec
-      client.syncInsertOutputJSONEachRow(database, table, format, new ByteArrayInputStream(data)) match {
+      client.syncInsertOutputJSONEachRow(
+        database,
+        table,
+        format,
+        new ByteArrayInputStream(data),
+        writeJob.writeSettings
+      ) match {
         case Right(_) =>
           writeTime = System.currentTimeMillis - startWriteTime
           _totalWriteTime.add(writeTime)

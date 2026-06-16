@@ -244,6 +244,13 @@ object ClickHouseSQLConf {
       .transform(_.toLowerCase)
       .createOptional
 
+  val WRITE_SETTINGS: OptionalConfigEntry[String] =
+    buildConf("spark.clickhouse.write.settings")
+      .doc("Settings when writing to ClickHouse. e.g. `insert_deduplication_token=..., async_insert=1`")
+      .version("0.10.1")
+      .stringConf
+      .createOptional
+
   val READ_PUSHDOWN_TOP_N: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.read.pushdown.topN")
       .doc("Whether to push down `ORDER BY ... LIMIT n` (top-N) to ClickHouse. " +
