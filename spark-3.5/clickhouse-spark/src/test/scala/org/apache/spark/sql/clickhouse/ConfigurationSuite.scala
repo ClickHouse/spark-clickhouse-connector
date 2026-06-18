@@ -98,32 +98,33 @@ class ConfigurationSuite extends AnyFunSuite {
     verifyOutput(configurationsMarkdown, newOutput, getClass.getCanonicalName)
   }
 
-  test("write server settings") {
+  test("write client options") {
     val conf = SQLConf.get
-    val prefix = ClickHouseSQLConf.WRITE_SERVER_SETTINGS_PREFIX
-    val previousWriteSettings = conf.getAllConfs
+    val prefix = ClickHouseSQLConf.WRITE_OPTION_PREFIX
+    val previousWriteOptions = conf.getAllConfs
       .filter { case (key, _) => key.startsWith(prefix) }
     conf.getAllConfs.keys.filter(_.startsWith(prefix)).toSeq.foreach(conf.unsetConf)
-    conf.setConfString(s"${prefix}log_comment", "MiXeD")
-    conf.setConfString(s"${prefix}insert_deduplication_token", "FromConf")
+    conf.setConfString(s"${prefix}clickhouse_setting_log_comment", "MiXeD")
+    conf.setConfString(s"${prefix}http_header_x-clickhouse-test", "FromConf")
     conf.setConfString(s"${prefix}custom_encoded", "a,b=[One,Two]")
+    conf.setConfString(s"${prefix}client_name", "FromConf")
     try {
       val writerOptions = new util.HashMap[String, String]()
-      writerOptions.put(s"${prefix}wait_for_async_insert", "1")
-      writerOptions.put(s"${prefix}insert_deduplication_token", "FromWriteOption")
+      writerOptions.put(s"${prefix}clickhouse_setting_log_comment", "FromWriteOption")
+      writerOptions.put(s"${prefix}http_header_x-clickhouse-test", "FromWriteOption")
 
       val settings = new WriteOptions(writerOptions).settings
-      assert(settings("log_comment") === "MiXeD")
+      assert(settings("clickhouse_setting_log_comment") === "FromWriteOption")
+      assert(settings("http_header_x-clickhouse-test") === "FromWriteOption")
       assert(settings("custom_encoded") === "a,b=[One,Two]")
-      assert(settings("wait_for_async_insert") === "1")
-      assert(settings("insert_deduplication_token") === "FromWriteOption")
+      assert(settings("client_name") === "FromConf")
 
       val malformedOptions = new util.HashMap[String, String]()
-      malformedOptions.put(prefix, "async_insert")
+      malformedOptions.put(prefix, "invalid")
       intercept[IllegalArgumentException](new WriteOptions(malformedOptions).settings)
     } finally {
       conf.getAllConfs.keys.filter(_.startsWith(prefix)).toSeq.foreach(conf.unsetConf)
-      previousWriteSettings.foreach { case (key, value) => conf.setConfString(key, value) }
+      previousWriteOptions.foreach { case (key, value) => conf.setConfString(key, value) }
     }
   }
 

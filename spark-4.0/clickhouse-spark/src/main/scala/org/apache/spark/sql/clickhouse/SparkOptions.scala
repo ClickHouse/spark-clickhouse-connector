@@ -61,21 +61,21 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
 
   override protected def options: CaseInsensitiveStringMap = new CaseInsensitiveStringMap(_options)
 
-  private def serverSettingsWithPrefix(settings: Iterable[(String, String)]): Map[String, String] =
+  private def clientOptionsWithPrefix(settings: Iterable[(String, String)]): Map[String, String] =
     settings.collect {
-      case (key, value) if key.toLowerCase(Locale.ROOT).startsWith(WRITE_SERVER_SETTINGS_PREFIX) =>
-        val settingName = key.substring(WRITE_SERVER_SETTINGS_PREFIX.length)
-        if (settingName.isEmpty) {
+      case (key, value) if key.toLowerCase(Locale.ROOT).startsWith(WRITE_OPTION_PREFIX) =>
+        val optionName = key.substring(WRITE_OPTION_PREFIX.length)
+        if (optionName.isEmpty) {
           throw new IllegalArgumentException(
-            s"Invalid ClickHouse write server setting '$key'. Expected ${WRITE_SERVER_SETTINGS_PREFIX}<name>."
+            s"Invalid ClickHouse write option '$key'. Expected ${WRITE_OPTION_PREFIX}<name>."
           )
         }
-        settingName -> value
+        optionName -> value
     }.toMap
 
   def settings: Map[String, String] = {
-    val confSettings = serverSettingsWithPrefix(conf.getAllConfs)
-    val optionSettings = serverSettingsWithPrefix(options.asCaseSensitiveMap().asScala)
+    val confSettings = clientOptionsWithPrefix(conf.getAllConfs)
+    val optionSettings = clientOptionsWithPrefix(options.asCaseSensitiveMap().asScala)
     confSettings ++ optionSettings
   }
 

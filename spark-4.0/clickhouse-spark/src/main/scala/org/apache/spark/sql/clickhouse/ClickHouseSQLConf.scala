@@ -244,13 +244,15 @@ object ClickHouseSQLConf {
       .transform(_.toLowerCase)
       .createOptional
 
-  val WRITE_SERVER_SETTINGS_PREFIX: String = "spark.clickhouse.write.server_settings."
+  val WRITE_OPTION_PREFIX: String = "spark.clickhouse.write.option."
 
-  val WRITE_SERVER_SETTINGS: OptionalConfigEntry[String] =
-    buildConf(s"${WRITE_SERVER_SETTINGS_PREFIX}<name>")
-      .doc("ClickHouse server setting applied when writing. Replace `<name>` with the setting name, " +
-        s"for example `${WRITE_SERVER_SETTINGS_PREFIX}insert_deduplication_token`. " +
-        "Writer options override SQLConf entries with the same setting name.")
+  val WRITE_OPTION: OptionalConfigEntry[String] =
+    buildConf(s"${WRITE_OPTION_PREFIX}<name>")
+      .doc("ClickHouse Java client insert option applied when writing. Replace `<name>` with a client option " +
+        s"key, for example `${WRITE_OPTION_PREFIX}clickhouse_setting_log_comment`, " +
+        s"`${WRITE_OPTION_PREFIX}http_header_<header>`, `${WRITE_OPTION_PREFIX}custom_<name>`, " +
+        "or a recognized unprefixed client option. Writer options override SQLConf entries with the same " +
+        "option key.")
       .version("0.10.1")
       .stringConf
       .createOptional

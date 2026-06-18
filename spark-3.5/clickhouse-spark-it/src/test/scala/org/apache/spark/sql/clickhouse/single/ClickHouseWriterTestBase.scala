@@ -23,6 +23,8 @@ import org.apache.spark.sql.types._
  */
 trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
 
+  import testImplicits._
+
   test("write ArrayType - array of integers") {
     val schema = StructType(Seq(
       StructField("id", IntegerType, nullable = false),
@@ -1065,6 +1067,52 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
       assert(metadata2.getDate(0) === date("2024-03-10"))
       assert(metadata2.getDouble(1) === 92.1)
       assert(metadata2.getSeq[String](2) === Seq("premium", "admin", "verified"))
+    }
+  }
+
+  test("push down per-write client options") {
+    val schema = StructType(Seq(
+      StructField("id", IntegerType, nullable = false),
+      StructField("name", StringType, nullable = false)
+    ))
+
+    withTable("test_db", "test_write_client_options", schema) { (actualDb, actualTbl) =>
+      val comment1 = s"write_options_${java.util.UUID.randomUUID()}"
+      val comment2 = s"write_options_${java.util.UUID.randomUUID()}"
+
+      Seq((1, "one")).toDF("id", "name").coalesce(1).writeTo(s"$actualDb.$actualTbl")
+        .option("spark.clickhouse.write.option.clickhouse_setting_log_comment", comment1)
+        .append()
+
+      Seq((2, "two")).toDF("id", "name").coalesce(1).writeTo(s"$actualDb.$actualTbl")
+        .option("spark.clickhouse.write.option.clickhouse_setting_log_comment", comment2)
+        .append()
+
+      runClickHouseSQL(
+        if (isCloud) "SYSTEM FLUSH LOGS ON CLUSTER 'default'"
+        else "SYSTEM FLUSH LOGS"
+      ).collect()
+
+      val queryLogRef =
+        if (isCloud) "clusterAllReplicas('default', system, query_log)"
+        else "system.query_log"
+      val comments = runClickHouseSQL(
+        s"""SELECT log_comment
+           |FROM $queryLogRef
+           |WHERE type = 'QueryFinish'
+           |  AND log_comment IN ('$comment1', '$comment2')
+           |ORDER BY event_time DESC
+           |LIMIT 10""".stripMargin
+      ).collect().map(_.getString(0))
+
+      assert(
+        comments.exists(row => row.contains(s""""log_comment":"$comment1"""")),
+        s"Expected log_comment $comment1 in query_log. Found: ${comments.toList}"
+      )
+      assert(
+        comments.exists(row => row.contains(s""""log_comment":"$comment2"""")),
+        s"Expected log_comment $comment2 in query_log. Found: ${comments.toList}"
+      )
     }
   }
 }
