@@ -41,13 +41,13 @@ abstract class ClickHouseJsonWriterSuite extends ClickHouseWriterTestBase {
       val comment2 = s"write_settings_${java.util.UUID.randomUUID()}"
 
       Seq((1, "one")).toDF("id", "name").coalesce(1).writeTo(s"$actualDb.$actualTbl")
-        .option("clickhouse_setting_insert_deduplication_token", token1)
-        .option("clickhouse_setting_log_comment", comment1)
+        .option("spark.clickhouse.write.server_settings.insert_deduplication_token", token1)
+        .option("spark.clickhouse.write.server_settings.log_comment", comment1)
         .append()
 
       Seq((2, "two")).toDF("id", "name").coalesce(1).writeTo(s"$actualDb.$actualTbl")
-        .option("clickhouse_setting_insert_deduplication_token", token2)
-        .option("clickhouse_setting_log_comment", comment2)
+        .option("spark.clickhouse.write.server_settings.insert_deduplication_token", token2)
+        .option("spark.clickhouse.write.server_settings.log_comment", comment2)
         .append()
 
       runClickHouseSQL(

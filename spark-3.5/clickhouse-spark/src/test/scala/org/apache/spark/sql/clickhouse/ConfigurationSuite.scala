@@ -98,31 +98,33 @@ class ConfigurationSuite extends AnyFunSuite {
     verifyOutput(configurationsMarkdown, newOutput, getClass.getCanonicalName)
   }
 
-  test("write settings") {
+  test("write server settings") {
     val conf = SQLConf.get
-    val previousWriteSettings = conf.getConf(ClickHouseSQLConf.WRITE_SETTINGS)
-    conf.setConfString(ClickHouseSQLConf.WRITE_SETTINGS.key, "log_comment=MiXeD, insert_deduplication_token=FromConf")
+    val prefix = ClickHouseSQLConf.WRITE_SERVER_SETTINGS_PREFIX
+    val previousWriteSettings = conf.getAllConfs
+      .filter { case (key, _) => key.startsWith(prefix) }
+    conf.getAllConfs.keys.filter(_.startsWith(prefix)).toSeq.foreach(conf.unsetConf)
+    conf.setConfString(s"${prefix}log_comment", "MiXeD")
+    conf.setConfString(s"${prefix}insert_deduplication_token", "FromConf")
+    conf.setConfString(s"${prefix}custom_encoded", "a,b=[One,Two]")
     try {
       val writerOptions = new util.HashMap[String, String]()
-      writerOptions.put(
-        ClickHouseSQLConf.WRITE_SETTINGS.key,
-        "wait_for_async_insert=1, insert_deduplication_token=FromOption"
-      )
-      writerOptions.put("clickhouse_setting_insert_deduplication_token", "FromWriteOption")
+      writerOptions.put(s"${prefix}wait_for_async_insert", "1")
+      writerOptions.put(s"${prefix}insert_deduplication_token", "FromWriteOption")
 
       val settings = new WriteOptions(writerOptions).settings
       assert(settings("log_comment") === "MiXeD")
+      assert(settings("custom_encoded") === "a,b=[One,Two]")
       assert(settings("wait_for_async_insert") === "1")
       assert(settings("insert_deduplication_token") === "FromWriteOption")
 
       val malformedOptions = new util.HashMap[String, String]()
-      malformedOptions.put(ClickHouseSQLConf.WRITE_SETTINGS.key, "async_insert")
+      malformedOptions.put(prefix, "async_insert")
       intercept[IllegalArgumentException](new WriteOptions(malformedOptions).settings)
-    } finally
-      previousWriteSettings match {
-        case Some(settings) => conf.setConfString(ClickHouseSQLConf.WRITE_SETTINGS.key, settings)
-        case None => conf.unsetConf(ClickHouseSQLConf.WRITE_SETTINGS)
-      }
+    } finally {
+      conf.getAllConfs.keys.filter(_.startsWith(prefix)).toSeq.foreach(conf.unsetConf)
+      previousWriteSettings.foreach { case (key, value) => conf.setConfString(key, value) }
+    }
   }
 
   def verifyOutput(goldenFile: Path, newOutput: ArrayBuffer[String], agent: String): Unit =

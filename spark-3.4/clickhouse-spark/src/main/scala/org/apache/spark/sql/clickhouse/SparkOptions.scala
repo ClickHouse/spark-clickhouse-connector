@@ -61,41 +61,22 @@ class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
 
   override protected def options: CaseInsensitiveStringMap = new CaseInsensitiveStringMap(_options)
 
-  private val writeSettingPrefix = "clickhouse_setting_"
-
-  private def parseSettings(settings: String): Map[String, String] =
-    settings
-      .split(",")
-      .map(_.trim)
-      .filter(_.nonEmpty)
-      .map { entry =>
-        val separator = entry.indexOf("=")
-        if (separator <= 0 || separator == entry.length - 1) {
+  private def serverSettingsWithPrefix(settings: Iterable[(String, String)]): Map[String, String] =
+    settings.collect {
+      case (key, value) if key.toLowerCase(Locale.ROOT).startsWith(WRITE_SERVER_SETTINGS_PREFIX) =>
+        val settingName = key.substring(WRITE_SERVER_SETTINGS_PREFIX.length)
+        if (settingName.isEmpty) {
           throw new IllegalArgumentException(
-            s"Invalid ClickHouse write setting '$entry'. Expected comma-separated key=value entries."
+            s"Invalid ClickHouse write server setting '$key'. Expected ${WRITE_SERVER_SETTINGS_PREFIX}<name>."
           )
         }
-        val key = entry.substring(0, separator).trim
-        val value = entry.substring(separator + 1).trim
-        if (key.isEmpty || value.isEmpty) {
-          throw new IllegalArgumentException(
-            s"Invalid ClickHouse write setting '$entry'. Expected comma-separated key=value entries."
-          )
-        }
-        key -> value
-      }
-      .toMap
-
-  private def prefixedSettings: Map[String, String] =
-    options.asCaseSensitiveMap().asScala.collect {
-      case (key, value) if key.toLowerCase(Locale.ROOT).startsWith(writeSettingPrefix) =>
-        key.substring(writeSettingPrefix.length) -> value
+        settingName -> value
     }.toMap
 
   def settings: Map[String, String] = {
-    val confSettings = conf.getConf(WRITE_SETTINGS).map(parseSettings).getOrElse(Map.empty)
-    val optionSettings = Option(options.get(WRITE_SETTINGS.key)).map(parseSettings).getOrElse(Map.empty)
-    confSettings ++ optionSettings ++ prefixedSettings
+    val confSettings = serverSettingsWithPrefix(conf.getAllConfs)
+    val optionSettings = serverSettingsWithPrefix(options.asCaseSensitiveMap().asScala)
+    confSettings ++ optionSettings
   }
 
   def batchSize: Int = eval(WRITE_BATCH_SIZE.key, WRITE_BATCH_SIZE)
