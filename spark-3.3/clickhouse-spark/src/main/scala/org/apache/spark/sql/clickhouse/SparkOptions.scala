@@ -21,7 +21,8 @@ import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 import java.time.Duration
-import java.util.{Map => JMap}
+import java.util.{Locale, Map => JMap}
+import scala.collection.JavaConverters._
 
 trait SparkOptions extends SQLConfHelper with Serializable {
   protected def options: CaseInsensitiveStringMap
@@ -59,6 +60,24 @@ class ReadOptions(_options: JMap[String, String]) extends SparkOptions {
 class WriteOptions(_options: JMap[String, String]) extends SparkOptions {
 
   override protected def options: CaseInsensitiveStringMap = new CaseInsensitiveStringMap(_options)
+
+  private def clientOptionsWithPrefix(settings: Iterable[(String, String)]): Map[String, String] =
+    settings.collect {
+      case (key, value) if key.toLowerCase(Locale.ROOT).startsWith(WRITE_OPTION_PREFIX) =>
+        val optionName = key.substring(WRITE_OPTION_PREFIX.length)
+        if (optionName.isEmpty) {
+          throw new IllegalArgumentException(
+            s"Invalid ClickHouse write option '$key'. Expected ${WRITE_OPTION_PREFIX}<name>."
+          )
+        }
+        optionName -> value
+    }.toMap
+
+  def settings: Map[String, String] = {
+    val confSettings = clientOptionsWithPrefix(conf.getAllConfs)
+    val optionSettings = clientOptionsWithPrefix(options.asCaseSensitiveMap().asScala)
+    confSettings ++ optionSettings
+  }
 
   def batchSize: Int = eval(WRITE_BATCH_SIZE.key, WRITE_BATCH_SIZE)
 

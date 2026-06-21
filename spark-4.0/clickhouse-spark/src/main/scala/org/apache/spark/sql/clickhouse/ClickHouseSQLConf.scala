@@ -244,6 +244,19 @@ object ClickHouseSQLConf {
       .transform(_.toLowerCase)
       .createOptional
 
+  val WRITE_OPTION_PREFIX: String = "spark.clickhouse.write.option."
+
+  val WRITE_OPTION: OptionalConfigEntry[String] =
+    buildConf(s"${WRITE_OPTION_PREFIX}<name>")
+      .doc("ClickHouse Java client insert option applied when writing. Replace `<name>` with a client option " +
+        s"key, for example `${WRITE_OPTION_PREFIX}clickhouse_setting_log_comment`, " +
+        s"`${WRITE_OPTION_PREFIX}http_header_<header>`, `${WRITE_OPTION_PREFIX}custom_<name>`, " +
+        "or a recognized unprefixed client option. Writer options override SQLConf entries with the same " +
+        "option key.")
+      .version("0.10.1")
+      .stringConf
+      .createOptional
+
   val READ_PUSHDOWN_TOP_N: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.read.pushdown.topN")
       .doc("Whether to push down `ORDER BY ... LIMIT n` (top-N) to ClickHouse. " +

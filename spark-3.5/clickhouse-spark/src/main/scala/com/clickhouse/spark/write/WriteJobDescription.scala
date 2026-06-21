@@ -42,6 +42,7 @@ case class WriteJobDescription(
   partitionKey: Option[List[Expr]],
   sortingKey: Option[List[OrderExpr]],
   writeOptions: WriteOptions,
+  writeSettings: Map[String, String],
   functionRegistry: FunctionRegistry
 ) {
 

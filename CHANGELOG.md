@@ -24,6 +24,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 Changes that have been merged but not yet released will be documented here.
 
 ### Added
+- Support per-write ClickHouse Java client insert options through `spark.clickhouse.write.option.<name>`, including server settings such as `clickhouse_setting_log_comment`.
 - Variant type support ([#456](https://github.com/ClickHouse/spark-clickhouse-connector/pull/456)). Added support for Spark 4.0's `VariantType` mapped to ClickHouse's `JSON`/`Variant` type. Requires Spark 4.0+ and ClickHouse 25.3+.
 - TableProvider API support ([#471](https://github.com/ClickHouse/spark-clickhouse-connector/pull/471)). Added `ClickHouseTableProvider` implementation enabling format-based access pattern (`.format("clickhouse")`), making the connector compatible with Databricks Unity Catalog and other environments that require TableProvider API.
 - Support for macros in cluster names ([#400](https://github.com/ClickHouse/spark-clickhouse-connector/pull/400)). The connector now resolves ClickHouse macros (e.g., `{cluster}`) in Distributed table cluster names, allowing dynamic cluster resolution based on node-specific macro definitions.
@@ -135,4 +136,3 @@ Changes that have been merged but not yet released will be documented here.
 [0.6.1]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.6.1
 [0.6.0]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.6.0
 [0.5.0]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.5.0
-

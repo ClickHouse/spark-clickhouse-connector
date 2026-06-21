@@ -157,6 +157,7 @@ case class ClickHouseTable(
   }
 
   override def newWriteBuilder(info: LogicalWriteInfo): ClickHouseWriteBuilder = {
+    val writeOptions = new WriteOptions(info.options.asCaseSensitiveMap())
     val writeJob = WriteJobDescription(
       queryId = info.queryId,
       tableSchema = schema,
@@ -172,7 +173,8 @@ case class ClickHouseTable(
       shardingKey = shardingKey,
       partitionKey = partitionKey,
       sortingKey = sortingKey,
-      writeOptions = new WriteOptions(info.options.asCaseSensitiveMap())
+      writeOptions = writeOptions,
+      writeSettings = writeOptions.settings
     )
 
     writeJob.validateDistributedTableSharding()
