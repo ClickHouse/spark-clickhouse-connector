@@ -21,7 +21,7 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 class ClickHouseCommandRunner extends ExternalCommandRunner with ClickHouseHelper {
 
   override def executeCommand(sql: String, options: CaseInsensitiveStringMap): Array[String] =
-    Utils.tryWithResource(client.NodeClient(buildNodeSpec(options))) { nodeClient =>
+    Utils.tryWithResource(client.NodeClient(buildNodeSpec(options), clientQueryTimeoutMs)) { nodeClient =>
       nodeClient.syncQueryAndCheckOutputJSONEachRow(sql).records.map(_.toString).toArray
     }
 }

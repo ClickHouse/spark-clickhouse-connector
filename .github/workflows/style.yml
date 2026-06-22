@@ -24,6 +24,9 @@ on:
       - "branch-*"
       - "main"
 
+permissions:
+  contents: read
+
 jobs:
   check-style:
     runs-on: ubuntu-22.04

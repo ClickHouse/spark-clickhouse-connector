@@ -76,6 +76,8 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     .filter(_ => writeJob.writeOptions.convertDistributedToLocal)
     .map(expr => SafeProjection.create(Seq(expr)))
 
+  private val queryTimeoutMs: Long = writeJob.writeOptions.clientQueryTimeout
+
   // put the node select strategy in executor side because we need to calculate shard and don't know the records
   // util DataWriter#write(InternalRow) invoked.
   protected lazy val client: Either[ClusterClient, NodeClient] =
@@ -85,11 +87,11 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
         val clusterSpec = writeJob.cluster.get
         log.info(s"Connect to cluster ${clusterSpec.name}, which has ${clusterSpec.shards.length} shards and " +
           s"${clusterSpec.nodes.length} nodes.")
-        Left(ClusterClient(clusterSpec))
+        Left(ClusterClient(clusterSpec, queryTimeoutMs))
       case _ =>
         val nodeSpec = writeJob.node
         log.info(s"Connect to single node: $nodeSpec")
-        Right(NodeClient(nodeSpec))
+        Right(NodeClient(nodeSpec, queryTimeoutMs))
     }
 
   def nodeClient(shardNum: Option[Int]): NodeClient = client match {
@@ -226,7 +228,13 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     ) {
       var startWriteTime = System.currentTimeMillis
       // , codec
-      client.syncInsertOutputJSONEachRow(database, table, format, new ByteArrayInputStream(data)) match {
+      client.syncInsertOutputJSONEachRow(
+        database,
+        table,
+        format,
+        new ByteArrayInputStream(data),
+        writeJob.writeSettings
+      ) match {
         case Right(_) =>
           writeTime = System.currentTimeMillis - startWriteTime
           _totalWriteTime.add(writeTime)

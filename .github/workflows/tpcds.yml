@@ -27,6 +27,9 @@ on:
     # Nightly run at 02:00 UTC
     - cron: '0 2 * * *'
 
+permissions:
+  contents: read
+
 jobs:
   run-tpcds-sf1:
     runs-on: ubuntu-22.04

@@ -17,7 +17,9 @@ package com.clickhouse.spark
 import com.clickhouse.client.ClickHouseProtocol
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
+import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.CLIENT_QUERY_TIMEOUT
 import org.apache.spark.sql.clickhouse.SchemaUtils
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
@@ -32,7 +34,7 @@ import java.time.{LocalDateTime, ZoneId}
 import java.util.{HashMap => JHashMap}
 import scala.collection.JavaConverters._
 
-trait ClickHouseHelper extends Logging {
+trait ClickHouseHelper extends SQLConfHelper with Logging {
 
   @volatile lazy val DEFAULT_ACTION_IF_NO_SUCH_DATABASE: String => Unit =
     (db: String) => throw NoSuchNamespaceException(db)
@@ -40,10 +42,18 @@ trait ClickHouseHelper extends Logging {
   @volatile lazy val DEFAULT_ACTION_IF_NO_SUCH_TABLE: (String, String) => Unit =
     (database, table) => throw NoSuchTableException(s"$database.$table")
 
+  def clientQueryTimeoutMs: Long = conf.getConf(CLIENT_QUERY_TIMEOUT)
+
   def unwrap(ident: Identifier): Option[(String, String)] = ident.namespace() match {
     case Array(database) => Some((database, ident.name()))
     case _ => None
   }
+
+  def catalogTimeZone(options: CaseInsensitiveStringMap): String =
+    Option(options.get(CATALOG_PROP_TZ))
+      .filter(_.nonEmpty)
+      .orElse(Option(options.get(CATALOG_PROP_OPTION_TZ)).filter(_.nonEmpty))
+      .getOrElse("server")
 
   def buildNodeSpec(options: CaseInsensitiveStringMap): NodeSpec = {
     val clientOpts = options.asScala

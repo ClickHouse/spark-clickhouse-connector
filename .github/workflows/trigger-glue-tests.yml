@@ -1,0 +1,108 @@
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+#
+# Triggers Glue tests in clickhouse-glue (both glue-tests.yml and
+# glue-tests-cloud.yml) and waits for them to finish. The job fails
+# if any glue workflow fails.
+#
+# Triggered by:
+# - push to main (after merge)
+# - PRs against main (label-gated for forks)
+# - manual workflow_dispatch
+#
+# Uses the shared GitHub App (WORKFLOW_AUTH_PUBLIC_APP_ID / WORKFLOW_AUTH_PUBLIC_PRIVATE_KEY).
+#
+name: "Trigger Glue tests"
+
+on:
+  push:
+    branches:
+      - main
+  pull_request_target:
+    branches:
+      - main
+    types: [opened, reopened, synchronize, labeled]
+  workflow_dispatch:
+
+jobs:
+  trigger-glue-tests:
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    # Run for:
+    # - push to main (after merge)
+    # - workflow_dispatch
+    # - Internal PRs (same repo): auto-run on open/reopen/sync (NOT on random label additions)
+    # - External (fork) PRs: only when 'run-cloud-tests' label is added (shared with cloud.yml)
+    if: |
+      github.event_name == 'push' ||
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'pull_request_target' && (
+        (github.event.pull_request.head.repo.full_name == github.repository && github.event.action != 'labeled') ||
+        (github.event.action == 'labeled' && github.event.label.name == 'run-cloud-tests')
+      ))
+    steps:
+      - name: Generate token
+        id: generate-token
+        uses: actions/create-github-app-token@v3
+        with:
+          app-id: ${{ secrets.WORKFLOW_AUTH_PUBLIC_APP_ID }}
+          private-key: ${{ secrets.WORKFLOW_AUTH_PUBLIC_PRIVATE_KEY }}
+          owner: ${{ github.repository_owner }}
+          repositories: "clickhouse-glue"
+
+      - name: Dispatch and wait for Glue tests
+        env:
+          GH_TOKEN: ${{ steps.generate-token.outputs.token }}
+          # For PRs we send the PR head SHA so glue runs against the proposed change;
+          # for push to main we send github.sha (the merge commit).
+          SPARK_SHA: ${{ github.event.pull_request.head.sha || github.sha }}
+        run: |
+          set -e
+          WORKFLOWS=("glue-tests.yml" "glue-tests-cloud.yml")
+
+          # Capture latest run ID per workflow BEFORE dispatch so we can identify our runs after.
+          declare -A BASELINE
+          for wf in "${WORKFLOWS[@]}"; do
+            BASELINE[$wf]=$(gh api "repos/ClickHouse/clickhouse-glue/actions/workflows/$wf/runs?per_page=1" --jq '.workflow_runs[0].id // 0')
+            echo "Baseline for $wf: ${BASELINE[$wf]}"
+          done
+
+          echo "Dispatching spark-pr-merged with sha=$SPARK_SHA"
+          gh api repos/ClickHouse/clickhouse-glue/dispatches \
+            -f event_type=spark-pr-merged \
+            -F client_payload[sha]="$SPARK_SHA"
+
+          FAILED=0
+          for wf in "${WORKFLOWS[@]}"; do
+            echo "Locating new $wf run (waiting up to ~2.5 min)..."
+            RUN_ID=""
+            for i in {1..30}; do
+              RUN_ID=$(gh api "repos/ClickHouse/clickhouse-glue/actions/workflows/$wf/runs?event=repository_dispatch&per_page=10" \
+                --jq ".workflow_runs[] | select(.id > ${BASELINE[$wf]}) | .id" | head -1)
+              [ -n "$RUN_ID" ] && break
+              sleep 5
+            done
+            if [ -z "$RUN_ID" ]; then
+              echo "::error::No new $wf run found for sha=$SPARK_SHA"
+              FAILED=1
+              continue
+            fi
+            echo "Waiting on $wf run $RUN_ID: https://github.com/ClickHouse/clickhouse-glue/actions/runs/$RUN_ID"
+            if ! gh run watch "$RUN_ID" --repo ClickHouse/clickhouse-glue --exit-status; then
+              echo "::error::$wf run $RUN_ID failed"
+              FAILED=1
+            fi
+          done
+          exit $FAILED

@@ -39,7 +39,8 @@ case class WriteJobDescription(
   shardingKey: Option[Expr],
   partitionKey: Option[List[Expr]],
   sortingKey: Option[List[OrderExpr]],
-  writeOptions: WriteOptions
+  writeOptions: WriteOptions,
+  writeSettings: Map[String, String]
 ) {
 
   def targetDatabase(convert2Local: Boolean): String = tableEngineSpec match {

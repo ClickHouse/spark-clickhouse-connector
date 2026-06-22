@@ -23,10 +23,12 @@ import scala.collection.JavaConverters._
 import scala.util.Random._
 
 object ClusterClient {
-  def apply(cluster: ClusterSpec) = new ClusterClient(cluster)
+  def apply(cluster: ClusterSpec, queryTimeoutMs: Long = NodeClient.DEFAULT_QUERY_TIMEOUT_MS): ClusterClient =
+    new ClusterClient(cluster, queryTimeoutMs)
 }
 
-class ClusterClient(cluster: ClusterSpec) extends AutoCloseable with Logging {
+class ClusterClient(cluster: ClusterSpec, queryTimeoutMs: Long = NodeClient.DEFAULT_QUERY_TIMEOUT_MS)
+    extends AutoCloseable with Logging {
 
   @transient lazy val cache = new ConcurrentHashMap[(Int, Int), NodeClient]
 
@@ -53,7 +55,7 @@ class ClusterClient(cluster: ClusterSpec) extends AutoCloseable with Logging {
         val replicaSpec = shardSpec.replicas.find(_.num == r).get
         val nodeSpec = replicaSpec.node
         log.info(s"Create client to $nodeSpec, shard $s replica $r")
-        new NodeClient(nodeSpec)
+        new NodeClient(nodeSpec, queryTimeoutMs)
       }
     )
   }

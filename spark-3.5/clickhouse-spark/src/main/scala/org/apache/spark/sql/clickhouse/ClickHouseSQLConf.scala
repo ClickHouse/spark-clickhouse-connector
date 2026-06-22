@@ -231,4 +231,38 @@ object ClickHouseSQLConf {
       .transform(_.toLowerCase)
       .createOptional
 
+  val WRITE_OPTION_PREFIX: String = "spark.clickhouse.write.option."
+
+  val WRITE_OPTION: OptionalConfigEntry[String] =
+    buildConf(s"${WRITE_OPTION_PREFIX}<name>")
+      .doc("ClickHouse Java client insert option applied when writing. Replace `<name>` with a client option " +
+        s"key, for example `${WRITE_OPTION_PREFIX}clickhouse_setting_log_comment`, " +
+        s"`${WRITE_OPTION_PREFIX}http_header_<header>`, `${WRITE_OPTION_PREFIX}custom_<name>`, " +
+        "or a recognized unprefixed client option. Writer options override SQLConf entries with the same " +
+        "option key.")
+      .version("0.10.1")
+      .stringConf
+      .createOptional
+
+  val READ_PUSHDOWN_TOP_N: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.read.pushdown.topN")
+      .doc("Whether to push down `ORDER BY ... LIMIT n` (top-N) to ClickHouse. " +
+        "When `true`, eligible sort orders combined with a LIMIT are translated into a " +
+        "ClickHouse `ORDER BY ... LIMIT n` clause and Spark performs a final merge across " +
+        "input partitions. When `false`, the `ORDER BY ... LIMIT n` is left for Spark to " +
+        "evaluate; plain `LIMIT n` queries (no `ORDER BY`) are unaffected.")
+      .version("0.10.1")
+      .booleanConf
+      .createWithDefault(true)
+
+  val CLIENT_QUERY_TIMEOUT: ConfigEntry[Long] =
+    buildConf("spark.clickhouse.client.queryTimeout")
+      .doc("The maximum time the ClickHouse client will wait for a single query or ping " +
+        "operation to complete on a NodeClient. Applied as a future-handle timeout on every " +
+        "client.query(...) and client.ping(...) call.")
+      .version("0.10.1")
+      .timeConf(TimeUnit.MILLISECONDS)
+      .checkValue(_ > 0, "`spark.clickhouse.client.queryTimeout` should be positive.")
+      .createWithDefaultString("60s")
+
 }

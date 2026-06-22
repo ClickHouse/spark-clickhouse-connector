@@ -78,11 +78,11 @@ class ClickHouseCatalog extends TableCatalog
     this.catalogName = name
     this.nodeSpec = buildNodeSpec(options)
     this.currentDb = nodeSpec.database
-    this.nodeClient = NodeClient(nodeSpec)
+    this.nodeClient = NodeClient(nodeSpec, clientQueryTimeoutMs)
 
     this.nodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT 1")
 
-    this.tz = options.get(CATALOG_PROP_TZ) match {
+    this.tz = catalogTimeZone(options) match {
       case tz if tz == null || tz.isEmpty || tz.toLowerCase == "server" =>
         val timezoneOutput = this.nodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT timezone() AS tz")
         assert(timezoneOutput.rows == 1)
