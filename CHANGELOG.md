@@ -19,9 +19,19 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [0.10.0] - 2026-01-19
+## [Unreleased]
 
-Changes that have been merged but not yet released will be documented here.
+### Added
+- Top-N pushdown for read scans ([#543](https://github.com/ClickHouse/spark-clickhouse-connector/pull/543)). `ORDER BY ... LIMIT n` queries are now pushed down to ClickHouse (`SupportsPushDownTopN`) across all Spark profiles (3.3/3.4/3.5/4.0). Each input partition runs its own local top-N and Spark performs a final global merge across partitions. Gated by the new SQL config `spark.clickhouse.read.pushdown.topN` (default `true`).
+- Configurable ClickHouse query timeout ([#542](https://github.com/ClickHouse/spark-clickhouse-connector/pull/542)). Added the SQL config `spark.clickhouse.client.queryTimeout` (default `60s`) to control the timeout for ClickHouse client query and ping operations across the catalog, read, and write paths.
+
+### Fixed
+- Honor the ClickHouse `use_time_zone` option for catalog timezone selection ([#548](https://github.com/ClickHouse/spark-clickhouse-connector/pull/548)). When the connector-specific `timezone` option is not set, `option.use_time_zone` is now used as a fallback for the catalog timezone (an explicit `timezone` still takes precedence). The value continues to be filtered out of the raw ClickHouse client options.
+- Fixed writing `VariantType` nested inside `Array`/`Map`/`Struct` columns via Arrow format ([#541](https://github.com/ClickHouse/spark-clickhouse-connector/pull/541)). Previously only top-level `VariantType` fields were JSON-stringified, so nested variants (e.g. writing to a ClickHouse `Array(JSON)` column) failed with `CANNOT_PARSE_QUOTED_STRING`.
+- Prevented extra quotes in filter expressions when columns have special characters ([#538](https://github.com/ClickHouse/spark-clickhouse-connector/pull/538)).
+- Moved the `useNullableQuerySchema` override from `ClickHouseTable` to `ClickHouseCatalog` ([#516](https://github.com/ClickHouse/spark-clickhouse-connector/pull/516)). The override had no effect on `ClickHouseTable` (which does not implement `TableCatalog`); applying it on the catalog ensures Spark honors the configured nullable query-schema behavior (SPARK-43390).
+
+## [0.10.0] - 2026-01-19
 
 ### Added
 - Support per-write ClickHouse Java client insert options through `spark.clickhouse.write.option.<name>`, including server settings such as `clickhouse_setting_log_comment`.
@@ -123,12 +133,8 @@ Changes that have been merged but not yet released will be documented here.
 ### Removed
 - gzip and zstd write compression support has been removed (currently supported codecs are `none`, `lz4` (default))
 
-## [Unreleased]
-
-### Fixed
-- Preventing extra quotes in filter expr when col having special characters
-
-[Unreleased]: https://github.com/ClickHouse/spark-clickhouse-connector/compare/v0.9.0...HEAD
+[Unreleased]: https://github.com/ClickHouse/spark-clickhouse-connector/compare/v0.10.0...HEAD
+[0.10.0]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.10.0
 [0.9.0]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.9.0
 [0.8.1]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.8.1
 [0.8.0]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.8.0
