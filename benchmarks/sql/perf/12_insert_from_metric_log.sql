@@ -29,9 +29,8 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
   FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String})
   UNION ALL
-  -- Ratio: connections opened / inserts. The smoking gun.
-  -- 1.0 = one cold connection per insert (current behaviour).
-  -- << 1.0 = one connection serves many inserts (target).
+  -- Ratio: connections opened / inserts. 1.0 = one connection per insert;
+  -- << 1.0 = one connection serves many inserts.
   SELECT 'ch_connections_per_insert', 'ratio',
          (SELECT toFloat64(max(ProfileEvent_HTTPConnectionsCreated) - min(ProfileEvent_HTTPConnectionsCreated))
           FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})

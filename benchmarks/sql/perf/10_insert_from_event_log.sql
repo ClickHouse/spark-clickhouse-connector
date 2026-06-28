@@ -97,7 +97,6 @@ WITH
            toFloat64(max(offheap_bytes))
     FROM stage_exec_metrics
     UNION ALL
-    -- Connector-side timing (summed across tasks).
     SELECT 'serialize_time_total', 'seconds', sum(serialize_ms) / 1000.0 FROM task_accum
     UNION ALL
     SELECT 'write_time_total', 'seconds', sum(write_ms) / 1000.0 FROM task_accum

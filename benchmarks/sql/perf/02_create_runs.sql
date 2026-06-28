@@ -16,17 +16,12 @@ CREATE TABLE IF NOT EXISTS perf.runs (
   run_started_at    DateTime,
   run_ended_at      DateTime,
   git_sha           String,
-  -- Which connector produced the run (e.g. 'spark'); lets us add other
-  -- connectors later and filter by them.
   connector          String DEFAULT 'spark',
-  -- Cluster sizing / tier label for the run (e.g. 'small', 'big'); lets us
-  -- compare runs across machine sizes.
   run_profile        String DEFAULT '',
   connector_version  String,
   clickhouse_version String DEFAULT '',
-  -- Connector/runtime-specific attributes, kept generic so new connectors
-  -- (kafka, ...) need no schema change. Spark fills e.g. spark_version,
-  -- scala_version, emr_release; another connector records its own keys.
+  -- Generic per-connector attributes so new connectors need no schema change
+  -- (Spark fills spark_version, scala_version, emr_release; etc.).
   runtime            Map(String, String),
   notes              String DEFAULT ''
 ) ENGINE = MergeTree

@@ -45,9 +45,9 @@ ARGS=(
   "$SCRIPT_S3_URI"
 )
 
-# One raw line per arg -> jq's [inputs] collects them into the Args array,
-# so values with commas/quotes (e.g. CH_PASSWORD) survive intact. (Raw input,
-# not jq --args, because --args still option-parses values starting with '--'.)
+# One raw line per arg, collected via jq [inputs], so values with commas/quotes
+# survive intact. Raw input (not jq --args) because --args still option-parses
+# values starting with '--'.
 steps_json=$(printf '%s\n' "${ARGS[@]}" | jq -nR '[{
   Type: "Spark",
   Name: "ClickBenchIngest",

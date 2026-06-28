@@ -11,8 +11,8 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
--- Per-insert raw stats for distribution analysis (histograms of batch size,
--- duration, etc.) without re-querying CH after the fact.
+-- Per-insert raw stats for distribution analysis (batch-size / duration
+-- histograms) without re-querying CH after the fact.
 CREATE TABLE IF NOT EXISTS perf.ch_inserts (
   run_id           String,
   event_time       DateTime,

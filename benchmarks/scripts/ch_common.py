@@ -18,8 +18,6 @@ import clickhouse_connect
 
 
 def require(name: str) -> str:
-    """Return env var `name`, or exit 1 if it is not set.
-    """
     if name not in os.environ:
         print(f"ERROR: required env var {name} is not set", file=sys.stderr)
         sys.exit(1)

@@ -16,7 +16,7 @@ name: "ClickBench Load Test"
 
 on:
   schedule:
-    - cron: '0 6 * * 1'   # Mondays 06:00 UTC - Placeholder, replace with actual schedule
+    - cron: '0 6 * * 1'   # placeholder schedule, replace once cadence is decided
   workflow_dispatch:
     inputs:
       input_parquet_glob:
@@ -106,8 +106,8 @@ jobs:
           aws s3 cp benchmarks/clickbench_ingest.py "$SCRIPT_S3_URI"
 
       - name: Bootstrap schema (idempotent CREATE IF NOT EXISTS)
-        # Creates clickbench.hits on the target service and perf.{runs,
-        # metrics, ch_inserts} on the metrics service if any are missing.
+        # clickbench.hits lives on the target service; perf.{runs,metrics,
+        # ch_inserts} live on the separate metrics service.
         env:
           TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
           TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
@@ -128,10 +128,9 @@ jobs:
         run: python benchmarks/scripts/truncate_target.py
 
       - name: Resolve cluster specs from run profile
-        # Maps the run_profile (default 'small') to concrete EMR sizing, so a
-        # bigger run is a one-click choice. To add a "bigger ClickHouse" tier,
-        # extend this with a per-profile target-CH secret. The chosen specs are
-        # recorded on the run (see runtime map in "Insert run record").
+        # To add a "bigger ClickHouse" tier, extend with a per-profile
+        # target-CH secret. Chosen specs are recorded on the run (see the
+        # runtime map in "Insert run record").
         run: |
           case "$RUN_PROFILE" in
             small) IT=m6i.2xlarge; CC=4 ;;
@@ -184,9 +183,6 @@ jobs:
 
       - name: Wait for merges to settle
         if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
-        # Polls active part count on the target until it stops dropping,
-        # then exports the wall-clock timestamp as SETTLE_END plus the
-        # delta from RUN_END as SETTLE_SECONDS.
         env:
           TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
           TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
@@ -212,8 +208,8 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           export CONNECTOR_VERSION=$(cat version.txt)
-          # Spark/EMR runtime attrs go into the generic perf.runs.runtime map;
-          # another connector would build its own RUNTIME json here.
+          # Spark/EMR attrs go into the generic perf.runs.runtime map; another
+          # connector would build its own RUNTIME json here.
           export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
             --arg it "$EMR_INSTANCE_TYPE" --arg cc "$EMR_CORE_COUNT" \
             '{spark_version: $sv, scala_version: $scv, emr_release: $emr,
@@ -222,9 +218,9 @@ jobs:
 
       - name: Capture metrics — Spark event log + CH query_log/metric_log/part_log
         if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
-        # Runs every parser. Order matters only for 04→15: 04 creates the
-        # perf.ch_inserts side table, 15 populates it. The other parsers are
-        # independent INSERTs into perf.metrics.
+        # Order within the loop is irrelevant: 10-14 and 16 are independent
+        # INSERTs into perf.metrics, 15 INSERTs into perf.ch_inserts. Both
+        # target tables are already created by the bootstrap step.
         env:
           METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
           METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
@@ -250,10 +246,9 @@ jobs:
 
       - name: Export metrics to DWH bucket
         if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
-        # Assumes the cross-account write role (clickbench-load-test-ci is a
-        # trusted principal) and has ClickHouse stream perf.runs/metrics/
-        # ch_inserts for this run to the DWH bucket as Parquet. The DWH side
-        # ingests the files (s3queue).
+        # Assumes the cross-account DWH write role (clickbench-load-test-ci is
+        # a trusted principal) to stream this run's perf.runs/metrics/ch_inserts
+        # to the DWH bucket as Parquet; the DWH side ingests via s3queue.
         env:
           METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
           METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}

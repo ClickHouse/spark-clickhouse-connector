@@ -52,7 +52,6 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
     AND event_type = 'MergeParts'
     AND database = {ch_database:String} AND table = {ch_table:String}
   UNION ALL
-  -- Total wall-clock spent merging. The real cost of small batches.
   SELECT 'ch_merge_total_duration_ms', 'ms', toFloat64(sum(duration_ms))
   FROM remoteSecure({target_addr:String}, system.part_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({settle_end:String})
@@ -103,8 +102,7 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
               AND has(tables, {table_qualified:String})),
            1.0)
   UNION ALL
-  -- Wall-clock between end-of-Spark and merges-quiesced. The headline
-  -- post-ingest tail metric. Replaces the older ch_settle_seconds.
+  -- Wall-clock between end-of-Spark and merges-quiesced: the post-ingest tail.
   SELECT 'ch_merge_tail_seconds', 'seconds',
          toFloat64(
            dateDiff('second',
