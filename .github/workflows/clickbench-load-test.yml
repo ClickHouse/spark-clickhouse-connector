@@ -260,3 +260,17 @@ jobs:
           METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
           DWH_ROLE_ARN: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
         run: python benchmarks/scripts/export_metrics_to_dwh.py
+
+      - name: Truncate target table (cleanup at end of run)
+        # Truncate AFTER the write + settle + metrics capture: metrics are read
+        # from ClickHouse's system.*_log, not the hits table, so they are
+        # unaffected. Leaves the table empty so the next run starts clean.
+        if: ${{ !cancelled() }}
+        env:
+          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          CH_DATABASE: clickbench
+          CH_TABLE: hits
+          SKIP_TRUNCATE: ${{ vars.SKIP_TRUNCATE || '0' }}
+        run: python benchmarks/scripts/truncate_target.py
