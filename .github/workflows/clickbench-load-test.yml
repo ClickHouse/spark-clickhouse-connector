@@ -243,7 +243,8 @@ jobs:
             benchmarks/sql/perf/14_insert_settle_seconds.sql \
             benchmarks/sql/perf/15_capture_raw_inserts.sql \
             benchmarks/sql/perf/16_insert_throttling.sql \
-            benchmarks/sql/perf/17_capture_memory_timeline.sql
+            benchmarks/sql/perf/17_capture_memory_timeline.sql \
+            benchmarks/sql/perf/18_insert_memory_peaks.sql
           do
             echo "=== $sql ==="
             python benchmarks/scripts/run_metrics_sql.py "$sql"
