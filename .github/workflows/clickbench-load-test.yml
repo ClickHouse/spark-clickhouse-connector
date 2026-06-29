@@ -230,6 +230,17 @@ jobs:
             python benchmarks/scripts/run_metrics_sql.py "$sql"
           done
 
+      - name: Roll back partial metrics on capture failure
+        # The loop is several independent INSERTs; if one fails partway, delete
+        # this run's rows so no orphaned partial metrics remain (the run record
+        # and DWH export are skipped on capture failure).
+        if: ${{ !cancelled() && steps.capture.outcome == 'failure' }}
+        env:
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+        run: python benchmarks/scripts/rollback_run_metrics.py
+
       - name: Insert run record
         # Written AFTER metrics capture and gated on its success, so perf.runs
         # only gets a row when the run's metrics fully captured. A partial
