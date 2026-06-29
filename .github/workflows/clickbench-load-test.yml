@@ -36,6 +36,10 @@ on:
           - small
           - large
 
+concurrency:
+  group: clickbench-load-test
+  cancel-in-progress: false
+
 jobs:
   load-test:
     runs-on: ubuntu-22.04
