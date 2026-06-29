@@ -31,6 +31,7 @@ CLUSTER_ID=$(aws emr create-cluster \
     {\"Name\":\"Master\",\"InstanceGroupType\":\"MASTER\",\"InstanceType\":\"${EMR_INSTANCE_TYPE}\",\"InstanceCount\":1},\
     {\"Name\":\"Core\",\"InstanceGroupType\":\"CORE\",\"InstanceType\":\"${EMR_INSTANCE_TYPE}\",\"InstanceCount\":${EMR_CORE_COUNT}}\
   ]" \
+  --tags "run_id=${RUN_ID}" \
   --visible-to-all-users \
   --auto-terminate \
   --query 'ClusterId' --output text)
