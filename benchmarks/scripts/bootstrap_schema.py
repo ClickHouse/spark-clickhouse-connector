@@ -32,7 +32,6 @@ METRICS_DDL = [
     os.path.join(SQL, "perf", "02_create_runs.sql"),
     os.path.join(SQL, "perf", "03_create_metrics.sql"),
     os.path.join(SQL, "perf", "04_create_ch_inserts.sql"),
-    os.path.join(SQL, "perf", "05_create_memory_timeline.sql"),
 ]
 
 

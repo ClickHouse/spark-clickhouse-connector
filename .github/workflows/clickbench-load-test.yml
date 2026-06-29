@@ -221,6 +221,7 @@ jobs:
           python benchmarks/scripts/insert_run_record.py
 
       - name: Capture metrics — Spark event log + CH query_log/metric_log/part_log
+        id: capture
         if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
         # Order within the loop is irrelevant: 10-14 and 16 are independent
         # INSERTs into perf.metrics, 15 INSERTs into perf.ch_inserts. Both
@@ -243,15 +244,14 @@ jobs:
             benchmarks/sql/perf/14_insert_settle_seconds.sql \
             benchmarks/sql/perf/15_capture_raw_inserts.sql \
             benchmarks/sql/perf/16_insert_throttling.sql \
-            benchmarks/sql/perf/17_capture_memory_timeline.sql \
-            benchmarks/sql/perf/18_insert_memory_peaks.sql
+            benchmarks/sql/perf/17_insert_memory_peaks.sql
           do
             echo "=== $sql ==="
             python benchmarks/scripts/run_metrics_sql.py "$sql"
           done
 
       - name: Export metrics to DWH bucket
-        if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
         # Assumes the cross-account DWH write role (clickbench-load-test-ci is
         # a trusted principal) to stream this run's perf.runs/metrics/ch_inserts
         # to the DWH bucket as Parquet; the DWH side ingests via s3queue.

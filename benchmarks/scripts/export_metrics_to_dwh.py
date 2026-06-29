@@ -43,7 +43,7 @@ import boto3
 
 import ch_common
 
-TABLES = ["runs", "metrics", "ch_inserts", "ch_memory_timeline"]  # perf.<table>
+TABLES = ["runs", "metrics", "ch_inserts"]  # perf.<table>
 
 
 def resolve_region(bucket: str) -> str:
