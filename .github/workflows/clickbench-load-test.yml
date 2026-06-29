@@ -200,26 +200,6 @@ jobs:
           echo "SETTLE_SECONDS=$SETTLE_SECONDS" >> "$GITHUB_ENV"
           echo "settle took ${SETTLE_SECONDS}s (RUN_END=$RUN_END SETTLE_END=$SETTLE_END)"
 
-      - name: Insert run record
-        if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
-        env:
-          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
-          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
-          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
-          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
-          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
-          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
-          GIT_SHA: ${{ github.sha }}
-        run: |
-          export CONNECTOR_VERSION=$(cat version.txt)
-          # Spark/EMR attrs go into the generic perf.runs.runtime map; another
-          # connector would build its own RUNTIME json here.
-          export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
-            --arg it "$EMR_INSTANCE_TYPE" --arg cc "$EMR_CORE_COUNT" \
-            '{spark_version: $sv, scala_version: $scv, emr_release: $emr,
-              emr_instance_type: $it, emr_core_count: $cc}')
-          python benchmarks/scripts/insert_run_record.py
-
       - name: Capture metrics — Spark event log + CH query_log/metric_log/part_log
         id: capture
         if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
@@ -249,6 +229,30 @@ jobs:
             echo "=== $sql ==="
             python benchmarks/scripts/run_metrics_sql.py "$sql"
           done
+
+      - name: Insert run record
+        # Written AFTER metrics capture and gated on its success, so perf.runs
+        # only gets a row when the run's metrics fully captured. A partial
+        # capture leaves no run record (and the export below is skipped too),
+        # so trend views never show runs without matching metrics.
+        if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
+        env:
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          GIT_SHA: ${{ github.sha }}
+        run: |
+          export CONNECTOR_VERSION=$(cat version.txt)
+          # Spark/EMR attrs go into the generic perf.runs.runtime map; another
+          # connector would build its own RUNTIME json here.
+          export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
+            --arg it "$EMR_INSTANCE_TYPE" --arg cc "$EMR_CORE_COUNT" \
+            '{spark_version: $sv, scala_version: $scv, emr_release: $emr,
+              emr_instance_type: $it, emr_core_count: $cc}')
+          python benchmarks/scripts/insert_run_record.py
 
       - name: Export metrics to DWH bucket
         if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
