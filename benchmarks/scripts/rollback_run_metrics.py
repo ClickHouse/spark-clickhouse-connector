@@ -12,12 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Roll back this run's partial metric rows after a failed metrics capture.
+"""Roll back this run's rows when it wasn't fully recorded.
 
-The capture loop is several independent INSERTs into perf.metrics / perf.ch_inserts;
-if one fails partway, earlier inserts for this run_id are left behind while the
-run record and DWH export are skipped. This deletes those orphans so the source
-never holds metrics for a run that was never recorded.
+Metrics capture is several independent INSERTs into perf.metrics / perf.ch_inserts,
+and the run record (perf.runs) is a separate step. If capture fails partway, or
+capture succeeds but the run-record insert fails, this run's rows are deleted from
+all three perf tables so the source never holds metrics for a run that was never
+fully recorded (and the DWH export is skipped in those cases).
 
 Required env: METRICS_CH_HOST, METRICS_CH_USER, METRICS_CH_PASSWORD, RUN_ID
 """
@@ -27,7 +28,7 @@ import ch_common
 def main() -> None:
     run_id = ch_common.require("RUN_ID")
     client = ch_common.get_client("METRICS_CH_HOST", "METRICS_CH_USER", "METRICS_CH_PASSWORD")
-    for table in ("metrics", "ch_inserts"):
+    for table in ("runs", "metrics", "ch_inserts"):
         client.command(
             f"ALTER TABLE perf.{table} DELETE WHERE run_id = {{run_id:String}}",
             parameters={"run_id": run_id},

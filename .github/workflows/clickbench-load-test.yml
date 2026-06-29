@@ -230,22 +230,10 @@ jobs:
             python benchmarks/scripts/run_metrics_sql.py "$sql"
           done
 
-      - name: Roll back partial metrics on capture failure
-        # The loop is several independent INSERTs; if one fails partway, delete
-        # this run's rows so no orphaned partial metrics remain (the run record
-        # and DWH export are skipped on capture failure).
-        if: ${{ !cancelled() && steps.capture.outcome == 'failure' }}
-        env:
-          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
-          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
-          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
-        run: python benchmarks/scripts/rollback_run_metrics.py
-
       - name: Insert run record
-        # Written AFTER metrics capture and gated on its success, so perf.runs
-        # only gets a row when the run's metrics fully captured. A partial
-        # capture leaves no run record (and the export below is skipped too),
-        # so trend views never show runs without matching metrics.
+        id: run_record
+        # Written AFTER metrics capture, gated on its success — perf.runs only
+        # gets a row when the run's metrics fully captured.
         if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
         env:
           METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
@@ -265,8 +253,21 @@ jobs:
               emr_instance_type: $it, emr_core_count: $cc}')
           python benchmarks/scripts/insert_run_record.py
 
+      - name: Roll back this run if it wasn't fully recorded
+        # Capture is several independent INSERTs and the run record is a separate
+        # step. If capture fails partway, OR capture succeeds but the run-record
+        # insert fails, delete this run's rows from perf.* (runs/metrics/ch_inserts)
+        # so trends never show metrics without a complete run record. Export is
+        # skipped in both cases.
+        if: ${{ !cancelled() && steps.submit.outcome == 'success' && (steps.capture.outcome == 'failure' || steps.run_record.outcome == 'failure') }}
+        env:
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+        run: python benchmarks/scripts/rollback_run_metrics.py
+
       - name: Export metrics to DWH bucket
-        if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
+        if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' && steps.run_record.outcome == 'success' }}
         # Assumes the cross-account DWH write role (clickbench-load-test-ci is
         # a trusted principal) to stream this run's perf.runs/metrics/ch_inserts
         # to the DWH bucket as Parquet; the DWH side ingests via s3queue.
