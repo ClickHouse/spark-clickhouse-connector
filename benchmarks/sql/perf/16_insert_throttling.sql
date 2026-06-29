@@ -68,10 +68,12 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
   FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({settle_end:String})
   UNION ALL
-  -- Merge pool utilisation. 100% = the merger is the bottleneck.
+  -- Merge pool utilisation. 100% = the merger is the bottleneck. Peak of the
+  -- per-sample ratio, not max(task)/max(size): the pool size can change if the
+  -- service rescales mid-run, and ratio-of-maxes would then misstate the peak.
   SELECT 'ch_merge_pool_peak_pct', 'percent',
-         toFloat64(max(CurrentMetric_BackgroundMergesAndMutationsPoolTask)) /
-         greatest(toFloat64(max(CurrentMetric_BackgroundMergesAndMutationsPoolSize)), 1.0) * 100
+         max(toFloat64(CurrentMetric_BackgroundMergesAndMutationsPoolTask) /
+             greatest(toFloat64(CurrentMetric_BackgroundMergesAndMutationsPoolSize), 1.0)) * 100
   FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({settle_end:String})
   UNION ALL
