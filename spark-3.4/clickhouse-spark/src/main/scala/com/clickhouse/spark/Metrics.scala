@@ -44,7 +44,7 @@ object Metrics {
 
 case class BlocksReadMetric() extends CustomSumMetric {
   override def name: String = BLOCKS_READ
-  override def description: String = "blocks"
+  override def description: String = "number of blocks"
 }
 
 case class BytesReadMetric() extends SizeSumMetric {
@@ -54,7 +54,7 @@ case class BytesReadMetric() extends SizeSumMetric {
 
 case class RecordsWrittenMetric() extends CustomSumMetric {
   override def name: String = RECORDS_WRITTEN
-  override def description: String = "output rows"
+  override def description: String = "number of output rows"
 }
 
 case class BytesWrittenMetric() extends SizeSumMetric {
