@@ -16,14 +16,17 @@ package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.data.ClickHouseDataType._
 import com.clickhouse.data.{ClickHouseColumn, ClickHouseDataType}
+import com.clickhouse.spark.Logging
 import org.apache.spark.sql.types._
 import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_FIXED_STRING_AS
 
 import scala.collection.JavaConverters._
+import scala.collection.mutable.ArrayBuffer
+import scala.util.{Failure, Success, Try}
 
-object SchemaUtils extends SQLConfHelper {
+object SchemaUtils extends SQLConfHelper with Logging {
 
   def fromClickHouseType(chColumn: ClickHouseColumn): (DataType, Boolean) = {
     val catalystType = chColumn.getDataType match {
@@ -121,12 +124,29 @@ object SchemaUtils extends SQLConfHelper {
       case _ => throw CHClientException(s"Unsupported type: $catalystType")
     }
 
-  def fromClickHouseSchema(chSchema: Seq[(String, String)]): StructType = {
-    val structFields = chSchema.map { case (name, maybeNullableType) =>
-      val chCols = ClickHouseColumn.parse(s"`$name` $maybeNullableType")
-      assert(chCols.size == 1)
-      val (sparkType, nullable) = fromClickHouseType(chCols.get(0))
-      StructField(name, sparkType, nullable)
+  def fromClickHouseSchema(chSchema: Seq[(String, String)]): StructType =
+    fromClickHouseSchema(chSchema, ignoreUnsupported = false)
+
+  def fromClickHouseSchema(chSchema: Seq[(String, String)], ignoreUnsupported: Boolean): StructType = {
+    val skipped = ArrayBuffer.empty[(String, String)]
+    val structFields = chSchema.flatMap { case (name, maybeNullableType) =>
+      Try {
+        val chCols = ClickHouseColumn.parse(s"`$name` $maybeNullableType")
+        assert(chCols.size == 1)
+        val (sparkType, nullable) = fromClickHouseType(chCols.get(0))
+        StructField(name, sparkType, nullable)
+      } match {
+        case Success(field) => Some(field)
+        case Failure(_) if ignoreUnsupported =>
+          skipped += name -> maybeNullableType
+          None
+        case Failure(rethrow) => throw rethrow
+      }
+    }
+    if (skipped.nonEmpty) {
+      log.warn(s"Ignoring ${skipped.size} column(s) with unsupported ClickHouse type(s): " +
+        skipped.map { case (name, chType) => s"`$name` $chType" }.mkString(", ") +
+        ". These columns are excluded from the Spark table schema and can not be queried or written.")
     }
     StructType(structFields)
   }

@@ -15,6 +15,7 @@
 package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.data.ClickHouseColumn
+import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.sql.clickhouse.SchemaUtils._
 import org.apache.spark.sql.types._
 import org.scalatest.funsuite.AnyFunSuite
@@ -205,5 +206,42 @@ class SchemaUtilsSuite extends AnyFunSuite {
       ("ingredient", "Array(Nullable(String))", ""),
       ("nutrient", "Map(String, Nullable(String))", "")
     ) == toClickHouseSchema(catalystSchema))
+  }
+
+  private val mixedChSchema = Seq(
+    "customer_id" -> "Int32",
+    "agg_state" -> "AggregateFunction(sum, Int32)",
+    "location" -> "Point",
+    "client_id" -> "String"
+  )
+
+  test("fromClickHouseSchema ignoreUnsupported=true skips unsupported columns") {
+    val actual = fromClickHouseSchema(mixedChSchema, ignoreUnsupported = true)
+    val expected = StructType(
+      StructField("customer_id", IntegerType, nullable = false) ::
+        StructField("client_id", StringType, nullable = false) :: Nil
+    )
+    assert(actual === expected)
+  }
+
+  test("fromClickHouseSchema ignoreUnsupported=false throws on unsupported columns") {
+    val ex = intercept[CHClientException] {
+      fromClickHouseSchema(mixedChSchema, ignoreUnsupported = false)
+    }
+    assert(ex.getMessage.contains("Unsupported type"))
+  }
+
+  test("fromClickHouseSchema default overload throws on unsupported columns") {
+    intercept[CHClientException] {
+      fromClickHouseSchema(mixedChSchema)
+    }
+  }
+
+  test("fromClickHouseSchema all columns unsupported yields empty schema") {
+    val allUnsupported = Seq(
+      "agg_state" -> "AggregateFunction(sum, Int32)",
+      "location" -> "Point"
+    )
+    assert(fromClickHouseSchema(allUnsupported, ignoreUnsupported = true) === StructType(Nil))
   }
 }

@@ -106,10 +106,15 @@ case class ClickHouseTable(
       ACCEPT_ANY_SCHEMA // TODO check schema and handle extra columns before writing
     ).asJava
 
-  override lazy val schema: StructType = Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) {
-    implicit nodeClient =>
-      queryTableSchema(database, table)
-  }
+  private lazy val schemaAndUnsupportedColumns: (StructType, Seq[(String, String)]) =
+    Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) {
+      implicit nodeClient =>
+        queryTableSchema(database, table)
+    }
+
+  override lazy val schema: StructType = schemaAndUnsupportedColumns._1
+
+  private lazy val unsupportedColumns: Seq[(String, String)] = schemaAndUnsupportedColumns._2
 
   /**
    * Only support `MergeTree` and `Distributed` table engine, for reference
@@ -138,7 +143,12 @@ case class ClickHouseTable(
     partitioning.map(partTransform => ExprUtils.inferTransformSchema(schema, metadataSchema, partTransform))
   )
 
-  override lazy val properties: util.Map[String, String] = spec.toJavaMap
+  override lazy val properties: util.Map[String, String] =
+    if (unsupportedColumns.isEmpty) spec.toJavaMap
+    else {
+      val rendered = unsupportedColumns.map { case (name, chType) => s"`$name` $chType" }.mkString(", ")
+      (spec.toMap + ("unsupported.columns" -> rendered)).asJava
+    }
 
   override def newScanBuilder(options: CaseInsensitiveStringMap): ScanBuilder = {
     val scanJob = ScanJobDescription(

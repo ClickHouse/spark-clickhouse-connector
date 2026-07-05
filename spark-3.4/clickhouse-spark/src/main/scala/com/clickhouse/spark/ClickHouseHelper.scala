@@ -247,11 +247,15 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     )
   }
 
+  /**
+   * Returns the Spark schema of the table, plus the ClickHouse columns excluded from it
+   * because their types have no Spark mapping.
+   */
   def queryTableSchema(
     database: String,
     table: String,
     actionIfNoSuchTable: (String, String) => Unit = DEFAULT_ACTION_IF_NO_SUCH_TABLE
-  )(implicit nodeClient: NodeClient): StructType = {
+  )(implicit nodeClient: NodeClient): (StructType, Seq[(String, String)]) = {
     val columnOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  `database`,                -- String
@@ -278,11 +282,14 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     if (columnOutput.isEmpty) {
       actionIfNoSuchTable(database, table)
     }
-    SchemaUtils.fromClickHouseSchema(columnOutput.records.map { row =>
+    val chColumns = columnOutput.records.map { row =>
       val fieldName = row.get("name").asText
       val ckType = row.get("type").asText
       (fieldName, ckType)
-    })
+    }
+    val schema = SchemaUtils.fromClickHouseSchema(chColumns, ignoreUnsupported = true)
+    val supportedNames = schema.fieldNames.toSet
+    (schema, chColumns.filterNot { case (name, _) => supportedNames.contains(name) })
   }
 
   def queryPartitionSpec(
