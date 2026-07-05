@@ -60,6 +60,8 @@ class MetricsSuite extends AnyFunSuite {
     assert(metrics(FAILED_WRITE_ATTEMPTS) === 0L)
     assert(metrics(MIN_BATCH_SIZE) === 3L)
     assert(metrics(MAX_BATCH_SIZE) === 3L)
+    assert(metrics(BATCH_FILL_0_25) === 1L) // 3 pending rows of the default 10k batchSize
+    assert(metrics(BATCH_FILL_75_100) === 0L)
     assert(metrics(CONNECTIONS) === 1L)
   }
 
@@ -68,6 +70,7 @@ class MetricsSuite extends AnyFunSuite {
     writer._flushes.add(2)
     writer._minBatchSize = 100L
     writer._maxBatchSize = 250L
+    writer._batchFillBuckets(3).add(2)
     writer._totalRecordsWritten.add(350L)
     (1 to 5).foreach(_ => writer.write(InternalRow.empty))
     val metrics = metricsMap(writer)
@@ -75,6 +78,9 @@ class MetricsSuite extends AnyFunSuite {
     assert(metrics(FLUSHES) === 3L)
     assert(metrics(MIN_BATCH_SIZE) === 5L)
     assert(metrics(MAX_BATCH_SIZE) === 250L)
+    assert(metrics(BATCH_FILL_0_25) === 1L) // the pending batch
+    assert(metrics(BATCH_FILL_25_50) === 0L)
+    assert(metrics(BATCH_FILL_75_100) === 2L) // the seeded full batches
     assert(metrics(CONNECTIONS) === 1L)
   }
 

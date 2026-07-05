@@ -37,6 +37,14 @@ object WriteMetricsProjection {
   def maxBatchSize(currentMax: Long, batchRows: Long): Long =
     currentMax.max(batchRows)
 
+  /** Which quarter-fill bucket (0-3) a batch belongs to, relative to the configured batch size. */
+  def batchFillBucket(batchRows: Long, batchSize: Long): Int =
+    ((batchRows - 1) * 4 / batchSize).toInt.max(0).min(3)
+
+  /** Batches counted in a fill bucket so far, plus the pending batch if it belongs to that bucket. */
+  def bucketedBatches(counted: Long, bucket: Int, pendingRows: Long, batchSize: Long): Long =
+    counted + (if (pendingRows > 0 && batchFillBucket(pendingRows, batchSize) == bucket) 1 else 0)
+
   /**
    * Connections opened so far: one per node client in cluster mode, one in single-node mode.
    * `client` is by-name so a client is never created just to report this metric — before the

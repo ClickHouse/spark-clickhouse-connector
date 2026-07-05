@@ -37,6 +37,23 @@ class WriteMetricsProjectionSuite extends AnyFunSuite {
     assert(WriteMetricsProjection.maxBatchSize(currentMax = 100, batchRows = 5) === 100L)
   }
 
+  test("batches fall into quarter-fill buckets of the configured batch size") {
+    assert(WriteMetricsProjection.batchFillBucket(batchRows = 1, batchSize = 10000) === 0)
+    assert(WriteMetricsProjection.batchFillBucket(batchRows = 2500, batchSize = 10000) === 0)
+    assert(WriteMetricsProjection.batchFillBucket(batchRows = 2501, batchSize = 10000) === 1)
+    assert(WriteMetricsProjection.batchFillBucket(batchRows = 5000, batchSize = 10000) === 1)
+    assert(WriteMetricsProjection.batchFillBucket(batchRows = 7500, batchSize = 10000) === 2)
+    assert(WriteMetricsProjection.batchFillBucket(batchRows = 7501, batchSize = 10000) === 3)
+    assert(WriteMetricsProjection.batchFillBucket(batchRows = 10000, batchSize = 10000) === 3)
+    assert(WriteMetricsProjection.batchFillBucket(batchRows = 20000, batchSize = 10000) === 3) // clamped
+  }
+
+  test("the pending batch counts toward its fill bucket") {
+    assert(WriteMetricsProjection.bucketedBatches(counted = 2, bucket = 0, pendingRows = 5, batchSize = 10000) === 3L)
+    assert(WriteMetricsProjection.bucketedBatches(counted = 2, bucket = 3, pendingRows = 5, batchSize = 10000) === 2L)
+    assert(WriteMetricsProjection.bucketedBatches(counted = 2, bucket = 0, pendingRows = 0, batchSize = 10000) === 2L)
+  }
+
   test("connections are predicted without creating a client") {
     def failingClient: Either[ClusterClient, NodeClient] =
       fail("client must not be created just to report a metric")

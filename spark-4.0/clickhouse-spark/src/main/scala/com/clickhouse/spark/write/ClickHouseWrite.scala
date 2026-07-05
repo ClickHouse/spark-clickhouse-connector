@@ -83,6 +83,10 @@ class ClickHouseWrite(
     FailedWriteAttemptsMetric(),
     MinBatchSizeMetric(),
     MaxBatchSizeMetric(),
+    BatchFill0To25Metric(),
+    BatchFill25To50Metric(),
+    BatchFill50To75Metric(),
+    BatchFill75To100Metric(),
     ConnectionsMetric()
   )
 }

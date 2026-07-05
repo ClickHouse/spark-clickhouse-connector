@@ -138,11 +138,15 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   // rows in the smallest/largest batch flushed so far, 0 until the first flush
   var _minBatchSize = 0L
   var _maxBatchSize = 0L
+  // flushed batches per quarter-fill bucket of the configured batch size
+  val _batchFillBuckets = Array.fill(4)(new LongAdder)
+  private val flushBatchSize = writeJob.writeOptions.batchSize
 
   private def recordFlush(rows: Long): Unit = {
     _flushes.add(1)
     _minBatchSize = minBatchSize(_minBatchSize, rows)
     _maxBatchSize = maxBatchSize(_maxBatchSize, rows)
+    _batchFillBuckets(batchFillBucket(rows, flushBatchSize)).add(1)
   }
 
   val serializedBuffer = new ByteArrayOutputStream(64 * 1024 * 1024)
@@ -182,6 +186,9 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   renewCompressedOutput()
 
+  private def bucketMetric(name: String, bucket: Int): TaskMetric =
+    TaskMetric(name, bucketedBatches(_batchFillBuckets(bucket).longValue, bucket, currentBufferedRows, flushBatchSize))
+
   // buffered rows count as flushed: commit() writes them after Spark's final metrics snapshot
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
     TaskMetric(RECORDS_WRITTEN, recordsWritten(totalRecordsWritten, currentBufferedRows)),
@@ -192,6 +199,10 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     TaskMetric(FAILED_WRITE_ATTEMPTS, failedWriteAttempts),
     TaskMetric(MIN_BATCH_SIZE, minBatchSize(_minBatchSize, currentBufferedRows)),
     TaskMetric(MAX_BATCH_SIZE, maxBatchSize(_maxBatchSize, currentBufferedRows)),
+    bucketMetric(BATCH_FILL_0_25, 0),
+    bucketMetric(BATCH_FILL_25_50, 1),
+    bucketMetric(BATCH_FILL_50_75, 2),
+    bucketMetric(BATCH_FILL_75_100, 3),
     TaskMetric(CONNECTIONS, connections(flushes, currentBufferedRows, client))
   )
 
