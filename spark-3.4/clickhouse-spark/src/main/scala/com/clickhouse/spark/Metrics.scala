@@ -44,7 +44,7 @@ object Metrics {
 
 case class BlocksReadMetric() extends CustomSumMetric {
   override def name: String = BLOCKS_READ
-  override def description: String = "number of blocks"
+  override def description: String = "blocks"
 }
 
 case class BytesReadMetric() extends SizeSumMetric {
@@ -54,7 +54,7 @@ case class BytesReadMetric() extends SizeSumMetric {
 
 case class RecordsWrittenMetric() extends CustomSumMetric {
   override def name: String = RECORDS_WRITTEN
-  override def description: String = "number of output rows"
+  override def description: String = "output rows"
 }
 
 case class BytesWrittenMetric() extends SizeSumMetric {
@@ -74,12 +74,12 @@ case class WriteTimeMetric() extends DurationSumMetric {
 
 case class FlushCountMetric() extends CustomSumMetric {
   override def name: String = FLUSHES
-  override def description: String = "number of batch writes to ClickHouse"
+  override def description: String = "batch writes to ClickHouse"
 }
 
 case class FailedWriteAttemptsMetric() extends CustomSumMetric {
   override def name: String = FAILED_WRITE_ATTEMPTS
-  override def description: String = "number of failed write attempts to ClickHouse"
+  override def description: String = "failed write attempts to ClickHouse"
 }
 
 case class MinBatchSizeMetric() extends CustomMetric {
@@ -99,5 +99,5 @@ case class MaxBatchSizeMetric() extends CustomMetric {
 
 case class ConnectionsMetric() extends CustomSumMetric {
   override def name: String = CONNECTIONS
-  override def description: String = "number of connections to ClickHouse"
+  override def description: String = "connections to ClickHouse"
 }
