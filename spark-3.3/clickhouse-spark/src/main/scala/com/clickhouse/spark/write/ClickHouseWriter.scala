@@ -182,22 +182,18 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   renewCompressedOutput()
 
-  override def currentMetricsValues: Array[CustomTaskMetric] = {
-    // Spark takes the final metrics snapshot before commit() flushes the last partial batch,
-    // so still-buffered rows are projected as the flush that will write them (see WriteMetricsProjection)
-    val pending = currentBufferedRows
-    Array(
-      TaskMetric(RECORDS_WRITTEN, totalRecordsWritten + pending),
-      TaskMetric(BYTES_WRITTEN, totalSerializedBytesWritten),
-      TaskMetric(SERIALIZE_TIME, totalSerializeTime),
-      TaskMetric(WRITE_TIME, totalWriteTime),
-      TaskMetric(FLUSHES, projectedFlushes(flushes, pending)),
-      TaskMetric(FAILED_WRITE_ATTEMPTS, failedWriteAttempts),
-      TaskMetric(MIN_BATCH_SIZE, minBatchSize(_minBatchSize, pending)),
-      TaskMetric(MAX_BATCH_SIZE, maxBatchSize(_maxBatchSize, pending)),
-      TaskMetric(CONNECTIONS, connections(flushes, pending, client))
-    )
-  }
+  // buffered rows count as flushed: commit() writes them after Spark's final metrics snapshot
+  override def currentMetricsValues: Array[CustomTaskMetric] = Array(
+    TaskMetric(RECORDS_WRITTEN, totalRecordsWritten + currentBufferedRows),
+    TaskMetric(BYTES_WRITTEN, totalSerializedBytesWritten),
+    TaskMetric(SERIALIZE_TIME, totalSerializeTime),
+    TaskMetric(WRITE_TIME, totalWriteTime),
+    TaskMetric(FLUSHES, projectedFlushes(flushes, currentBufferedRows)),
+    TaskMetric(FAILED_WRITE_ATTEMPTS, failedWriteAttempts),
+    TaskMetric(MIN_BATCH_SIZE, minBatchSize(_minBatchSize, currentBufferedRows)),
+    TaskMetric(MAX_BATCH_SIZE, maxBatchSize(_maxBatchSize, currentBufferedRows)),
+    TaskMetric(CONNECTIONS, connections(flushes, currentBufferedRows, client))
+  )
 
   def format: String
 

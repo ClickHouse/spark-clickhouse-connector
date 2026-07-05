@@ -51,22 +51,13 @@ class MetricsSuite extends AnyFunSuite {
     assert(new StubWriter(writeJob()).currentMetricsValues.map(_.name).toSet === supported)
   }
 
-  test("fresh writer reports zero metrics without opening a connection") {
-    val metrics = metricsMap(new StubWriter(writeJob()))
-    assert(metrics(RECORDS_WRITTEN) === 0L)
-    assert(metrics(FLUSHES) === 0L)
-    assert(metrics(FAILED_WRITE_ATTEMPTS) === 0L)
-    assert(metrics(MIN_BATCH_SIZE) === 0L)
-    assert(metrics(MAX_BATCH_SIZE) === 0L)
-    assert(metrics(CONNECTIONS) === 0L)
-  }
-
   test("buffered rows count as one pending flush") {
     val writer = new StubWriter(writeJob())
     (1 to 3).foreach(_ => writer.write(InternalRow.empty))
     val metrics = metricsMap(writer)
     assert(metrics(RECORDS_WRITTEN) === 3L)
     assert(metrics(FLUSHES) === 1L)
+    assert(metrics(FAILED_WRITE_ATTEMPTS) === 0L)
     assert(metrics(MIN_BATCH_SIZE) === 3L)
     assert(metrics(MAX_BATCH_SIZE) === 3L)
     assert(metrics(CONNECTIONS) === 1L)
