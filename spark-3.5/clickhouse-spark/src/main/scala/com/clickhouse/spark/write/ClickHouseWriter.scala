@@ -30,7 +30,7 @@ import org.apache.spark.sql.types._
 import com.clickhouse.spark.Metrics._
 import com.clickhouse.spark.io.{ForwardingOutputStream, ObservableOutputStream}
 import com.clickhouse.spark._
-import com.clickhouse.spark.client.{ClusterClient, NodeClient}
+import com.clickhouse.spark.client.{ClusterClient, NodeClient, WriteMetricsProjection}
 import com.clickhouse.spark.exception._
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, OutputStream}
@@ -209,15 +209,9 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   renewCompressedOutput()
 
-  // `client` is lazy and only forced by a flush; before that, report the connection commit() will open
-  private def connections(pending: Long): Long =
-    if (flushes > 0) client.fold(_.openConnections.toLong, _ => 1L)
-    else if (pending > 0) 1L
-    else 0L
-
   override def currentMetricsValues: Array[CustomTaskMetric] = {
     // Spark takes the final metrics snapshot before commit() flushes the last partial batch,
-    // so count still-buffered rows as one more flush
+    // so still-buffered rows are projected as the flush that will write them (see WriteMetricsProjection)
     val pending = currentBufferedRows
     val minBatch = Seq(_minBatchSize, pending).filter(_ > 0).reduceOption(_ min _).getOrElse(0L)
     Array(
@@ -225,11 +219,11 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
       TaskMetric(BYTES_WRITTEN, totalSerializedBytesWritten),
       TaskMetric(SERIALIZE_TIME, totalSerializeTime),
       TaskMetric(WRITE_TIME, totalWriteTime),
-      TaskMetric(FLUSHES, flushes + (if (pending > 0) 1 else 0)),
+      TaskMetric(FLUSHES, WriteMetricsProjection.flushes(flushes, pending)),
       TaskMetric(FAILED_WRITE_ATTEMPTS, failedWriteAttempts),
       TaskMetric(MIN_BATCH_SIZE, minBatch),
       TaskMetric(MAX_BATCH_SIZE, _maxBatchSize.max(pending)),
-      TaskMetric(CONNECTIONS, connections(pending))
+      TaskMetric(CONNECTIONS, WriteMetricsProjection.connections(flushes, pending, client))
     )
   }
 
