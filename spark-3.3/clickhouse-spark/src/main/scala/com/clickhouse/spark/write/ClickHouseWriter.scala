@@ -184,7 +184,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   // buffered rows count as flushed: commit() writes them after Spark's final metrics snapshot
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
-    TaskMetric(RECORDS_WRITTEN, totalRecordsWritten + currentBufferedRows),
+    TaskMetric(RECORDS_WRITTEN, recordsWritten(totalRecordsWritten, currentBufferedRows)),
     TaskMetric(BYTES_WRITTEN, totalSerializedBytesWritten),
     TaskMetric(SERIALIZE_TIME, totalSerializeTime),
     TaskMetric(WRITE_TIME, totalWriteTime),

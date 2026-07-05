@@ -21,6 +21,10 @@ package com.clickhouse.spark.client
  */
 object WriteMetricsProjection {
 
+  /** Rows written so far, plus the pending rows that commit() will write. */
+  def recordsWritten(written: Long, pendingRows: Long): Long =
+    written + pendingRows
+
   /** Flushes performed so far, plus the one flush that will write the pending rows. */
   def flushes(flushed: Long, pendingRows: Long): Long =
     flushed + (if (pendingRows > 0) 1 else 0)

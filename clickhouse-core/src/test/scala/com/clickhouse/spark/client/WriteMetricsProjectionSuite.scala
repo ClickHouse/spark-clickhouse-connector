@@ -19,6 +19,10 @@ import org.scalatest.funsuite.AnyFunSuite
 
 class WriteMetricsProjectionSuite extends AnyFunSuite {
 
+  test("pending rows count as written") {
+    assert(WriteMetricsProjection.recordsWritten(written = 20000, pendingRows = 5000) === 25000L)
+  }
+
   test("pending rows count as exactly one more flush") {
     assert(WriteMetricsProjection.flushes(flushed = 2, pendingRows = 5) === 3L)
     assert(WriteMetricsProjection.flushes(flushed = 2, pendingRows = 0) === 2L)
