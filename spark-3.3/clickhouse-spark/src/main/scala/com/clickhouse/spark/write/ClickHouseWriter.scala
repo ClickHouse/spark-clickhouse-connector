@@ -132,6 +132,8 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   def totalWriteTime: Long = _totalWriteTime.longValue
   val _flushes = new LongAdder
   def flushes: Long = _flushes.longValue
+  val _failedWriteAttempts = new LongAdder
+  def failedWriteAttempts: Long = _failedWriteAttempts.longValue
   // rows in the smallest/largest batch flushed so far, 0 until the first flush
   var _minBatchSize = 0L
   var _maxBatchSize = 0L
@@ -196,6 +198,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
       TaskMetric(SERIALIZE_TIME, totalSerializeTime),
       TaskMetric(WRITE_TIME, totalWriteTime),
       TaskMetric(FLUSHES, flushes + (if (pending > 0) 1 else 0)),
+      TaskMetric(FAILED_WRITE_ATTEMPTS, failedWriteAttempts),
       TaskMetric(MIN_BATCH_SIZE, minBatch),
       TaskMetric(MAX_BATCH_SIZE, _maxBatchSize.max(pending)),
       TaskMetric(CONNECTIONS, connections(pending))
@@ -267,9 +270,12 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
           _totalWriteTime.add(writeTime)
           _totalRecordsWritten.add(currentBufferedRows)
         case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.code) =>
+          _failedWriteAttempts.add(1)
           startWriteTime = System.currentTimeMillis
           throw RetryableCHException(retryable.code, retryable.reason, Some(client.nodeSpec))
-        case Left(rethrow) => throw rethrow
+        case Left(rethrow) =>
+          _failedWriteAttempts.add(1)
+          throw rethrow
       }
     } match {
       case Success(_) =>

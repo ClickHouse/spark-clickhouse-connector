@@ -36,6 +36,7 @@ object Metrics {
   val SERIALIZE_TIME = "serializeTime"
   val WRITE_TIME = "writeTime"
   val FLUSHES = "flushes"
+  val FAILED_WRITE_ATTEMPTS = "failedWriteAttempts"
   val MIN_BATCH_SIZE = "minBatchSize"
   val MAX_BATCH_SIZE = "maxBatchSize"
   val CONNECTIONS = "connections"
@@ -74,6 +75,11 @@ case class WriteTimeMetric() extends DurationSumMetric {
 case class FlushCountMetric() extends CustomSumMetric {
   override def name: String = FLUSHES
   override def description: String = "number of batch writes to ClickHouse"
+}
+
+case class FailedWriteAttemptsMetric() extends CustomSumMetric {
+  override def name: String = FAILED_WRITE_ATTEMPTS
+  override def description: String = "number of failed write attempts to ClickHouse"
 }
 
 case class MinBatchSizeMetric() extends CustomMetric {

@@ -16,16 +16,19 @@ package com.clickhouse.spark
 
 import com.clickhouse.spark.Metrics._
 import com.clickhouse.spark.client.{ClusterClient, NodeClient}
+import com.clickhouse.spark.exception.{CHException, CHServerException, RetryableCHException}
+import com.clickhouse.spark.format.SimpleOutput
 import com.clickhouse.spark.func.StaticFunctionRegistry
 import com.clickhouse.spark.spec.{MergeTreeEngineSpec, NodeSpec, TableSpec}
 import com.clickhouse.spark.write.{ClickHouseWrite, ClickHouseWriter, WriteJobDescription}
+import com.fasterxml.jackson.databind.node.ObjectNode
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.clickhouse.WriteOptions
 import org.apache.spark.sql.types.StructType
 import org.scalatest.funsuite.AnyFunSuite
 
+import java.io.InputStream
 import java.time.{LocalDateTime, ZoneId}
-import java.util.Collections
 
 class MetricsSuite extends AnyFunSuite {
 
@@ -44,21 +47,22 @@ class MetricsSuite extends AnyFunSuite {
   }
 
   test("writer reports a task metric for every supported custom metric") {
-    val supported = new ClickHouseWrite(writeJob).supportedCustomMetrics().map(_.name).toSet
-    assert(new StubWriter(writeJob).currentMetricsValues.map(_.name).toSet === supported)
+    val supported = new ClickHouseWrite(writeJob()).supportedCustomMetrics().map(_.name).toSet
+    assert(new StubWriter(writeJob()).currentMetricsValues.map(_.name).toSet === supported)
   }
 
   test("fresh writer reports zero metrics without opening a connection") {
-    val metrics = metricsMap(new StubWriter(writeJob))
+    val metrics = metricsMap(new StubWriter(writeJob()))
     assert(metrics(RECORDS_WRITTEN) === 0L)
     assert(metrics(FLUSHES) === 0L)
+    assert(metrics(FAILED_WRITE_ATTEMPTS) === 0L)
     assert(metrics(MIN_BATCH_SIZE) === 0L)
     assert(metrics(MAX_BATCH_SIZE) === 0L)
     assert(metrics(CONNECTIONS) === 0L)
   }
 
   test("buffered rows count as one pending flush") {
-    val writer = new StubWriter(writeJob)
+    val writer = new StubWriter(writeJob())
     (1 to 3).foreach(_ => writer.write(InternalRow.empty))
     val metrics = metricsMap(writer)
     assert(metrics(RECORDS_WRITTEN) === 3L)
@@ -69,7 +73,7 @@ class MetricsSuite extends AnyFunSuite {
   }
 
   test("pending flush combines with flushed batches") {
-    val writer = new StubWriter(writeJob)
+    val writer = new StubWriter(writeJob())
     writer._flushes.add(2)
     writer._minBatchSize = 100L
     writer._maxBatchSize = 250L
@@ -83,55 +87,91 @@ class MetricsSuite extends AnyFunSuite {
     assert(metrics(CONNECTIONS) === 1L)
   }
 
+  test("non-retryable write failure counts one failed attempt") {
+    val job = writeJob("spark.clickhouse.write.retryableErrorCodes" -> "241")
+    val writer = new StubWriter(job, new FailingNodeClient(errorCode = 999))
+    writer.write(InternalRow.empty)
+    intercept[CHServerException](writer.doFlush(None))
+    assert(metricsMap(writer)(FAILED_WRITE_ATTEMPTS) === 1L)
+  }
+
+  test("every retried write attempt counts as a failed attempt") {
+    val job = writeJob(
+      "spark.clickhouse.write.retryableErrorCodes" -> "999",
+      "spark.clickhouse.write.maxRetry" -> "1",
+      "spark.clickhouse.write.retryInterval" -> "0"
+    )
+    val writer = new StubWriter(job, new FailingNodeClient(errorCode = 999))
+    writer.write(InternalRow.empty)
+    intercept[RetryableCHException](writer.doFlush(None))
+    assert(metricsMap(writer)(FAILED_WRITE_ATTEMPTS) === 2L)
+  }
+
   private def metricsMap(writer: ClickHouseWriter): Map[String, Long] =
     writer.currentMetricsValues.map(m => m.name -> m.value).toMap
 
-  private class StubWriter(job: WriteJobDescription) extends ClickHouseWriter(job) {
-    override protected lazy val client: Either[ClusterClient, NodeClient] = Right(null)
+  private class StubWriter(job: WriteJobDescription, stubClient: NodeClient = null)
+      extends ClickHouseWriter(job) {
+    override protected lazy val client: Either[ClusterClient, NodeClient] = Right(stubClient)
     override def format: String = "Stub"
     override def writeRow(record: InternalRow): Unit = ()
     override def doSerialize(): Array[Byte] = Array.emptyByteArray
   }
 
-  private def writeJob: WriteJobDescription = WriteJobDescription(
-    queryId = "metrics-suite-query",
-    tableSchema = new StructType(),
-    metadataSchema = new StructType(),
-    dataSetSchema = new StructType(),
-    node = NodeSpec("127.0.0.1"),
-    tz = ZoneId.of("UTC"),
-    tableSpec = TableSpec(
-      database = "db",
-      name = "tbl",
-      uuid = "",
-      engine = "MergeTree",
-      is_temporary = false,
-      data_paths = Nil,
-      metadata_path = "",
-      metadata_modification_time = LocalDateTime.of(2026, 1, 1, 0, 0),
-      dependencies_database = Nil,
-      dependencies_table = Nil,
-      create_table_query = "",
-      engine_full = "MergeTree",
-      partition_key = "",
-      sorting_key = "",
-      primary_key = "",
-      sampling_key = "",
-      storage_policy = "",
-      total_rows = None,
-      total_bytes = None,
-      lifetime_rows = None,
-      lifetime_bytes = None
-    ),
-    tableEngineSpec = MergeTreeEngineSpec("MergeTree()"),
-    cluster = None,
-    localTableSpec = None,
-    localTableEngineSpec = None,
-    shardingKey = None,
-    partitionKey = None,
-    sortingKey = None,
-    writeOptions = new WriteOptions(Collections.emptyMap[String, String]),
-    writeSettings = Map.empty,
-    functionRegistry = StaticFunctionRegistry
-  )
+  private class FailingNodeClient(errorCode: Int) extends NodeClient(NodeSpec("127.0.0.1", Some(8123))) {
+    override def syncInsertOutputJSONEachRow(
+      database: String,
+      table: String,
+      inputFormat: String,
+      data: InputStream,
+      settings: Map[String, String]
+    ): Either[CHException, SimpleOutput[ObjectNode]] =
+      Left(CHServerException(errorCode, "simulated failure", None, None))
+  }
+
+  private def writeJob(options: (String, String)*): WriteJobDescription = {
+    val optionsMap = new java.util.HashMap[String, String]()
+    options.foreach { case (k, v) => optionsMap.put(k, v) }
+    WriteJobDescription(
+      queryId = "metrics-suite-query",
+      tableSchema = new StructType(),
+      metadataSchema = new StructType(),
+      dataSetSchema = new StructType(),
+      node = NodeSpec("127.0.0.1"),
+      tz = ZoneId.of("UTC"),
+      tableSpec = TableSpec(
+        database = "db",
+        name = "tbl",
+        uuid = "",
+        engine = "MergeTree",
+        is_temporary = false,
+        data_paths = Nil,
+        metadata_path = "",
+        metadata_modification_time = LocalDateTime.of(2026, 1, 1, 0, 0),
+        dependencies_database = Nil,
+        dependencies_table = Nil,
+        create_table_query = "",
+        engine_full = "MergeTree",
+        partition_key = "",
+        sorting_key = "",
+        primary_key = "",
+        sampling_key = "",
+        storage_policy = "",
+        total_rows = None,
+        total_bytes = None,
+        lifetime_rows = None,
+        lifetime_bytes = None
+      ),
+      tableEngineSpec = MergeTreeEngineSpec("MergeTree()"),
+      cluster = None,
+      localTableSpec = None,
+      localTableEngineSpec = None,
+      shardingKey = None,
+      partitionKey = None,
+      sortingKey = None,
+      writeOptions = new WriteOptions(optionsMap),
+      writeSettings = Map.empty,
+      functionRegistry = StaticFunctionRegistry
+    )
+  }
 }

@@ -78,6 +78,7 @@ class ClickHouseWrite(
     SerializeTimeMetric(),
     WriteTimeMetric(),
     FlushCountMetric(),
+    FailedWriteAttemptsMetric(),
     MinBatchSizeMetric(),
     MaxBatchSizeMetric(),
     ConnectionsMetric()
