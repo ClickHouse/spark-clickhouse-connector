@@ -26,7 +26,8 @@ import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types._
 import com.clickhouse.spark.Metrics._
 import com.clickhouse.spark._
-import com.clickhouse.spark.client.{ClusterClient, NodeClient, WriteMetricsProjection}
+import com.clickhouse.spark.client.{ClusterClient, NodeClient}
+import com.clickhouse.spark.client.WriteMetricsProjection.{flushes => projectedFlushes, _}
 import com.clickhouse.spark.exception._
 import com.clickhouse.spark.io.{ForwardingOutputStream, ObservableOutputStream}
 import com.clickhouse.spark.spec.{DistributedEngineSpec, ShardUtils}
@@ -166,8 +167,8 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   private def recordFlush(rows: Long): Unit = {
     _flushes.add(1)
-    _minBatchSize = if (_minBatchSize == 0) rows else _minBatchSize.min(rows)
-    _maxBatchSize = _maxBatchSize.max(rows)
+    _minBatchSize = minBatchSize(_minBatchSize, rows)
+    _maxBatchSize = maxBatchSize(_maxBatchSize, rows)
   }
 
   val serializedBuffer = new ByteArrayOutputStream(64 * 1024 * 1024)
@@ -211,17 +212,16 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     // Spark takes the final metrics snapshot before commit() flushes the last partial batch,
     // so still-buffered rows are projected as the flush that will write them (see WriteMetricsProjection)
     val pending = currentBufferedRows
-    val minBatch = Seq(_minBatchSize, pending).filter(_ > 0).reduceOption(_ min _).getOrElse(0L)
     Array(
       TaskMetric(RECORDS_WRITTEN, totalRecordsWritten + pending),
       TaskMetric(BYTES_WRITTEN, totalSerializedBytesWritten),
       TaskMetric(SERIALIZE_TIME, totalSerializeTime),
       TaskMetric(WRITE_TIME, totalWriteTime),
-      TaskMetric(FLUSHES, WriteMetricsProjection.flushes(flushes, pending)),
+      TaskMetric(FLUSHES, projectedFlushes(flushes, pending)),
       TaskMetric(FAILED_WRITE_ATTEMPTS, failedWriteAttempts),
-      TaskMetric(MIN_BATCH_SIZE, minBatch),
-      TaskMetric(MAX_BATCH_SIZE, _maxBatchSize.max(pending)),
-      TaskMetric(CONNECTIONS, WriteMetricsProjection.connections(flushes, pending, client))
+      TaskMetric(MIN_BATCH_SIZE, minBatchSize(_minBatchSize, pending)),
+      TaskMetric(MAX_BATCH_SIZE, maxBatchSize(_maxBatchSize, pending)),
+      TaskMetric(CONNECTIONS, connections(flushes, pending, client))
     )
   }
 

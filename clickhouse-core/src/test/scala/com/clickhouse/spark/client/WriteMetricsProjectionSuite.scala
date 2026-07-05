@@ -24,6 +24,15 @@ class WriteMetricsProjectionSuite extends AnyFunSuite {
     assert(WriteMetricsProjection.flushes(flushed = 0, pendingRows = 0) === 0L)
   }
 
+  test("batches fold into running min/max batch size") {
+    assert(WriteMetricsProjection.minBatchSize(currentMin = 100, batchRows = 5) === 5L)
+    assert(WriteMetricsProjection.minBatchSize(currentMin = 100, batchRows = 0) === 100L)
+    assert(WriteMetricsProjection.minBatchSize(currentMin = 0, batchRows = 5) === 5L)
+    assert(WriteMetricsProjection.minBatchSize(currentMin = 0, batchRows = 0) === 0L)
+    assert(WriteMetricsProjection.maxBatchSize(currentMax = 100, batchRows = 5) === 100L)
+    assert(WriteMetricsProjection.maxBatchSize(currentMax = 0, batchRows = 5) === 5L)
+  }
+
   test("connections are predicted without creating a client") {
     def failingClient: Either[ClusterClient, NodeClient] =
       fail("client must not be created just to report a metric")

@@ -25,13 +25,28 @@ object WriteMetricsProjection {
   def flushes(flushed: Long, pendingRows: Long): Long =
     flushed + (if (pendingRows > 0) 1 else 0)
 
+  /** Folds a batch (flushed, or still pending) into a running minimum batch size, where 0 means "no batch". */
+  def minBatchSize(currentMin: Long, batchRows: Long): Long =
+    Seq(currentMin, batchRows).filter(_ > 0).reduceOption(_ min _).getOrElse(0L)
+
+  /** Folds a batch (flushed, or still pending) into a running maximum batch size. */
+  def maxBatchSize(currentMax: Long, batchRows: Long): Long =
+    currentMax.max(batchRows)
+
   /**
    * Connections opened so far: one per node client in cluster mode, one in single-node mode.
    * `client` is by-name so a client is never created just to report this metric — before the
    * first flush creates one, the single connection that will write the pending rows is predicted.
    */
-  def connections(flushed: Long, pendingRows: Long, client: => Either[ClusterClient, NodeClient]): Long =
-    if (flushed > 0) client.fold(_.openConnections.toLong, _ => 1L)
-    else if (pendingRows > 0) 1L
+  def connections(flushed: Long, pendingRows: Long, client: => Either[ClusterClient, NodeClient]): Long = {
+    val clientCreated = flushed > 0 // reading `client` before the first flush would create it
+    if (clientCreated) countOpenConnections(client)
+    else if (pendingRows > 0) 1L // commit() will open the first connection for the pending batch
     else 0L
+  }
+
+  private def countOpenConnections(client: Either[ClusterClient, NodeClient]): Long = client match {
+    case Left(clusterClient) => clusterClient.openConnections.toLong // cluster: one per (shard, replica) used
+    case Right(_) => 1L // single node: exactly one
+  }
 }
