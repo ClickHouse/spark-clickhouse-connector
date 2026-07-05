@@ -15,7 +15,7 @@
 package com.clickhouse.spark
 
 import org.apache.spark.sql.connector.metric.{CustomMetric, CustomSumMetric, CustomTaskMetric}
-import com.clickhouse.spark.Metrics._
+import Metrics._
 
 case class TaskMetric(override val name: String, override val value: Long) extends CustomTaskMetric
 
@@ -35,6 +35,10 @@ object Metrics {
   val BYTES_WRITTEN = "bytesWritten"
   val SERIALIZE_TIME = "serializeTime"
   val WRITE_TIME = "writeTime"
+  val FLUSHES = "flushes"
+  val MIN_BATCH_SIZE = "minBatchSize"
+  val MAX_BATCH_SIZE = "maxBatchSize"
+  val CONNECTIONS = "connections"
 }
 
 case class BlocksReadMetric() extends CustomSumMetric {
@@ -65,4 +69,29 @@ case class SerializeTimeMetric() extends DurationSumMetric {
 case class WriteTimeMetric() extends DurationSumMetric {
   override def name: String = WRITE_TIME
   override def description: String = "total time of writing"
+}
+
+case class FlushCountMetric() extends CustomSumMetric {
+  override def name: String = FLUSHES
+  override def description: String = "number of batch writes to ClickHouse"
+}
+
+case class MinBatchSizeMetric() extends CustomMetric {
+  override def name: String = MIN_BATCH_SIZE
+  override def description: String = "min batch size written (rows)"
+  // a task that flushed nothing reports 0; ignore it
+  override def aggregateTaskMetrics(taskMetrics: Array[Long]): String =
+    taskMetrics.filter(_ > 0).reduceOption(_ min _).getOrElse(0L).toString
+}
+
+case class MaxBatchSizeMetric() extends CustomMetric {
+  override def name: String = MAX_BATCH_SIZE
+  override def description: String = "max batch size written (rows)"
+  override def aggregateTaskMetrics(taskMetrics: Array[Long]): String =
+    taskMetrics.reduceOption(_ max _).getOrElse(0L).toString
+}
+
+case class ConnectionsMetric() extends CustomSumMetric {
+  override def name: String = CONNECTIONS
+  override def description: String = "number of connections to ClickHouse"
 }

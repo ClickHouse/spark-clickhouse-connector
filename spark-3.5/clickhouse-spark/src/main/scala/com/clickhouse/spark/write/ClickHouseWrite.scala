@@ -14,7 +14,6 @@
 
 package com.clickhouse.spark.write
 
-import com.clickhouse.spark.{BytesWrittenMetric, RecordsWrittenMetric, SerializeTimeMetric, WriteTimeMetric}
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.write.format.{ClickHouseArrowStreamWriter, ClickHouseJsonEachRowWriter}
 import org.apache.spark.internal.Logging
@@ -79,7 +78,11 @@ class ClickHouseWrite(
     RecordsWrittenMetric(),
     BytesWrittenMetric(),
     SerializeTimeMetric(),
-    WriteTimeMetric()
+    WriteTimeMetric(),
+    FlushCountMetric(),
+    MinBatchSizeMetric(),
+    MaxBatchSizeMetric(),
+    ConnectionsMetric()
   )
 }
 

@@ -156,6 +156,17 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   def totalSerializeTime: Long = _totalSerializeTime.longValue
   val _totalWriteTime = new LongAdder
   def totalWriteTime: Long = _totalWriteTime.longValue
+  val _flushes = new LongAdder
+  def flushes: Long = _flushes.longValue
+  // rows in the smallest/largest batch flushed so far, 0 until the first flush
+  var _minBatchSize = 0L
+  var _maxBatchSize = 0L
+
+  private def recordFlush(rows: Long): Unit = {
+    _flushes.add(1)
+    _minBatchSize = if (_minBatchSize == 0) rows else _minBatchSize.min(rows)
+    _maxBatchSize = _maxBatchSize.max(rows)
+  }
 
   val serializedBuffer = new ByteArrayOutputStream(64 * 1024 * 1024)
 
@@ -194,12 +205,28 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   renewCompressedOutput()
 
-  override def currentMetricsValues: Array[CustomTaskMetric] = Array(
-    TaskMetric(RECORDS_WRITTEN, totalRecordsWritten),
-    TaskMetric(BYTES_WRITTEN, totalSerializedBytesWritten),
-    TaskMetric(SERIALIZE_TIME, totalSerializeTime),
-    TaskMetric(WRITE_TIME, totalWriteTime)
-  )
+  // `client` is lazy and only forced by a flush; before that, report the connection commit() will open
+  private def connections(pending: Long): Long =
+    if (flushes > 0) client.fold(_.openConnections.toLong, _ => 1L)
+    else if (pending > 0) 1L
+    else 0L
+
+  override def currentMetricsValues: Array[CustomTaskMetric] = {
+    // Spark takes the final metrics snapshot before commit() flushes the last partial batch,
+    // so count still-buffered rows as one more flush
+    val pending = currentBufferedRows
+    val minBatch = Seq(_minBatchSize, pending).filter(_ > 0).reduceOption(_ min _).getOrElse(0L)
+    Array(
+      TaskMetric(RECORDS_WRITTEN, totalRecordsWritten + pending),
+      TaskMetric(BYTES_WRITTEN, totalSerializedBytesWritten),
+      TaskMetric(SERIALIZE_TIME, totalSerializeTime),
+      TaskMetric(WRITE_TIME, totalWriteTime),
+      TaskMetric(FLUSHES, flushes + (if (pending > 0) 1 else 0)),
+      TaskMetric(MIN_BATCH_SIZE, minBatch),
+      TaskMetric(MAX_BATCH_SIZE, _maxBatchSize.max(pending)),
+      TaskMetric(CONNECTIONS, connections(pending))
+    )
+  }
 
   def format: String
 
@@ -272,6 +299,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
       }
     } match {
       case Success(_) =>
+        recordFlush(currentBufferedRows)
         log.info(
           s"""Job[${writeJob.queryId}]: batch write completed
              |cluster: ${writeJob.cluster.map(_.name).getOrElse("none")}, shard: ${shardNum.getOrElse("none")}
