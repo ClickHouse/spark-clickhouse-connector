@@ -16,14 +16,13 @@ package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.data.ClickHouseDataType._
 import com.clickhouse.data.{ClickHouseColumn, ClickHouseDataType}
-import com.clickhouse.spark.Logging
+import com.clickhouse.spark.{ColumnUtils, Logging}
 import org.apache.spark.sql.types._
 import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_FIXED_STRING_AS
 
 import scala.collection.JavaConverters._
-import scala.util.Try
 
 object SchemaUtils extends SQLConfHelper with Logging {
 
@@ -135,16 +134,15 @@ object SchemaUtils extends SQLConfHelper with Logging {
 
   def fromClickHouseSchema(chSchema: Seq[(String, String)]): StructType = {
     val mapped = chSchema.map { case (name, maybeNullableType) =>
-      val field = Try(ClickHouseColumn.parse(s"`$name` $maybeNullableType")).toOption
-        .collect { case chCols if chCols.size == 1 => chCols.get(0) }
+      val field = ColumnUtils.tryParseColumn(name, maybeNullableType)
         .flatMap(fromClickHouseType)
         .map { case (sparkType, nullable) => StructField(name, sparkType, nullable) }
       (name, maybeNullableType, field)
     }
-    val skipped = mapped.collect { case (name, chType, None) => s"`$name` $chType" }
+    val skipped = mapped.collect { case (name, chType, None) => name -> chType }
     if (skipped.nonEmpty) {
       log.warn(s"Ignoring ${skipped.size} column(s) with unsupported ClickHouse type(s): " +
-        skipped.mkString(", ") +
+        ColumnUtils.renderColumns(skipped) +
         ". These columns are excluded from the Spark table schema and can not be queried or written.")
     }
     StructType(mapped.collect { case (_, _, Some(field)) => field })

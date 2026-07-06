@@ -248,4 +248,8 @@ class SchemaUtilsSuite extends AnyFunSuite {
     )
     assert(fromClickHouseSchema(allUnsupported) === StructType(Nil))
   }
+
+  test("fromClickHouseSchema skips columns the client can not parse") {
+    assert(fromClickHouseSchema(Seq("c" -> "SomeFutureType(42)")) === StructType(Nil))
+  }
 }

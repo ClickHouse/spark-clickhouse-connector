@@ -149,8 +149,8 @@ case class ClickHouseTable(
   override lazy val properties: util.Map[String, String] =
     if (unsupportedColumns.isEmpty) spec.toJavaMap
     else {
-      val rendered = unsupportedColumns.map { case (name, chType) => s"`$name` $chType" }.mkString(", ")
-      (spec.toMap + ("unsupported.columns" -> rendered)).asJava
+      val rendered = ColumnUtils.renderColumns(unsupportedColumns)
+      (spec.toMap + (Constants.TABLE_PROP_UNSUPPORTED_COLUMNS -> rendered)).asJava
     }
 
   override def newScanBuilder(options: CaseInsensitiveStringMap): ScanBuilder = {
