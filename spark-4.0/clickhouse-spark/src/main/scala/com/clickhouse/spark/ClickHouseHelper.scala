@@ -15,7 +15,7 @@
 package com.clickhouse.spark
 
 import com.clickhouse.client.ClickHouseProtocol
-import com.clickhouse.spark.exception.CHException
+import com.clickhouse.spark.exception.{CHClientException, CHException}
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.SQLConfHelper
@@ -337,7 +337,12 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
    */
   def getQueryOutputSchema(sql: String)(implicit nodeClient: NodeClient): StructType = {
     val namesAndTypes = nodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql).namesAndTypes
-    SchemaUtils.fromClickHouseSchema(namesAndTypes.toSeq)
+    val schema = SchemaUtils.fromClickHouseSchema(namesAndTypes.toSeq)
+    if (schema.length != namesAndTypes.size) {
+      // unlike a table schema, a query output must map in full - callers align it positionally with the select items
+      throw CHClientException(s"Query output contains unsupported types, sql: $sql")
+    }
+    schema
   }
 
   def dropPartition(
