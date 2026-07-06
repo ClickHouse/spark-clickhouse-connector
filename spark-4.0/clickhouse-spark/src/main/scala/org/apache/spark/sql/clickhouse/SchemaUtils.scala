@@ -23,84 +23,93 @@ import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_FIXED_STRING_AS, READ_JSON_AS}
 
 import scala.collection.JavaConverters._
-import scala.collection.mutable.ArrayBuffer
-import scala.util.{Failure, Success, Try}
+import scala.util.Try
 
 object SchemaUtils extends SQLConfHelper with Logging {
 
-  def fromClickHouseType(chColumn: ClickHouseColumn): (DataType, Boolean) = {
-    val catalystType = chColumn.getDataType match {
-      case Nothing => NullType
-      case Bool => BooleanType
+  /**
+   * Maps a ClickHouse column to its Spark data type and nullability, or `None` if the
+   * ClickHouse type has no Spark mapping (e.g. `AggregateFunction`, `Point`, `Nested`).
+   * Throws only on genuine errors, e.g. an invalid read-format configuration value.
+   */
+  def fromClickHouseType(chColumn: ClickHouseColumn): Option[(DataType, Boolean)] = {
+    val catalystType: Option[DataType] = chColumn.getDataType match {
+      case Nothing => Some(NullType)
+      case Bool => Some(BooleanType)
       case JSON =>
         conf.getConf(READ_JSON_AS) match {
-          case "variant" => VariantType
-          case "string" => StringType
+          case "variant" => Some(VariantType)
+          case "string" => Some(StringType)
           case unsupported => throw CHClientException(s"Unsupported JSON read format mapping: $unsupported")
         }
-      case Variant => VariantType
-      case String | UUID | Enum8 | Enum16 | IPv4 | IPv6 => StringType
+      case Variant => Some(VariantType)
+      case String | UUID | Enum8 | Enum16 | IPv4 | IPv6 => Some(StringType)
       case FixedString =>
         conf.getConf(READ_FIXED_STRING_AS) match {
-          case "binary" => BinaryType
-          case "string" => StringType
+          case "binary" => Some(BinaryType)
+          case "string" => Some(StringType)
           case unsupported => throw CHClientException(s"Unsupported fixed string read format mapping: $unsupported")
         }
-      case Int8 => ByteType
+      case Int8 => Some(ByteType)
       case UInt8 =>
         // Check if this UInt8 is actually a Bool (ClickHouse stores Bool as UInt8)
-        if (chColumn.getOriginalTypeName.toLowerCase.contains("bool")) BooleanType
-        else ShortType
-      case Int16 => ShortType
-      case UInt16 | Int32 => IntegerType
-      case UInt32 | Int64 => LongType
-      case UInt64 => DecimalType(20, 0)
-      case Int128 | UInt128 | Int256 | UInt256 => DecimalType(38, 0)
-      case Float32 => FloatType
-      case Float64 => DoubleType
-      case Date | Date32 => DateType
-      case DateTime | DateTime32 | DateTime64 => TimestampType
+        if (chColumn.getOriginalTypeName.toLowerCase.contains("bool")) Some(BooleanType)
+        else Some(ShortType)
+      case Int16 => Some(ShortType)
+      case UInt16 | Int32 => Some(IntegerType)
+      case UInt32 | Int64 => Some(LongType)
+      case UInt64 => Some(DecimalType(20, 0))
+      case Int128 | UInt128 | Int256 | UInt256 => Some(DecimalType(38, 0))
+      case Float32 => Some(FloatType)
+      case Float64 => Some(DoubleType)
+      case Date | Date32 => Some(DateType)
+      case DateTime | DateTime32 | DateTime64 => Some(TimestampType)
       case ClickHouseDataType.Decimal if chColumn.getScale <= 38 =>
-        DecimalType(chColumn.getPrecision, chColumn.getScale)
-      case Decimal32 => DecimalType(9, chColumn.getScale)
-      case Decimal64 => DecimalType(18, chColumn.getScale)
-      case Decimal128 => DecimalType(38, chColumn.getScale)
-      case IntervalYear => YearMonthIntervalType(YearMonthIntervalType.YEAR)
-      case IntervalMonth => YearMonthIntervalType(YearMonthIntervalType.MONTH)
-      case IntervalDay => DayTimeIntervalType(DayTimeIntervalType.DAY)
-      case IntervalHour => DayTimeIntervalType(DayTimeIntervalType.HOUR)
-      case IntervalMinute => DayTimeIntervalType(DayTimeIntervalType.MINUTE)
-      case IntervalSecond => DayTimeIntervalType(DayTimeIntervalType.SECOND)
+        Some(DecimalType(chColumn.getPrecision, chColumn.getScale))
+      case Decimal32 => Some(DecimalType(9, chColumn.getScale))
+      case Decimal64 => Some(DecimalType(18, chColumn.getScale))
+      case Decimal128 => Some(DecimalType(38, chColumn.getScale))
+      case IntervalYear => Some(YearMonthIntervalType(YearMonthIntervalType.YEAR))
+      case IntervalMonth => Some(YearMonthIntervalType(YearMonthIntervalType.MONTH))
+      case IntervalDay => Some(DayTimeIntervalType(DayTimeIntervalType.DAY))
+      case IntervalHour => Some(DayTimeIntervalType(DayTimeIntervalType.HOUR))
+      case IntervalMinute => Some(DayTimeIntervalType(DayTimeIntervalType.MINUTE))
+      case IntervalSecond => Some(DayTimeIntervalType(DayTimeIntervalType.SECOND))
       case Array =>
         val elementChCols = chColumn.getNestedColumns
         assert(elementChCols.size == 1)
-        val (elementType, elementNullable) = fromClickHouseType(elementChCols.get(0))
-        ArrayType(elementType, elementNullable)
+        fromClickHouseType(elementChCols.get(0)).map { case (elementType, elementNullable) =>
+          ArrayType(elementType, elementNullable)
+        }
       case Map =>
         val kvChCols = chColumn.getNestedColumns
         assert(kvChCols.size == 2)
         val (keyChType, valueChType) = (kvChCols.get(0), kvChCols.get(1))
-        val (keyType, keyNullable) = fromClickHouseType(keyChType)
-        require(
-          !keyNullable,
-          s"Illegal type: ${keyChType.getOriginalTypeName}, the key type of Map should not be nullable"
-        )
-        val (valueType, valueNullable) = fromClickHouseType(valueChType)
-        MapType(keyType, valueType, valueNullable)
+        fromClickHouseType(keyChType).flatMap { case (keyType, keyNullable) =>
+          require(
+            !keyNullable,
+            s"Illegal type: ${keyChType.getOriginalTypeName}, the key type of Map should not be nullable"
+          )
+          fromClickHouseType(valueChType).map { case (valueType, valueNullable) =>
+            MapType(keyType, valueType, valueNullable)
+          }
+        }
       case Tuple =>
-        val nestedCols = chColumn.getNestedColumns
-        val fields = nestedCols.asScala.zipWithIndex.map { case (col, idx) =>
-          val (fieldType, fieldNullable) = fromClickHouseType(col)
-          // Use Spark convention for unnamed tuple fields: _1, _2, etc.
-          val fieldName = if (col.getColumnName.isEmpty) s"_${idx + 1}" else col.getColumnName
-          StructField(fieldName, fieldType, fieldNullable)
-        }.toArray
-        StructType(fields)
-      case Object | Nested | Point | Polygon | MultiPolygon | Ring | IntervalQuarter | IntervalWeek |
-          Decimal256 | AggregateFunction | SimpleAggregateFunction =>
-        throw CHClientException(s"Unsupported type: ${chColumn.getOriginalTypeName}")
+        val nestedCols = chColumn.getNestedColumns.asScala
+        val fields = nestedCols.zipWithIndex.flatMap { case (col, idx) =>
+          fromClickHouseType(col).map { case (fieldType, fieldNullable) =>
+            // Use Spark convention for unnamed tuple fields: _1, _2, etc.
+            val fieldName = if (col.getColumnName.isEmpty) s"_${idx + 1}" else col.getColumnName
+            StructField(fieldName, fieldType, fieldNullable)
+          }
+        }
+        // a Tuple is mappable only if every field is
+        if (fields.size == nestedCols.size) Some(StructType(fields.toArray)) else None
+      // Object, Nested, Point, Polygon, MultiPolygon, Ring, IntervalQuarter, IntervalWeek,
+      // Decimal256, AggregateFunction, SimpleAggregateFunction, and any future type without a mapping
+      case _ => None
     }
-    (catalystType, chColumn.isNullable)
+    catalystType.map(dataType => (dataType, chColumn.isNullable))
   }
 
   def toClickHouseType(catalystType: DataType, nullable: Boolean): String =
@@ -139,31 +148,21 @@ object SchemaUtils extends SQLConfHelper with Logging {
       case _ => throw CHClientException(s"Unsupported type: $catalystType")
     }
 
-  def fromClickHouseSchema(chSchema: Seq[(String, String)]): StructType =
-    fromClickHouseSchema(chSchema, ignoreUnsupported = false)
-
-  def fromClickHouseSchema(chSchema: Seq[(String, String)], ignoreUnsupported: Boolean): StructType = {
-    val skipped = ArrayBuffer.empty[(String, String)]
-    val structFields = chSchema.flatMap { case (name, maybeNullableType) =>
-      Try {
-        val chCols = ClickHouseColumn.parse(s"`$name` $maybeNullableType")
-        assert(chCols.size == 1)
-        val (sparkType, nullable) = fromClickHouseType(chCols.get(0))
-        StructField(name, sparkType, nullable)
-      } match {
-        case Success(field) => Some(field)
-        case Failure(_) if ignoreUnsupported =>
-          skipped += name -> maybeNullableType
-          None
-        case Failure(rethrow) => throw rethrow
-      }
+  def fromClickHouseSchema(chSchema: Seq[(String, String)]): StructType = {
+    val mapped = chSchema.map { case (name, maybeNullableType) =>
+      val field = Try(ClickHouseColumn.parse(s"`$name` $maybeNullableType")).toOption
+        .collect { case chCols if chCols.size == 1 => chCols.get(0) }
+        .flatMap(fromClickHouseType)
+        .map { case (sparkType, nullable) => StructField(name, sparkType, nullable) }
+      (name, maybeNullableType, field)
     }
+    val skipped = mapped.collect { case (name, chType, None) => s"`$name` $chType" }
     if (skipped.nonEmpty) {
       log.warn(s"Ignoring ${skipped.size} column(s) with unsupported ClickHouse type(s): " +
-        skipped.map { case (name, chType) => s"`$name` $chType" }.mkString(", ") +
+        skipped.mkString(", ") +
         ". These columns are excluded from the Spark table schema and can not be queried or written.")
     }
-    StructType(structFields)
+    StructType(mapped.collect { case (_, _, Some(field)) => field })
   }
 
   def toClickHouseSchema(catalystSchema: StructType): Seq[(String, String, String)] =

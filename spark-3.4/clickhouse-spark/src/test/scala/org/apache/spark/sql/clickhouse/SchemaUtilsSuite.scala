@@ -15,7 +15,6 @@
 package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.data.ClickHouseColumn
-import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.sql.clickhouse.SchemaUtils._
 import org.apache.spark.sql.types._
 import org.scalatest.funsuite.AnyFunSuite
@@ -29,7 +28,7 @@ class SchemaUtilsSuite extends AnyFunSuite {
       test(s"ch2spark - $chTypeStr") {
         val chCols = ClickHouseColumn.parse(s"`col` $chTypeStr")
         assert(chCols.size == 1)
-        val (actualSparkType, actualNullable) = fromClickHouseType(chCols.get(0))
+        val (actualSparkType, actualNullable) = fromClickHouseType(chCols.get(0)).get
         assert(actualSparkType === expectedSparkType)
         assert(actualNullable === expectedNullable)
       }
@@ -43,6 +42,14 @@ class SchemaUtilsSuite extends AnyFunSuite {
         assert(chCols.size == 1)
         fromClickHouseType(chCols.get(0))
       }
+    }
+  }
+
+  private def assertUnsupported(unsupported: String*): Unit = unsupported.foreach { chTypeStr =>
+    test(s"ch2spark - $chTypeStr") {
+      val chCols = ClickHouseColumn.parse(s"`col` $chTypeStr")
+      assert(chCols.size == 1)
+      assert(fromClickHouseType(chCols.get(0)).isEmpty)
     }
   }
 
@@ -148,7 +155,6 @@ class SchemaUtilsSuite extends AnyFunSuite {
 
   assertNegative(
     "Decimal", // overflow
-    "Decimal256(5)", // overflow
     "Decimal(String"
     // "Decimal32(5"
   )
@@ -183,6 +189,17 @@ class SchemaUtilsSuite extends AnyFunSuite {
 
   assertNegative("fixedString(5)")
 
+  assertUnsupported(
+    "Point",
+    "Polygon",
+    "AggregateFunction(sum, Int32)",
+    "SimpleAggregateFunction(sum, Int64)",
+    "Decimal256(5)",
+    "Array(Point)",
+    "Map(String, Point)",
+    "Tuple(Int32, Point)"
+  )
+
   test("spark2ch") {
     val catalystSchema = StructType.fromString(
       """{
@@ -215,8 +232,8 @@ class SchemaUtilsSuite extends AnyFunSuite {
     "client_id" -> "String"
   )
 
-  test("fromClickHouseSchema ignoreUnsupported=true skips unsupported columns") {
-    val actual = fromClickHouseSchema(mixedChSchema, ignoreUnsupported = true)
+  test("fromClickHouseSchema skips columns with unsupported types") {
+    val actual = fromClickHouseSchema(mixedChSchema)
     val expected = StructType(
       StructField("customer_id", IntegerType, nullable = false) ::
         StructField("client_id", StringType, nullable = false) :: Nil
@@ -224,24 +241,11 @@ class SchemaUtilsSuite extends AnyFunSuite {
     assert(actual === expected)
   }
 
-  test("fromClickHouseSchema ignoreUnsupported=false throws on unsupported columns") {
-    val ex = intercept[CHClientException] {
-      fromClickHouseSchema(mixedChSchema, ignoreUnsupported = false)
-    }
-    assert(ex.getMessage.contains("Unsupported type"))
-  }
-
-  test("fromClickHouseSchema default overload throws on unsupported columns") {
-    intercept[CHClientException] {
-      fromClickHouseSchema(mixedChSchema)
-    }
-  }
-
   test("fromClickHouseSchema all columns unsupported yields empty schema") {
     val allUnsupported = Seq(
       "agg_state" -> "AggregateFunction(sum, Int32)",
       "location" -> "Point"
     )
-    assert(fromClickHouseSchema(allUnsupported, ignoreUnsupported = true) === StructType(Nil))
+    assert(fromClickHouseSchema(allUnsupported) === StructType(Nil))
   }
 }

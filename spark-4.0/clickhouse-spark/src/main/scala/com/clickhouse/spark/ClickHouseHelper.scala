@@ -297,7 +297,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       val ckType = row.get("type").asText
       (fieldName, ckType)
     }
-    val schema = SchemaUtils.fromClickHouseSchema(chColumns, ignoreUnsupported = true)
+    val schema = SchemaUtils.fromClickHouseSchema(chColumns)
     val supportedNames = schema.fieldNames.toSet
     (schema, chColumns.filterNot { case (name, _) => supportedNames.contains(name) })
   }
