@@ -26,6 +26,11 @@ SQL = os.path.join(REPO_ROOT, "benchmarks", "sql")
 TARGET_DDL = [
     os.path.join(SQL, "clickbench", "01_create_database.sql"),
     os.path.join(SQL, "clickbench", "02_create_hits.sql"),
+    # Tier-0 target: ENGINE=Null table on the SAME Cloud target as hits
+    # (redesign 2026-07-07 — drops the Docker-on-master instrument). Bootstrapped
+    # here alongside hits, idempotent CREATE IF NOT EXISTS. See contract §1.1
+    # (Cloud-hosted Null branch) and benchmarks/tier0/README.md.
+    os.path.join(SQL, "clickbench", "03_create_hits_null.sql"),
 ]
 METRICS_DDL = [
     os.path.join(SQL, "perf", "01_create_database.sql"),

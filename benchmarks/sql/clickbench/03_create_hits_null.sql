@@ -11,26 +11,34 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
--- Tier 0 target table (benchmark v2 plan, section 3).
+-- Tier 0 target table (benchmark v2 plan, section 3) — REDESIGNED 2026-07-07.
 --
--- Identical column list to clickbench.hits (benchmarks/sql/clickbench/
--- 02_create_hits.sql) so the connector serializes the exact same schema, but
--- ENGINE = Null: the server parses the insert (exercising the full client +
--- network + parse path) and then discards the block. No parts, no merges, no
--- storage, no memory pressure -> near-zero server-side variance, which is what
--- makes Tier 0 a clean instrument for the client-side regression signal (Q-A).
+-- Tier 0 now runs against an ENGINE=Null table ON THE CLOUD TARGET (the same
+-- dedicated service Tier 1 ingests into), NOT a Docker ClickHouse on the EMR
+-- master. This mirrors the Kafka pipeline's Cloud-hosted Null design (its plan's
+-- decision 9) and drops the whole Docker instrument (bootstrap, sidecars,
+-- on-master capture). See docs/benchmark-v2-contract.md §1.1 (Cloud-hosted Null
+-- branch) and benchmarks/tier0/README.md.
+--
+-- Because this table lives on the Cloud target alongside clickbench.hits, it is
+-- bootstrapped by benchmarks/scripts/bootstrap_schema.py exactly like
+-- 02_create_hits.sql — idempotent CREATE IF NOT EXISTS, database name hardcoded
+-- to `clickbench` (the target database), table name `hits_null`.
+--
+-- Identical column list to clickbench.hits (02_create_hits.sql) so the connector
+-- serializes the exact same schema, but ENGINE = Null: the server parses the
+-- insert (exercising the full client + network + parse path) and then discards
+-- the block. No parts, no merges, no storage, no memory pressure -> the dominant
+-- server-side variance source is removed, which is what makes Tier 0 a clean
+-- instrument for the client-side regression signal (Q-A).
 --
 -- The column names and order MUST stay byte-for-byte identical to the MergeTree
--- hits table above (see benchmarks/tier0/README.md for how this is verified) --
--- the Spark connector matches columns positionally/by-name against the target.
+-- hits table (02_create_hits.sql) — the Spark connector matches columns
+-- positionally/by-name against the target.
 --
 -- No ORDER BY / PARTITION BY / SAMPLE BY: the Null engine ignores them and
 -- CREATE would reject them, so they are omitted by design.
---
--- Database name is templated (${TIER0_DB}) and substituted by
--- benchmarks/tier0/bootstrap_tier0_ch.sh before the DDL is applied, so the
--- Tier 0 database name lives in exactly one place (the bootstrap script).
-CREATE TABLE IF NOT EXISTS ${TIER0_DB}.hits
+CREATE TABLE IF NOT EXISTS clickbench.hits_null
 (
     WatchID BIGINT NOT NULL,
     JavaEnable SMALLINT NOT NULL,

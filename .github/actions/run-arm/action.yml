@@ -62,10 +62,12 @@ inputs:
     required: true
   tier:
     description: >-
-      Benchmark tier as a string: '1' (default) = saturated Cloud ingest, the
-      byte-identical-to-today path; '0' = Null-engine connector ceiling against
-      the Docker ClickHouse on the EMR master (Tier 0, plan §3). The workflow
-      calls this action 4x per pair: (arm1,t0)(arm1,t1)(arm2,t0)(arm2,t1).
+      Benchmark tier as a string: '1' (default) = saturated Cloud ingest into
+      clickbench.hits; '0' = Null-engine connector ceiling against an ENGINE=Null
+      table (clickbench.hits_null) ON THE SAME CLOUD TARGET (Tier 0, redesigned
+      2026-07-07 — drops the Docker-on-master instrument; contract §1.1
+      Cloud-hosted Null branch). The workflow calls this action 4x per pair:
+      (arm1,t0)(arm1,t1)(arm2,t0)(arm2,t1).
     required: false
     default: "1"
   skip_truncate:
@@ -95,19 +97,11 @@ inputs:
   s3_bucket:
     description: "CI S3 bucket (per-arm event-log + parallelism sidecar prefixes)."
     required: true
-  # --- Tier-0-only inputs (ignored on tier='1') ---------------------------------
-  tier0_master_ip:
-    description: "Tier 0 only: EMR master PRIVATE IP the t0 ingest targets over HTTP (from the bootstrap sidecar). Empty on tier='1'."
-    required: false
-    default: ""
-  tier0_ch_version:
-    description: "Tier 0 only: pinned Docker-CH version (contract §1.4 tier0_ch_version). Empty on tier='1'."
-    required: false
-    default: ""
-  metrics_secret_id:
-    description: "Tier 0 only: Secrets Manager id for the METRICS-service password, read on the master by the on-master capture step. Empty on tier='1'."
-    required: false
-    default: ""
+  # NOTE (redesign 2026-07-07): the former Tier-0-only inputs (tier0_master_ip,
+  # tier0_ch_version, metrics_secret_id) are DELETED. Tier 0 now ingests into an
+  # ENGINE=Null table on the SAME Cloud target as Tier 1 (clickbench.hits_null),
+  # using the identical credentials/host — no master IP, no pinned Docker version,
+  # no on-master Secrets Manager read. See contract §1.1 (Cloud-hosted Null).
 
 runs:
   using: "composite"
@@ -233,8 +227,10 @@ runs:
       # pre_run_active_parts every night; post-truncate keeps it a valid ~0
       # cleanliness verifier for both arms. ch_uptime/pre_run_rss are unaffected.
       # Best-effort covariate — does not participate in capture/rollback gating.
-      # TIER 0 SKIPS pre-run covariates (spec Q3): they read the Cloud TARGET
-      # service (SQL 21), which is not the t0 target (the Docker Null CH).
+      # TIER 0 SKIPS pre-run covariates (spec Q3): SQL 21 measures the MergeTree
+      # hits table's cleanliness/pressure (pre_run_active_parts, RSS) — meaningless
+      # for the ENGINE=Null t0 target (clickbench.hits_null holds no parts/data),
+      # even though t0 now shares the same Cloud service.
       if: ${{ inputs.tier == '1' }}
       shell: bash
       continue-on-error: true
@@ -254,40 +250,25 @@ runs:
     - name: "Submit Spark step (arm ${{ inputs.arm }} tier ${{ inputs.tier }})"
       id: submit
       shell: bash
-      # TIER-CONDITIONAL TARGET (spec Q3): the workload (jar, INPUT_PARQUET_GLOB,
-      # batch_size, async_insert) is IDENTICAL across tiers; only the target
-      # differs. Tier 1 -> the Cloud service over HTTPS (secret-resolved
-      # password, database clickbench). Tier 0 -> the Docker Null CH on the
-      # master over HTTP at its PRIVATE IP:8123, database tier0, DEFAULT USER,
-      # EMPTY password via the CH_NO_PASSWORD=1 sentinel (review fix): in cluster
-      # mode the driver sees ONLY what emr_submit.sh forwards via appMasterEnv —
-      # CH_PASSWORD is deliberately NOT forwarded, so the empty password MUST
-      # travel as a forwarded non-empty sentinel that resolve_password honors
-      # first. CH_SECRET_ID is ALSO forced empty for t0 (belt-and-braces: even
-      # if the sentinel logic regressed, a t0 driver must never fetch the Cloud
-      # secret for the Docker target).
+      # TIER-CONDITIONAL TARGET (redesign 2026-07-07): the workload (jar,
+      # INPUT_PARQUET_GLOB, batch_size, async_insert) and the CONNECTION (host,
+      # port, protocol, user, secret-resolved password) are now IDENTICAL across
+      # tiers — both ingest into the SAME Cloud target over HTTPS/8443 with the
+      # real credential. Only the DATABASE.TABLE differs: Tier 1 -> clickbench.hits
+      # (MergeTree), Tier 0 -> clickbench.hits_null (ENGINE=Null on the same
+      # service). No Docker CH, no master IP, no CH_NO_PASSWORD sentinel, no empty
+      # CH_SECRET_ID (contract §1.1 Cloud-hosted Null branch).
+      # CH_SECRET_ID is a job-level env var (workflow env:) visible here as $VAR;
+      # emr_submit.sh reads it directly, so it is NOT re-declared below.
       env:
-        CH_HOST: ${{ inputs.tier == '0' && inputs.tier0_master_ip || inputs.target_ch_host }}
-        CH_PORT: ${{ inputs.tier == '0' && '8123' || inputs.target_ch_port }}
-        CH_PROTOCOL: ${{ inputs.tier == '0' && 'http' || 'https' }}
-        CH_USER: ${{ inputs.tier == '0' && 'default' || inputs.target_ch_user }}
-        CH_DATABASE: ${{ inputs.tier == '0' && 'tier0' || 'clickbench' }}
-        CH_TABLE: hits
+        CH_HOST: ${{ inputs.target_ch_host }}
+        CH_PORT: ${{ inputs.target_ch_port }}
+        CH_PROTOCOL: https
+        CH_USER: ${{ inputs.target_ch_user }}
+        CH_DATABASE: clickbench
+        CH_TABLE: ${{ inputs.tier == '0' && 'hits_null' || 'hits' }}
       run: |
         set -euo pipefail
-        if [ "${{ inputs.tier }}" = "0" ]; then
-          # Defensive (review nit 1): the CH_HOST ternary falls back to the Cloud
-          # host when tier0_master_ip is EMPTY — a t0 pass silently ingesting into
-          # the Cloud target would corrupt both tiers' series. The workflow gate
-          # (TIER0_AVAILABLE requires a non-empty master ip) should make this
-          # unreachable; fail loudly if it ever isn't.
-          if [ -z "${{ inputs.tier0_master_ip }}" ]; then
-            echo "ERROR: tier=0 but tier0_master_ip is empty — refusing to submit (CH_HOST would silently fall back to the Cloud target)."
-            exit 1
-          fi
-          export CH_NO_PASSWORD=1
-          export CH_SECRET_ID=""
-        fi
         # Arm's own jar + arm event-log dir (both from the arm-scoped env above).
         # BATCH_SIZE / ASYNC_INSERT / WRITE_PARALLELISM_META_S3_URI come from the
         # job env; STEP_NAME tags the EMR step per (arm, tier) so the two ingest
@@ -341,7 +322,7 @@ runs:
       # NOT be rolled back merely for being failed. Rollback still fires only when
       # capture itself BREAKS (partial rows) — this step exits non-zero.
       #
-      # PER-SQL DECISION MATRIX (which families run per class, and why):
+      # PER-SQL DECISION MATRIX — TIER 1 (which families run per class, and why):
       #   file  metric family            success  failed   rationale
       #   10  event_log (Spark)            yes    tolerant the event log may be
       #         absent/partial on a failed submit; on the failed path a missing/
@@ -372,6 +353,44 @@ runs:
       #         (reset to 0 when settle was skipped) — records 0, not an error.
       # (21 pre-run covariates runs earlier, pre-submit, in its own step.)
       #
+      # PER-SQL DECISION MATRIX — TIER 0 (Cloud-hosted Null, redesign 2026-07-07):
+      # Tier 0 now reads the SAME Cloud target's system.*_log via remoteSecure(),
+      # scoped to clickbench.hits_null, so the perf/1x files that read query_log
+      # inserts work UNCHANGED on a Null table (Null populates query_log,
+      # written_rows, NetworkReceiveBytes, OSCPUVirtualTime — it parses the block
+      # before discarding). Files that read STORAGE-side logs (part_log) or measure
+      # storage-side effects (throttling/merge-pool, memory peaks) or depend on
+      # semantics a Null table lacks (settle, integrity, delivered rows) are SKIPPED.
+      #   file  t0?    rationale
+      #   10  RUN    runner-side Spark event-log (tier0/10_event_log_tier0.sql):
+      #         null_rows_per_sec / null_mb_per_sec + client-cost metrics. Strict on
+      #         success, tolerant on failed (same rule as perf/10 on t1).
+      #   11  RUN    query_log insert CPU/rows/bytes — hits_null-scoped; Null
+      #         populates all of these.
+      #   12  RUN    metric_log connection counters + query_log insert denominator
+      #         (hits_null-scoped) => connections_per_insert.
+      #   13  SKIP   part_log — a Null table creates NO parts, so part_log has no
+      #         rows for it; parts_per_insert / merge_amplification are undefined.
+      #   14  SKIP   settle_seconds — no settle on Null (no parts to merge).
+      #   15  RUN    raw inserts -> perf.ch_inserts — reads query_log inserts
+      #         (hits_null-scoped); works on Null. Must precede 19.
+      #   16  SKIP   throttling — DelayedInserts / merge-pool are storage-side
+      #         pushback the Null engine never generates.
+      #   17  SKIP   memory peaks — Null holds no data, no memory pressure.
+      #   18  RUN    bytes_on_wire_per_row — query_log NetworkReceiveBytes /
+      #         written_rows (hits_null-scoped); Null populates both.
+      #   19  RUN    rate stability — reads perf.ch_inserts (15 ran above);
+      #         HAVING count()>=2 => omitted, never errors.
+      #   20  SKIP   integrity — a Null target delivers NO rows (no
+      #         rows_delivered==rows_expected to verify).
+      #   22  SKIP   settle_timed_out — settle is skipped, so this literal is N/A.
+      #   23  RUN    parse-watch ch_insert_cpu_share_tier0 (MANDATORY on every
+      #         Cloud-hosted Null t0 row, contract §1.1/§1.4/§2.1) — remoteSecure
+      #         query_log OSCPUVirtualTime / wall-clock, hits_null-scoped.
+      # Same STRICT-on-success / TOLERANT-on-failed convention as t1: the
+      # remoteSecure reads are windowed, so an empty/partial failed window yields
+      # 0/NULL, not an error; only 10 (event-log) is tolerated on the failed class.
+      #
       # run_cost_usd is NOT captured here: it is a PAIR-level metric recorded once,
       # top-level in the workflow after "Teardown EMR", onto the first-run arm's row
       # (contract §2.1 amendment).
@@ -393,7 +412,11 @@ runs:
         TARGET_CH_USER: ${{ inputs.target_ch_user }}
         TARGET_CH_PASSWORD: ${{ inputs.target_ch_password }}
         CH_DATABASE: clickbench
-        CH_TABLE: hits
+        # table_qualified (run_metrics_sql.py) = CH_DATABASE.CH_TABLE. Tier 0 reads
+        # the SAME Cloud target's system.*_log but scopes has(tables) to the Null
+        # table (clickbench.hits_null), disjoint from the Tier-1 hits reads even
+        # though both share the service and time windows.
+        CH_TABLE: ${{ inputs.tier == '0' && 'hits_null' || 'hits' }}
       run: |
         set -euo pipefail
         # Order within the loop is irrelevant EXCEPT that 15 must precede 19 (19
@@ -413,23 +436,32 @@ runs:
             echo "NOTE: $1 produced no rows on the failed-class run (tolerated)"
         }
         # ------------------------------------------------------------------ #
-        # TIER 0 CAPTURE (spec Q3/Q5): runner-side is EVENT-LOG ONLY — the
-        # tier0 variant of SQL 10 (null_rows_per_sec / null_mb_per_sec renames),
-        # windowed by the t0 run_id's own EVENT_LOG_URI. The perf/1x server-side
-        # families are SKIPPED here: they read the CLOUD target via remoteSecure,
-        # which is NOT the t0 target (the Docker Null CH). The t0 server-side set
-        # (connections_per_insert, bytes_on_wire_per_row, ch_insert_cpu_share_tier0)
-        # is captured by the SEPARATE on-master EMR step, against the Docker CH,
-        # before teardown. Same STRICT-on-success / TOLERANT-on-failed rule as
-        # file 10 in Tier 1. No integrity (no delivered rows on a Null target),
-        # no settle files, no ch_inserts/throttling/memory.
+        # TIER 0 CAPTURE (Cloud-hosted Null, redesign 2026-07-07). Runner-side
+        # event-log (tier0/10) PLUS the perf/1x server-side files that are
+        # meaningful on a Null table, all reading the SAME Cloud target via
+        # remoteSecure(), scoped to clickbench.hits_null (CH_TABLE=hits_null in
+        # this step's env). See the TIER 0 DECISION MATRIX above for which files
+        # run and why. ch_insert_cpu_share_tier0 (file 23) is MANDATORY here
+        # (contract §1.1/§1.4). No part_log(13)/throttling(16)/memory(17)/
+        # settle(14/22)/integrity(20) — undefined on Null.
         if [ "${{ inputs.tier }}" = "0" ]; then
+          # Server-side t0 families (remoteSecure, hits_null-scoped, windowed —
+          # valid in BOTH outcome classes; empty/partial window => 0/NULL).
+          T0_SERVER_STRICT=" \
+            benchmarks/sql/perf/11_insert_from_query_log.sql \
+            benchmarks/sql/perf/12_insert_from_metric_log.sql \
+            benchmarks/sql/perf/15_capture_raw_inserts.sql \
+            benchmarks/sql/perf/18_insert_derived_metrics.sql \
+            benchmarks/sql/perf/19_insert_rate_stability.sql \
+            benchmarks/sql/perf/23_insert_tier0_parse_watch.sql"
           if [ "${SUBMIT_OUTCOME}" = "success" ]; then
-            echo "capture: TIER 0 success-class — event-log only (strict)"
+            echo "capture: TIER 0 success-class — event-log (strict) + Null server-side set (strict)"
             run_sql benchmarks/sql/tier0/10_event_log_tier0.sql
+            for sql in $T0_SERVER_STRICT; do run_sql "$sql"; done
           else
-            echo "capture: TIER 0 failed-class — event-log only (tolerant)"
+            echo "capture: TIER 0 failed-class — event-log (tolerant) + Null server-side set (strict, windowed)"
             run_sql_tolerant benchmarks/sql/tier0/10_event_log_tier0.sql
+            for sql in $T0_SERVER_STRICT; do run_sql "$sql"; done
           fi
           exit 0
         fi
@@ -465,63 +497,12 @@ runs:
           run_sql_tolerant benchmarks/sql/perf/20_insert_integrity.sql
         fi
 
-    - name: "Capture Tier-0 server-side metrics on the master (arm ${{ inputs.arm }})"
-      id: capture_onmaster
-      # TIER 0 ONLY (spec Q1/Q3): before teardown, run the on-master EMR step that
-      # reads the Docker Null CH's system.query_log/metric_log (windowed to this
-      # t0 pass) and ships connections_per_insert / bytes_on_wire_per_row /
-      # ch_insert_cpu_share_tier0 to the Cloud metrics service. This is the
-      # server-side half of t0 capture (the runner-side event-log half ran in the
-      # capture step). Part of the capture phase for the #6 rollback gate: a break
-      # here is a failure output and the rollback step below wipes this t0 run_id.
-      # Gated on tier=='0' AND submit success (a never-ran/failed t0 submit means
-      # the Docker CH has no windowed inserts to read — but we still allow it to
-      # run and record 0s? No: only run when submit succeeded, else the window is
-      # empty by construction and the on-master step would ship all-zero rows.
-      # Empty-window rows are harmless 0s, but skipping keeps a failed t0 artifact
-      # to the event-log-only reduced set, symmetric with the perf/1x skip).
-      if: ${{ !cancelled() && inputs.tier == '0' && steps.submit.outcome == 'success' }}
-      shell: bash
-      env:
-        S3_BUCKET: ${{ inputs.s3_bucket }}
-        METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
-        METRICS_CH_USER: ${{ inputs.metrics_ch_user }}
-        METRICS_SECRET_ID: ${{ inputs.metrics_secret_id }}
-      run: |
-        set -euo pipefail
-        # Tier-0 assets are staged once per pair to s3://<bucket>/tier0/<pair_id>/
-        # by the workflow's upload step (bootstrap script, DDL, capture script,
-        # server-side SQL). The EMR step s3-cp's them to the master and runs the
-        # capture. Passed via appMasterEnv-style env on command-runner.jar: the
-        # metrics HOST/USER are non-secret; the PASSWORD is resolved on the master
-        # from Secrets Manager (METRICS_SECRET_ID) — NEVER a plaintext step arg.
-        ASSETS_S3="s3://${S3_BUCKET}/tier0/${PAIR_ID}"
-        # Build the remote command. RUN_ID/RUN_START/RUN_END are the t0 pass's
-        # arm-scoped values (already in $GITHUB_ENV / this shell's env). Values are
-        # single-quoted into the remote bash -c so they are literal on the master.
-        REMOTE_CMD="set -euo pipefail; \
-          mkdir -p /tmp/tier0/sql; \
-          aws s3 cp '${ASSETS_S3}/capture_tier0_onmaster.sh' /tmp/tier0/capture_tier0_onmaster.sh; \
-          aws s3 cp '${ASSETS_S3}/12_server_side_tier0.sql' /tmp/tier0/sql/12_server_side_tier0.sql; \
-          chmod +x /tmp/tier0/capture_tier0_onmaster.sh; \
-          RUN_ID='${RUN_ID}' RUN_START='${RUN_START}' RUN_END='${RUN_END}' \
-          METRICS_CH_HOST='${METRICS_CH_HOST}' METRICS_CH_USER='${METRICS_CH_USER}' \
-          METRICS_SECRET_ID='${METRICS_SECRET_ID}' AWS_REGION='${AWS_REGION}' \
-          TIER0_SERVER_SQL='/tmp/tier0/sql/12_server_side_tier0.sql' \
-          bash /tmp/tier0/capture_tier0_onmaster.sh"
-        STEP_ID=$(aws emr add-steps --region "$AWS_REGION" --cluster-id "$CLUSTER_ID" \
-          --steps "$(jq -nc --arg cmd "$REMOTE_CMD" '[{
-            Type:"CUSTOM_JAR", Jar:"command-runner.jar",
-            Name:"Tier0Capture-'"${ARM}"'",
-            ActionOnFailure:"CONTINUE",
-            Args:["bash","-c",$cmd]}]')" \
-          --query 'StepIds[0]' --output text)
-        echo "submitted on-master t0 capture step $STEP_ID, waiting..."
-        aws emr wait step-complete --region "$AWS_REGION" --cluster-id "$CLUSTER_ID" --step-id "$STEP_ID"
-        STATE=$(aws emr describe-step --region "$AWS_REGION" --cluster-id "$CLUSTER_ID" --step-id "$STEP_ID" \
-          --query 'Step.Status.State' --output text)
-        echo "on-master t0 capture final state: $STATE"
-        test "$STATE" = "COMPLETED"
+    # NOTE (redesign 2026-07-07): the former "Capture Tier-0 server-side metrics
+    # on the master" step is DELETED. Tier 0's server-side capture is now a NORMAL
+    # remoteSecure() read of the Cloud target (scoped to clickbench.hits_null),
+    # folded into the "Capture metrics" step above alongside the event-log read —
+    # there is no Docker CH on the master to query, so no on-master EMR step and
+    # no capture_onmaster gate.
 
     - name: "Decide validity-guard flags (arm ${{ inputs.arm }})"
       id: flags
@@ -570,7 +551,6 @@ runs:
       shell: bash
       env:
         SUBMIT_OUTCOME: ${{ steps.submit.outcome }}
-        TIER0_CH_VERSION: ${{ inputs.tier0_ch_version }}
         METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
         METRICS_CH_USER: ${{ inputs.metrics_ch_user }}
         METRICS_CH_PASSWORD: ${{ inputs.metrics_ch_password }}
@@ -607,26 +587,28 @@ runs:
         # arm's warm-up ran/succeeded; value = the workload the warm-up step
         # recorded in WARMUP_WORKLOAD).
         #
-        # TIER-CONDITIONAL runtime (spec Q6). On t0 the target is the Docker Null
-        # CH ON THE MASTER, so several scope keys are OVERRIDDEN (never inherited):
+        # TIER-CONDITIONAL runtime (redesign 2026-07-07, contract §1.1 Cloud-hosted
+        # Null branch). Tier 0 now ingests into an ENGINE=Null table ON THE SAME
+        # Cloud target as Tier 1, so the scope keys INHERIT the Cloud target's
+        # identity — they are NOT overridden to the load generator anymore:
         #   tier                = '0' (contract §1.1)
-        #   environment_class   = 'self_hosted' (NOT the Cloud class; contract §1.1)
-        #   target_region       = COMPUTE_REGION (the instrument rides the load
-        #                         generator — target region EQUALS compute region;
-        #                         MUST NOT inherit the Cloud TARGET_REGION)
+        #   environment_class   = ENVIRONMENT_CLASS ('production' — the target's
+        #                         class; INHERITED, NOT 'self_hosted')
+        #   target_region       = TARGET_REGION ('us-east-2' — the target's region;
+        #                         INHERITED, the us-east-1 override is REMOVED)
         #   partition_scheme    = 'none' (ENGINE=Null has no partitioning)
-        #   tier0_ch_version    = the pinned Docker-CH version (MANDATORY on t0)
+        #   NO tier0_ch_version key (Cloud version drifts by design — tracked by the
+        #                         clickhouse_version covariate; the mandatory guard
+        #                         is the ch_insert_cpu_share_tier0 parse-watch, file
+        #                         perf/23, contract §1.4)
         #   NO warm_up key      (t0 skips warm-up)
+        # compute_region is unchanged ('us-east-1', the EMR load generator).
         # batch_size/async_insert/dataset/write_parallelism are the SAME as t1
         # (identical workload). settle_timed_out is 0 on t0 (settle skipped).
         TIER="${TIER:-1}"
         if [ "$TIER" = "0" ]; then
-          T0_ENV_CLASS="self_hosted"
-          T0_TARGET_REGION="$COMPUTE_REGION"   # instrument on the load generator
           T0_PARTITION_SCHEME="none"
         else
-          T0_ENV_CLASS="$ENVIRONMENT_CLASS"
-          T0_TARGET_REGION="$TARGET_REGION"
           T0_PARTITION_SCHEME="$PARTITION_SCHEME"
         fi
         export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
@@ -635,11 +617,10 @@ runs:
           --arg bs "$BATCH_SIZE" --arg wp "$WRITE_PARALLELISM_OBSERVED" \
           --arg ai "$ASYNC_INSERT" --arg ps "$T0_PARTITION_SCHEME" \
           --arg ds "$DATASET" \
-          --arg ec "$T0_ENV_CLASS" --arg tr "$T0_TARGET_REGION" \
+          --arg ec "$ENVIRONMENT_CLASS" --arg tr "$TARGET_REGION" \
           --arg cr "$COMPUTE_REGION" \
           --arg arm "$ARM" --arg pair "$PAIR_ID" \
           --arg tier "$TIER" \
-          --arg t0ver "${TIER0_CH_VERSION:-}" \
           --arg sockto "${SOCKET_TIMEOUT_MS:-300000}" \
           --arg outcome "$RUN_OUTCOME" \
           --arg warmup "${WARMUP_WORKLOAD:-}" \
@@ -654,7 +635,6 @@ runs:
             arm: $arm, pair_id: $pair, tier: $tier,
             spark_socket_timeout_ms: $sockto,
             outcome: $outcome}
-           + (if $tier == "0" and $t0ver != "" then {tier0_ch_version: $t0ver} else {} end)
            + (if $tier != "0" and $warmup != "" then {warm_up: $warmup} else {} end)
            + (if $flagged == "1"
               then {flagged: "1", flag_reason: $flag_reason}
@@ -683,12 +663,10 @@ runs:
       # adopted covariates — may exist without a flag decision), symmetric with the
       # capture/run_record legs. rollback_run_metrics.py DELETEs perf.{runs,metrics,
       # ch_inserts} by run_id, so it cleans the covariate rows too.
-      # capture_onmaster.outcome == 'failure' (Tier 0 only) is in the OR so a
-      # broken on-master server-side capture rolls back this t0 run_id too (spec
-      # Q1 failure order: capture — event-log + on-master — then run-record; a
-      # break in either half is an incomplete t0 artifact). It is 'skipped' on t1
-      # (never submitted), which is neither 'failure' nor a trigger here.
-      if: ${{ !cancelled() && (steps.capture.outcome == 'failure' || steps.capture_onmaster.outcome == 'failure' || steps.flags.outcome == 'failure' || steps.run_record.outcome == 'failure') }}
+      # (redesign 2026-07-07): the former capture_onmaster leg is gone — t0's
+      # server-side capture is now part of the "Capture metrics" step, so the
+      # single steps.capture gate covers BOTH tiers' full capture.
+      if: ${{ !cancelled() && (steps.capture.outcome == 'failure' || steps.flags.outcome == 'failure' || steps.run_record.outcome == 'failure') }}
       shell: bash
       env:
         METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
@@ -707,14 +685,11 @@ runs:
       # by absence. NOT gated on submit success.
       #
       # Gate = the full capture chain for the run's tier: capture + flags +
-      # run_record success AND capture_onmaster != 'failure' (review fix). The
-      # on-master leg runs AFTER capture but BEFORE flags, so on its failure the
-      # flags/run_record steps still succeed and the rollback step wipes the rows
-      # — without the capture_onmaster clause this export would then ship an
-      # EMPTY/incomplete artifact for the rolled-back t0 run_id. On t1 (and on a
-      # failed-class t0, where the on-master leg is skipped) its outcome is
-      # 'skipped', which passes the != 'failure' clause.
-      if: ${{ !cancelled() && steps.capture.outcome == 'success' && steps.capture_onmaster.outcome != 'failure' && steps.flags.outcome == 'success' && steps.run_record.outcome == 'success' }}
+      # run_record success. (redesign 2026-07-07): the former capture_onmaster
+      # clause is gone — t0's server-side capture is folded into "Capture metrics",
+      # so a single steps.capture gate covers both tiers' full capture and a
+      # rolled-back run cannot reach export.
+      if: ${{ !cancelled() && steps.capture.outcome == 'success' && steps.flags.outcome == 'success' && steps.run_record.outcome == 'success' }}
       shell: bash
       env:
         METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}

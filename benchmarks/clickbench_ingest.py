@@ -46,12 +46,12 @@ runtime['write_parallelism']:
                                  failure to upload never fails the ingest)
 
 Password resolution (in precedence order — see resolve_password):
-  CH_NO_PASSWORD  '1' = explicit no-password target (Tier 0 Docker CH): empty
-                  password, no Secrets Manager call. Wins over both keys below.
   CH_SECRET_ID    AWS Secrets Manager secret holding the CH password, read at
                   runtime via the instance profile (used on EMR - the password is
-                  never passed through the env or the spark-submit args).
-  CH_PASSWORD     fallback used only when neither above applies (local runs; may
+                  never passed through the env or the spark-submit args). Both
+                  tiers use this now (Tier 0 targets clickbench.hits_null on the
+                  SAME Cloud service as Tier 1 — redesign 2026-07-07).
+  CH_PASSWORD     fallback used only when CH_SECRET_ID is unset (local runs; may
                   be empty for a passwordless local ClickHouse).
 """
 import json
@@ -67,16 +67,10 @@ REQUIRED = (
 
 
 def resolve_password(env):
-    # Explicit no-password path (Tier 0, task #18 fix): CH_NO_PASSWORD=1 means
-    # "this target authenticates with an empty password — do not consult Secrets
-    # Manager or CH_PASSWORD". It exists because in cluster mode the driver sees
-    # ONLY the env vars emr_submit.sh forwards via spark.yarn.appMasterEnv, and
-    # CH_PASSWORD is deliberately NOT forwarded (a real password must never ride
-    # spark-submit args, and an empty-string env var is not guaranteed to survive
-    # YARN's env plumbing). A non-empty sentinel IS guaranteed to arrive, so the
-    # Tier-0 submit sets CH_NO_PASSWORD=1 and this check wins over everything.
-    if env.get("CH_NO_PASSWORD") == "1":
-        return ""
+    # Both tiers resolve the target password from Secrets Manager on EMR (redesign
+    # 2026-07-07 removed the Tier-0 CH_NO_PASSWORD empty-password path — Tier 0 now
+    # ingests into clickbench.hits_null on the same authenticated Cloud service as
+    # Tier 1, so it uses the real credential like Tier 1).
     secret_id = env.get("CH_SECRET_ID")
     if secret_id:
         import boto3  # only on the EMR path; not installed in the local venv

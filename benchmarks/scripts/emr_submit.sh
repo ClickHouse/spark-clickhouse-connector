@@ -23,8 +23,6 @@
 #               BATCH_SIZE (default 100000), ASYNC_INSERT (default 0)
 #               SOCKET_TIMEOUT_MS (default 300000) — CH client socket timeout,
 #               forwarded to the driver so overrides reach the ingest.
-#               CH_NO_PASSWORD (default 0) — '1' = explicit empty-password
-#               target (Tier 0 Docker CH); see the comment at the default below.
 #               WRITE_PARALLELISM_META_S3_URI (record-only: s3:// sidecar the
 #               ingest job writes its OBSERVED write-stage partition count to;
 #               write parallelism is not forced — see clickbench_ingest.py)
@@ -51,14 +49,6 @@ ASYNC_INSERT="${ASYNC_INSERT:-0}"
 # actually reaches the driver (the ingest script defaults to the same 300000;
 # forwarding prevents silent record/actual divergence in the runtime map).
 SOCKET_TIMEOUT_MS="${SOCKET_TIMEOUT_MS:-300000}"
-# Explicit no-password sentinel (Tier 0, task #18): '1' = the target (the Docker
-# Null CH on the master) authenticates with an EMPTY password — the driver's
-# resolve_password honors it BEFORE CH_SECRET_ID/CH_PASSWORD. This must be a
-# forwarded env var because CH_PASSWORD itself is deliberately NOT in the
-# appMasterEnv list below (a real password must never ride spark-submit args,
-# and an empty-string env value is not guaranteed to survive YARN's env
-# plumbing — a non-empty sentinel is).
-CH_NO_PASSWORD="${CH_NO_PASSWORD:-0}"
 WRITE_PARALLELISM_META_S3_URI="${WRITE_PARALLELISM_META_S3_URI:-}"
 STEP_NAME="${STEP_NAME:-ClickBenchIngest}"
 ACTION_ON_FAILURE="${ACTION_ON_FAILURE:-CONTINUE}"
@@ -80,7 +70,6 @@ ARGS=(
   --conf "spark.yarn.appMasterEnv.CH_PROTOCOL=${CH_PROTOCOL}"
   --conf "spark.yarn.appMasterEnv.CH_USER=${CH_USER}"
   --conf "spark.yarn.appMasterEnv.CH_SECRET_ID=${CH_SECRET_ID}"
-  --conf "spark.yarn.appMasterEnv.CH_NO_PASSWORD=${CH_NO_PASSWORD}"
   --conf "spark.yarn.appMasterEnv.SOCKET_TIMEOUT_MS=${SOCKET_TIMEOUT_MS}"
   --conf "spark.yarn.appMasterEnv.AWS_REGION=${AWS_REGION}"
   --conf "spark.yarn.appMasterEnv.CH_DATABASE=${CH_DATABASE}"

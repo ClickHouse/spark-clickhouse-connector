@@ -58,18 +58,14 @@ jobs:
       CH_TABLE: hits
       CH_SECRET_ID: clickbench-load-test/target-ch-password
       # --- Tier 0 (Null-engine connector ceiling, plan §3) --------------------
-      # Pinned Docker-CH version for the Tier-0 instrument on the EMR master
-      # (contract §1.4 tier0_ch_version — MANDATORY on t0 rows; a bump is a
-      # dashboard-annotatable event). MUST match benchmarks/tier0/bootstrap_
-      # tier0_ch.sh's TIER0_CH_VERSION default; set from repo config, echoed onto
-      # every t0 perf.runs row.
-      TIER0_CH_VERSION: "25.8.28"
-      # Secrets Manager id the ON-MASTER Tier-0 capture reads the METRICS-service
-      # password from (via the EMR instance profile — never a plaintext step arg).
-      # REQUIRES one-time human setup: create this secret AND grant the EMR
-      # instance profile GetSecretValue on it (today the profile can read only the
-      # target-password secret). See benchmarks/tier0/README.md.
-      METRICS_SECRET_ID: clickbench-load-test/metrics-ch-password
+      # REDESIGNED 2026-07-07: Tier 0 now ingests into an ENGINE=Null table on the
+      # SAME Cloud target as Tier 1 (clickbench.hits_null), mirroring the Kafka
+      # pipeline's Cloud-hosted Null design. The Docker-on-master instrument is
+      # gone, so the former TIER0_CH_VERSION and METRICS_SECRET_ID env vars are
+      # DELETED: there is no pinned Docker version (the Cloud version drifts,
+      # tracked by clickhouse_version + the mandatory ch_insert_cpu_share_tier0
+      # parse-watch, contract §1.4) and no on-master Secrets Manager read. See
+      # contract §1.1 (Cloud-hosted Null branch) and benchmarks/tier0/README.md.
       INPUT_PARQUET_GLOB: ${{ inputs.input_parquet_glob || 's3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet' }}
       # --- Connector operating config UNDER TEST (plan §4, §6.9) ---------------
       # These live in version control and are echoed into perf.runs.runtime (see
@@ -269,18 +265,15 @@ jobs:
           # Pinned reference (arm P) jar, fetched + sha256-verified above.
           aws s3 cp "$PINNED_JAR_LOCAL" "$PINNED_JAR_S3_URI"
           aws s3 cp benchmarks/clickbench_ingest.py "$SCRIPT_S3_URI"
-          # Tier-0 assets, staged once per pair to tier0/<pair_id>/ (task 18): the
-          # bootstrap step and the on-master capture step s3-cp these down on the
-          # master. RUN_ID here is the pair id (top-level).
-          TIER0_ASSETS_S3="s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/tier0/${RUN_ID}"
-          aws s3 cp benchmarks/tier0/bootstrap_tier0_ch.sh    "$TIER0_ASSETS_S3/bootstrap_tier0_ch.sh"
-          aws s3 cp benchmarks/tier0/capture_tier0_onmaster.sh "$TIER0_ASSETS_S3/capture_tier0_onmaster.sh"
-          aws s3 cp benchmarks/sql/tier0/01_create_hits_null.sql "$TIER0_ASSETS_S3/01_create_hits_null.sql"
-          aws s3 cp benchmarks/sql/tier0/12_server_side_tier0.sql "$TIER0_ASSETS_S3/12_server_side_tier0.sql"
+          # (redesign 2026-07-07): no Tier-0 asset staging — the Docker instrument
+          # (bootstrap script, on-master capture, server-side SQL) is deleted. The
+          # Null table (clickbench.hits_null) is created by the bootstrap-schema
+          # step on the Cloud target, and t0 capture is a normal remoteSecure read.
 
       - name: Bootstrap schema (idempotent CREATE IF NOT EXISTS)
-        # clickbench.hits lives on the target service; perf.{runs,metrics,
-        # ch_inserts} live on the separate metrics service.
+        # clickbench.hits (MergeTree, Tier 1) AND clickbench.hits_null (ENGINE=Null,
+        # Tier 0) both live on the target service (redesign 2026-07-07); perf.{runs,
+        # metrics,ch_inserts} live on the separate metrics service.
         env:
           TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
           TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
@@ -335,116 +328,20 @@ jobs:
             echo "created Secrets Manager secret $CH_SECRET_ID"
           fi
 
-      - name: Ensure metrics CH password in Secrets Manager (tier0 on-master capture)
-        id: metrics_secret
-        # Mirrors "Ensure CH password in Secrets Manager" above for the METRICS
-        # service: the Tier-0 on-master capture (capture_tier0_onmaster.sh) reads
-        # this secret on the master via the EMR instance profile to INSERT the t0
-        # server-side rows into the Cloud metrics service — the password must not
-        # ride an EMR step arg. Pushes the GH secret the workflow already uses
-        # for capture into Secrets Manager under METRICS_SECRET_ID (idempotent:
-        # create-if-absent, exactly like the target-password step; rotate by
-        # editing the SM secret, not the GH secret). continue-on-error: a failure
-        # here must never block the pair — the on-master capture then fails and
-        # the t0 run_id is rolled back (t1 unaffected).
-        #
-        # INFRA FOLLOW-UP (not done here — CI makes no IAM policy calls): the EMR
-        # instance-profile policy still needs secretsmanager:GetSecretValue on
-        # this secret's ARN — today it is scoped to the target-password secret
-        # only. Until a human adds that, the on-master capture fails cleanly and
-        # the t0 artifact is rolled back.
-        continue-on-error: true
-        env:
-          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
-        run: |
-          if aws secretsmanager describe-secret --secret-id "$METRICS_SECRET_ID" >/dev/null 2>&1; then
-            echo "Secrets Manager secret $METRICS_SECRET_ID already exists; leaving it"
-          else
-            aws secretsmanager create-secret --name "$METRICS_SECRET_ID" \
-              --secret-string "$METRICS_CH_PASSWORD" >/dev/null
-            echo "created Secrets Manager secret $METRICS_SECRET_ID"
-          fi
-
-      - name: Tier-0 bootstrap (Docker Null CH on the master) + reachability sidecars
-        id: tier0_bootstrap
-        # TASK 18 (spec Q4): EMR step (not a bootstrap action) — runs once per
-        # pair on the master AFTER the cluster is up. s3-cp's the staged tier0
-        # assets down, then runs bootstrap_tier0_ch.sh which starts the pinned
-        # Docker ClickHouse, applies the ENGINE=Null DDL, verifies system-log
-        # tables, and — critically — writes two S3 sidecars ONLY after confirming
-        # the container answers on the master's PRIVATE IP: the master IP (so the
-        # t0 ingest targets it) and a tier0_ready flag. ActionOnFailure=CONTINUE
-        # and this step is continue-on-error: a Tier-0 bring-up failure must NEVER
-        # block the Tier-1 arms — the next step reads the sidecars back and sets
-        # TIER0_AVAILABLE=0 on absence, skipping the t0 arm calls.
-        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
-        continue-on-error: true
-        run: |
-          set -euo pipefail
-          ASSETS_S3="s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/tier0/${RUN_ID}"
-          MASTER_IP_S3="${ASSETS_S3}/master_ip"
-          READY_S3="${ASSETS_S3}/tier0_ready"
-          # Remote command on the master: pull assets, run bootstrap with the pin
-          # + DDL path + sidecar URIs. TIER0_DDL_FILE points at the flat staged
-          # copy. The bootstrap self-guards isMaster (always true as a step).
-          REMOTE_CMD="set -euo pipefail; \
-            mkdir -p /tmp/tier0/sql; \
-            aws s3 cp '${ASSETS_S3}/bootstrap_tier0_ch.sh' /tmp/tier0/bootstrap_tier0_ch.sh; \
-            aws s3 cp '${ASSETS_S3}/01_create_hits_null.sql' /tmp/tier0/sql/01_create_hits_null.sql; \
-            TIER0_CH_VERSION='${TIER0_CH_VERSION}' \
-            TIER0_DDL_FILE='/tmp/tier0/sql/01_create_hits_null.sql' \
-            TIER0_MASTER_IP_S3_URI='${MASTER_IP_S3}' \
-            TIER0_READY_S3_URI='${READY_S3}' \
-            sudo -E bash /tmp/tier0/bootstrap_tier0_ch.sh"
-          STEP_ID=$(aws emr add-steps --region "$AWS_REGION" --cluster-id "$CLUSTER_ID" \
-            --steps "$(jq -nc --arg cmd "$REMOTE_CMD" '[{
-              Type:"CUSTOM_JAR", Jar:"command-runner.jar",
-              Name:"Tier0Bootstrap",
-              ActionOnFailure:"CONTINUE",
-              Args:["bash","-c",$cmd]}]')" \
-            --query 'StepIds[0]' --output text)
-          echo "submitted tier0 bootstrap step $STEP_ID, waiting..."
-          aws emr wait step-complete --region "$AWS_REGION" --cluster-id "$CLUSTER_ID" --step-id "$STEP_ID" || true
-          STATE=$(aws emr describe-step --region "$AWS_REGION" --cluster-id "$CLUSTER_ID" --step-id "$STEP_ID" \
-            --query 'Step.Status.State' --output text)
-          echo "tier0 bootstrap final state: $STATE"
-
-      - name: Resolve TIER0_AVAILABLE from the readiness sidecars
-        id: tier0_resolve
-        # Reads the two sidecars back (spec Q4 item 3). TIER0_AVAILABLE=1 only when
-        # BOTH the tier0_ready flag and a non-empty master IP are present; else 0.
-        # This is the SINGLE gate for the t0 arm calls; t1 calls are unconditional.
-        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
-        run: |
-          set -euo pipefail
-          ASSETS_S3="s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/tier0/${RUN_ID}"
-          TIER0_AVAILABLE=0
-          TIER0_MASTER_IP=""
-          if aws s3 cp "${ASSETS_S3}/tier0_ready" - 2>/dev/null | grep -q '^ready$'; then
-            TIER0_MASTER_IP=$(aws s3 cp "${ASSETS_S3}/master_ip" - 2>/dev/null | tr -cd '0-9.' || true)
-            if [ -n "$TIER0_MASTER_IP" ]; then TIER0_AVAILABLE=1; fi
-          fi
-          echo "TIER0_AVAILABLE=$TIER0_AVAILABLE" >> "$GITHUB_ENV"
-          echo "TIER0_MASTER_IP=$TIER0_MASTER_IP" >> "$GITHUB_ENV"
-          if [ "$TIER0_AVAILABLE" = "1" ]; then
-            echo "Tier 0 is available (master ip $TIER0_MASTER_IP); t0 arm calls will run"
-          else
-            echo "Tier 0 NOT available (bootstrap failed / sidecars absent); SKIPPING t0 arm calls — t1 unaffected. Missing t0 rows per pair are the dashboard signal (spec Q6). If this is a security-group reachability failure, remediate offline: authorize-security-group-ingress for TCP 8123 from the core-node SG to the master SG (see benchmarks/tier0/README.md)."
-          fi
-
       - name: Run arm 1 tier 0 (${{ env.ARM_1 }})
-        # TIER 0, first arm (spec Q2: t0-before-t1 within an arm). Gated on the
-        # shared prereqs AND TIER0_AVAILABLE. A t0 submit failure is a failed-class
-        # t0 artifact (marked) and never touches t1 (different run_id).
-        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' && env.TIER0_AVAILABLE == '1' }}
+        # TIER 0, first arm (spec Q2: t0-before-t1 within an arm). Redesign
+        # 2026-07-07: t0 now ingests into clickbench.hits_null on the SAME Cloud
+        # target as t1, so the t0 call is UNCONDITIONAL — gated ONLY on the shared
+        # per-pair prerequisites (provision + CH secret), byte-identical to the t1
+        # gate. No TIER0_AVAILABLE, no master IP, no Docker bring-up. A t0 submit
+        # failure is a failed-class t0 artifact (marked) and never touches t1
+        # (different run_id).
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
         uses: ./.github/actions/run-arm
         with:
           skip_truncate: ${{ vars.SKIP_TRUNCATE || '0' }}
           arm: ${{ env.ARM_1 }}
           tier: "0"
-          tier0_master_ip: ${{ env.TIER0_MASTER_IP }}
-          tier0_ch_version: ${{ env.TIER0_CH_VERSION }}
-          metrics_secret_id: ${{ env.METRICS_SECRET_ID }}
           target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
           target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
           target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
@@ -479,17 +376,15 @@ jobs:
           s3_bucket: ${{ secrets.CLICKBENCH_S3_BUCKET }}
 
       - name: Run arm 2 tier 0 (${{ env.ARM_2 }})
-        # TIER 0, second arm (t0-before-t1 within the arm, spec Q2). Gated on the
-        # shared prereqs AND TIER0_AVAILABLE. Independent of arm 1.
-        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' && env.TIER0_AVAILABLE == '1' }}
+        # TIER 0, second arm (t0-before-t1 within the arm, spec Q2). Redesign
+        # 2026-07-07: UNCONDITIONAL, gated only on the shared per-pair prerequisites
+        # (same as t1). Independent of arm 1.
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
         uses: ./.github/actions/run-arm
         with:
           skip_truncate: ${{ vars.SKIP_TRUNCATE || '0' }}
           arm: ${{ env.ARM_2 }}
           tier: "0"
-          tier0_master_ip: ${{ env.TIER0_MASTER_IP }}
-          tier0_ch_version: ${{ env.TIER0_CH_VERSION }}
-          metrics_secret_id: ${{ env.METRICS_SECRET_ID }}
           target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
           target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
           target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
