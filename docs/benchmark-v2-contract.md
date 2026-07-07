@@ -160,6 +160,7 @@ dashboard filter spans both pipelines. Connector-specific keys are allowed and
 | `async_insert` | `'0'` \| `'1'` — server async_insert mode | ingest setting | ingest setting |
 | `partition_scheme` | target table partitioning under test (e.g. `'toYYYYMM(EventDate)'` or `'none'`) | DDL | DDL |
 | `dataset` | logical dataset shape (e.g. `'hits'`, `'pypi'`) | workload config | workload config |
+| `warm_up` | OPTIONAL — present iff a priming insert ran before the arm's truncate; value identifies the warm-up workload (e.g. `'hits_0'`). Absent ⇒ no warm-up. (Amendment 2026-07-07.) | warm-up step | warm-up step |
 
 **Connector-specific keys (allowed, MUST be namespaced):** e.g.
 `spark_version`, `scala_version`, `emr_release` (Spark); `kafka_connect_version`,
@@ -203,7 +204,7 @@ pipelines. Units are the string written to the `unit` column.
 | `ch_insert_cpu_share_tier0` | `percent` | (Tier 0 only) Docker-CH `query_log` insert CPU ÷ wall-clock, ×100. Instrument-health watch: if it camps near 100%, the Null target is parse-bound and Tier 0 is measuring the server, not the connector. |
 | `settle_seconds` | `seconds` | Seconds from ingest-end until active parts stabilise (merge debt left behind). **MUST** be spelled `settle_seconds` (§7: Spark SQL currently emits `ch_settle_seconds`). |
 | `settle_timed_out` | `bool` | `1` iff settle hit the timeout cap (default 1800s), right-censoring `settle_seconds`. Feeds the `settle_timeout` flag (§1.3). |
-| `run_cost_usd` | `usd` | Instance-hours × price for the run. Makes cadence/tier decisions data-driven. |
+| `run_cost_usd` | `usd` | Instance-hours × price for the run. Makes cadence/tier decisions data-driven. Two-arm attribution (Amendment 2026-07-07): the shared infrastructure is provisioned once per pair, so the FULL pair cost is charged once, on the first-run arm's row; the other arm's row omits the metric. Per-pair sums stay correct; per-arm cost is undefined by design. Both pipelines MUST use this convention. |
 | `ch_uptime` | `seconds` | Target server uptime at run start. A drop vs the previous run ⇒ the service restarted between runs (covariate). |
 | `pre_run_rss` | `bytes` | Target `MemoryResident` at run start (pre-truncate). Inherited memory pressure (covariate). |
 | `pre_run_active_parts` | `count` | Active parts on the target table at run start. Cleanliness verifier, expected ~0 (see preamble note). |
