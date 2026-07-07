@@ -104,16 +104,27 @@ aws ec2 authorize-security-group-ingress \
   --group-id <master-sg> --protocol tcp --port 8123 --source-group <core-sg>
 ```
 
-### On-master metrics secret — ONE-TIME HUMAN SETUP REQUIRED
+### On-master metrics secret — instance-profile policy is a ONE-TIME HUMAN SETUP
 
 The on-master capture INSERTs into the **Cloud metrics service** and reads that
 service's password from Secrets Manager on the master via the EMR instance
 profile (`METRICS_SECRET_ID`, default `clickbench-load-test/metrics-ch-password`).
-Today the instance profile (`EMR_EC2_DefaultRole`) is scoped to read ONLY the
-target-password secret, and no metrics-password secret exists. Before Tier 0 can
-export, a human MUST (a) create the metrics-password secret and (b) add
-`secretsmanager:GetSecretValue` on it to the instance-profile policy. Until then
-the on-master capture step fails and the t0 run_id is rolled back (t1 unaffected).
+
+The secret itself is created **automatically** by the workflow's "Ensure metrics
+CH password in Secrets Manager" step (mirrors the target-password step: pushes
+the GH secret into Secrets Manager, create-if-absent; rotate by editing the SM
+secret). Two IAM caveats remain human territory:
+
+1. **REQUIRED:** the instance profile (`EMR_EC2_DefaultRole`) is scoped to read
+   ONLY the target-password secret — a human MUST add
+   `secretsmanager:GetSecretValue` on the metrics secret's ARN to its policy.
+2. The CI OIDC role's Secrets Manager permissions are scoped to the
+   target-password secret name; if `Describe/CreateSecret` on the metrics secret
+   name is denied, the ensure step fails (it is `continue-on-error`) and the
+   secret must be created manually once.
+
+Until both hold, the on-master capture step fails cleanly and the t0 run_id is
+rolled back (t1 unaffected).
 
 ## Capture mode — DECIDED: capture BEFORE teardown (plan decision 4, resolved)
 

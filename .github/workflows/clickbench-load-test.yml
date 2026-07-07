@@ -335,6 +335,36 @@ jobs:
             echo "created Secrets Manager secret $CH_SECRET_ID"
           fi
 
+      - name: Ensure metrics CH password in Secrets Manager (tier0 on-master capture)
+        id: metrics_secret
+        # Mirrors "Ensure CH password in Secrets Manager" above for the METRICS
+        # service: the Tier-0 on-master capture (capture_tier0_onmaster.sh) reads
+        # this secret on the master via the EMR instance profile to INSERT the t0
+        # server-side rows into the Cloud metrics service — the password must not
+        # ride an EMR step arg. Pushes the GH secret the workflow already uses
+        # for capture into Secrets Manager under METRICS_SECRET_ID (idempotent:
+        # create-if-absent, exactly like the target-password step; rotate by
+        # editing the SM secret, not the GH secret). continue-on-error: a failure
+        # here must never block the pair — the on-master capture then fails and
+        # the t0 run_id is rolled back (t1 unaffected).
+        #
+        # INFRA FOLLOW-UP (not done here — CI makes no IAM policy calls): the EMR
+        # instance-profile policy still needs secretsmanager:GetSecretValue on
+        # this secret's ARN — today it is scoped to the target-password secret
+        # only. Until a human adds that, the on-master capture fails cleanly and
+        # the t0 artifact is rolled back.
+        continue-on-error: true
+        env:
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+        run: |
+          if aws secretsmanager describe-secret --secret-id "$METRICS_SECRET_ID" >/dev/null 2>&1; then
+            echo "Secrets Manager secret $METRICS_SECRET_ID already exists; leaving it"
+          else
+            aws secretsmanager create-secret --name "$METRICS_SECRET_ID" \
+              --secret-string "$METRICS_CH_PASSWORD" >/dev/null
+            echo "created Secrets Manager secret $METRICS_SECRET_ID"
+          fi
+
       - name: Tier-0 bootstrap (Docker Null CH on the master) + reachability sidecars
         id: tier0_bootstrap
         # TASK 18 (spec Q4): EMR step (not a bootstrap action) — runs once per
