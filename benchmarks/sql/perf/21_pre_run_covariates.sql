@@ -22,10 +22,14 @@
 --                         the documented cause of the ~20% throughput jumps.
 --   pre_run_rss           resident memory (MemoryResident) at run start — how
 --                         much memory pressure the run inherits.
---   pre_run_active_parts  active parts on the target table at run start —
---                         non-zero means the previous run's data / merge debt
---                         is still present (e.g. SKIP_TRUNCATE, or a failed
---                         end-of-run truncate).
+--   pre_run_active_parts  active parts on the target table at run start. This is
+--                         a cleanliness VERIFIER, not a variance explainer: the
+--                         pipeline truncates the target at the END of every run,
+--                         so this is ~0 by design. A non-zero value flags a
+--                         dirty starting state — previous data / merge debt still
+--                         present (e.g. SKIP_TRUNCATE set, or a failed end-of-run
+--                         truncate) — which would confound the run, rather than
+--                         being an expected source of run-to-run variance.
 --
 -- These are point-in-time reads from system.asynchronous_metrics (current
 -- snapshot, not the *_log) and system.parts, so they need no time window and
