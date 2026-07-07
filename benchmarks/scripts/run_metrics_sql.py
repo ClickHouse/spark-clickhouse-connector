@@ -99,8 +99,11 @@ def main() -> None:
         "run_end": os.environ.get("RUN_END") or os.environ.get("RUN_START", ""),
         "settle_end": os.environ.get("SETTLE_END") or os.environ.get("RUN_END")
         or os.environ.get("RUN_START", ""),
-        "settle_seconds": float(os.environ.get("SETTLE_SECONDS", "0")),
-        "settle_timed_out": float(os.environ.get("SETTLE_TIMED_OUT", "0")),
+        # `or "0"` (not a dict-get default): the two-arm workflow resets these
+        # between arms via GITHUB_ENV, which can only set-to-empty, never unset —
+        # a present-but-empty value must not float("")-crash the capture.
+        "settle_seconds": float(os.environ.get("SETTLE_SECONDS") or "0"),
+        "settle_timed_out": float(os.environ.get("SETTLE_TIMED_OUT") or "0"),
         "source_glob": source_glob,
         "rows_expected": rows_expected,
         "unique_expected": unique_expected,

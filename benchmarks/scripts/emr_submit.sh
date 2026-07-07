@@ -28,6 +28,14 @@
 #               two-arm workflow (task #13) passes ClickBenchIngest-<arm> for the
 #               timed ingest and ClickBenchWarmup-<arm> for the priming insert so
 #               the arms' EMR steps are distinguishable in the console.
+#               ACTION_ON_FAILURE (default CONTINUE) — the EMR step's
+#               ActionOnFailure. CONTINUE, not TERMINATE_CLUSTER, because the
+#               cluster is SHARED by both arms of the nightly pair (task #13):
+#               a tolerated warm-up failure (or one arm's ingest failure) must
+#               not kill the other arm's cluster. Cluster teardown is guaranteed
+#               by the workflow's top-level always() "Teardown EMR" step, so
+#               TERMINATE_CLUSTER's leak protection is redundant here — and it
+#               violates arm isolation.
 set -euo pipefail
 
 # Operating config under test — defaults mirror the repo workflow env so the
@@ -37,6 +45,7 @@ BATCH_SIZE="${BATCH_SIZE:-100000}"
 ASYNC_INSERT="${ASYNC_INSERT:-0}"
 WRITE_PARALLELISM_META_S3_URI="${WRITE_PARALLELISM_META_S3_URI:-}"
 STEP_NAME="${STEP_NAME:-ClickBenchIngest}"
+ACTION_ON_FAILURE="${ACTION_ON_FAILURE:-CONTINUE}"
 
 
 _ev_path="${EVENT_LOG_DIR_SPARK#s3a://}"
@@ -69,10 +78,10 @@ ARGS=(
 # One raw line per arg, collected via jq [inputs], so values with commas/quotes
 # survive intact. Raw input (not jq --args) because --args still option-parses
 # values starting with '--'.
-steps_json=$(printf '%s\n' "${ARGS[@]}" | jq -nR --arg name "$STEP_NAME" '[{
+steps_json=$(printf '%s\n' "${ARGS[@]}" | jq -nR --arg name "$STEP_NAME" --arg aof "$ACTION_ON_FAILURE" '[{
   Type: "Spark",
   Name: $name,
-  ActionOnFailure: "TERMINATE_CLUSTER",
+  ActionOnFailure: $aof,
   Args: [inputs]
 }]')
 

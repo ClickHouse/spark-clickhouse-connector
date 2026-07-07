@@ -210,28 +210,22 @@ jobs:
           # PAIR_RUN_START anchors the once-per-pair run_cost_usd window.
           echo "PAIR_ID=$RUN_ID" >> "$GITHUB_ENV"
           echo "PAIR_RUN_START=$RUN_START" >> "$GITHUB_ENV"
-          echo "EVENT_LOG_DIR_SPARK=s3a://${{ secrets.CLICKBENCH_S3_BUCKET }}/spark-event-logs/$RUN_ID/" >> "$GITHUB_ENV"
-          # EMR 7.13 ships Spark 3.5.6, which writes a single flat event-log
-          # file (application_<appId>_1) - rolling format (eventlog_v2_*/) is
-          # Spark 4.0+ only. Match the flat file. If we ever move to a Spark-4
-          # EMR release, switch this glob to eventlog_v2_*/events_*.
-          echo "EVENT_LOG_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/spark-event-logs/$RUN_ID/application_*" >> "$GITHUB_ENV"
+          # EVENT_LOG_DIR_SPARK / EVENT_LOG_URI / WRITE_PARALLELISM_META_S3_URI
+          # are ARM-scoped (per-arm prefixes) and are set inside the run-arm
+          # action's first step — not here.
           echo "JAR_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/jars/$RUN_ID/clickhouse-spark-runtime.jar" >> "$GITHUB_ENV"
           # Pinned reference (arm P) jar rides the same per-run jars/ path with a
           # distinct key so both arms' artifacts are colocated for the run.
           echo "PINNED_JAR_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/jars/$RUN_ID/clickhouse-spark-runtime-pinned.jar" >> "$GITHUB_ENV"
           echo "SCRIPT_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/scripts/$RUN_ID/clickbench_ingest.py" >> "$GITHUB_ENV"
-          # Sidecar the ingest job writes its OBSERVED write-stage partition
-          # count to (write parallelism is record-only, not forced); "Insert
-          # run record" reads it back into runtime['write_parallelism'].
-          echo "WRITE_PARALLELISM_META_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/run-meta/$RUN_ID/write_parallelism" >> "$GITHUB_ENV"
 
       - name: Resolve arm order
         # Two-arm protocol (plan §2): both arms run on the SAME cluster/hour, so
         # order is the only within-pair confound left. Alternate it by day-of-year
         # parity so neither arm systematically owns the warmer/colder slot. DOY
         # (not day-of-month) avoids month-boundary parity repeats. The first-run
-        # arm (ARM_1) also carries the once-per-pair run_cost_usd (emit_run_cost).
+        # arm (ARM_1) is also the row the once-per-pair run_cost_usd is charged
+        # to (see "Record pair run_cost_usd" after teardown).
         run: |
           set -euo pipefail
           DOY=$(date -u +%j)
@@ -300,6 +294,7 @@ jobs:
           echo "CLUSTER_ID=$CLUSTER_ID" >> "$GITHUB_ENV"
 
       - name: Ensure CH password in Secrets Manager
+        id: ch_secret
         env:
           CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
         run: |
@@ -312,16 +307,16 @@ jobs:
           fi
 
       - name: Run arm 1 (${{ env.ARM_1 }})
-        # First arm of tonight's pair. Both arms are gated ONLY on provision
-        # success — arm 2 runs regardless of arm 1's outcome (failure isolation,
-        # task #13): unpaired rows are fine, v_pair_ratios skips incomplete pairs.
-        # emit_run_cost='1' -> this arm carries the once-per-pair run_cost_usd
-        # over the whole provisioned window (contract §2.1 amendment).
-        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        # First arm of tonight's pair. Both arms are gated on the shared per-pair
+        # prerequisites (provision + CH secret) and on NOTHING arm-specific —
+        # arm 2 runs regardless of arm 1's outcome (failure isolation, task #13):
+        # unpaired rows are fine, v_pair_ratios skips incomplete pairs. The
+        # once-per-pair run_cost_usd is recorded top-level after teardown, on
+        # this first-run arm's row (contract §2.1 amendment).
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
         uses: ./.github/actions/run-arm
         with:
           arm: ${{ env.ARM_1 }}
-          emit_run_cost: '1'
           target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
           target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
           target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
@@ -333,14 +328,12 @@ jobs:
           s3_bucket: ${{ secrets.CLICKBENCH_S3_BUCKET }}
 
       - name: Run arm 2 (${{ env.ARM_2 }})
-        # Second arm, same cluster. Independent of arm 1 (only gated on provision)
-        # so a failed arm 1 never robs arm 2 of its run. emit_run_cost='0' — the
-        # pair cost was already charged on arm 1's row.
-        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        # Second arm, same cluster. Independent of arm 1 (gated only on the shared
+        # per-pair prerequisites) so a failed arm 1 never robs arm 2 of its run.
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
         uses: ./.github/actions/run-arm
         with:
           arm: ${{ env.ARM_2 }}
-          emit_run_cost: '0'
           target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
           target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
           target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
@@ -356,6 +349,60 @@ jobs:
         # after arm 2. always() so a mid-pair failure never leaks the cluster.
         if: always()
         run: benchmarks/scripts/emr_teardown.sh
+
+      - name: Record pair run_cost_usd (full provisioned window, first-run arm's row)
+        # run_cost_usd is a PAIR-level metric (contract §2.1 amendment 2026-07-07):
+        # the shared infrastructure is provisioned once per pair, so the FULL pair
+        # cost is charged ONCE, on the FIRST-run arm's row; the other arm's row
+        # omits the metric (per-pair sums stay correct; per-arm cost is undefined
+        # by design). Window = PAIR_RUN_START..now — build + provision + both
+        # arms + teardown initiation — which is why this runs top-level AFTER
+        # "Teardown EMR", not inside an arm.
+        #
+        # Best-effort (continue-on-error) and guarded against ORPHANING: a metric
+        # row must never exist without its owning perf.runs row (the rollback
+        # step wipes a failed arm's rows), so this only inserts when the
+        # candidate arm's run row exists — first-run arm preferred, second arm as
+        # fallback, else skip with a log line.
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # compute_run_cost.py is env-driven; at this point GITHUB_ENV still
+          # holds ARM 2's RUN_ID/RUN_START/RUN_END, so override all three with
+          # the pair-level window + the chosen row's run_id.
+          export RUN_START="$PAIR_RUN_START"
+          export RUN_END="$(date -u +%Y-%m-%dT%H:%M:%S)"
+          # Point-query helper: does a perf.runs row exist for this run_id?
+          # (YAML strips this block's common indent, so the python lines below
+          # reach the shell flush-left — valid top-level python.)
+          CHECK_PY='
+          import sys
+          sys.path.insert(0, "benchmarks/scripts")
+          import ch_common
+          client = ch_common.get_client("METRICS_CH_HOST", "METRICS_CH_USER", "METRICS_CH_PASSWORD")
+          print(client.command("SELECT count() FROM perf.runs WHERE run_id = {rid:String}",
+                               parameters={"rid": sys.argv[1]}))
+          '
+          COST_RUN_ID=""
+          for CAND_ARM in "$ARM_1" "$ARM_2"; do
+            CAND="${PAIR_ID}-${CAND_ARM}-t1"
+            EXISTS=$(python3 -c "$CHECK_PY" "$CAND")
+            if [ "${EXISTS:-0}" -ge 1 ]; then COST_RUN_ID="$CAND"; break; fi
+          done
+          if [ -z "$COST_RUN_ID" ]; then
+            echo "no surviving perf.runs row for either arm of pair $PAIR_ID (rolled back or never recorded); skipping run_cost_usd"
+            exit 0
+          fi
+          if [ "$COST_RUN_ID" != "${PAIR_ID}-${ARM_1}-t1" ]; then
+            echo "first-run arm's row is gone (rolled back); charging pair cost to the surviving arm's row $COST_RUN_ID instead"
+          fi
+          echo "run_cost_usd: pair window ${RUN_START}..${RUN_END} -> row ${COST_RUN_ID}"
+          RUN_ID="$COST_RUN_ID" python benchmarks/scripts/compute_run_cost.py
 
       - name: Truncate target table (cleanup at end of pair)
         # Once-per-pair cleanup AFTER both arms' write + settle + metrics capture:
