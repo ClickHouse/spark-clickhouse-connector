@@ -12,7 +12,15 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-_short_sha="$(git rev-parse --short HEAD 2>/dev/null || echo nogit)"
+# Contract §1.2: RUN_ID doubles as the two-arm pair_id and MUST pin the commit
+# under test — an id that does not embed the git sha is useless as a pair key,
+# so HARD-FAIL here rather than mint a '…-nogit' id. (`return` when sourced,
+# `exit` when executed; callers may keep their own belt-and-braces guard.)
+_short_sha="$(git rev-parse --short HEAD 2>/dev/null || true)"
+if [ -z "${_short_sha}" ]; then
+  echo "lib_runid.sh: git rev-parse --short HEAD failed — refusing to mint a RUN_ID that does not pin the commit under test (contract §1.2 forbids '-nogit' ids)." >&2
+  return 1 2>/dev/null || exit 1
+fi
 _ts="$(date -u +%Y-%m-%dT%H-%M-%SZ)"
 export RUN_ID="${_ts}-${_short_sha}"
 export RUN_START="$(date -u +%Y-%m-%dT%H:%M:%S)"

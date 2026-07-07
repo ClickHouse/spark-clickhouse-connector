@@ -115,11 +115,19 @@ jobs:
       # --- Mandatory scope keys on every perf.runs row (contract §1.1) --------
       ENVIRONMENT_CLASS: "production"  # the Spark target is a production Cloud service
       # TARGET_REGION: Cloud region of the TARGET ClickHouse service. Set from
-      # repo config, never hardcoded per run (contract §1.1). confirmed
-      # 2026-07-07 — ClickHouse Cloud target is us-east-2; EMR runs us-east-1
-      # (cross-region; see plan §6.8 callout; move-vs-accept decision tracked in
-      # task #9).
+      # repo config, never hardcoded per run (contract §1.1). us-east-2 —
+      # user-stated 2026-07-07; definitive re-confirmation pending (task #9;
+      # possible conflation with the kafka staging cluster). If re-confirmed,
+      # drop this caveat; if corrected, change value + annotate.
       TARGET_REGION: "us-east-2"
+      # COMPUTE_REGION: Cloud region of the LOAD GENERATOR (EMR) — mandatory
+      # runtime key (contract §1.1, amendment 2026-07-07): when it differs from
+      # target_region the connector->server path is cross-region, a structural
+      # bias comparisons must be able to compute. Matches AWS_REGION /
+      # provisioning above. NOTE the pairing caveat: target 'us-east-2' is
+      # user-stated 2026-07-07, definitive re-confirmation pending (task #9) —
+      # if the target is corrected, the cross-region note here changes with it.
+      COMPUTE_REGION: "us-east-1"
       # Run dimensions recorded on perf.runs (and exported to the DWH).
       CONNECTOR: ${{ inputs.connector || 'spark' }}
       RUN_PROFILE: ${{ inputs.run_profile || 'small' }}
