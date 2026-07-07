@@ -24,10 +24,17 @@ Contract: the settle-end timestamp is the ONLY thing written to stdout, so the
 workflow can capture it as `SETTLE_END=$(wait_for_settle.py)`. All progress
 logging goes to stderr.
 
+If SETTLE_STATUS_FILE is set, a single line `1` or `0` is written to it recording
+whether the SETTLE_TIMEOUT was hit (i.e. merges did NOT visibly settle and the
+settle_seconds value is right-censored). The workflow reads this back into the
+settle_timed_out flag so censored settle values can be excluded from trends
+(plan §6.4); a stdout-only contract can't carry it.
+
 Required env: TARGET_CH_HOST, TARGET_CH_USER, TARGET_CH_PASSWORD,
               CH_DATABASE, CH_TABLE
 Optional env: POLL_INTERVAL (default 10s), STABLE_SAMPLES (default 3),
-              SETTLE_TIMEOUT (default 1800s)
+              SETTLE_TIMEOUT (default 1800s),
+              SETTLE_STATUS_FILE (path to write the 1/0 timed-out flag)
 """
 import os
 import sys
@@ -53,10 +60,12 @@ def main() -> None:
     start = time.monotonic()
     prev = -1
     stable = 0
+    timed_out = False
 
     while True:
         if time.monotonic() - start > settle_timeout:
             log(f"settle timeout ({settle_timeout}s) hit; proceeding")
+            timed_out = True
             break
 
         parts = client.query(
@@ -90,6 +99,11 @@ def main() -> None:
 
         prev = parts
         time.sleep(poll_interval)
+
+    status_file = os.environ.get("SETTLE_STATUS_FILE")
+    if status_file:
+        with open(status_file, "w") as f:
+            f.write("1" if timed_out else "0")
 
     print(datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%S"))
 

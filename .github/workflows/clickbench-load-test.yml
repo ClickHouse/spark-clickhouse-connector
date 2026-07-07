@@ -211,11 +211,17 @@ jobs:
           CH_DATABASE: clickbench
           CH_TABLE: hits
         run: |
+          # wait_for_settle prints only the settle-end timestamp on stdout; the
+          # 1/0 timed-out flag comes back via the sidecar status file (its stdout
+          # contract can't carry a second value). See plan §6.4.
+          export SETTLE_STATUS_FILE="$RUNNER_TEMP/settle_status"
           SETTLE_END=$(benchmarks/scripts/wait_for_settle.py)
           echo "SETTLE_END=$SETTLE_END" >> "$GITHUB_ENV"
           SETTLE_SECONDS=$(( $(date -u -d "$SETTLE_END" +%s) - $(date -u -d "$RUN_END" +%s) ))
           echo "SETTLE_SECONDS=$SETTLE_SECONDS" >> "$GITHUB_ENV"
-          echo "settle took ${SETTLE_SECONDS}s (RUN_END=$RUN_END SETTLE_END=$SETTLE_END)"
+          SETTLE_TIMED_OUT=$(cat "$SETTLE_STATUS_FILE" 2>/dev/null || echo 0)
+          echo "SETTLE_TIMED_OUT=$SETTLE_TIMED_OUT" >> "$GITHUB_ENV"
+          echo "settle took ${SETTLE_SECONDS}s, timed_out=${SETTLE_TIMED_OUT} (RUN_END=$RUN_END SETTLE_END=$SETTLE_END)"
 
       - name: Capture metrics — Spark event log + CH query_log/metric_log/part_log
         id: capture
@@ -242,7 +248,8 @@ jobs:
             benchmarks/sql/perf/15_capture_raw_inserts.sql \
             benchmarks/sql/perf/16_insert_throttling.sql \
             benchmarks/sql/perf/17_insert_memory_peaks.sql \
-            benchmarks/sql/perf/20_insert_integrity.sql
+            benchmarks/sql/perf/20_insert_integrity.sql \
+            benchmarks/sql/perf/22_insert_settle_timed_out.sql
           do
             echo "=== $sql ==="
             python benchmarks/scripts/run_metrics_sql.py "$sql"
@@ -267,8 +274,10 @@ jobs:
           # connector would build its own RUNTIME json here.
           export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
             --arg it "$EMR_INSTANCE_TYPE" --arg cc "$EMR_CORE_COUNT" \
+            --arg sto "${SETTLE_TIMED_OUT:-0}" \
             '{spark_version: $sv, scala_version: $scv, emr_release: $emr,
-              emr_instance_type: $it, emr_core_count: $cc}')
+              emr_instance_type: $it, emr_core_count: $cc,
+              settle_timed_out: $sto}')
           python benchmarks/scripts/insert_run_record.py
 
       - name: Roll back this run if it wasn't fully recorded
