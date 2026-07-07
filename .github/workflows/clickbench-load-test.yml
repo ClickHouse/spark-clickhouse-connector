@@ -88,7 +88,7 @@ jobs:
       # runtime['write_parallelism']. A forcing knob may return with the
       # parallelism-sweep campaign (plan §4 / task #22) as a deliberate,
       # annotated config change — do not reintroduce it silently here.
-      PARTITION_SCHEME: "toYear(EventDate)"  # current target DDL (benchmarks/sql/clickbench/02_create_hits.sql); toYYYYMM switch is a later plan §9 step
+      PARTITION_SCHEME: "toYYYYMM(EventDate)"  # target DDL (benchmarks/sql/clickbench/02_create_hits.sql); switched from toYear 2026-07-07 (plan §9 step 4) — ~12 real partitions exercise the partition-aware write path; recorded in runtime['partition_scheme'] (contract §1.4) so the change is an annotated event on all absolute charts
       DATASET: "hits"               # logical dataset shape (contract §1.4)
       # --- Pinned reference build, arm P (plan §2, open decision 1) -----------
       # The two-arm protocol runs HEAD (arm H) and a PINNED reference (arm P) on

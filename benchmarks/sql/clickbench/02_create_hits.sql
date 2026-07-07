@@ -11,6 +11,34 @@
 -- See the License for the specific language governing permissions and
 -- limitations under the License.
 --
+-- Partition scheme: PARTITION BY toYYYYMM(EventDate)  (switched 2026-07-07 from
+--   toYear(EventDate); benchmark v2 plan §9 step 4). The hits dataset spans ~12
+--   distinct months, so toYYYYMM yields ~12 real partitions from the same data —
+--   this exercises the connector's partition-aware write path
+--   (repartitionByPartition + localSortByPartition) NON-degenerately, unlike
+--   toYear which collapsed the whole dataset into a single year-partition. The
+--   switch changes Tier-1 absolutes (parts, merges, per-partition distribution)
+--   and MUST be annotated on all absolute charts; it lands only AFTER the two-arm
+--   ratio view exists (the ratio is immune — plan §9 step 4). The runtime config
+--   key partition_scheme (contract §1.4) is bumped to 'toYYYYMM(EventDate)' in
+--   .github/workflows/clickbench-load-test.yml so every run records the change.
+--
+-- MIGRATION NOTE: this file is applied via CREATE TABLE IF NOT EXISTS
+-- (bootstrap_schema.py). On the long-lived Cloud target an EXISTING hits table
+-- with the old toYear partition key is NOT recreated by IF NOT EXISTS — editing
+-- the DDL alone silently changes nothing. bootstrap_schema.py therefore detects a
+-- partition-key mismatch (system.tables.partition_key) and DROPs + recreates the
+-- table before applying this DDL. Data loss on recreate is fine: the table is
+-- TRUNCATEd every run anyway.
+--
+-- CANONICALIZATION GUARD: keep the PARTITION BY expression below byte-identical
+-- to ClickHouse's canonical system.tables.partition_key rendering — bare
+-- identifier, no backticks, no wrapping tuple-parens, exact function case:
+--     PARTITION BY toYYYYMM(EventDate)
+-- The mismatch detector only strips whitespace, so a cosmetic variant like
+-- toYYYYMM(`EventDate`) or (toYYYYMM(EventDate)) would compare unequal to the
+-- canonical form and false-positive a DROP + recreate on EVERY bootstrap.
+--
 CREATE TABLE IF NOT EXISTS clickbench.hits
 (
     WatchID BIGINT NOT NULL,
@@ -119,7 +147,7 @@ CREATE TABLE IF NOT EXISTS clickbench.hits
     URLHash BIGINT NOT NULL,
     CLID INTEGER NOT NULL
 ) ENGINE = MergeTree
-PARTITION BY toYear(EventDate)
+PARTITION BY toYYYYMM(EventDate)
 ORDER BY (CounterID, EventDate, intHash32(UserID), EventTime)
 SAMPLE BY intHash32(UserID)
 SETTINGS index_granularity = 8192;

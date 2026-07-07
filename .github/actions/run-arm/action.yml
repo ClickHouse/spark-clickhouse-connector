@@ -351,6 +351,10 @@ runs:
       #         to fail the run on the failed path (directive 3).
       #   22  settle_timed_out             yes     yes    literal from SETTLE_TIMED_OUT
       #         (reset to 0 when settle was skipped) — records 0, not an error.
+      #   24  parts_per_insert.<partition> yes     yes    server-side part_log,
+      #         windowed, GROUP BY partition — per-partition parts_per_insert
+      #         (plan §5; landed with toYYYYMM 2026-07-07). ~12 rows/run. Same
+      #         window/scoping as 13; empty window => no rows, not an error.
       # (21 pre-run covariates runs earlier, pre-submit, in its own step.)
       #
       # PER-SQL DECISION MATRIX — TIER 0 (Cloud-hosted Null, redesign 2026-07-07):
@@ -387,6 +391,8 @@ runs:
       #   23  RUN    parse-watch ch_insert_cpu_share_tier0 (MANDATORY on every
       #         Cloud-hosted Null t0 row, contract §1.1/§1.4/§2.1) — remoteSecure
       #         query_log OSCPUVirtualTime / wall-clock, hits_null-scoped.
+      #   24  SKIP   per-partition parts_per_insert — part_log-based like 13, and
+      #         a Null table creates no parts (nothing to break down by partition).
       # Same STRICT-on-success / TOLERANT-on-failed convention as t1: the
       # remoteSecure reads are windowed, so an empty/partial failed window yields
       # 0/NULL, not an error; only 10 (event-log) is tolerated on the failed class.
@@ -477,7 +483,8 @@ runs:
           benchmarks/sql/perf/17_insert_memory_peaks.sql \
           benchmarks/sql/perf/18_insert_derived_metrics.sql \
           benchmarks/sql/perf/19_insert_rate_stability.sql \
-          benchmarks/sql/perf/22_insert_settle_timed_out.sql"
+          benchmarks/sql/perf/22_insert_settle_timed_out.sql \
+          benchmarks/sql/perf/24_insert_parts_per_partition.sql"
         if [ "${SUBMIT_OUTCOME}" = "success" ]; then
           echo "capture: success-class — full family set (strict)"
           # 10 (event log) + 20 (integrity) are STRICT here: on a successful

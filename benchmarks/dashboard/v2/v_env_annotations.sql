@@ -4,12 +4,25 @@
 -- Purpose:
 --   Change-detection over the target environment, emitting one row per detected
 --   event so Superset annotation layers can draw vertical markers on the trend
---   charts (Tabs 1-3). Three event types:
---     * upgrade  — clickhouse_version changed vs the previous run in scope.
---     * restart  — ch_uptime dropped vs the previous run in scope (service
---                  restarted between the two runs).
---     * pin_bump — the pinned arm's connector_version changed vs the previous
---                  pinned run in scope.
+--   charts (Tabs 1-3). Four event types:
+--     * upgrade       — clickhouse_version changed vs the previous run in scope.
+--     * restart       — ch_uptime dropped vs the previous run in scope (service
+--                       restarted between the two runs).
+--     * pin_bump      — the pinned arm's connector_version changed vs the
+--                       previous pinned run in scope.
+--     * config_change — a version-controlled config-under-test key changed vs the
+--                       previous run in the same scope AND TIER. Currently
+--                       detects the runtime['partition_scheme'] switch (contract
+--                       §1.4), added 2026-07-07 for the toYYYYMM partition change
+--                       (plan §9 step 4): the switch shifts Tier-1 absolutes, so
+--                       it MUST be annotated on every absolute chart. Unlike the
+--                       environment branches, this lag ALSO partitions by tier
+--                       (cfg CTE below): config keys are per-tier facts (tier-0
+--                       records partition_scheme='none' for the Null table every
+--                       night, on the SAME scope tuple), so a scope-only lag
+--                       would interleave none/toYYYYMM nightly and fire false
+--                       events forever. The H/P ratio view is immune to the
+--                       underlying config change itself.
 --
 -- Plan reference:  docs/benchmark-v2-plan.md §7 ("v_env_annotations ... change
 --   detection over clickhouse_version + ch_uptime < prev -> 'upgrade'/'restart'
@@ -68,8 +81,13 @@ WITH
       )                                                 AS target_service,
       coalesce(nullIf(r.runtime['environment_class'], ''), 'unknown_class') AS environment_class,
       coalesce(nullIf(r.runtime['arm'], ''), 'head')    AS arm,
+      coalesce(nullIf(r.runtime['tier'], ''), '1')      AS tier,
       r.clickhouse_version                              AS clickhouse_version,
       r.connector_version                               AS connector_version,
+      -- config-under-test key (contract §1.4). Empty when a legacy row predates
+      -- the key; the change predicate skips '' -> non-'' first-appearance so a
+      -- backfill does not manufacture a config_change event.
+      r.runtime['partition_scheme']                     AS partition_scheme,
       up.ch_uptime                                      AS ch_uptime
     FROM raw_connectors_load_testing.runs AS r
     LEFT JOIN (
@@ -93,6 +111,44 @@ WITH
     FROM base
     WINDOW w AS (
       PARTITION BY connector, target_service, environment_class
+      ORDER BY run_started_at
+      ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
+    )
+  ),
+  -- Config-under-test change detection (config_change events). SEPARATE window
+  -- from seq, partitioned by the scope tuple PLUS tier: config keys are
+  -- PER-TIER facts. Concretely, tier-0 rows record partition_scheme='none'
+  -- (the Cloud-hosted ENGINE=Null table has no partitioning — run-arm sets
+  -- T0_PARTITION_SCHEME='none') while tier-1 rows record the hits DDL scheme,
+  -- and post-#41 both tiers share the same (connector, target_service,
+  -- environment_class) scope. A scope-only lag (like seq's) would therefore
+  -- interleave none -> toYYYYMM -> none every night and fire 2-3 FALSE
+  -- config_change events per night, forever. Partitioning the lag by tier keeps
+  -- each tier's config series independent — and still detects a genuine tier-0
+  -- config change if one ever happens. Do NOT instead filter out tier '0' rows
+  -- or the 'none' value: 'none' is a legitimate §1.4 partition_scheme value
+  -- (other connectors/tables may run unpartitioned by design), and a value
+  -- filter would blind the detector to real none<->partitioned transitions
+  -- within a tier. tier coalesces absent -> '1' (contract §1.1), so legacy rows
+  -- stay one unbroken tier-1 series.
+  --
+  -- NO arm filter, deliberately (do not "dedup" on arm): both arms share the
+  -- target DDL, so within a (scope, tier) series the time-ordered lag sees
+  -- ... old, old, NEW, new ... — only the FIRST row after the change differs
+  -- from its predecessor, so exactly ONE event fires per transition regardless
+  -- of which arm ran first that night. An arm = 'head' output filter on top of
+  -- this interleaved lag is a BUG, not a dedup: on pinned-first nights the
+  -- pinned row is the detecting row and gets filtered away, while the head
+  -- row's prev already carries the new value — the real transition would be
+  -- silently lost on ~half the nights (arm order alternates by day, plan §2).
+  cfg AS (
+    SELECT
+      run_id, run_started_at, connector, target_service, environment_class,
+      tier, partition_scheme,
+      lagInFrame(partition_scheme) OVER wc AS prev_partition_scheme
+    FROM base
+    WINDOW wc AS (
+      PARTITION BY connector, target_service, environment_class, tier
       ORDER BY run_started_at
       ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW
     )
@@ -150,3 +206,23 @@ FROM pin
 WHERE prev_pinned_version != ''
   AND connector_version != ''
   AND connector_version != prev_pinned_version
+
+UNION ALL
+-- ---- config_change events (version-controlled config-under-test changed) ----
+-- Currently: runtime['partition_scheme'] (contract §1.4). Detection reads the
+-- cfg CTE — lag over the previous run in the SAME (scope, tier) series; see the
+-- cfg comment for why the window partitions by tier and why there is NO arm
+-- filter (exactly one event fires per transition as-is). The '' guards suppress
+-- the legacy first-appearance ('' -> value) when the key was backfilled.
+-- The tier is carried in detail so a per-tier change is attributable at a
+-- glance (the output schema stays identical across all four branches).
+SELECT
+  run_started_at                                        AS event_time,
+  'config_change'                                        AS event_type,
+  connector, target_service, environment_class,
+  concat('partition_scheme ', prev_partition_scheme, ' -> ', partition_scheme, ' (tier ', tier, ')') AS detail,
+  run_id
+FROM cfg
+WHERE prev_partition_scheme != ''
+  AND partition_scheme != ''
+  AND partition_scheme != prev_partition_scheme
