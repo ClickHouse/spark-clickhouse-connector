@@ -252,10 +252,13 @@ runs:
       # differs. Tier 1 -> the Cloud service over HTTPS (secret-resolved
       # password, database clickbench). Tier 0 -> the Docker Null CH on the
       # master over HTTP at its PRIVATE IP:8123, database tier0, DEFAULT USER,
-      # EMPTY password. CH_SECRET_ID is forced empty for t0 so clickbench_ingest
-      # resolve_password falls through to the (empty) CH_PASSWORD instead of
-      # trying Secrets Manager (verified: an empty CH_SECRET_ID is falsy, and
-      # CH_PASSWORD="" is returned verbatim for a passwordless local CH).
+      # EMPTY password via the CH_NO_PASSWORD=1 sentinel (review fix): in cluster
+      # mode the driver sees ONLY what emr_submit.sh forwards via appMasterEnv —
+      # CH_PASSWORD is deliberately NOT forwarded, so the empty password MUST
+      # travel as a forwarded non-empty sentinel that resolve_password honors
+      # first. CH_SECRET_ID is ALSO forced empty for t0 (belt-and-braces: even
+      # if the sentinel logic regressed, a t0 driver must never fetch the Cloud
+      # secret for the Docker target).
       env:
         CH_HOST: ${{ inputs.tier == '0' && inputs.tier0_master_ip || inputs.target_ch_host }}
         CH_PORT: ${{ inputs.tier == '0' && '8123' || inputs.target_ch_port }}
@@ -265,20 +268,25 @@ runs:
         CH_TABLE: hits
       run: |
         set -euo pipefail
-        # t0: force CH_SECRET_ID empty so emr_submit forwards an empty value and
-        # clickbench_ingest.resolve_password falls through to CH_PASSWORD (empty
-        # for the passwordless Docker CH). t1: keep the inherited job-env
-        # CH_SECRET_ID (Secrets-Manager-resolved Cloud password). Exported here
-        # (not step env) to avoid an empty-context edge in the env expression.
         if [ "${{ inputs.tier }}" = "0" ]; then
+          # Defensive (review nit 1): the CH_HOST ternary falls back to the Cloud
+          # host when tier0_master_ip is EMPTY — a t0 pass silently ingesting into
+          # the Cloud target would corrupt both tiers' series. The workflow gate
+          # (TIER0_AVAILABLE requires a non-empty master ip) should make this
+          # unreachable; fail loudly if it ever isn't.
+          if [ -z "${{ inputs.tier0_master_ip }}" ]; then
+            echo "ERROR: tier=0 but tier0_master_ip is empty — refusing to submit (CH_HOST would silently fall back to the Cloud target)."
+            exit 1
+          fi
+          export CH_NO_PASSWORD=1
           export CH_SECRET_ID=""
-          export CH_PASSWORD=""
         fi
         # Arm's own jar + arm event-log dir (both from the arm-scoped env above).
         # BATCH_SIZE / ASYNC_INSERT / WRITE_PARALLELISM_META_S3_URI come from the
-        # job env; STEP_NAME tags the EMR step per arm.
+        # job env; STEP_NAME tags the EMR step per (arm, tier) so the two ingest
+        # steps per arm are distinguishable in the EMR console.
         JAR_S3_URI="$ARM_JAR_S3_URI" \
-        STEP_NAME="ClickBenchIngest-$ARM" \
+        STEP_NAME="ClickBenchIngest-$ARM-t${TIER:-1}" \
           benchmarks/scripts/emr_submit.sh
 
     - name: "Capture run end timestamp (arm ${{ inputs.arm }})"
@@ -689,10 +697,17 @@ runs:
       # OUTCOME-CLASS EXPORT (task #6 directive 6, plan §6.5/§10): exports in BOTH
       # classes so a FAILED-class run reaches the DWH fully — MARKED via
       # runtime['outcome']='failed'. Dashboards EXCLUDE failed runs by outcome, not
-      # by absence; the atomic/gated discipline is preserved by gating on the same
-      # capture+flags+run_record success chain (a rolled-back run has no rows to
-      # export and this step is skipped). NOT gated on submit success.
-      if: ${{ !cancelled() && steps.capture.outcome == 'success' && steps.flags.outcome == 'success' && steps.run_record.outcome == 'success' }}
+      # by absence. NOT gated on submit success.
+      #
+      # Gate = the full capture chain for the run's tier: capture + flags +
+      # run_record success AND capture_onmaster != 'failure' (review fix). The
+      # on-master leg runs AFTER capture but BEFORE flags, so on its failure the
+      # flags/run_record steps still succeed and the rollback step wipes the rows
+      # — without the capture_onmaster clause this export would then ship an
+      # EMPTY/incomplete artifact for the rolled-back t0 run_id. On t1 (and on a
+      # failed-class t0, where the on-master leg is skipped) its outcome is
+      # 'skipped', which passes the != 'failure' clause.
+      if: ${{ !cancelled() && steps.capture.outcome == 'success' && steps.capture_onmaster.outcome != 'failure' && steps.flags.outcome == 'success' && steps.run_record.outcome == 'success' }}
       shell: bash
       env:
         METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}

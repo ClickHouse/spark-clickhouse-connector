@@ -45,12 +45,14 @@ runtime['write_parallelism']:
                                  observed partition count (best-effort; a
                                  failure to upload never fails the ingest)
 
-Password resolution:
-  CH_SECRET_ID  AWS Secrets Manager secret holding the CH password, read at
-                runtime via the instance profile (used on EMR - the password is
-                never passed through the env or the spark-submit args).
-  CH_PASSWORD   fallback used only when CH_SECRET_ID is unset (local runs; may
-                be empty for a passwordless local ClickHouse).
+Password resolution (in precedence order — see resolve_password):
+  CH_NO_PASSWORD  '1' = explicit no-password target (Tier 0 Docker CH): empty
+                  password, no Secrets Manager call. Wins over both keys below.
+  CH_SECRET_ID    AWS Secrets Manager secret holding the CH password, read at
+                  runtime via the instance profile (used on EMR - the password is
+                  never passed through the env or the spark-submit args).
+  CH_PASSWORD     fallback used only when neither above applies (local runs; may
+                  be empty for a passwordless local ClickHouse).
 """
 import json
 import os
@@ -65,6 +67,16 @@ REQUIRED = (
 
 
 def resolve_password(env):
+    # Explicit no-password path (Tier 0, task #18 fix): CH_NO_PASSWORD=1 means
+    # "this target authenticates with an empty password — do not consult Secrets
+    # Manager or CH_PASSWORD". It exists because in cluster mode the driver sees
+    # ONLY the env vars emr_submit.sh forwards via spark.yarn.appMasterEnv, and
+    # CH_PASSWORD is deliberately NOT forwarded (a real password must never ride
+    # spark-submit args, and an empty-string env var is not guaranteed to survive
+    # YARN's env plumbing). A non-empty sentinel IS guaranteed to arrive, so the
+    # Tier-0 submit sets CH_NO_PASSWORD=1 and this check wins over everything.
+    if env.get("CH_NO_PASSWORD") == "1":
+        return ""
     secret_id = env.get("CH_SECRET_ID")
     if secret_id:
         import boto3  # only on the EMR path; not installed in the local venv
@@ -104,13 +116,13 @@ def load_operating_config(env):
     async_insert = env.get("ASYNC_INSERT", "0")
     # socket_timeout hang protection (legacy-orchestrator parity). The retired S3
     # orchestrator carried socket_timeout=300000; the repo ingest script had
-    # dropped it. Without a read/socket timeout the CH Java Client V2 insert path
-    # can hang FOREVER when the target service stalls mid-insert (observed on a
-    # slow target — MEMORY.md b_cluster_insert_hang): the write task never returns
-    # and the whole run wedges. 300000 ms (5 min) fails the task fast instead, so
-    # the run surfaces a failure rather than hanging until the workflow timeout.
-    # Env override SOCKET_TIMEOUT_MS; default 300000 (the client's own default is
-    # only 30000, too short for large batches, hence the explicit 300000).
+    # dropped it. The V2 client's INSERT path defaults to NO read timeout
+    # (socket_timeout 0) — which is exactly why write tasks hung FOREVER when the
+    # target service stalled mid-insert (observed on a slow target — MEMORY.md
+    # b_cluster_insert_hang). (The 30000 ms default belongs to the V1
+    # ClickHouseClientOption enum, not to the V2 insert path.) 300000 ms (5 min)
+    # fails the task fast instead, so the run surfaces a failure rather than
+    # hanging until the workflow timeout. Env override SOCKET_TIMEOUT_MS.
     socket_timeout_ms = env.get("SOCKET_TIMEOUT_MS", "300000")
     try:
         if int(batch_size) < 1:
@@ -173,7 +185,9 @@ def main():
         # `option.<name>` catalog props into the client's option map keyed by
         # com.clickhouse.client.config.ClickHouseClientOption — SOCKET_TIMEOUT's
         # key is exactly "socket_timeout" (verified against clickhouse-client
-        # 0.9.5: getKey()=="socket_timeout", client default 30000 ms). Value in
+        # 0.9.5: getKey()=="socket_timeout"). NB the V2 insert path defaults to
+        # NO read timeout (0) — the V1 enum's 30000 ms default does not apply —
+        # which is why an unset value hangs forever on a stalled target. Value in
         # milliseconds. See load_operating_config for the hang failure mode.
         .config("spark.sql.catalog.clickhouse.option.socket_timeout",
                 op["SOCKET_TIMEOUT_MS"])

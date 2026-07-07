@@ -130,6 +130,22 @@ DDL
   metrics_password="$(resolve_metrics_password)"
   log "shipping perf.metrics rows for $RUN_ID to the Cloud metrics service ($METRICS_CH_HOST:$METRICS_CH_PORT)"
 
+  # SECRET HANDLING (review nit 3): the resolved password must NOT appear in the
+  # docker exec argv (`-e VAR=value` is visible in `ps` on the master for the
+  # process lifetime). Write it to a 0600 root-owned env-file consumed via
+  # --env-file, and delete it on exit (the trap covers the failure paths too).
+  local envfile
+  envfile="$(sudo mktemp /root/.tier0-metrics-env.XXXXXX)"
+  # shellcheck disable=SC2064  # expand $envfile NOW (local var, fixed value)
+  trap "sudo rm -f '$envfile'" EXIT
+  sudo chmod 600 "$envfile"
+  {
+    printf 'METRICS_CH_HOST=%s\n' "$METRICS_CH_HOST"
+    printf 'METRICS_CH_PORT=%s\n' "$METRICS_CH_PORT"
+    printf 'METRICS_CH_USER=%s\n' "$METRICS_CH_USER"
+    printf 'METRICS_CH_PASSWORD=%s\n' "$metrics_password"
+  } | sudo tee "$envfile" >/dev/null
+
   # docker exec (loopback read) | clickhouse-client (TLS insert into Cloud).
   # A non-installed host clickhouse-client is unlikely on EMR, but we run the
   # OUTBOUND client inside the SAME container (it has clickhouse-client) so we do
@@ -137,16 +153,13 @@ DDL
   sudo docker exec -i "$CONTAINER_NAME" clickhouse-client --multiquery \
     --param_run_id="$RUN_ID" \
     --query "SELECT run_id, metric_name, unit, value FROM perf.metrics WHERE run_id = {run_id:String} FORMAT TabSeparated" \
-  | sudo docker exec -i \
-      -e METRICS_CH_HOST="$METRICS_CH_HOST" \
-      -e METRICS_CH_PORT="$METRICS_CH_PORT" \
-      -e METRICS_CH_USER="$METRICS_CH_USER" \
-      -e METRICS_CH_PASSWORD="$metrics_password" \
-      "$CONTAINER_NAME" \
+  | sudo docker exec -i --env-file "$envfile" "$CONTAINER_NAME" \
       sh -c 'clickhouse-client --host "$METRICS_CH_HOST" --port "$METRICS_CH_PORT" \
                --user "$METRICS_CH_USER" --password "$METRICS_CH_PASSWORD" --secure \
                --query "INSERT INTO perf.metrics (run_id, metric_name, unit, value) FORMAT TabSeparated"'
 
+  sudo rm -f "$envfile"
+  trap - EXIT
   log "done: Tier-0 server-side metrics for $RUN_ID shipped to the metrics service"
 }
 
