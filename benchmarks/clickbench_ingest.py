@@ -30,6 +30,9 @@ known operating point so a bare invocation still runs the pinned config:
   BATCH_SIZE         rows per insert batch -> spark.clickhouse.write.batchSize
                      (default 100000)
   ASYNC_INSERT       server async_insert mode, '0' | '1' (default '0')
+  SOCKET_TIMEOUT_MS  CH Java client socket/read timeout in ms (default 300000);
+                     legacy-orchestrator parity, fails a stalled insert fast
+                     instead of hanging forever (see load_operating_config)
 
 Write parallelism is RECORD-ONLY, not forced: the write stage keeps its natural
 input-split parallelism (repartitioning here would inject a full shuffle of the
@@ -99,6 +102,16 @@ def load_operating_config(env):
     still exercises the pinned config."""
     batch_size = env.get("BATCH_SIZE", "100000")
     async_insert = env.get("ASYNC_INSERT", "0")
+    # socket_timeout hang protection (legacy-orchestrator parity). The retired S3
+    # orchestrator carried socket_timeout=300000; the repo ingest script had
+    # dropped it. Without a read/socket timeout the CH Java Client V2 insert path
+    # can hang FOREVER when the target service stalls mid-insert (observed on a
+    # slow target — MEMORY.md b_cluster_insert_hang): the write task never returns
+    # and the whole run wedges. 300000 ms (5 min) fails the task fast instead, so
+    # the run surfaces a failure rather than hanging until the workflow timeout.
+    # Env override SOCKET_TIMEOUT_MS; default 300000 (the client's own default is
+    # only 30000, too short for large batches, hence the explicit 300000).
+    socket_timeout_ms = env.get("SOCKET_TIMEOUT_MS", "300000")
     try:
         if int(batch_size) < 1:
             sys.exit(f"BATCH_SIZE must be >= 1, got: {batch_size}")
@@ -106,9 +119,15 @@ def load_operating_config(env):
         sys.exit(f"BATCH_SIZE must be an integer, got: {batch_size}")
     if async_insert not in ("0", "1"):
         sys.exit(f"ASYNC_INSERT must be '0' or '1', got: {async_insert}")
+    try:
+        if int(socket_timeout_ms) < 1:
+            sys.exit(f"SOCKET_TIMEOUT_MS must be >= 1, got: {socket_timeout_ms}")
+    except ValueError:
+        sys.exit(f"SOCKET_TIMEOUT_MS must be an integer (ms), got: {socket_timeout_ms}")
     return {
         "BATCH_SIZE": batch_size,
         "ASYNC_INSERT": async_insert,
+        "SOCKET_TIMEOUT_MS": socket_timeout_ms,
     }
 
 
@@ -149,6 +168,15 @@ def main():
         .config("spark.sql.catalog.clickhouse.database", cfg["CH_DATABASE"])
         .config("spark.sql.catalog.clickhouse.option.ssl",
                 str(cfg["CH_PROTOCOL"] == "https").lower())
+        # socket_timeout hang protection (legacy-orchestrator parity). This is a
+        # CH Java Client OPTION (not a server setting): the connector maps
+        # `option.<name>` catalog props into the client's option map keyed by
+        # com.clickhouse.client.config.ClickHouseClientOption — SOCKET_TIMEOUT's
+        # key is exactly "socket_timeout" (verified against clickhouse-client
+        # 0.9.5: getKey()=="socket_timeout", client default 30000 ms). Value in
+        # milliseconds. See load_operating_config for the hang failure mode.
+        .config("spark.sql.catalog.clickhouse.option.socket_timeout",
+                op["SOCKET_TIMEOUT_MS"])
         # Batch size (rows per insert) under test — connector write conf.
         .config("spark.clickhouse.write.batchSize", op["BATCH_SIZE"])
         # async_insert mode under test. wait_for_async_insert kept coupled so a
@@ -163,7 +191,7 @@ def main():
 
     print(f"[clickbench_ingest] run_id={cfg['RUN_ID']}")
     print(f"[clickbench_ingest] operating config: batch_size={op['BATCH_SIZE']} "
-          f"async_insert={op['ASYNC_INSERT']}")
+          f"async_insert={op['ASYNC_INSERT']} socket_timeout_ms={op['SOCKET_TIMEOUT_MS']}")
     print(f"[clickbench_ingest] reading: {cfg['INPUT_PARQUET_GLOB']}")
     df = spark.read.parquet(cfg["INPUT_PARQUET_GLOB"])
 

@@ -625,6 +625,7 @@ runs:
           --arg arm "$ARM" --arg pair "$PAIR_ID" \
           --arg tier "$TIER" \
           --arg t0ver "${TIER0_CH_VERSION:-}" \
+          --arg sockto "${SOCKET_TIMEOUT_MS:-300000}" \
           --arg outcome "$RUN_OUTCOME" \
           --arg warmup "${WARMUP_WORKLOAD:-}" \
           --arg flagged "${FLAGGED:-}" --arg flag_reason "${FLAG_REASON:-}" \
@@ -636,6 +637,7 @@ runs:
             environment_class: $ec, target_region: $tr,
             compute_region: $cr,
             arm: $arm, pair_id: $pair, tier: $tier,
+            spark_socket_timeout_ms: $sockto,
             outcome: $outcome}
            + (if $tier == "0" and $t0ver != "" then {tier0_ch_version: $t0ver} else {} end)
            + (if $tier != "0" and $warmup != "" then {warm_up: $warmup} else {} end)
