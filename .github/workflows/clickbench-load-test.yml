@@ -258,6 +258,8 @@ jobs:
             benchmarks/sql/perf/15_capture_raw_inserts.sql \
             benchmarks/sql/perf/16_insert_throttling.sql \
             benchmarks/sql/perf/17_insert_memory_peaks.sql \
+            benchmarks/sql/perf/18_insert_derived_metrics.sql \
+            benchmarks/sql/perf/19_insert_rate_stability.sql \
             benchmarks/sql/perf/20_insert_integrity.sql \
             benchmarks/sql/perf/22_insert_settle_timed_out.sql
           do
