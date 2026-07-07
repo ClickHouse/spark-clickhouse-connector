@@ -19,6 +19,10 @@
 #               EMR_SERVICE_ROLE, EMR_INSTANCE_PROFILE, RUN_ID
 set -euo pipefail
 
+# NO auto-terminate: the two-arm pair submits multiple EMR steps sequentially
+# (warm-up, then t0/t1 per arm); auto-terminate killed the shared cluster after
+# the first step completed (smoke run 28875583178). The workflow's always()
+# "Teardown EMR" step owns cluster shutdown.
 CLUSTER_ID=$(aws emr create-cluster \
   --region "$AWS_REGION" \
   --name "clickbench-load-test-${RUN_ID}" \
@@ -33,7 +37,7 @@ CLUSTER_ID=$(aws emr create-cluster \
   ]" \
   --tags "run_id=${RUN_ID}" \
   --visible-to-all-users \
-  --auto-terminate \
+  --no-auto-terminate \
   --query 'ClusterId' --output text)
 
 echo "$CLUSTER_ID"
