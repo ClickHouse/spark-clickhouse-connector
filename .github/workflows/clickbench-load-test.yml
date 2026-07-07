@@ -61,6 +61,16 @@ jobs:
       # Run dimensions recorded on perf.runs (and exported to the DWH).
       CONNECTOR: ${{ inputs.connector || 'spark' }}
       RUN_PROFILE: ${{ inputs.run_profile || 'small' }}
+      # Documented full-glob source reference for the integrity check (plan §6.1).
+      # 20_insert_integrity.sql re-derives rows_expected / unique_expected from the
+      # actual input glob at run time (so a single-file smoke glob still verifies),
+      # but the full ClickBench hits dataset has this many rows — recorded here as a
+      # cross-check. NOTE: WatchID is NOT unique in the source (many rows share a
+      # WatchID), which is why duplicate detection is a target-vs-source delta, not
+      # count()-uniqExact() on the target. SOURCE_UNIQUE_EXPECTED is left empty
+      # because the exact source uniqExact(WatchID) is derived per run, not pinned.
+      SOURCE_ROWS_EXPECTED: "99997497"
+      SOURCE_UNIQUE_EXPECTED: ""
     steps:
       - uses: actions/checkout@v4
 

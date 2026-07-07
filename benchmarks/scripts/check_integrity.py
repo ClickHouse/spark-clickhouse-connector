@@ -36,7 +36,8 @@ def main() -> None:
     rows = client.query(
         "SELECT metric_name, value FROM perf.metrics "
         "WHERE run_id = {run_id:String} "
-        "AND metric_name IN ('integrity_ok', 'rows_delivered', 'rows_expected', 'duplicate_rows')",
+        "AND metric_name IN ('integrity_ok', 'rows_delivered', 'rows_expected', "
+        "'unique_delivered', 'unique_expected', 'duplicate_rows')",
         parameters={"run_id": run_id},
     ).result_rows
     m = {name: value for name, value in rows}
@@ -47,14 +48,19 @@ def main() -> None:
 
     delivered = m.get("rows_delivered")
     expected = m.get("rows_expected")
+    uniq_delivered = m.get("unique_delivered")
+    uniq_expected = m.get("unique_expected")
     dups = m.get("duplicate_rows")
-    print(f"integrity for {run_id}: delivered={delivered} expected={expected} "
-          f"duplicate_rows={dups} integrity_ok={m['integrity_ok']}")
+    print(f"integrity for {run_id}: rows delivered={delivered} expected={expected} "
+          f"| unique delivered={uniq_delivered} expected={uniq_expected} "
+          f"| duplicate_rows={dups} integrity_ok={m['integrity_ok']}")
 
     if m["integrity_ok"] != 1.0:
         print(
             f"ERROR: integrity check FAILED for {run_id} "
-            f"(delivered={delivered}, expected={expected}, duplicate_rows={dups})",
+            f"(rows delivered={delivered}/expected={expected}, "
+            f"unique delivered={uniq_delivered}/expected={uniq_expected}, "
+            f"duplicate_rows={dups})",
             file=sys.stderr,
         )
         sys.exit(1)

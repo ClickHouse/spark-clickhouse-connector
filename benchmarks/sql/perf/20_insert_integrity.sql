@@ -13,40 +13,50 @@
 --
 -- Parameters ({name:Type}) are bound by run_metrics_sql.py.
 --
--- Post-settle integrity verification (plan §6.1). After merges settle we
--- verify the write actually landed every source row exactly once:
---   rows_delivered        target count()
---   rows_expected         count() of the source parquet glob (ground truth)
---   duplicate_rows        rows_delivered - uniqExact(WatchID); >0 means the
---                         same logical row landed more than once (retry re-sent
---                         committed work and the server did NOT dedup it)
---   integrity_ok          1 iff rows_delivered == rows_expected AND
---                         duplicate_rows == 0; the workflow reads this back and
---                         fails the run on 0 (plan §6.10: integrity mismatch
---                         fails outright, unlike the flagged-not-failed guards)
---   ch_dedup_dropped_blocks  server-side context: DuplicatedInsertedBlocks
---                         ProfileEvent delta over the window — retried batches
---                         the server absorbed as duplicate-drops (the benign
---                         counterpart to duplicate_rows). Cumulative counter, so
---                         window delta is max()-min(), matching 16's pattern.
+-- Post-settle integrity verification (plan §6.1). We verify the write landed
+-- every source row exactly once by comparing target vs SOURCE on BOTH count()
+-- and uniqExact(WatchID).
 --
--- rows_expected is counted straight off the source parquet via s3() so the
--- ground truth is re-derived every run from the exact input glob (no hard-coded
--- dataset size that drifts when the glob changes for a smoke run). WatchID is
--- the ClickBench per-event id; uniqExact is exact (not approximate) so a single
--- duplicated row is detectable.
+-- IMPORTANT: the ClickBench hits dataset itself contains repeated WatchID values
+-- (WatchID is not unique in the source). So `count() - uniqExact(WatchID)` on the
+-- target is NON-ZERO on a perfectly correct load — computing duplicate_rows that
+-- way false-positives every run and zeroes the trend. duplicate_rows must be the
+-- target-vs-SOURCE delta instead: how many MORE rows / distinct WatchIDs the
+-- target holds than the source actually had.
+--
+--   rows_delivered    target count()
+--   rows_expected     source count() (re-derived from the exact input glob)
+--   unique_delivered  target uniqExact(WatchID)
+--   unique_expected   source uniqExact(WatchID)
+--   duplicate_rows    rows_delivered - rows_expected. 0 = every source row landed
+--                     exactly once. >0 = a retry re-sent committed work the server
+--                     did NOT dedup (extra rows). <0 = rows lost.
+--   integrity_ok      1 iff rows_delivered == rows_expected AND
+--                     unique_delivered == unique_expected. The workflow reads this
+--                     back and FAILS the run on 0 (plan §6.10: integrity mismatch
+--                     fails outright, unlike the flagged-not-failed guards).
+--   ch_dedup_dropped_blocks  server-side context: DuplicatedInsertedBlocks
+--                     ProfileEvent delta over the window — retried batches the
+--                     server absorbed as duplicate-drops (the benign counterpart
+--                     to duplicate_rows). Cumulative counter, so window delta is
+--                     max()-min(), matching 16's pattern.
+--
+-- Both source values are re-derived every run from the exact input glob via s3()
+-- (Parquet count() reads only footer metadata; uniqExact scans WatchID once),
+-- so the check auto-adapts to a single-file smoke glob instead of relying on a
+-- hard-coded full-dataset size. The full-dataset reference constants are recorded
+-- in the workflow env (SOURCE_ROWS_EXPECTED / SOURCE_UNIQUE_EXPECTED) as a
+-- documented cross-check for the nightly full-glob run.
 
 INSERT INTO perf.metrics (run_id, metric_name, unit, value)
 WITH
   delivered AS (
-    SELECT count() AS rows_delivered, uniqExact(WatchID) AS rows_unique
+    SELECT count() AS rows_delivered, uniqExact(WatchID) AS unique_delivered
     FROM {table_qualified:Identifier}
   ),
   expected AS (
-    -- Public dataset: NOSIGN. {source_glob} is the s3:// form of the ingest
-    -- glob; count(*) over Parquet reads only footer row-group metadata, so this
-    -- is cheap even over the full 100-file glob.
-    SELECT count() AS rows_expected
+    -- Public dataset: NOSIGN. {source_glob} is the s3:// form of the ingest glob.
+    SELECT count() AS rows_expected, uniqExact(WatchID) AS unique_expected
     FROM s3({source_glob:String}, NOSIGN, 'Parquet')
   ),
   dedup AS (
@@ -62,13 +72,20 @@ SELECT {run_id:String} AS run_id, metric_name, unit, value FROM (
   SELECT 'rows_expected', 'count',
          toFloat64((SELECT rows_expected FROM expected))
   UNION ALL
+  SELECT 'unique_delivered', 'count',
+         toFloat64((SELECT unique_delivered FROM delivered))
+  UNION ALL
+  SELECT 'unique_expected', 'count',
+         toFloat64((SELECT unique_expected FROM expected))
+  UNION ALL
+  -- Target-vs-source row delta (NOT count-minus-uniqExact — see header).
   SELECT 'duplicate_rows', 'count',
-         toFloat64((SELECT rows_delivered FROM delivered) - (SELECT rows_unique FROM delivered))
+         toFloat64((SELECT rows_delivered FROM delivered) - (SELECT rows_expected FROM expected))
   UNION ALL
   SELECT 'integrity_ok', 'bool',
          toFloat64(
            (SELECT rows_delivered FROM delivered) = (SELECT rows_expected FROM expected)
-           AND (SELECT rows_delivered FROM delivered) = (SELECT rows_unique FROM delivered))
+           AND (SELECT unique_delivered FROM delivered) = (SELECT unique_expected FROM expected))
   UNION ALL
   SELECT 'ch_dedup_dropped_blocks', 'count',
          greatest(0, (SELECT dropped_blocks FROM dedup))
