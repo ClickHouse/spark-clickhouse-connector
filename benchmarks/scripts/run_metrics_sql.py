@@ -14,9 +14,10 @@
 #
 """
 Required env: METRICS_CH_HOST, METRICS_CH_USER, METRICS_CH_PASSWORD,
-              RUN_ID, RUN_START, RUN_END, TARGET_CH_HOST, TARGET_CH_USER,
+              RUN_ID, RUN_START, TARGET_CH_HOST, TARGET_CH_USER,
               TARGET_CH_PASSWORD, CH_DATABASE, CH_TABLE
-Optional env: SETTLE_END (defaults to RUN_END), SETTLE_SECONDS (default 0),
+Optional env: RUN_END (defaults to RUN_START — unset for pre-ingest capture),
+              SETTLE_END (defaults to RUN_END), SETTLE_SECONDS (default 0),
               SETTLE_TIMED_OUT (default 0), INPUT_PARQUET_GLOB (source glob,
               s3a:// or s3://; exposed to SQL as {source_glob} in s3:// form),
               EVENT_LOG_URI, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
@@ -42,8 +43,12 @@ def main() -> None:
     parameters = {
         "run_id": ch_common.require("RUN_ID"),
         "run_start": ch_common.require("RUN_START"),
-        "run_end": ch_common.require("RUN_END"),
-        "settle_end": os.environ.get("SETTLE_END") or os.environ.get("RUN_END", ""),
+        # RUN_END is unset for pre-ingest capture (e.g. pre-run covariates run
+        # before the Spark step). It defaults to RUN_START then; those SQL files
+        # do not reference {run_end} anyway.
+        "run_end": os.environ.get("RUN_END") or os.environ.get("RUN_START", ""),
+        "settle_end": os.environ.get("SETTLE_END") or os.environ.get("RUN_END")
+        or os.environ.get("RUN_START", ""),
         "settle_seconds": float(os.environ.get("SETTLE_SECONDS", "0")),
         "settle_timed_out": float(os.environ.get("SETTLE_TIMED_OUT", "0")),
         "source_glob": source_glob,

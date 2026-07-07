@@ -121,6 +121,23 @@ jobs:
           METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
         run: python benchmarks/scripts/bootstrap_schema.py
 
+      - name: Capture pre-run server covariates (uptime, RSS, active parts)
+        # BEFORE truncate/ingest: point-in-time reads of the target's uptime,
+        # RSS and active-part count, recorded as perf.metrics rows for the run
+        # (plan §6.3). Captured pre-truncate so pre_run_active_parts reflects the
+        # state the run actually inherits. Best-effort: a failure here must not
+        # block the run, and these rows are covariates, not gated metrics — so
+        # the step does not participate in the capture/rollback gating below.
+        continue-on-error: true
+        env:
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+        run: python benchmarks/scripts/run_metrics_sql.py benchmarks/sql/perf/21_pre_run_covariates.sql
+
       - name: Truncate target table
         env:
           TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
