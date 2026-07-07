@@ -439,6 +439,7 @@ jobs:
         if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' && env.TIER0_AVAILABLE == '1' }}
         uses: ./.github/actions/run-arm
         with:
+          skip_truncate: ${{ vars.SKIP_TRUNCATE || '0' }}
           arm: ${{ env.ARM_1 }}
           tier: "0"
           tier0_master_ip: ${{ env.TIER0_MASTER_IP }}
@@ -464,6 +465,7 @@ jobs:
         if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
         uses: ./.github/actions/run-arm
         with:
+          skip_truncate: ${{ vars.SKIP_TRUNCATE || '0' }}
           arm: ${{ env.ARM_1 }}
           tier: "1"
           target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
@@ -482,6 +484,7 @@ jobs:
         if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' && env.TIER0_AVAILABLE == '1' }}
         uses: ./.github/actions/run-arm
         with:
+          skip_truncate: ${{ vars.SKIP_TRUNCATE || '0' }}
           arm: ${{ env.ARM_2 }}
           tier: "0"
           tier0_master_ip: ${{ env.TIER0_MASTER_IP }}
@@ -503,6 +506,7 @@ jobs:
         if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
         uses: ./.github/actions/run-arm
         with:
+          skip_truncate: ${{ vars.SKIP_TRUNCATE || '0' }}
           arm: ${{ env.ARM_2 }}
           tier: "1"
           target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}

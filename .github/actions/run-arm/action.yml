@@ -68,6 +68,13 @@ inputs:
       calls this action 4x per pair: (arm1,t0)(arm1,t1)(arm2,t0)(arm2,t1).
     required: false
     default: "1"
+  skip_truncate:
+    description: >-
+      '1' skips the Tier-1 truncate (debug/emergency knob). Threaded from the
+      workflow's vars.SKIP_TRUNCATE because composite actions cannot read the
+      `vars` context (template validation fails at action load time).
+    required: false
+    default: "0"
   # --- secrets threaded from the calling job (composite run: cannot read secrets.*) ---
   target_ch_host:
     required: true
@@ -217,7 +224,7 @@ runs:
         TARGET_CH_PASSWORD: ${{ inputs.target_ch_password }}
         CH_DATABASE: clickbench
         CH_TABLE: hits
-        SKIP_TRUNCATE: ${{ vars.SKIP_TRUNCATE || '0' }}
+        SKIP_TRUNCATE: ${{ inputs.skip_truncate }}
       run: python benchmarks/scripts/truncate_target.py
 
     - name: "Capture pre-run server covariates (arm ${{ inputs.arm }})"
