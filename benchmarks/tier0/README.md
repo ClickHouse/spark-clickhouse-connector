@@ -22,8 +22,11 @@ version, zero Cloud drift, ~zero extra cost — the master has idle cores).
 
 | File | Purpose |
 |------|---------|
-| `bootstrap_tier0_ch.sh` | Master-only: install/start Docker, run pinned ClickHouse (with an explicit config.d override enabling `query_log`/`part_log`/`metric_log` — not left to image defaults), wait for readiness, create `tier0.hits` (ENGINE=Null) from the DDL, verify `system.metric_log` is live. Idempotent. |
+| `bootstrap_tier0_ch.sh` | Master-only: install/start Docker, run pinned ClickHouse (with an explicit config.d override enabling `query_log`/`part_log`/`metric_log` — not left to image defaults), wait for readiness, create `tier0.hits` (ENGINE=Null) from the DDL, verify `system.metric_log` is live AND the config override file is mounted inside the container, then publish the `master_ip` + `tier0_ready` S3 sidecars ONLY after confirming the container answers on the master's PRIVATE IP. Idempotent (recreates the container on an image-tag or config-mount mismatch). |
+| `capture_tier0_onmaster.sh` | On-master (task 18): before teardown, query the Docker CH's `system.query_log`/`metric_log` (windowed) via `../sql/tier0/12_server_side_tier0.sql` and ship the resulting `perf.metrics` rows to the Cloud metrics service. Metrics password read from Secrets Manager via the instance profile (never a plaintext step arg). |
 | `../sql/tier0/01_create_hits_null.sql` | The `hits` schema with `ENGINE = Null` (DB name templated as `${TIER0_DB}`). |
+| `../sql/tier0/10_event_log_tier0.sql` | Runner-side event-log capture (Null-engine variant of `perf/10`): `null_rows_per_sec`/`null_mb_per_sec` renames, all other client-cost metrics keep their Tier-1 spellings. |
+| `../sql/tier0/12_server_side_tier0.sql` | On-master server-side capture: `connections_per_insert`, `bytes_on_wire_per_row`, `ch_insert_cpu_share_tier0` from the Docker CH's own system tables. |
 
 ## Pinned ClickHouse version
 
@@ -52,33 +55,65 @@ it matches how the pipeline already adds work (`emr_submit.sh` uses
 `aws emr add-steps`), gives clean failure semantics, and keeps provisioning
 (`emr_provision.sh`) unchanged except for staging the script.
 
-## How task 18 must wire this in
+## How task 18 wires this in (IMPLEMENTED)
 
-Not done here (task 17 = new files only). Task 18 needs to:
+Task 18 landed the wiring in `.github/workflows/clickbench-load-test.yml` and
+`.github/actions/run-arm/action.yml`. Reality as shipped:
 
-1. **Stage the assets on the master.** Either add a `--bootstrap-actions` entry
-   to the `aws emr create-cluster` call in `benchmarks/scripts/emr_provision.sh`
-   (path must be an S3 URI — upload `bootstrap_tier0_ch.sh` and the DDL first),
-   or add an EMR step that `aws s3 cp`s them down and runs the script. The DDL
-   path is overridable via `TIER0_DDL_FILE`.
-2. **Thread the Tier 0 target to Spark.** Point the ingest at the master's
-   **private IP** over HTTP: `CH_PROTOCOL=http`, `CH_PORT=8123`, ssl=false,
-   `CH_DATABASE=tier0`, `CH_TABLE=hits`. The master private IP is available on
-   the master itself (`hostname -i`) or via
-   `aws emr describe-cluster ... MasterPublicDnsName`/instance metadata. The
-   connector config already flows from `emr_submit.sh` env
-   (`CH_HOST/CH_PORT/CH_PROTOCOL`), so this is a per-arm override, not new code.
-3. **Verify — not assume — the security group.** Core/task nodes must be able
-   to reach the master on 8123 (and 9000 if native is used) over the private
-   subnet. EMR's managed intra-cluster security groups *usually* allow all
-   master↔slave traffic, but that must be **checked on the actual cluster**
-   (the acceptance smoke test below does exactly this from a core node), and
-   an explicit ingress rule added if it does not hold.
-4. **Tag the run** `runtime['tier']='0'` and capture the Tier 0 metric set
-   (plan §5). Confirm the Null target never becomes parse-bound
-   (`ch_insert_cpu_share_tier0`).
-5. **Implement capture-before-teardown** (see next section — the mode is
-   decided; task 18 implements it, it does not re-decide).
+1. **Assets staged once per pair** to `s3://<bucket>/tier0/<pair_id>/` in the
+   workflow's "Upload jar and script to S3" step: `bootstrap_tier0_ch.sh`,
+   `01_create_hits_null.sql`, `capture_tier0_onmaster.sh`,
+   `12_server_side_tier0.sql`.
+2. **Tier-0 bootstrap = an EMR step** (`command-runner.jar`,
+   `ActionOnFailure=CONTINUE`), after "Provision EMR": s3-cp the assets down and
+   run `bootstrap_tier0_ch.sh` with `TIER0_CH_VERSION`, `TIER0_DDL_FILE`, and the
+   two sidecar URIs. `emr_provision.sh` is unchanged (no bootstrap-action). The
+   step is `continue-on-error`; the next workflow step reads the sidecars back
+   and sets `TIER0_AVAILABLE` (1 iff `tier0_ready==ready` and a non-empty
+   `master_ip`). All t0 arm calls gate on `TIER0_AVAILABLE=='1'`; the t1 calls
+   are unconditional. A Tier-0 bring-up failure therefore skips t0 and never
+   blocks t1.
+3. **The run-arm action gained a `tier` input** (`'0'|'1'`, default `'1'`); the
+   workflow calls it 4× per pair — `(arm1,t0)(arm1,t1)(arm2,t0)(arm2,t1)`. On
+   t0 the submit step overrides the target to the master private IP over HTTP
+   (`CH_PROTOCOL=http`, `CH_PORT=8123`, `CH_DATABASE=tier0`, empty password /
+   no `CH_SECRET_ID`); the workload (jar, glob, batch_size, async_insert) is
+   identical to t1. t0 skips warm-up, truncate, pre-run covariates, settle,
+   integrity, and the perf/1x server-side capture; it runs the tier0 event-log
+   SQL, the on-master server-side capture, flags, run-record (`tier='0'`,
+   `environment_class='self_hosted'`, `target_region`=compute region,
+   `tier0_ch_version`, `partition_scheme='none'`, no `warm_up`), rollback
+   (t0-run_id-scoped), and export.
+4. **Capture-before-teardown** is implemented: the on-master server-side capture
+   (`capture_tier0_onmaster.sh`) runs as an EMR step INSIDE the t0 run-arm call,
+   before the workflow's "Teardown EMR". A skipped t0 (`TIER0_AVAILABLE=0`)
+   emits NO t0 rows — the missing t0 row per pair is the dashboard signal.
+
+### Security-group reachability — verified by the executor, remediated offline
+
+The t0 ingest driver's own connection attempt to `http://<master-ip>:8123` IS
+the true core→master probe: if the managed EMR security groups do not allow it,
+the t0 submit fails, that arm is a marked failed-class t0, and t1 is untouched.
+The pipeline does **not** auto-mutate managed EMR security groups. If t0 submits
+fail with a connection error, remediate offline and re-run: authorize an ingress
+rule for **TCP 8123** (and 9000 if native is used) from the core-node security
+group to the master security group, e.g.
+
+```bash
+aws ec2 authorize-security-group-ingress \
+  --group-id <master-sg> --protocol tcp --port 8123 --source-group <core-sg>
+```
+
+### On-master metrics secret — ONE-TIME HUMAN SETUP REQUIRED
+
+The on-master capture INSERTs into the **Cloud metrics service** and reads that
+service's password from Secrets Manager on the master via the EMR instance
+profile (`METRICS_SECRET_ID`, default `clickbench-load-test/metrics-ch-password`).
+Today the instance profile (`EMR_EC2_DefaultRole`) is scoped to read ONLY the
+target-password secret, and no metrics-password secret exists. Before Tier 0 can
+export, a human MUST (a) create the metrics-password secret and (b) add
+`secretsmanager:GetSecretValue` on it to the instance-profile policy. Until then
+the on-master capture step fails and the t0 run_id is rolled back (t1 unaffected).
 
 ## Capture mode — DECIDED: capture BEFORE teardown (plan decision 4, resolved)
 

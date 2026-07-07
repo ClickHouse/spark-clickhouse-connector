@@ -57,6 +57,19 @@ jobs:
       CH_DATABASE: clickbench
       CH_TABLE: hits
       CH_SECRET_ID: clickbench-load-test/target-ch-password
+      # --- Tier 0 (Null-engine connector ceiling, plan §3) --------------------
+      # Pinned Docker-CH version for the Tier-0 instrument on the EMR master
+      # (contract §1.4 tier0_ch_version — MANDATORY on t0 rows; a bump is a
+      # dashboard-annotatable event). MUST match benchmarks/tier0/bootstrap_
+      # tier0_ch.sh's TIER0_CH_VERSION default; set from repo config, echoed onto
+      # every t0 perf.runs row.
+      TIER0_CH_VERSION: "25.8.28"
+      # Secrets Manager id the ON-MASTER Tier-0 capture reads the METRICS-service
+      # password from (via the EMR instance profile — never a plaintext step arg).
+      # REQUIRES one-time human setup: create this secret AND grant the EMR
+      # instance profile GetSecretValue on it (today the profile can read only the
+      # target-password secret). See benchmarks/tier0/README.md.
+      METRICS_SECRET_ID: clickbench-load-test/metrics-ch-password
       INPUT_PARQUET_GLOB: ${{ inputs.input_parquet_glob || 's3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet' }}
       # --- Connector operating config UNDER TEST (plan §4, §6.9) ---------------
       # These live in version control and are echoed into perf.runs.runtime (see
@@ -256,6 +269,14 @@ jobs:
           # Pinned reference (arm P) jar, fetched + sha256-verified above.
           aws s3 cp "$PINNED_JAR_LOCAL" "$PINNED_JAR_S3_URI"
           aws s3 cp benchmarks/clickbench_ingest.py "$SCRIPT_S3_URI"
+          # Tier-0 assets, staged once per pair to tier0/<pair_id>/ (task 18): the
+          # bootstrap step and the on-master capture step s3-cp these down on the
+          # master. RUN_ID here is the pair id (top-level).
+          TIER0_ASSETS_S3="s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/tier0/${RUN_ID}"
+          aws s3 cp benchmarks/tier0/bootstrap_tier0_ch.sh    "$TIER0_ASSETS_S3/bootstrap_tier0_ch.sh"
+          aws s3 cp benchmarks/tier0/capture_tier0_onmaster.sh "$TIER0_ASSETS_S3/capture_tier0_onmaster.sh"
+          aws s3 cp benchmarks/sql/tier0/01_create_hits_null.sql "$TIER0_ASSETS_S3/01_create_hits_null.sql"
+          aws s3 cp benchmarks/sql/tier0/12_server_side_tier0.sql "$TIER0_ASSETS_S3/12_server_side_tier0.sql"
 
       - name: Bootstrap schema (idempotent CREATE IF NOT EXISTS)
         # clickbench.hits lives on the target service; perf.{runs,metrics,
@@ -314,17 +335,85 @@ jobs:
             echo "created Secrets Manager secret $CH_SECRET_ID"
           fi
 
-      - name: Run arm 1 (${{ env.ARM_1 }})
-        # First arm of tonight's pair. Both arms are gated on the shared per-pair
-        # prerequisites (provision + CH secret) and on NOTHING arm-specific —
-        # arm 2 runs regardless of arm 1's outcome (failure isolation, task #13):
-        # unpaired rows are fine, v_pair_ratios skips incomplete pairs. The
-        # once-per-pair run_cost_usd is recorded top-level after teardown, on
-        # this first-run arm's row (contract §2.1 amendment).
-        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
+      - name: Tier-0 bootstrap (Docker Null CH on the master) + reachability sidecars
+        id: tier0_bootstrap
+        # TASK 18 (spec Q4): EMR step (not a bootstrap action) — runs once per
+        # pair on the master AFTER the cluster is up. s3-cp's the staged tier0
+        # assets down, then runs bootstrap_tier0_ch.sh which starts the pinned
+        # Docker ClickHouse, applies the ENGINE=Null DDL, verifies system-log
+        # tables, and — critically — writes two S3 sidecars ONLY after confirming
+        # the container answers on the master's PRIVATE IP: the master IP (so the
+        # t0 ingest targets it) and a tier0_ready flag. ActionOnFailure=CONTINUE
+        # and this step is continue-on-error: a Tier-0 bring-up failure must NEVER
+        # block the Tier-1 arms — the next step reads the sidecars back and sets
+        # TIER0_AVAILABLE=0 on absence, skipping the t0 arm calls.
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        continue-on-error: true
+        run: |
+          set -euo pipefail
+          ASSETS_S3="s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/tier0/${RUN_ID}"
+          MASTER_IP_S3="${ASSETS_S3}/master_ip"
+          READY_S3="${ASSETS_S3}/tier0_ready"
+          # Remote command on the master: pull assets, run bootstrap with the pin
+          # + DDL path + sidecar URIs. TIER0_DDL_FILE points at the flat staged
+          # copy. The bootstrap self-guards isMaster (always true as a step).
+          REMOTE_CMD="set -euo pipefail; \
+            mkdir -p /tmp/tier0/sql; \
+            aws s3 cp '${ASSETS_S3}/bootstrap_tier0_ch.sh' /tmp/tier0/bootstrap_tier0_ch.sh; \
+            aws s3 cp '${ASSETS_S3}/01_create_hits_null.sql' /tmp/tier0/sql/01_create_hits_null.sql; \
+            TIER0_CH_VERSION='${TIER0_CH_VERSION}' \
+            TIER0_DDL_FILE='/tmp/tier0/sql/01_create_hits_null.sql' \
+            TIER0_MASTER_IP_S3_URI='${MASTER_IP_S3}' \
+            TIER0_READY_S3_URI='${READY_S3}' \
+            sudo -E bash /tmp/tier0/bootstrap_tier0_ch.sh"
+          STEP_ID=$(aws emr add-steps --region "$AWS_REGION" --cluster-id "$CLUSTER_ID" \
+            --steps "$(jq -nc --arg cmd "$REMOTE_CMD" '[{
+              Type:"CUSTOM_JAR", Jar:"command-runner.jar",
+              Name:"Tier0Bootstrap",
+              ActionOnFailure:"CONTINUE",
+              Args:["bash","-c",$cmd]}]')" \
+            --query 'StepIds[0]' --output text)
+          echo "submitted tier0 bootstrap step $STEP_ID, waiting..."
+          aws emr wait step-complete --region "$AWS_REGION" --cluster-id "$CLUSTER_ID" --step-id "$STEP_ID" || true
+          STATE=$(aws emr describe-step --region "$AWS_REGION" --cluster-id "$CLUSTER_ID" --step-id "$STEP_ID" \
+            --query 'Step.Status.State' --output text)
+          echo "tier0 bootstrap final state: $STATE"
+
+      - name: Resolve TIER0_AVAILABLE from the readiness sidecars
+        id: tier0_resolve
+        # Reads the two sidecars back (spec Q4 item 3). TIER0_AVAILABLE=1 only when
+        # BOTH the tier0_ready flag and a non-empty master IP are present; else 0.
+        # This is the SINGLE gate for the t0 arm calls; t1 calls are unconditional.
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        run: |
+          set -euo pipefail
+          ASSETS_S3="s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/tier0/${RUN_ID}"
+          TIER0_AVAILABLE=0
+          TIER0_MASTER_IP=""
+          if aws s3 cp "${ASSETS_S3}/tier0_ready" - 2>/dev/null | grep -q '^ready$'; then
+            TIER0_MASTER_IP=$(aws s3 cp "${ASSETS_S3}/master_ip" - 2>/dev/null | tr -cd '0-9.' || true)
+            if [ -n "$TIER0_MASTER_IP" ]; then TIER0_AVAILABLE=1; fi
+          fi
+          echo "TIER0_AVAILABLE=$TIER0_AVAILABLE" >> "$GITHUB_ENV"
+          echo "TIER0_MASTER_IP=$TIER0_MASTER_IP" >> "$GITHUB_ENV"
+          if [ "$TIER0_AVAILABLE" = "1" ]; then
+            echo "Tier 0 is available (master ip $TIER0_MASTER_IP); t0 arm calls will run"
+          else
+            echo "Tier 0 NOT available (bootstrap failed / sidecars absent); SKIPPING t0 arm calls — t1 unaffected. Missing t0 rows per pair are the dashboard signal (spec Q6). If this is a security-group reachability failure, remediate offline: authorize-security-group-ingress for TCP 8123 from the core-node SG to the master SG (see benchmarks/tier0/README.md)."
+          fi
+
+      - name: Run arm 1 tier 0 (${{ env.ARM_1 }})
+        # TIER 0, first arm (spec Q2: t0-before-t1 within an arm). Gated on the
+        # shared prereqs AND TIER0_AVAILABLE. A t0 submit failure is a failed-class
+        # t0 artifact (marked) and never touches t1 (different run_id).
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' && env.TIER0_AVAILABLE == '1' }}
         uses: ./.github/actions/run-arm
         with:
           arm: ${{ env.ARM_1 }}
+          tier: "0"
+          tier0_master_ip: ${{ env.TIER0_MASTER_IP }}
+          tier0_ch_version: ${{ env.TIER0_CH_VERSION }}
+          metrics_secret_id: ${{ env.METRICS_SECRET_ID }}
           target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
           target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
           target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
@@ -335,13 +424,57 @@ jobs:
           dwh_role_arn: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
           s3_bucket: ${{ secrets.CLICKBENCH_S3_BUCKET }}
 
-      - name: Run arm 2 (${{ env.ARM_2 }})
-        # Second arm, same cluster. Independent of arm 1 (gated only on the shared
-        # per-pair prerequisites) so a failed arm 1 never robs arm 2 of its run.
+      - name: Run arm 1 tier 1 (${{ env.ARM_1 }})
+        # TIER 1, first arm of tonight's pair (byte-identical to today). Both arms
+        # are gated on the shared per-pair prerequisites (provision + CH secret)
+        # and on NOTHING arm-specific — arm 2 runs regardless of arm 1's outcome
+        # (failure isolation, task #13): unpaired rows are fine, v_pair_ratios
+        # skips incomplete pairs. The once-per-pair run_cost_usd is recorded
+        # top-level after teardown, on this first-run arm's row (contract §2.1).
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
+        uses: ./.github/actions/run-arm
+        with:
+          arm: ${{ env.ARM_1 }}
+          tier: "1"
+          target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
+          target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          target_ch_password: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          metrics_ch_host: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          metrics_ch_user: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          metrics_ch_password: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          dwh_role_arn: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
+          s3_bucket: ${{ secrets.CLICKBENCH_S3_BUCKET }}
+
+      - name: Run arm 2 tier 0 (${{ env.ARM_2 }})
+        # TIER 0, second arm (t0-before-t1 within the arm, spec Q2). Gated on the
+        # shared prereqs AND TIER0_AVAILABLE. Independent of arm 1.
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' && env.TIER0_AVAILABLE == '1' }}
+        uses: ./.github/actions/run-arm
+        with:
+          arm: ${{ env.ARM_2 }}
+          tier: "0"
+          tier0_master_ip: ${{ env.TIER0_MASTER_IP }}
+          tier0_ch_version: ${{ env.TIER0_CH_VERSION }}
+          metrics_secret_id: ${{ env.METRICS_SECRET_ID }}
+          target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
+          target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          target_ch_password: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          metrics_ch_host: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          metrics_ch_user: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          metrics_ch_password: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          dwh_role_arn: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
+          s3_bucket: ${{ secrets.CLICKBENCH_S3_BUCKET }}
+
+      - name: Run arm 2 tier 1 (${{ env.ARM_2 }})
+        # TIER 1, second arm, same cluster. Independent of arm 1 (gated only on
+        # the shared per-pair prerequisites) so a failed arm 1 never robs arm 2.
         if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
         uses: ./.github/actions/run-arm
         with:
           arm: ${{ env.ARM_2 }}
+          tier: "1"
           target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
           target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
           target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}

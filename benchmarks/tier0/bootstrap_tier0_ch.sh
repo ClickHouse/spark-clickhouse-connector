@@ -64,6 +64,14 @@ TIER0_NATIVE_PORT="${TIER0_NATIVE_PORT:-9000}"
 CONTAINER_NAME="${TIER0_CONTAINER_NAME:-tier0-clickhouse}"
 READY_TIMEOUT_SECONDS="${TIER0_READY_TIMEOUT_SECONDS:-120}"
 
+# Task 18: S3 sidecars the workflow reads back to learn (a) the master private IP
+# to point the t0 ingest at, and (b) whether Tier 0 came up (TIER0_AVAILABLE).
+# BOTH are written ONLY after the container is confirmed answering on the
+# master's PRIVATE IP (not just loopback) — that is the real core->master reach
+# the executors need. Empty ⇒ the workflow skips Tier 0 (t1 unaffected).
+TIER0_MASTER_IP_S3_URI="${TIER0_MASTER_IP_S3_URI:-}"
+TIER0_READY_S3_URI="${TIER0_READY_S3_URI:-}"
+
 # Host directory for config.d overrides bind-mounted into the container.
 TIER0_CONF_DIR="${TIER0_CONF_DIR:-/etc/tier0-clickhouse/config.d}"
 
@@ -160,17 +168,40 @@ EOF
 }
 
 # --- (Re)start the ClickHouse container ------------------------------------
+# Task 18 nit (c): does the already-running container match what THIS bootstrap
+# would create — the pinned image tag AND the config.d mount? A version bump (or
+# a config change) must recreate, not silently leave a stale container serving
+# the old pin. Returns 0 = matches (leave it), 1 = mismatch/absent (recreate).
+running_container_matches() {
+  sudo docker ps --filter "name=^/${CONTAINER_NAME}$" --filter "status=running" \
+      --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$" || return 1
+  local got_image
+  got_image="$(sudo docker inspect --format '{{.Config.Image}}' "${CONTAINER_NAME}" 2>/dev/null || true)"
+  if [[ "$got_image" != "${TIER0_CH_IMAGE}" ]]; then
+    log "running container image '$got_image' != pinned '${TIER0_CH_IMAGE}' — will recreate"
+    return 1
+  fi
+  # Config.d mount present? A running container without the system-log override
+  # would silently lack the capture source tables (nit (a) mount re-verify).
+  if ! sudo docker exec "${CONTAINER_NAME}" \
+        test -f /etc/clickhouse-server/config.d/tier0_system_logs.xml 2>/dev/null; then
+    log "running container is missing the tier0_system_logs.xml mount — will recreate"
+    return 1
+  fi
+  return 0
+}
+
 start_container() {
-  # Already running the right thing? Leave it (idempotent).
-  if sudo docker ps --filter "name=^/${CONTAINER_NAME}$" --filter "status=running" \
-        --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    log "container ${CONTAINER_NAME} already running; leaving it"
+  # Already running the RIGHT thing (image + config mount)? Leave it (idempotent).
+  if running_container_matches; then
+    log "container ${CONTAINER_NAME} already running with the pinned image + config; leaving it"
     return 0
   fi
-  # Remove any stopped/exited container of the same name so we can recreate.
+  # Remove any running/stopped container of the same name so we can recreate it
+  # cleanly (mismatched image/config, or a stale exited container).
   if sudo docker ps -a --filter "name=^/${CONTAINER_NAME}$" \
         --format '{{.Names}}' | grep -q "^${CONTAINER_NAME}$"; then
-    log "removing stale container ${CONTAINER_NAME}"
+    log "removing existing container ${CONTAINER_NAME} (recreating with pinned image + config)"
     sudo docker rm -f "${CONTAINER_NAME}" >/dev/null
   fi
 
@@ -222,10 +253,18 @@ apply_ddl() {
   sudo docker exec "${CONTAINER_NAME}" \
     clickhouse-client --query "CREATE DATABASE IF NOT EXISTS ${TIER0_DB}"
   # Substitute ${TIER0_DB} in the DDL and pipe it to clickhouse-client's stdin.
-  # Only TIER0_DB is expanded (envsubst with an explicit var list) so nothing
-  # else in the SQL is touched.
-  TIER0_DB="${TIER0_DB}" envsubst '${TIER0_DB}' < "$DDL_FILE" \
-    | sudo docker exec -i "${CONTAINER_NAME}" clickhouse-client --multiquery
+  # Only TIER0_DB is expanded so nothing else in the SQL is touched. Task 18 nit:
+  # envsubst ships in the 'gettext' package, which is NOT guaranteed present on a
+  # minimal Amazon Linux; install it, and fall back to a targeted sed if the
+  # install is unavailable (the DDL uses exactly one placeholder, ${TIER0_DB}).
+  if command -v envsubst >/dev/null 2>&1 || sudo yum install -y gettext >/dev/null 2>&1 && command -v envsubst >/dev/null 2>&1; then
+    TIER0_DB="${TIER0_DB}" envsubst '${TIER0_DB}' < "$DDL_FILE" \
+      | sudo docker exec -i "${CONTAINER_NAME}" clickhouse-client --multiquery
+  else
+    log "envsubst unavailable; substituting \${TIER0_DB} via sed fallback"
+    sed "s/\${TIER0_DB}/${TIER0_DB}/g" "$DDL_FILE" \
+      | sudo docker exec -i "${CONTAINER_NAME}" clickhouse-client --multiquery
+  fi
   log "verifying ${TIER0_DB}.hits exists"
   sudo docker exec "${CONTAINER_NAME}" \
     clickhouse-client --query "EXISTS TABLE ${TIER0_DB}.hits" | grep -q '^1$'
@@ -237,6 +276,16 @@ apply_ddl() {
 # override above); poll briefly so a broken/ignored config override fails the
 # bootstrap loudly instead of surfacing as missing capture data at run end.
 verify_system_logs() {
+  # Task 18 nit (a): first assert the config override file is actually mounted
+  # INSIDE the container — a missing mount is the root cause of empty capture
+  # tables, and asserting it here fails the bootstrap loudly at the source rather
+  # than as absent data at run end.
+  log "asserting config override present inside container"
+  if ! sudo docker exec "${CONTAINER_NAME}" \
+        test -f /etc/clickhouse-server/config.d/tier0_system_logs.xml; then
+    log "ERROR: /etc/clickhouse-server/config.d/tier0_system_logs.xml not present in container — mount failed"
+    return 1
+  fi
   log "verifying system.metric_log is being populated (config override active)"
   local deadline=$(( $(date +%s) + 60 ))
   while (( $(date +%s) < deadline )); do
@@ -251,6 +300,41 @@ verify_system_logs() {
   return 1
 }
 
+# --- Confirm private-IP reach + publish sidecars (task 18) ------------------
+# The executors on the CORE nodes reach the Docker CH at the master's PRIVATE IP
+# over the published 0.0.0.0:8123 bind. Prove the server answers on that IP (not
+# just loopback) FROM THE MASTER, then publish two S3 sidecars the workflow reads
+# back: the master IP (so the t0 submit can set CH_HOST) and a tier0_ready flag
+# (so the workflow gates the t0 arm calls on TIER0_AVAILABLE). If either sidecar
+# URI is unset (e.g. a manual/off-EMR run) we still verify reachability and log,
+# but skip the S3 publish.
+publish_sidecars() {
+  local master_ip
+  master_ip="$(hostname -i | awk '{print $1}')"
+  log "confirming ClickHouse answers on the master private IP ${master_ip}:${TIER0_HTTP_PORT}"
+  # curl may be absent; install is cheap and idempotent. Prove a real query.
+  command -v curl >/dev/null 2>&1 || sudo yum install -y curl >/dev/null 2>&1 || true
+  if ! curl -sf "http://${master_ip}:${TIER0_HTTP_PORT}/" --data-binary "SELECT 1" | grep -q '^1$'; then
+    log "ERROR: ClickHouse did not answer on ${master_ip}:${TIER0_HTTP_PORT} — Tier 0 not reachable by executors"
+    return 1
+  fi
+  log "reachable on ${master_ip}:${TIER0_HTTP_PORT}"
+  if [[ -n "${TIER0_MASTER_IP_S3_URI}" ]]; then
+    printf '%s\n' "${master_ip}" | aws s3 cp - "${TIER0_MASTER_IP_S3_URI}"
+    log "published master IP sidecar ${TIER0_MASTER_IP_S3_URI}"
+  else
+    log "TIER0_MASTER_IP_S3_URI unset; skipping master-IP sidecar publish"
+  fi
+  # tier0_ready written LAST, only after everything above passed — its presence
+  # is the workflow's TIER0_AVAILABLE=1 signal.
+  if [[ -n "${TIER0_READY_S3_URI}" ]]; then
+    printf 'ready\n' | aws s3 cp - "${TIER0_READY_S3_URI}"
+    log "published tier0_ready sidecar ${TIER0_READY_S3_URI}"
+  else
+    log "TIER0_READY_S3_URI unset; skipping tier0_ready sidecar publish"
+  fi
+}
+
 main() {
   ensure_docker
   write_log_config
@@ -258,6 +342,7 @@ main() {
   wait_ready
   apply_ddl
   verify_system_logs
+  publish_sidecars
   log "done"
 }
 
