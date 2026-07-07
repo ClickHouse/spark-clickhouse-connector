@@ -264,6 +264,11 @@ jobs:
             echo "=== $sql ==="
             python benchmarks/scripts/run_metrics_sql.py "$sql"
           done
+          # run_cost_usd (plan §6.6): EMR instance-hours x in-repo on-demand price.
+          # Part of the gated capture so it rolls back with the rest if capture
+          # fails and only lands on fully-recorded runs.
+          echo "=== run_cost_usd ==="
+          python benchmarks/scripts/compute_run_cost.py
 
       - name: Insert run record
         id: run_record
