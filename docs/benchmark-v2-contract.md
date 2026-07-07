@@ -51,17 +51,21 @@ below are the pinned contract. Both pipelines **MUST** spell them identically.
 | `tier` | `'0'` \| `'1'` | `'1'` | Benchmark tier, **as a string**. `'0'` = Null-engine connector ceiling; `'1'` = saturated Cloud ingest. Legacy rows have no `tier` and are therefore Tier 1. |
 | `pair_id` | see §1.2 | — | Shared by the two runs of one nightly two-arm pair. |
 | `target_region` | e.g. `'us-east-1'` | — (MANDATORY) | Cloud region of the run's target service. **MUST** be set from repo config, never hardcoded per run. |
+| `compute_region` | e.g. `'us-east-1'` | — (MANDATORY) | Cloud region of the load generator (EMR / EKS). When it differs from `target_region` the connector→server path is cross-region — a structural bias that cross-connector comparisons **MUST** be able to compute. (Amendment 2026-07-07.) |
 | `environment_class` | `'staging'` \| `'production'` | — (MANDATORY) | Deployment class of the target service. |
 
-`target_region` and `environment_class` are **MANDATORY on every `perf.runs` row
-in both pipelines**, from day one.
+`target_region`, `compute_region`, and `environment_class` are **MANDATORY on
+every `perf.runs` row in both pipelines**, from day one.
 
 - **Spark pipeline:** `environment_class` = `'production'` (its dedicated target
-  is a production service). `target_region` value is pending one-time
-  confirmation (task #9) and, once confirmed, is set from repo config — **MUST
-  NOT** be hardcoded per run.
+  is a production service). `target_region` = `'us-east-2'` (confirmed 2026-07-07),
+  `compute_region` = `'us-east-1'` (EMR) — the Spark connector→server path is
+  **cross-region**; both values are set from repo config — **MUST NOT** be
+  hardcoded per run.
 - **Kafka pipeline:** its dedicated target is a **us-east-2 staging** service, so
-  `environment_class` = `'staging'`, `target_region` = `'us-east-2'`.
+  `environment_class` = `'staging'`, `target_region` = `'us-east-2'`, and
+  `compute_region` per its own infrastructure (in-region when compute is also
+  us-east-2).
 
 Why this matters: the H/P ratio gates are unaffected by the class/region split
 (both arms of a pair share the same target, so the difference cancels), but
