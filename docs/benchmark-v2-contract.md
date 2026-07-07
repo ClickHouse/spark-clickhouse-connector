@@ -129,6 +129,7 @@ different keys and **MUST NOT** be conflated.
 
 | Key | Values | Meaning |
 |-----|--------|---------|
+| `outcome` | `'success'` \| `'failed'` | Outcome class of the run (Amendment 2026-07-07). `'failed'` = the ingest step failed; the run is still **fully captured and exported, marked** (plan §6.5 — no survivorship bias). Absent ⇒ `'success'` (legacy rows only ever landed on the success path). Dashboards **MUST** exclude failed-class runs from headlines/bands/ratios **by outcome, not by absence**. Orthogonal to `flagged` (a failed run is not merely non-comparable; a flagged run is not failed). Integrity on a failed-class run is `integrity_unverified` by definition. |
 | `flagged` | `'1'` | Present with value `'1'` iff the run tripped a validity guard (plan §6.10). Absent ⇒ not flagged. |
 | `flag_reason` | fixed vocabulary (below) | Token — or `\|`-joined tokens when several guards trip — naming the guard(s). Present iff `flagged='1'`. |
 
