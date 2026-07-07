@@ -20,16 +20,18 @@
 #               CH_DATABASE, CH_TABLE, INPUT_PARQUET_GLOB
 # Optional env (connector operating config under test, plan §6.9; defaulted
 # here so a bare invocation still runs the known operating point):
-#               BATCH_SIZE (default 100000), WRITE_PARALLELISM (default 32),
-#               ASYNC_INSERT (default 0)
+#               BATCH_SIZE (default 100000), ASYNC_INSERT (default 0)
+#               WRITE_PARALLELISM_META_S3_URI (record-only: s3:// sidecar the
+#               ingest job writes its OBSERVED write-stage partition count to;
+#               write parallelism is not forced — see clickbench_ingest.py)
 set -euo pipefail
 
 # Operating config under test — defaults mirror the repo workflow env so the
 # known operating point is applied even if these are unset. The repo, not the
 # S3 script copy, is the source of truth for these values.
 BATCH_SIZE="${BATCH_SIZE:-100000}"
-WRITE_PARALLELISM="${WRITE_PARALLELISM:-32}"
 ASYNC_INSERT="${ASYNC_INSERT:-0}"
+WRITE_PARALLELISM_META_S3_URI="${WRITE_PARALLELISM_META_S3_URI:-}"
 
 
 _ev_path="${EVENT_LOG_DIR_SPARK#s3a://}"
@@ -54,8 +56,8 @@ ARGS=(
   --conf "spark.yarn.appMasterEnv.INPUT_PARQUET_GLOB=${INPUT_PARQUET_GLOB}"
   --conf "spark.yarn.appMasterEnv.RUN_ID=${RUN_ID}"
   --conf "spark.yarn.appMasterEnv.BATCH_SIZE=${BATCH_SIZE}"
-  --conf "spark.yarn.appMasterEnv.WRITE_PARALLELISM=${WRITE_PARALLELISM}"
   --conf "spark.yarn.appMasterEnv.ASYNC_INSERT=${ASYNC_INSERT}"
+  --conf "spark.yarn.appMasterEnv.WRITE_PARALLELISM_META_S3_URI=${WRITE_PARALLELISM_META_S3_URI}"
   "$SCRIPT_S3_URI"
 )
 

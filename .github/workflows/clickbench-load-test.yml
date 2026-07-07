@@ -68,8 +68,17 @@ jobs:
       # script to S3" + emr_submit.sh SCRIPT_S3_URI), so these values reach EMR
       # from the repo, not from S3. Contract §1.4 key spellings.
       BATCH_SIZE: "100000"          # spark.clickhouse.write.batchSize (rows/batch); known operating point
-      WRITE_PARALLELISM: "32"       # concurrent insert streams (baseline EMR profile); drives df repartition
       ASYNC_INSERT: "0"             # server async_insert mode OFF at the operating point
+      # write_parallelism is RECORD-ONLY: nothing forces it (a repartition would
+      # inject a full shuffle of the dataset inside the timed window — a
+      # trend-breaking workload change). The write stage runs at its natural
+      # input-split partition count (task concurrency is then bounded by
+      # executor slots); the ingest job reports the OBSERVED count via an S3
+      # sidecar (WRITE_PARALLELISM_META_S3_URI, see "Compute run id and S3
+      # paths") and "Insert run record" echoes it into
+      # runtime['write_parallelism']. A forcing knob may return with the
+      # parallelism-sweep campaign (plan §4 / task #22) as a deliberate,
+      # annotated config change — do not reintroduce it silently here.
       PARTITION_SCHEME: "toYear(EventDate)"  # current target DDL (benchmarks/sql/clickbench/02_create_hits.sql); toYYYYMM switch is a later plan §9 step
       DATASET: "hits"               # logical dataset shape (contract §1.4)
       # --- Pinned reference build, arm P (plan §2, open decision 1) -----------
@@ -199,6 +208,10 @@ jobs:
           # distinct key so both arms' artifacts are colocated for the run.
           echo "PINNED_JAR_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/jars/$RUN_ID/clickhouse-spark-runtime-pinned.jar" >> "$GITHUB_ENV"
           echo "SCRIPT_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/scripts/$RUN_ID/clickbench_ingest.py" >> "$GITHUB_ENV"
+          # Sidecar the ingest job writes its OBSERVED write-stage partition
+          # count to (write parallelism is record-only, not forced); "Insert
+          # run record" reads it back into runtime['write_parallelism'].
+          echo "WRITE_PARALLELISM_META_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/run-meta/$RUN_ID/write_parallelism" >> "$GITHUB_ENV"
 
       - name: Upload jar and script to S3
         run: |
@@ -299,8 +312,10 @@ jobs:
           # Connector operating config under test — forwarded to the Spark job
           # via emr_submit.sh appMasterEnv so clickbench_ingest.py applies them
           # (plan §6.9). Sourced from the top-level workflow env, not S3.
+          # WRITE_PARALLELISM_META_S3_URI (from "Compute run id and S3 paths")
+          # is record-only: the job writes its observed write-stage partition
+          # count there; nothing forces parallelism.
           BATCH_SIZE: ${{ env.BATCH_SIZE }}
-          WRITE_PARALLELISM: ${{ env.WRITE_PARALLELISM }}
           ASYNC_INSERT: ${{ env.ASYNC_INSERT }}
         run: benchmarks/scripts/emr_submit.sh
 
@@ -387,6 +402,13 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           export CONNECTOR_VERSION=$(cat version.txt)
+          # write_parallelism is the OBSERVED write-stage partition count the
+          # ingest job uploaded to the run's S3 sidecar (record-only — nothing
+          # forces it). Fall back to the descriptive token 'input-splits' if
+          # the sidecar is missing (upload is best-effort on the EMR side).
+          WRITE_PARALLELISM_OBSERVED=$(aws s3 cp "$WRITE_PARALLELISM_META_S3_URI" - 2>/dev/null | tr -cd '0-9')
+          WRITE_PARALLELISM_OBSERVED="${WRITE_PARALLELISM_OBSERVED:-input-splits}"
+          echo "write_parallelism (observed) = $WRITE_PARALLELISM_OBSERVED"
           # Spark/EMR attrs + connector operating config + mandatory scope keys
           # go into the generic perf.runs.runtime map; another connector would
           # build its own RUNTIME json here. Config keys use contract §1.4
@@ -397,7 +419,7 @@ jobs:
           export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
             --arg it "$EMR_INSTANCE_TYPE" --arg cc "$EMR_CORE_COUNT" \
             --arg sto "${SETTLE_TIMED_OUT:-0}" \
-            --arg bs "$BATCH_SIZE" --arg wp "$WRITE_PARALLELISM" \
+            --arg bs "$BATCH_SIZE" --arg wp "$WRITE_PARALLELISM_OBSERVED" \
             --arg ai "$ASYNC_INSERT" --arg ps "$PARTITION_SCHEME" \
             --arg ds "$DATASET" \
             --arg ec "$ENVIRONMENT_CLASS" --arg tr "$TARGET_REGION" \

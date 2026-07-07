@@ -29,11 +29,18 @@ workflow env, forwarded via emr_submit.sh appMasterEnv). Defaulted here to the
 known operating point so a bare invocation still runs the pinned config:
   BATCH_SIZE         rows per insert batch -> spark.clickhouse.write.batchSize
                      (default 100000)
-  WRITE_PARALLELISM  concurrent insert streams; the input is repartitioned to
-                     this many partitions before the write so parallelism is a
-                     controlled, recorded number, not an artifact of the input
-                     file count (default 32)
   ASYNC_INSERT       server async_insert mode, '0' | '1' (default '0')
+
+Write parallelism is RECORD-ONLY, not forced: the write stage keeps its natural
+input-split parallelism (repartitioning here would inject a full shuffle of the
+dataset inside the timed window — a trend-breaking workload change, not
+hygiene). The observed write-stage partition count is printed in a parseable
+line and, when WRITE_PARALLELISM_META_S3_URI is set, uploaded there as a
+one-line sidecar so the workflow can echo the OBSERVED value into
+runtime['write_parallelism']:
+  WRITE_PARALLELISM_META_S3_URI  optional s3://<bucket>/<key> that receives the
+                                 observed partition count (best-effort; a
+                                 failure to upload never fails the ingest)
 
 Password resolution:
   CH_SECRET_ID  AWS Secrets Manager secret holding the CH password, read at
@@ -91,25 +98,39 @@ def load_operating_config(env):
     the workflow env; defaulted here to the known operating point so a bare run
     still exercises the pinned config."""
     batch_size = env.get("BATCH_SIZE", "100000")
-    write_parallelism = env.get("WRITE_PARALLELISM", "32")
     async_insert = env.get("ASYNC_INSERT", "0")
     try:
-        int(batch_size)
+        if int(batch_size) < 1:
+            sys.exit(f"BATCH_SIZE must be >= 1, got: {batch_size}")
     except ValueError:
         sys.exit(f"BATCH_SIZE must be an integer, got: {batch_size}")
-    try:
-        wp = int(write_parallelism)
-    except ValueError:
-        sys.exit(f"WRITE_PARALLELISM must be an integer, got: {write_parallelism}")
-    if wp < 1:
-        sys.exit(f"WRITE_PARALLELISM must be >= 1, got: {write_parallelism}")
     if async_insert not in ("0", "1"):
         sys.exit(f"ASYNC_INSERT must be '0' or '1', got: {async_insert}")
     return {
         "BATCH_SIZE": batch_size,
-        "WRITE_PARALLELISM": write_parallelism,
         "ASYNC_INSERT": async_insert,
     }
+
+
+def report_observed_parallelism(observed, env):
+    """Surface the OBSERVED write-stage partition count (record-only — nothing
+    forces it). Printed for the step log, and uploaded as a one-line S3 sidecar
+    when WRITE_PARALLELISM_META_S3_URI is set so the workflow can put the
+    observed value into runtime['write_parallelism']. Best-effort: a sidecar
+    failure must never fail the ingest."""
+    print(f"[clickbench_ingest] observed_write_parallelism={observed}")
+    uri = env.get("WRITE_PARALLELISM_META_S3_URI")
+    if not uri:
+        return
+    try:
+        import boto3  # EMR path; the instance profile grants CI-bucket access
+        bucket, key = uri.removeprefix("s3://").split("/", 1)
+        boto3.client("s3").put_object(Bucket=bucket, Key=key,
+                                      Body=f"{observed}\n".encode())
+        print(f"[clickbench_ingest] wrote observed parallelism sidecar: {uri}")
+    except Exception as e:  # noqa: BLE001 - deliberately non-fatal
+        print(f"[clickbench_ingest] WARN: sidecar upload failed ({e}); "
+              f"runtime['write_parallelism'] will fall back to 'input-splits'")
 
 
 def main():
@@ -142,18 +163,20 @@ def main():
 
     print(f"[clickbench_ingest] run_id={cfg['RUN_ID']}")
     print(f"[clickbench_ingest] operating config: batch_size={op['BATCH_SIZE']} "
-          f"write_parallelism={op['WRITE_PARALLELISM']} async_insert={op['ASYNC_INSERT']}")
+          f"async_insert={op['ASYNC_INSERT']}")
     print(f"[clickbench_ingest] reading: {cfg['INPUT_PARQUET_GLOB']}")
     df = spark.read.parquet(cfg["INPUT_PARQUET_GLOB"])
 
-    # Write parallelism is a controlled, recorded number, not an artifact of the
-    # input file count: repartition to WRITE_PARALLELISM so the number of
-    # concurrent insert streams matches the value echoed into runtime.
-    parallelism = int(op["WRITE_PARALLELISM"])
-    df = df.repartition(parallelism)
+    # Write parallelism is record-only (see module docstring): no repartition —
+    # the write stage runs at the input-split partition count (task concurrency
+    # is then bounded by executor slots). Observe it immediately before the
+    # write and surface it for runtime['write_parallelism'].
+    observed_parallelism = df.rdd.getNumPartitions()
+    report_observed_parallelism(observed_parallelism, os.environ)
 
     target = f"clickhouse.{cfg['CH_DATABASE']}.{cfg['CH_TABLE']}"
-    print(f"[clickbench_ingest] writing to: {target} (parallelism={parallelism})")
+    print(f"[clickbench_ingest] writing to: {target} "
+          f"(write-stage partitions={observed_parallelism})")
     df.writeTo(target).append()
 
     spark.stop()

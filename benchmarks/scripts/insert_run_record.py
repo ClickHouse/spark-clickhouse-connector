@@ -20,11 +20,15 @@ Optional env: CONNECTOR (default 'spark'), RUN_PROFILE (default ''),
               verbatim into perf.runs.runtime Map(String,String)). The workflow
               populates it with connector/EMR attrs, the operating config under
               test (contract §1.4 shared keys: batch_size, write_parallelism,
-              async_insert, partition_scheme, dataset) and the mandatory scope
-              keys (contract §1.1: environment_class, target_region), e.g.
+              async_insert, partition_scheme, dataset; write_parallelism is the
+              OBSERVED write-stage partition count reported by the ingest job's
+              S3 sidecar — record-only, nothing forces it — or the fallback
+              token 'input-splits' when the sidecar is missing) and the
+              mandatory scope keys (contract §1.1: environment_class,
+              target_region), e.g.
               {"spark_version":"3.5","scala_version":"2.12",
                "emr_release":"emr-7.13.0","batch_size":"100000",
-               "write_parallelism":"32","async_insert":"0",
+               "write_parallelism":"147","async_insert":"0",
                "partition_scheme":"toYear(EventDate)","dataset":"hits",
                "environment_class":"production","target_region":"us-east-1"}
 """
