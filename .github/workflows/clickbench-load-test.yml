@@ -196,8 +196,20 @@ jobs:
       - name: Compute run id and S3 paths
         run: |
           source benchmarks/scripts/lib_runid.sh
+          # RUN_ID is the PAIR id (contract §1.2): both arms of tonight's pair
+          # share it as runtime['pair_id']; each arm's per-row run_id is
+          # <pair_id>-<arm>-t1 (set inside the run-arm action). The two-arm
+          # protocol MUST NOT emit a '…-nogit' id (contract §1.2) — fail early.
+          case "$RUN_ID" in
+            *-nogit) echo "RUN_ID is '$RUN_ID' — refusing to run a pair whose id does not pin the commit under test (contract §1.2)."; exit 1 ;;
+          esac
           echo "RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
           echo "RUN_START=$RUN_START" >> "$GITHUB_ENV"
+          # Pair-level identity (never overwritten by the arm-scoped RUN_ID/
+          # RUN_START the run-arm action writes): PAIR_ID tags both runs' rows;
+          # PAIR_RUN_START anchors the once-per-pair run_cost_usd window.
+          echo "PAIR_ID=$RUN_ID" >> "$GITHUB_ENV"
+          echo "PAIR_RUN_START=$RUN_START" >> "$GITHUB_ENV"
           echo "EVENT_LOG_DIR_SPARK=s3a://${{ secrets.CLICKBENCH_S3_BUCKET }}/spark-event-logs/$RUN_ID/" >> "$GITHUB_ENV"
           # EMR 7.13 ships Spark 3.5.6, which writes a single flat event-log
           # file (application_<appId>_1) - rolling format (eventlog_v2_*/) is
@@ -213,6 +225,22 @@ jobs:
           # count to (write parallelism is record-only, not forced); "Insert
           # run record" reads it back into runtime['write_parallelism'].
           echo "WRITE_PARALLELISM_META_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/run-meta/$RUN_ID/write_parallelism" >> "$GITHUB_ENV"
+
+      - name: Resolve arm order
+        # Two-arm protocol (plan §2): both arms run on the SAME cluster/hour, so
+        # order is the only within-pair confound left. Alternate it by day-of-year
+        # parity so neither arm systematically owns the warmer/colder slot. DOY
+        # (not day-of-month) avoids month-boundary parity repeats. The first-run
+        # arm (ARM_1) also carries the once-per-pair run_cost_usd (emit_run_cost).
+        run: |
+          set -euo pipefail
+          DOY=$(date -u +%j)
+          if [ $((10#$DOY % 2)) -eq 0 ]; then ARM_ORDER="pinned head"; else ARM_ORDER="head pinned"; fi
+          ARM_1=${ARM_ORDER%% *}
+          ARM_2=${ARM_ORDER##* }
+          echo "ARM_1=$ARM_1" >> "$GITHUB_ENV"
+          echo "ARM_2=$ARM_2" >> "$GITHUB_ENV"
+          echo "day-of-year=$DOY -> arm order: $ARM_1 then $ARM_2"
 
       - name: Upload jar and script to S3
         run: |
@@ -239,32 +267,11 @@ jobs:
           METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
         run: python benchmarks/scripts/bootstrap_schema.py
 
-      - name: Capture pre-run server covariates (uptime, RSS, active parts)
-        # BEFORE truncate/ingest: point-in-time reads of the target's uptime,
-        # RSS and active-part count, recorded as perf.metrics rows for the run
-        # (plan §6.3). Captured pre-truncate so pre_run_active_parts reflects the
-        # state the run actually inherits. Best-effort: a failure here must not
-        # block the run, and these rows are covariates, not gated metrics — so
-        # the step does not participate in the capture/rollback gating below.
-        continue-on-error: true
-        env:
-          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
-          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
-          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
-          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
-          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
-          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
-        run: python benchmarks/scripts/run_metrics_sql.py benchmarks/sql/perf/21_pre_run_covariates.sql
-
-      - name: Truncate target table
-        env:
-          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
-          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
-          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
-          CH_DATABASE: clickbench
-          CH_TABLE: hits
-          SKIP_TRUNCATE: ${{ vars.SKIP_TRUNCATE || '0' }}
-        run: python benchmarks/scripts/truncate_target.py
+      # NOTE (task #13): the pre-run covariates capture and the pre-ingest
+      # truncate are now PER-ARM and live inside .github/actions/run-arm — under
+      # two arms sharing one cluster, each arm truncates + reads covariates on its
+      # own inherited state (the covariate read moved post-truncate so
+      # pre_run_active_parts stays a valid ~0 cleanliness verifier for both arms).
 
       - name: Resolve cluster specs from run profile
         # To add a "bigger ClickHouse" tier, extend with a per-profile
@@ -281,6 +288,7 @@ jobs:
           echo "run_profile=$RUN_PROFILE -> ${CC} x ${IT}"
 
       - name: Provision EMR
+        id: provision
         env:
           EMR_LOG_URI: s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/emr-logs/
           EMR_SUBNET_ID: ${{ secrets.CLICKBENCH_EMR_SUBNET_ID }}
@@ -303,236 +311,56 @@ jobs:
             echo "created Secrets Manager secret $CH_SECRET_ID"
           fi
 
-      - name: Submit Spark step
-        id: submit
-        env:
-          CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
-          CH_PORT: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
-          CH_PROTOCOL: https
-          CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
-          # Connector operating config under test — forwarded to the Spark job
-          # via emr_submit.sh appMasterEnv so clickbench_ingest.py applies them
-          # (plan §6.9). Sourced from the top-level workflow env, not S3.
-          # WRITE_PARALLELISM_META_S3_URI (from "Compute run id and S3 paths")
-          # is record-only: the job writes its observed write-stage partition
-          # count there; nothing forces parallelism.
-          BATCH_SIZE: ${{ env.BATCH_SIZE }}
-          ASYNC_INSERT: ${{ env.ASYNC_INSERT }}
-        run: benchmarks/scripts/emr_submit.sh
+      - name: Run arm 1 (${{ env.ARM_1 }})
+        # First arm of tonight's pair. Both arms are gated ONLY on provision
+        # success — arm 2 runs regardless of arm 1's outcome (failure isolation,
+        # task #13): unpaired rows are fine, v_pair_ratios skips incomplete pairs.
+        # emit_run_cost='1' -> this arm carries the once-per-pair run_cost_usd
+        # over the whole provisioned window (contract §2.1 amendment).
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        uses: ./.github/actions/run-arm
+        with:
+          arm: ${{ env.ARM_1 }}
+          emit_run_cost: '1'
+          target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
+          target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          target_ch_password: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          metrics_ch_host: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          metrics_ch_user: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          metrics_ch_password: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          dwh_role_arn: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
+          s3_bucket: ${{ secrets.CLICKBENCH_S3_BUCKET }}
 
-      - name: Capture run end timestamp
-        if: always()
-        run: echo "RUN_END=$(date -u +%Y-%m-%dT%H:%M:%S)" >> "$GITHUB_ENV"
+      - name: Run arm 2 (${{ env.ARM_2 }})
+        # Second arm, same cluster. Independent of arm 1 (only gated on provision)
+        # so a failed arm 1 never robs arm 2 of its run. emit_run_cost='0' — the
+        # pair cost was already charged on arm 1's row.
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        uses: ./.github/actions/run-arm
+        with:
+          arm: ${{ env.ARM_2 }}
+          emit_run_cost: '0'
+          target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
+          target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          target_ch_password: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          metrics_ch_host: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          metrics_ch_user: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          metrics_ch_password: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          dwh_role_arn: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
+          s3_bucket: ${{ secrets.CLICKBENCH_S3_BUCKET }}
 
       - name: Teardown EMR
+        # Once-per-pair: the cluster is shared by both arms, so tear it down only
+        # after arm 2. always() so a mid-pair failure never leaks the cluster.
         if: always()
         run: benchmarks/scripts/emr_teardown.sh
 
-      - name: Wait for merges to settle
-        if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
-        env:
-          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
-          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
-          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
-          CH_DATABASE: clickbench
-          CH_TABLE: hits
-        run: |
-          # wait_for_settle prints only the settle-end timestamp on stdout; the
-          # 1/0 timed-out flag comes back via the sidecar status file (its stdout
-          # contract can't carry a second value). See plan §6.4.
-          export SETTLE_STATUS_FILE="$RUNNER_TEMP/settle_status"
-          SETTLE_END=$(benchmarks/scripts/wait_for_settle.py)
-          echo "SETTLE_END=$SETTLE_END" >> "$GITHUB_ENV"
-          SETTLE_SECONDS=$(( $(date -u -d "$SETTLE_END" +%s) - $(date -u -d "$RUN_END" +%s) ))
-          echo "SETTLE_SECONDS=$SETTLE_SECONDS" >> "$GITHUB_ENV"
-          SETTLE_TIMED_OUT=$(cat "$SETTLE_STATUS_FILE" 2>/dev/null || echo 0)
-          echo "SETTLE_TIMED_OUT=$SETTLE_TIMED_OUT" >> "$GITHUB_ENV"
-          echo "settle took ${SETTLE_SECONDS}s, timed_out=${SETTLE_TIMED_OUT} (RUN_END=$RUN_END SETTLE_END=$SETTLE_END)"
-
-      - name: Capture metrics — Spark event log + CH query_log/metric_log/part_log
-        id: capture
-        if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
-        # Order within the loop is irrelevant: 10-14 and 16 are independent
-        # INSERTs into perf.metrics, 15 INSERTs into perf.ch_inserts. Both
-        # target tables are already created by the bootstrap step.
-        env:
-          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
-          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
-          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
-          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
-          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
-          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
-          CH_DATABASE: clickbench
-          CH_TABLE: hits
-        run: |
-          for sql in \
-            benchmarks/sql/perf/10_insert_from_event_log.sql \
-            benchmarks/sql/perf/11_insert_from_query_log.sql \
-            benchmarks/sql/perf/12_insert_from_metric_log.sql \
-            benchmarks/sql/perf/13_insert_from_part_log.sql \
-            benchmarks/sql/perf/14_insert_settle_seconds.sql \
-            benchmarks/sql/perf/15_capture_raw_inserts.sql \
-            benchmarks/sql/perf/16_insert_throttling.sql \
-            benchmarks/sql/perf/17_insert_memory_peaks.sql \
-            benchmarks/sql/perf/18_insert_derived_metrics.sql \
-            benchmarks/sql/perf/19_insert_rate_stability.sql \
-            benchmarks/sql/perf/20_insert_integrity.sql \
-            benchmarks/sql/perf/22_insert_settle_timed_out.sql
-          do
-            echo "=== $sql ==="
-            python benchmarks/scripts/run_metrics_sql.py "$sql"
-          done
-          # run_cost_usd (plan §6.6): EMR instance-hours x in-repo on-demand price.
-          # Part of the gated capture so it rolls back with the rest if capture
-          # fails and only lands on fully-recorded runs.
-          echo "=== run_cost_usd ==="
-          python benchmarks/scripts/compute_run_cost.py
-
-      - name: Decide validity-guard flags (flagged-not-failed, contract §1.3)
-        id: flags
-        # Plan §6.10 / contract §1.3: some conditions make a run NON-COMPARABLE
-        # without failing it — they FLAG it so bands/ratios exclude it by default,
-        # while capture/export stay complete. Two Spark-relevant guards here:
-        #   task_retries   — task_failed_count > 0 (retried work pollutes volume)
-        #   settle_timeout — settle right-censored at the 1800s cap
-        # (integrity MISMATCH is a separate case — it FAILS the run, handled by
-        # the "Verify integrity" step; it is NOT a flag.)
-        #
-        # The flag must be decided AFTER the facts exist: SETTLE_TIMED_OUT is
-        # already in GITHUB_ENV (settle step), and task_failed_count exists as a
-        # perf.metrics row only once "Capture metrics" (10_insert_from_event_log)
-        # has run — hence this step is gated on capture success and reads that one
-        # metric back with a cheap point query by run_id (read_task_failed_count.py).
-        # It emits FLAGGED / FLAG_REASON into GITHUB_ENV; the RUNTIME jq assembly in
-        # "Insert run record" turns them into runtime['flagged'] / ['flag_reason'].
-        if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
-        env:
-          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
-          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
-          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
-        run: |
-          set -euo pipefail
-          TASK_FAILED_COUNT=$(python benchmarks/scripts/read_task_failed_count.py)
-          echo "task_failed_count=${TASK_FAILED_COUNT} settle_timed_out=${SETTLE_TIMED_OUT:-0}"
-          # Assemble flag_reason tokens in the contract's fixed vocabulary,
-          # order = definition order (task_retries before settle_timeout). Join
-          # multiples with a single '|' (the ONLY permitted separator — a comma
-          # would collide with map-value parsing, contract §1.3).
-          REASONS=()
-          if [ "${TASK_FAILED_COUNT:-0}" -gt 0 ]; then REASONS+=("task_retries"); fi
-          if [ "${SETTLE_TIMED_OUT:-0}" != "0" ]; then REASONS+=("settle_timeout"); fi
-          if [ "${#REASONS[@]}" -gt 0 ]; then
-            FLAG_REASON=$(IFS='|'; echo "${REASONS[*]}")
-            echo "FLAGGED=1" >> "$GITHUB_ENV"
-            echo "FLAG_REASON=$FLAG_REASON" >> "$GITHUB_ENV"
-            echo "run FLAGGED (non-comparable): flag_reason=$FLAG_REASON"
-          else
-            # Contract §1.3: flagged is present-iff-tripped — write NEITHER key
-            # when no guard trips (do NOT emit flagged='0'). Leaving FLAGGED unset
-            # makes the jq assembly below omit both keys entirely.
-            echo "run not flagged (no validity guard tripped)"
-          fi
-
-      - name: Insert run record
-        id: run_record
-        # Written AFTER metrics capture, gated on its success — perf.runs only
-        # gets a row when the run's metrics fully captured.
-        if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
-        env:
-          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
-          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
-          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
-          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
-          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
-          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
-          GIT_SHA: ${{ github.sha }}
-        run: |
-          export CONNECTOR_VERSION=$(cat version.txt)
-          # write_parallelism is the OBSERVED write-stage partition count the
-          # ingest job uploaded to the run's S3 sidecar (record-only — nothing
-          # forces it). Fall back to the descriptive token 'input-splits' if
-          # the sidecar is missing (upload is best-effort on the EMR side).
-          WRITE_PARALLELISM_OBSERVED=$(aws s3 cp "$WRITE_PARALLELISM_META_S3_URI" - 2>/dev/null | tr -cd '0-9')
-          WRITE_PARALLELISM_OBSERVED="${WRITE_PARALLELISM_OBSERVED:-input-splits}"
-          echo "write_parallelism (observed) = $WRITE_PARALLELISM_OBSERVED"
-          # Spark/EMR attrs + connector operating config + mandatory scope keys
-          # go into the generic perf.runs.runtime map; another connector would
-          # build its own RUNTIME json here. Config keys use contract §1.4
-          # shared spellings (batch_size, write_parallelism, async_insert,
-          # partition_scheme, dataset); target_region + environment_class are
-          # the mandatory scope keys (contract §1.1). spark_version/scala_version/
-          # emr_release stay connector-namespaced (contract §1.4).
-          # Validity-guard flags (contract §1.3), decided by the "Decide
-          # validity-guard flags" step above and passed via GITHUB_ENV. Present
-          # iff a guard tripped: FLAGGED is set to '1' with FLAG_REASON only when
-          # non-comparable, otherwise BOTH are unset. The jq below adds
-          # runtime['flagged'] / runtime['flag_reason'] ONLY when FLAGGED='1', so
-          # a clean run carries neither key (never flagged='0') — the contract's
-          # present-iff-tripped rule.
-          export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
-            --arg it "$EMR_INSTANCE_TYPE" --arg cc "$EMR_CORE_COUNT" \
-            --arg sto "${SETTLE_TIMED_OUT:-0}" \
-            --arg bs "$BATCH_SIZE" --arg wp "$WRITE_PARALLELISM_OBSERVED" \
-            --arg ai "$ASYNC_INSERT" --arg ps "$PARTITION_SCHEME" \
-            --arg ds "$DATASET" \
-            --arg ec "$ENVIRONMENT_CLASS" --arg tr "$TARGET_REGION" \
-            --arg flagged "${FLAGGED:-}" --arg flag_reason "${FLAG_REASON:-}" \
-            '{spark_version: $sv, scala_version: $scv, emr_release: $emr,
-              emr_instance_type: $it, emr_core_count: $cc,
-              settle_timed_out: $sto,
-              batch_size: $bs, write_parallelism: $wp, async_insert: $ai,
-              partition_scheme: $ps, dataset: $ds,
-              environment_class: $ec, target_region: $tr}
-             + (if $flagged == "1"
-                then {flagged: "1", flag_reason: $flag_reason}
-                else {} end)')
-          python benchmarks/scripts/insert_run_record.py
-
-      - name: Roll back this run if it wasn't fully recorded
-        # Capture is several independent INSERTs and the run record is a separate
-        # step. If capture fails partway, OR capture succeeds but the run-record
-        # insert fails, delete this run's rows from perf.* (runs/metrics/ch_inserts)
-        # so trends never show metrics without a complete run record. Export is
-        # skipped in both cases.
-        if: ${{ !cancelled() && steps.submit.outcome == 'success' && (steps.capture.outcome == 'failure' || steps.run_record.outcome == 'failure') }}
-        env:
-          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
-          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
-          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
-        run: python benchmarks/scripts/rollback_run_metrics.py
-
-      - name: Export metrics to DWH bucket
-        if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' && steps.run_record.outcome == 'success' }}
-        # Assumes the cross-account DWH write role (clickbench-load-test-ci is
-        # a trusted principal) to stream this run's perf.runs/metrics/ch_inserts
-        # to the DWH bucket as Parquet; the DWH side ingests via s3queue.
-        env:
-          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
-          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
-          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
-          DWH_ROLE_ARN: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
-        run: python benchmarks/scripts/export_metrics_to_dwh.py
-
-      - name: Verify integrity (fail the run on a row-count / duplicate mismatch)
-        # Runs AFTER capture + run-record + export so the integrity metrics are
-        # already persisted and exported; this step only reads them back and
-        # fails the job on a mismatch (contract §3 — mismatch fails outright).
-        # Gated on capture AND run-record success: if the run record failed, the
-        # rollback step has already wiped this run's perf.* rows, so integrity is
-        # not evaluable here (and the job is already red from that failure) — a
-        # second "no integrity metrics found" failure would just be noise.
-        # Independent of export so a mismatch is surfaced even if export failed.
-        if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' && steps.run_record.outcome == 'success' }}
-        env:
-          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
-          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
-          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
-        run: python benchmarks/scripts/check_integrity.py
-
-      - name: Truncate target table (cleanup at end of run)
-        # Truncate AFTER the write + settle + metrics capture: metrics are read
-        # from ClickHouse's system.*_log, not the hits table, so they are
-        # unaffected. Leaves the table empty so the next run starts clean.
+      - name: Truncate target table (cleanup at end of pair)
+        # Once-per-pair cleanup AFTER both arms' write + settle + metrics capture:
+        # metrics are read from ClickHouse's system.*_log, not the hits table, so
+        # they are unaffected. Leaves the table empty so the next pair starts clean.
         if: ${{ !cancelled() }}
         env:
           TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}

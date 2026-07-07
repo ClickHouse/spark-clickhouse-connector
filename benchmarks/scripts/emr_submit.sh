@@ -24,6 +24,10 @@
 #               WRITE_PARALLELISM_META_S3_URI (record-only: s3:// sidecar the
 #               ingest job writes its OBSERVED write-stage partition count to;
 #               write parallelism is not forced — see clickbench_ingest.py)
+#               STEP_NAME (default ClickBenchIngest) — the EMR step Name. The
+#               two-arm workflow (task #13) passes ClickBenchIngest-<arm> for the
+#               timed ingest and ClickBenchWarmup-<arm> for the priming insert so
+#               the arms' EMR steps are distinguishable in the console.
 set -euo pipefail
 
 # Operating config under test — defaults mirror the repo workflow env so the
@@ -32,6 +36,7 @@ set -euo pipefail
 BATCH_SIZE="${BATCH_SIZE:-100000}"
 ASYNC_INSERT="${ASYNC_INSERT:-0}"
 WRITE_PARALLELISM_META_S3_URI="${WRITE_PARALLELISM_META_S3_URI:-}"
+STEP_NAME="${STEP_NAME:-ClickBenchIngest}"
 
 
 _ev_path="${EVENT_LOG_DIR_SPARK#s3a://}"
@@ -64,9 +69,9 @@ ARGS=(
 # One raw line per arg, collected via jq [inputs], so values with commas/quotes
 # survive intact. Raw input (not jq --args) because --args still option-parses
 # values starting with '--'.
-steps_json=$(printf '%s\n' "${ARGS[@]}" | jq -nR '[{
+steps_json=$(printf '%s\n' "${ARGS[@]}" | jq -nR --arg name "$STEP_NAME" '[{
   Type: "Spark",
-  Name: "ClickBenchIngest",
+  Name: $name,
   ActionOnFailure: "TERMINATE_CLUSTER",
   Args: [inputs]
 }]')

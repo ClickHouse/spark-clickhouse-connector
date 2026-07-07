@@ -1,0 +1,382 @@
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+
+# Two-arm nightly protocol (plan §2, task #13): ONE arm of a nightly H/P pair.
+# Called TWICE from the load-test job on the SAME provisioned EMR cluster — once
+# for arm 'head' (HEAD shadowJar) and once for arm 'pinned' (frozen Maven jar),
+# order alternating by day-of-year parity. The two calls share $GITHUB_ENV,
+# $RUNNER_TEMP and the checkout because they run in the same job on the same
+# runner, so CLUSTER_ID / pair-level env pass with zero plumbing.
+#
+# This composite owns the PER-ARM body: warm-up -> truncate -> covariates ->
+# submit -> settle -> capture -> flags -> run-record -> rollback -> export ->
+# integrity. Everything once-per-pair (build/fetch jars, compute pair id, resolve
+# arm order, provision, teardown, final truncate) stays inline in the workflow.
+#
+# WHY EVERY SECRET IS AN INPUT: composite-action `run:` steps cannot read the
+# `secrets.*` context. Every secret the moved steps use is therefore threaded in
+# as an input and re-exported to $GITHUB_ENV / step env here. Non-secret job-level
+# `env:` values (BATCH_SIZE, ASYNC_INSERT, EMR_*, CH_DATABASE, DEFAULT_*, SOURCE_*,
+# CONNECTOR, RUN_PROFILE, ...) are real environment variables in the job and are
+# visible to these steps as `$VAR` without threading.
+#
+# ARM-SCOPING (the correctness spine): the first step rewrites RUN_ID and every
+# arm-scoped variable (event-log URIs, parallelism sidecar, settle status file,
+# and — critically — the RUN_START/RUN_END/SETTLE_END time windows) into
+# $GITHUB_ENV. Because $GITHUB_ENV persists across steps in the one job, arm 2
+# MUST overwrite everything arm 1 wrote; this step does exactly that (including
+# clearing arm 1's FLAGGED/FLAG_REASON so a clean arm 2 never inherits arm 1's
+# flag). CH-side capture SQL is TIME-WINDOWED (11/12/13/15/16/17/18/20 window
+# system.*_log by run_start/run_end/settle_end), so per-arm windows are what stop
+# arm P's server metrics from double-counting arm H.
+
+name: "Run one benchmark arm"
+description: "Warm-up, truncate, ingest, settle, capture and record one H/P arm on the shared EMR cluster."
+
+inputs:
+  arm:
+    description: "Which build this arm runs: 'head' or 'pinned'."
+    required: true
+  emit_run_cost:
+    description: >-
+      '1' on the FIRST-run arm of the pair, '0' on the second. run_cost_usd is
+      the full pair cost charged once (contract §2.1 amendment): the first arm
+      emits it over the whole provisioned window (PAIR_RUN_START..RUN_END); the
+      second arm omits it.
+    required: true
+  # --- secrets threaded from the calling job (composite run: cannot read secrets.*) ---
+  target_ch_host:
+    required: true
+  target_ch_port:
+    required: true
+  target_ch_user:
+    required: true
+  target_ch_password:
+    required: true
+  metrics_ch_host:
+    required: true
+  metrics_ch_user:
+    required: true
+  metrics_ch_password:
+    required: true
+  dwh_role_arn:
+    required: true
+  s3_bucket:
+    description: "CI S3 bucket (per-arm event-log + parallelism sidecar prefixes)."
+    required: true
+
+runs:
+  using: "composite"
+  steps:
+    - name: "Set arm-scoped identity, windows and env (arm ${{ inputs.arm }})"
+      shell: bash
+      env:
+        ARM: ${{ inputs.arm }}
+        S3_BUCKET: ${{ inputs.s3_bucket }}
+      run: |
+        set -euo pipefail
+        # pair_id is the pair-level RUN_ID (top-level literal, never overwritten).
+        # Per-row run_id = <pair_id>-<arm>-t<tier>; tier is fixed '1' here.
+        ARM_RUN_ID="${PAIR_ID}-${ARM}-t1"
+        echo "arm=$ARM  pair_id=$PAIR_ID  arm_run_id=$ARM_RUN_ID"
+        {
+          echo "ARM=$ARM"
+          echo "ARM_RUN_ID=$ARM_RUN_ID"
+          # RUN_ID drives every RUN_ID-env-driven script (insert_run_record,
+          # run_metrics_sql {run_id}, rollback, read_task_failed_count, export,
+          # check_integrity, compute_run_cost). Overwriting the pair-level RUN_ID
+          # here does NOT corrupt the top-level JAR/SCRIPT/PARALLELISM literals —
+          # those were fully expanded into $GITHUB_ENV before this arm ran.
+          echo "RUN_ID=$ARM_RUN_ID"
+          # Per-arm event-log prefix: two Spark apps must not share a glob (SQL 10).
+          echo "EVENT_LOG_DIR_SPARK=s3a://${S3_BUCKET}/spark-event-logs/${ARM_RUN_ID}/"
+          echo "EVENT_LOG_URI=s3://${S3_BUCKET}/spark-event-logs/${ARM_RUN_ID}/application_*"
+          # Per-arm observed-parallelism sidecar (run-meta keyed by arm run id).
+          echo "WRITE_PARALLELISM_META_S3_URI=s3://${S3_BUCKET}/run-meta/${ARM_RUN_ID}/write_parallelism"
+          # Per-arm settle status sidecar — arm 2 must not read arm 1's flag.
+          echo "SETTLE_STATUS_FILE=${RUNNER_TEMP}/settle_status_${ARM}"
+          # Reset the per-arm time windows and settle scalars written by a prior
+          # arm so nothing leaks from arm 1 into arm 2 (they are re-set below).
+          echo "RUN_START="
+          echo "RUN_END="
+          echo "SETTLE_END="
+          echo "SETTLE_SECONDS="
+          echo "SETTLE_TIMED_OUT="
+          # Reset flags: flagged is present-iff-tripped; a clean arm 2 must not
+          # inherit arm 1's flag (contract §1.3).
+          echo "FLAGGED="
+          echo "FLAG_REASON="
+          # Reset the warm-up marker: warm_up is present-iff the arm's own priming
+          # ran (contract §1.4). continue-on-error means a FAILED arm-2 warm-up
+          # never rewrites this, so it MUST start empty or arm 2 would inherit
+          # arm 1's WARMUP_DONE=1 and falsely tag runtime['warm_up'].
+          echo "WARMUP_DONE="
+        } >> "$GITHUB_ENV"
+        # Per-arm connector provenance (recorded on the arm's perf.runs row).
+        if [ "$ARM" = "head" ]; then
+          echo "CONNECTOR_VERSION=$(cat version.txt)" >> "$GITHUB_ENV"
+          echo "ARM_GIT_SHA=${GITHUB_SHA}" >> "$GITHUB_ENV"
+          echo "ARM_JAR_S3_URI=${JAR_S3_URI}" >> "$GITHUB_ENV"
+        else
+          echo "CONNECTOR_VERSION=${PINNED_CONNECTOR_VERSION}" >> "$GITHUB_ENV"
+          echo "ARM_GIT_SHA=${PINNED_GIT_SHA}" >> "$GITHUB_ENV"
+          echo "ARM_JAR_S3_URI=${PINNED_JAR_S3_URI}" >> "$GITHUB_ENV"
+        fi
+
+    - name: "Warm-up insert (arm ${{ inputs.arm }}, unparsed event-log prefix)"
+      # Priming insert on the arm's own jar, BEFORE truncate (truncate at the next
+      # step wipes it). Failure only forfeits priming, so continue-on-error. Its
+      # event logs go to a throwaway 'warmup/' prefix that SQL 10 never globs, and
+      # it reuses emr_submit.sh with a fixed single-file source + a warmup STEP_NAME.
+      # WARMUP_DONE gates runtime['warm_up'] (contract §1.4: present iff it ran).
+      id: warmup
+      shell: bash
+      continue-on-error: true
+      env:
+        CH_HOST: ${{ inputs.target_ch_host }}
+        CH_PORT: ${{ inputs.target_ch_port }}
+        CH_PROTOCOL: https
+        CH_USER: ${{ inputs.target_ch_user }}
+        S3_BUCKET: ${{ inputs.s3_bucket }}
+      run: |
+        set -euo pipefail
+        WARMUP_PARQUET_GLOB="${WARMUP_PARQUET_GLOB:-s3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_0.parquet}"
+        echo "warm-up (arm $ARM): priming with $WARMUP_PARQUET_GLOB"
+        INPUT_PARQUET_GLOB="$WARMUP_PARQUET_GLOB" \
+        JAR_S3_URI="$ARM_JAR_S3_URI" \
+        STEP_NAME="ClickBenchWarmup-$ARM" \
+        EVENT_LOG_DIR_SPARK="s3a://${S3_BUCKET}/spark-event-logs/warmup/${ARM_RUN_ID}/" \
+        WRITE_PARALLELISM_META_S3_URI="" \
+          benchmarks/scripts/emr_submit.sh
+        # Only reached on success (set -e) — mark warm-up as having run so the
+        # run-record step tags runtime['warm_up']='hits_0'.
+        echo "WARMUP_DONE=1" >> "$GITHUB_ENV"
+
+    - name: "Truncate target table (arm ${{ inputs.arm }})"
+      shell: bash
+      env:
+        TARGET_CH_HOST: ${{ inputs.target_ch_host }}
+        TARGET_CH_USER: ${{ inputs.target_ch_user }}
+        TARGET_CH_PASSWORD: ${{ inputs.target_ch_password }}
+        CH_DATABASE: clickbench
+        CH_TABLE: hits
+        SKIP_TRUNCATE: ${{ vars.SKIP_TRUNCATE || '0' }}
+      run: python benchmarks/scripts/truncate_target.py
+
+    - name: "Capture pre-run server covariates (arm ${{ inputs.arm }})"
+      # MOVED post-truncate (task #13 decision): under two arms a pre-truncate
+      # reading would show the prior arm's just-settled parts and false-flag
+      # pre_run_active_parts every night; post-truncate keeps it a valid ~0
+      # cleanliness verifier for both arms. ch_uptime/pre_run_rss are unaffected.
+      # Best-effort covariate — does not participate in capture/rollback gating.
+      shell: bash
+      continue-on-error: true
+      env:
+        METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
+        METRICS_CH_USER: ${{ inputs.metrics_ch_user }}
+        METRICS_CH_PASSWORD: ${{ inputs.metrics_ch_password }}
+        TARGET_CH_HOST: ${{ inputs.target_ch_host }}
+        TARGET_CH_USER: ${{ inputs.target_ch_user }}
+        TARGET_CH_PASSWORD: ${{ inputs.target_ch_password }}
+      run: python benchmarks/scripts/run_metrics_sql.py benchmarks/sql/perf/21_pre_run_covariates.sql
+
+    - name: "Record arm RUN_START (arm ${{ inputs.arm }})"
+      shell: bash
+      run: echo "RUN_START=$(date -u +%Y-%m-%dT%H:%M:%S)" >> "$GITHUB_ENV"
+
+    - name: "Submit Spark step (arm ${{ inputs.arm }})"
+      id: submit
+      shell: bash
+      env:
+        CH_HOST: ${{ inputs.target_ch_host }}
+        CH_PORT: ${{ inputs.target_ch_port }}
+        CH_PROTOCOL: https
+        CH_USER: ${{ inputs.target_ch_user }}
+      run: |
+        set -euo pipefail
+        # Arm's own jar + arm event-log dir (both from the arm-scoped env above).
+        # BATCH_SIZE / ASYNC_INSERT / WRITE_PARALLELISM_META_S3_URI come from the
+        # job env; STEP_NAME tags the EMR step per arm.
+        JAR_S3_URI="$ARM_JAR_S3_URI" \
+        STEP_NAME="ClickBenchIngest-$ARM" \
+          benchmarks/scripts/emr_submit.sh
+
+    - name: "Capture run end timestamp (arm ${{ inputs.arm }})"
+      if: always()
+      shell: bash
+      run: echo "RUN_END=$(date -u +%Y-%m-%dT%H:%M:%S)" >> "$GITHUB_ENV"
+
+    - name: "Wait for merges to settle (arm ${{ inputs.arm }})"
+      if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
+      shell: bash
+      env:
+        TARGET_CH_HOST: ${{ inputs.target_ch_host }}
+        TARGET_CH_USER: ${{ inputs.target_ch_user }}
+        TARGET_CH_PASSWORD: ${{ inputs.target_ch_password }}
+        CH_DATABASE: clickbench
+        CH_TABLE: hits
+      run: |
+        # SETTLE_STATUS_FILE is the arm-scoped sidecar set in the first step.
+        SETTLE_END=$(benchmarks/scripts/wait_for_settle.py)
+        echo "SETTLE_END=$SETTLE_END" >> "$GITHUB_ENV"
+        SETTLE_SECONDS=$(( $(date -u -d "$SETTLE_END" +%s) - $(date -u -d "$RUN_END" +%s) ))
+        echo "SETTLE_SECONDS=$SETTLE_SECONDS" >> "$GITHUB_ENV"
+        SETTLE_TIMED_OUT=$(cat "$SETTLE_STATUS_FILE" 2>/dev/null || echo 0)
+        echo "SETTLE_TIMED_OUT=$SETTLE_TIMED_OUT" >> "$GITHUB_ENV"
+        echo "settle took ${SETTLE_SECONDS}s, timed_out=${SETTLE_TIMED_OUT} (RUN_END=$RUN_END SETTLE_END=$SETTLE_END)"
+
+    - name: "Capture metrics (arm ${{ inputs.arm }})"
+      id: capture
+      if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
+      shell: bash
+      env:
+        METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
+        METRICS_CH_USER: ${{ inputs.metrics_ch_user }}
+        METRICS_CH_PASSWORD: ${{ inputs.metrics_ch_password }}
+        TARGET_CH_HOST: ${{ inputs.target_ch_host }}
+        TARGET_CH_USER: ${{ inputs.target_ch_user }}
+        TARGET_CH_PASSWORD: ${{ inputs.target_ch_password }}
+        CH_DATABASE: clickbench
+        CH_TABLE: hits
+        EMIT_RUN_COST: ${{ inputs.emit_run_cost }}
+      run: |
+        set -euo pipefail
+        for sql in \
+          benchmarks/sql/perf/10_insert_from_event_log.sql \
+          benchmarks/sql/perf/11_insert_from_query_log.sql \
+          benchmarks/sql/perf/12_insert_from_metric_log.sql \
+          benchmarks/sql/perf/13_insert_from_part_log.sql \
+          benchmarks/sql/perf/14_insert_settle_seconds.sql \
+          benchmarks/sql/perf/15_capture_raw_inserts.sql \
+          benchmarks/sql/perf/16_insert_throttling.sql \
+          benchmarks/sql/perf/17_insert_memory_peaks.sql \
+          benchmarks/sql/perf/18_insert_derived_metrics.sql \
+          benchmarks/sql/perf/19_insert_rate_stability.sql \
+          benchmarks/sql/perf/20_insert_integrity.sql \
+          benchmarks/sql/perf/22_insert_settle_timed_out.sql
+        do
+          echo "=== $sql ==="
+          python benchmarks/scripts/run_metrics_sql.py "$sql"
+        done
+        # run_cost_usd is the FULL pair cost charged ONCE, on the first-run arm
+        # (contract §2.1 amendment). The window is the whole provisioned span
+        # (PAIR_RUN_START..this arm's RUN_END), so RUN_START is overridden to the
+        # pair-level start for this one invocation only. Second arm omits it.
+        if [ "$EMIT_RUN_COST" = "1" ]; then
+          echo "=== run_cost_usd (pair cost, window ${PAIR_RUN_START}..${RUN_END}) ==="
+          RUN_START="$PAIR_RUN_START" python benchmarks/scripts/compute_run_cost.py
+        else
+          echo "=== run_cost_usd skipped (second arm; pair cost charged on first arm) ==="
+        fi
+
+    - name: "Decide validity-guard flags (arm ${{ inputs.arm }})"
+      id: flags
+      if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
+      shell: bash
+      env:
+        METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
+        METRICS_CH_USER: ${{ inputs.metrics_ch_user }}
+        METRICS_CH_PASSWORD: ${{ inputs.metrics_ch_password }}
+      run: |
+        set -euo pipefail
+        TASK_FAILED_COUNT=$(python benchmarks/scripts/read_task_failed_count.py)
+        echo "task_failed_count=${TASK_FAILED_COUNT} settle_timed_out=${SETTLE_TIMED_OUT:-0}"
+        REASONS=()
+        if [ "${TASK_FAILED_COUNT:-0}" -gt 0 ]; then REASONS+=("task_retries"); fi
+        if [ "${SETTLE_TIMED_OUT:-0}" != "0" ]; then REASONS+=("settle_timeout"); fi
+        if [ "${#REASONS[@]}" -gt 0 ]; then
+          FLAG_REASON=$(IFS='|'; echo "${REASONS[*]}")
+          echo "FLAGGED=1" >> "$GITHUB_ENV"
+          echo "FLAG_REASON=$FLAG_REASON" >> "$GITHUB_ENV"
+          echo "run FLAGGED (non-comparable): flag_reason=$FLAG_REASON"
+        else
+          # Present-iff-tripped: write NEITHER key. The first step already reset
+          # FLAGGED/FLAG_REASON, so a clean arm carries neither (never flagged='0').
+          echo "run not flagged (no validity guard tripped)"
+        fi
+
+    - name: "Insert run record (arm ${{ inputs.arm }})"
+      id: run_record
+      if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
+      shell: bash
+      env:
+        METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
+        METRICS_CH_USER: ${{ inputs.metrics_ch_user }}
+        METRICS_CH_PASSWORD: ${{ inputs.metrics_ch_password }}
+        TARGET_CH_HOST: ${{ inputs.target_ch_host }}
+        TARGET_CH_USER: ${{ inputs.target_ch_user }}
+        TARGET_CH_PASSWORD: ${{ inputs.target_ch_password }}
+      run: |
+        set -euo pipefail
+        # Per-arm provenance: CONNECTOR_VERSION + ARM_GIT_SHA set in the first
+        # step (head: version.txt + github.sha; pinned: PINNED_*). insert_run_record
+        # reads GIT_SHA, so map the arm sha onto it here.
+        export GIT_SHA="$ARM_GIT_SHA"
+        WRITE_PARALLELISM_OBSERVED=$(aws s3 cp "$WRITE_PARALLELISM_META_S3_URI" - 2>/dev/null | tr -cd '0-9')
+        WRITE_PARALLELISM_OBSERVED="${WRITE_PARALLELISM_OBSERVED:-input-splits}"
+        echo "write_parallelism (observed) = $WRITE_PARALLELISM_OBSERVED"
+        # runtime map (contract §1.1/§1.3/§1.4). Two-arm additions: arm, pair_id,
+        # and warm_up (present iff the warm-up ran/succeeded — WARMUP_DONE).
+        export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
+          --arg it "$EMR_INSTANCE_TYPE" --arg cc "$EMR_CORE_COUNT" \
+          --arg sto "${SETTLE_TIMED_OUT:-0}" \
+          --arg bs "$BATCH_SIZE" --arg wp "$WRITE_PARALLELISM_OBSERVED" \
+          --arg ai "$ASYNC_INSERT" --arg ps "$PARTITION_SCHEME" \
+          --arg ds "$DATASET" \
+          --arg ec "$ENVIRONMENT_CLASS" --arg tr "$TARGET_REGION" \
+          --arg arm "$ARM" --arg pair "$PAIR_ID" \
+          --arg warmup "${WARMUP_DONE:-}" \
+          --arg flagged "${FLAGGED:-}" --arg flag_reason "${FLAG_REASON:-}" \
+          '{spark_version: $sv, scala_version: $scv, emr_release: $emr,
+            emr_instance_type: $it, emr_core_count: $cc,
+            settle_timed_out: $sto,
+            batch_size: $bs, write_parallelism: $wp, async_insert: $ai,
+            partition_scheme: $ps, dataset: $ds,
+            environment_class: $ec, target_region: $tr,
+            arm: $arm, pair_id: $pair}
+           + (if $warmup == "1" then {warm_up: "hits_0"} else {} end)
+           + (if $flagged == "1"
+              then {flagged: "1", flag_reason: $flag_reason}
+              else {} end)')
+        python benchmarks/scripts/insert_run_record.py
+
+    - name: "Roll back this arm if it wasn't fully recorded (arm ${{ inputs.arm }})"
+      if: ${{ !cancelled() && steps.submit.outcome == 'success' && (steps.capture.outcome == 'failure' || steps.run_record.outcome == 'failure') }}
+      shell: bash
+      env:
+        METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
+        METRICS_CH_USER: ${{ inputs.metrics_ch_user }}
+        METRICS_CH_PASSWORD: ${{ inputs.metrics_ch_password }}
+      run: python benchmarks/scripts/rollback_run_metrics.py
+
+    - name: "Export metrics to DWH bucket (arm ${{ inputs.arm }})"
+      if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' && steps.run_record.outcome == 'success' }}
+      shell: bash
+      env:
+        METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
+        METRICS_CH_USER: ${{ inputs.metrics_ch_user }}
+        METRICS_CH_PASSWORD: ${{ inputs.metrics_ch_password }}
+        DWH_ROLE_ARN: ${{ inputs.dwh_role_arn }}
+      run: python benchmarks/scripts/export_metrics_to_dwh.py
+
+    - name: "Verify integrity (arm ${{ inputs.arm }})"
+      # Arm-scoped and reads back this arm's persisted integrity metrics; FAILS on
+      # a mismatch. Must not suppress the other arm — failure isolation is at the
+      # job level (arm 2 runs regardless of arm 1), so a red integrity check here
+      # marks THIS arm's run bad without stopping the pair.
+      if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' && steps.run_record.outcome == 'success' }}
+      shell: bash
+      env:
+        METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
+        METRICS_CH_USER: ${{ inputs.metrics_ch_user }}
+        METRICS_CH_PASSWORD: ${{ inputs.metrics_ch_password }}
+      run: python benchmarks/scripts/check_integrity.py
