@@ -116,17 +116,17 @@ jobs:
       ENVIRONMENT_CLASS: "production"  # the Spark target is a production Cloud service
       # TARGET_REGION: Cloud region of the TARGET ClickHouse service. Set from
       # repo config, never hardcoded per run (contract §1.1). us-east-2 —
-      # user-stated 2026-07-07; definitive re-confirmation pending (task #9;
-      # possible conflation with the kafka staging cluster). If re-confirmed,
-      # drop this caveat; if corrected, change value + annotate.
+      # confirmed by the user 2026-07-07 (task #9 closed): the benchmark is
+      # CROSS-REGION (EMR us-east-1 -> target us-east-2); move-vs-accept is an
+      # annotated step-change decision tracked outside the repo (plan §6.8).
       TARGET_REGION: "us-east-2"
       # COMPUTE_REGION: Cloud region of the LOAD GENERATOR (EMR) — mandatory
       # runtime key (contract §1.1, amendment 2026-07-07): when it differs from
       # target_region the connector->server path is cross-region, a structural
       # bias comparisons must be able to compute. Matches AWS_REGION /
-      # provisioning above. NOTE the pairing caveat: target 'us-east-2' is
-      # user-stated 2026-07-07, definitive re-confirmation pending (task #9) —
-      # if the target is corrected, the cross-region note here changes with it.
+      # provisioning above. Target region confirmed us-east-2 (task #9), so the
+      # Spark connector->server path IS cross-region by design until the
+      # move-vs-accept decision says otherwise.
       COMPUTE_REGION: "us-east-1"
       # Run dimensions recorded on perf.runs (and exported to the DWH).
       CONNECTOR: ${{ inputs.connector || 'spark' }}
