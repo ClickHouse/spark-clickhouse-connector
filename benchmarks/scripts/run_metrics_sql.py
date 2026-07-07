@@ -17,6 +17,8 @@ Required env: METRICS_CH_HOST, METRICS_CH_USER, METRICS_CH_PASSWORD,
               RUN_ID, RUN_START, RUN_END, TARGET_CH_HOST, TARGET_CH_USER,
               TARGET_CH_PASSWORD, CH_DATABASE, CH_TABLE
 Optional env: SETTLE_END (defaults to RUN_END), SETTLE_SECONDS (default 0),
+              SETTLE_TIMED_OUT (default 0), INPUT_PARQUET_GLOB (source glob,
+              s3a:// or s3://; exposed to SQL as {source_glob} in s3:// form),
               EVENT_LOG_URI, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
               AWS_SESSION_TOKEN
 """
@@ -33,12 +35,18 @@ def main() -> None:
 
     db = os.environ.get("CH_DATABASE", "")
     table = os.environ.get("CH_TABLE", "")
+    # ClickHouse's s3() wants the s3:// scheme; the ingest glob is s3a:// (Spark).
+    source_glob = os.environ.get("INPUT_PARQUET_GLOB", "")
+    if source_glob.startswith("s3a://"):
+        source_glob = "s3://" + source_glob[len("s3a://"):]
     parameters = {
         "run_id": ch_common.require("RUN_ID"),
         "run_start": ch_common.require("RUN_START"),
         "run_end": ch_common.require("RUN_END"),
         "settle_end": os.environ.get("SETTLE_END") or os.environ.get("RUN_END", ""),
         "settle_seconds": float(os.environ.get("SETTLE_SECONDS", "0")),
+        "settle_timed_out": float(os.environ.get("SETTLE_TIMED_OUT", "0")),
+        "source_glob": source_glob,
         "event_log_uri": os.environ.get("EVENT_LOG_URI", ""),
         "aws_access_key": os.environ.get("AWS_ACCESS_KEY_ID", ""),
         "aws_secret_key": os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
