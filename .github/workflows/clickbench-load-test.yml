@@ -72,6 +72,37 @@ jobs:
       ASYNC_INSERT: "0"             # server async_insert mode OFF at the operating point
       PARTITION_SCHEME: "toYear(EventDate)"  # current target DDL (benchmarks/sql/clickbench/02_create_hits.sql); toYYYYMM switch is a later plan §9 step
       DATASET: "hits"               # logical dataset shape (contract §1.4)
+      # --- Pinned reference build, arm P (plan §2, open decision 1) -----------
+      # The two-arm protocol runs HEAD (arm H) and a PINNED reference (arm P) on
+      # the same cluster/hour/server so environment noise cancels in the H/P
+      # ratio. Arm P MUST be a FETCHED FROZEN ARTIFACT, never rebuilt from a
+      # pinned sha (toolchain drift would make P non-constant and reintroduce
+      # the noise it exists to cancel).
+      #
+      # RELEASE-vs-FROZEN-S3 OUTCOME: a compatible published release EXISTS on
+      # Maven Central for this pipeline's build (spark 3.5 / scala 2.12), so we
+      # pin the Maven Central release jar directly — no S3 freeze channel is
+      # needed. Decision 1 resolved to "last tagged release": v0.10.0.
+      #
+      # PIN-BUMP PROCEDURE (deliberate, annotated event):
+      #   1. Pick the new released version published to Maven Central for
+      #      g=com.clickhouse.spark a=clickhouse-spark-runtime-3.5_2.12.
+      #   2. Download the jar, compute sha256 (shasum -a 256).
+      #   3. Update PINNED_CONNECTOR_VERSION + PINNED_JAR_SHA256 + PINNED_GIT_SHA
+      #      (git rev-parse v<version>) here, in ONE annotated commit. The commit
+      #      is the dashboard "pin bump" event (v_env_annotations, plan §7).
+      # A bump is the ONLY thing that moves arm P; between bumps P is constant.
+      PINNED_CONNECTOR_VERSION: "0.10.0"
+      # Maven Central coordinates of the frozen arm-P artifact. Group/artifact are
+      # fixed by the build (settings.gradle: clickhouse-spark-runtime-3.5_2.12);
+      # version is the pin above.
+      PINNED_MAVEN_COORDS: "com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0"
+      # sha256 of the fetched jar, verified in the "Fetch pinned reference jar"
+      # step. A mismatch FAILS the run (the artifact is not what we pinned).
+      PINNED_JAR_SHA256: "6769056dcfe2e798e9027b7a2d29fac4b23cf16f113c500df2fcf138737f6665"
+      # git sha of tag v0.10.0 — per-arm provenance recorded on the pinned run
+      # (task #13 puts arm/connector_version/git_sha into runtime).
+      PINNED_GIT_SHA: "269ac1a33235b507e715912b53a9397450c7f45b"
       # --- Mandatory scope keys on every perf.runs row (contract §1.1) --------
       ENVIRONMENT_CLASS: "production"  # the Spark target is a production Cloud service
       # TARGET_REGION: Cloud region of the TARGET ClickHouse service. Set from
@@ -115,6 +146,39 @@ jobs:
           ./gradlew -Dspark_binary_version=3.5 -Dscala_binary_version=2.12 \
             :clickhouse-spark-runtime-3.5_2.12:shadowJar --no-daemon
 
+      - name: Fetch pinned reference jar (arm P)
+        # Two-arm protocol (plan §2): fetch the FROZEN pinned reference artifact
+        # from Maven Central alongside HEAD's shadowJar, so both jars exist in
+        # one workflow run with provenance recorded. This step is deliberately
+        # INDEPENDENT of the ingest loop (task #13 restructures the loop and
+        # consumes this jar via PINNED_JAR_LOCAL / provenance env). It only
+        # fetches + verifies; it does not run anything.
+        #
+        # If a future pin points at a version not on Maven Central (e.g. the
+        # pipeline moves to spark-4.0, which has no published release), replace
+        # the Maven URL below with a PINNED_JAR_S3_URI fetch from the CI bucket
+        # (secrets.CLICKBENCH_S3_BUCKET) — a one-time human upload with a
+        # version-stamped immutable key — keeping the sha256 verification.
+        run: |
+          set -euo pipefail
+          MVN_BASE="https://repo1.maven.org/maven2/com/clickhouse/spark/clickhouse-spark-runtime-3.5_2.12/${PINNED_CONNECTOR_VERSION}"
+          MVN_JAR="${MVN_BASE}/clickhouse-spark-runtime-3.5_2.12-${PINNED_CONNECTOR_VERSION}.jar"
+          DEST="$RUNNER_TEMP/clickhouse-spark-runtime-pinned.jar"
+          echo "fetching pinned arm P jar: $MVN_JAR"
+          curl -fsSL -o "$DEST" "$MVN_JAR"
+          GOT=$(shasum -a 256 "$DEST" | awk '{print $1}')
+          if [ "$GOT" != "$PINNED_JAR_SHA256" ]; then
+            echo "PINNED JAR SHA256 MISMATCH — refusing to proceed."
+            echo "  expected: $PINNED_JAR_SHA256"
+            echo "  got:      $GOT"
+            echo "The fetched artifact is not the pinned reference. Either Maven"
+            echo "Central returned a different/corrupt file, or the pin metadata"
+            echo "in the workflow env is stale. Fix via the PIN-BUMP PROCEDURE."
+            exit 1
+          fi
+          echo "pinned jar verified: sha256=$GOT ($PINNED_MAVEN_COORDS)"
+          echo "PINNED_JAR_LOCAL=$DEST" >> "$GITHUB_ENV"
+
       - name: Compute run id and S3 paths
         run: |
           source benchmarks/scripts/lib_runid.sh
@@ -127,6 +191,9 @@ jobs:
           # EMR release, switch this glob to eventlog_v2_*/events_*.
           echo "EVENT_LOG_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/spark-event-logs/$RUN_ID/application_*" >> "$GITHUB_ENV"
           echo "JAR_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/jars/$RUN_ID/clickhouse-spark-runtime.jar" >> "$GITHUB_ENV"
+          # Pinned reference (arm P) jar rides the same per-run jars/ path with a
+          # distinct key so both arms' artifacts are colocated for the run.
+          echo "PINNED_JAR_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/jars/$RUN_ID/clickhouse-spark-runtime-pinned.jar" >> "$GITHUB_ENV"
           echo "SCRIPT_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/scripts/$RUN_ID/clickbench_ingest.py" >> "$GITHUB_ENV"
 
       - name: Upload jar and script to S3
@@ -138,6 +205,8 @@ jobs:
           JAR=$(ls -S spark-3.5/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-3.5_2.12-*.jar \
                 | grep -Ev '(sources|javadoc|empty)\.jar$' | head -1)
           aws s3 cp "$JAR" "$JAR_S3_URI"
+          # Pinned reference (arm P) jar, fetched + sha256-verified above.
+          aws s3 cp "$PINNED_JAR_LOCAL" "$PINNED_JAR_S3_URI"
           aws s3 cp benchmarks/clickbench_ingest.py "$SCRIPT_S3_URI"
 
       - name: Bootstrap schema (idempotent CREATE IF NOT EXISTS)
