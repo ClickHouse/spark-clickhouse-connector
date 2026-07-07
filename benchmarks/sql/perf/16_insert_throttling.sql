@@ -19,6 +19,9 @@
 --   2. parts_to_throw_insert (default 3000): inserts rejected w/ code 252
 --   3. background pool exhaustion: new merges can't be scheduled
 -- This SQL captures evidence of all three.
+--
+-- renamed ch_inserts_delayed_fraction -> inserts_delayed_fraction per docs/benchmark-v2-contract.md §7 (2026-07-07)
+-- renamed ch_merge_pool_peak_pct -> merge_pool_peak_pct per docs/benchmark-v2-contract.md §7 (2026-07-07)
 
 INSERT INTO perf.metrics (run_id, metric_name, unit, value)
 SELECT {run_id:String}, metric_name, unit, value FROM (
@@ -71,7 +74,7 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
   -- Merge pool utilisation. 100% = the merger is the bottleneck. Peak of the
   -- per-sample ratio, not max(task)/max(size): the pool size can change if the
   -- service rescales mid-run, and ratio-of-maxes would then misstate the peak.
-  SELECT 'ch_merge_pool_peak_pct', 'percent',
+  SELECT 'merge_pool_peak_pct', 'percent',
          max(toFloat64(CurrentMetric_BackgroundMergesAndMutationsPoolTask) /
              greatest(toFloat64(CurrentMetric_BackgroundMergesAndMutationsPoolSize), 1.0)) * 100
   FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
@@ -93,7 +96,7 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
   -- The delay attaches to whatever query did the actual write:
   -- AsyncInsertFlush in async mode, Insert in sync mode. `written_rows > 0`
   -- picks the right one in either mode.
-  SELECT 'ch_inserts_delayed_fraction', 'ratio',
+  SELECT 'inserts_delayed_fraction', 'ratio',
          toFloat64(countIf(ProfileEvents['DelayedInserts'] > 0)) /
          greatest(toFloat64(count()), 1.0)
   FROM remoteSecure({target_addr:String}, system.query_log, {target_user:String}, {target_password:String})

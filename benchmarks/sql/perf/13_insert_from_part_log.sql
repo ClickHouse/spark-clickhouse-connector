@@ -19,6 +19,9 @@
 --                           Spark job exits as the merge tree consolidates.
 -- {settle_end} comes from wait_for_settle.py; if unset it defaults to
 -- {run_end}, which under-counts merge cost.
+--
+-- renamed ch_parts_per_insert -> parts_per_insert per docs/benchmark-v2-contract.md §7 (2026-07-07)
+-- renamed ch_merge_amplification -> merge_amplification per docs/benchmark-v2-contract.md §7 (2026-07-07)
 
 INSERT INTO perf.metrics (run_id, metric_name, unit, value)
 SELECT {run_id:String}, metric_name, unit, value FROM (
@@ -30,7 +33,7 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
     AND database = {ch_database:String} AND table = {ch_table:String}
   UNION ALL
   -- 1.0 = each insert produced one part; > 1.0 = batches sprayed across CH partitions.
-  SELECT 'ch_parts_per_insert', 'ratio',
+  SELECT 'parts_per_insert', 'ratio',
          (SELECT toFloat64(count())
           FROM remoteSecure({target_addr:String}, system.part_log, {target_user:String}, {target_password:String})
           WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String})
@@ -86,7 +89,7 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
   -- bytes inserted. Healthy ~ 2x; with tiny batches can be 10x+.
   -- Denominator unions Insert + AsyncInsertFlush filtered to written_bytes > 0:
   -- in async mode the bytes live on AsyncInsertFlush, in sync mode on Insert.
-  SELECT 'ch_merge_amplification', 'ratio',
+  SELECT 'merge_amplification', 'ratio',
          (SELECT toFloat64(sum(read_bytes))
           FROM remoteSecure({target_addr:String}, system.part_log, {target_user:String}, {target_password:String})
           WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({settle_end:String})

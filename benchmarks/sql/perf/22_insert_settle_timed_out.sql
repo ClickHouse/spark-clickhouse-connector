@@ -15,7 +15,7 @@
 --
 -- settle_timed_out flag (plan §6.4). wait_for_settle.py proceeds silently when
 -- it hits SETTLE_TIMEOUT (default 1800s), which right-censors the companion
--- ch_settle_seconds value (14): the merges had NOT visibly settled, so the
+-- settle_seconds value (14): the merges had NOT visibly settled, so the
 -- recorded settle time is a floor, not the true value. This 1/0 flag makes that
 -- censoring an explicit fact so dashboards can exclude/mark such runs. Per plan
 -- §6.10 this is a flagged-not-failed guard (the run is non-comparable, not a

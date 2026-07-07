@@ -15,6 +15,8 @@
 --
 -- Writes the settle time (seconds from EMR step end until active parts
 -- stabilise, measured by wait_for_settle.py) into perf.metrics.
+--
+-- renamed ch_settle_seconds -> settle_seconds per docs/benchmark-v2-contract.md §7 (2026-07-07)
 
 INSERT INTO perf.metrics (run_id, metric_name, unit, value)
-VALUES ({run_id:String}, 'ch_settle_seconds', 'seconds', toFloat64({settle_seconds:Float64}));
+VALUES ({run_id:String}, 'settle_seconds', 'seconds', toFloat64({settle_seconds:Float64}));

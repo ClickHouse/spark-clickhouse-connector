@@ -23,6 +23,17 @@
 -- write-volume metrics UNION both kinds on `written_rows > 0` to stay
 -- mode-agnostic, while Insert-only metrics (count, latency, memory, CPU)
 -- cover the receipt. has(tables) excludes CH-Cloud-internal billing inserts.
+--
+-- ch_insert_cpu_seconds_per_Mrows (added per docs/benchmark-v2-contract.md §2.1,
+-- 2026-07-07): the cross-connector Tab-5 server-cost headline. Server insert CPU
+-- (OSCPUVirtualTime on the Insert receipts, same numerator as ch_insert_cpu_seconds)
+-- divided by (delivered rows / 1e6). "Delivered rows" here is the mode-agnostic
+-- server-side written-rows total (Insert when async_insert=0, AsyncInsertFlush when
+-- async_insert=1, selected by written_rows > 0) — the same per-row denominator used
+-- by bytes_on_wire_per_row in 18_insert_derived_metrics.sql, kept in-file so this
+-- metric is self-consistent with the query_log window rather than depending on the
+-- post-settle target count() captured in 20_insert_integrity.sql. Division guarded
+-- with nullIf like the sibling per-Mrows metrics in 10_insert_from_event_log.sql.
 
 INSERT INTO perf.metrics (run_id, metric_name, unit, value)
 SELECT {run_id:String}, metric_name, unit, value FROM (
@@ -71,6 +82,25 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
   WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String})
     AND type = 'QueryFinish' AND query_kind = 'Insert'
     AND has(tables, {table_qualified:String})
+  UNION ALL
+  -- Server insert CPU seconds per million delivered rows: the cross-connector
+  -- Tab-5 server-cost headline (contract §2.1). Numerator matches
+  -- ch_insert_cpu_seconds above (OSCPUVirtualTime on Insert receipts); denominator
+  -- is the mode-agnostic written-rows total / 1e6, guarded with nullIf.
+  SELECT 'ch_insert_cpu_seconds_per_Mrows', 's/Mrows',
+         (SELECT toFloat64(sum(ProfileEvents['OSCPUVirtualTimeMicroseconds'])) / 1e6
+          FROM remoteSecure({target_addr:String}, system.query_log, {target_user:String}, {target_password:String})
+          WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String})
+            AND type = 'QueryFinish' AND query_kind = 'Insert'
+            AND has(tables, {table_qualified:String}))
+         / nullIf(
+           (SELECT toFloat64(sum(written_rows))
+            FROM remoteSecure({target_addr:String}, system.query_log, {target_user:String}, {target_password:String})
+            WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String})
+              AND type = 'QueryFinish' AND query_kind IN ('Insert', 'AsyncInsertFlush')
+              AND written_rows > 0
+              AND has(tables, {table_qualified:String})) / 1e6,
+           0)
   UNION ALL
   -- ====== Real write rows/bytes (mode-agnostic) ======
   -- `written_rows > 0` filter selects:
