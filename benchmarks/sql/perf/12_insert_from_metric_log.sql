@@ -13,7 +13,9 @@
 --
 -- Parameters ({name:Type}) are bound by run_metrics_sql.py.
 --
--- Connection-churn metrics from system.metric_log: ch_connections_per_insert
+-- renamed ch_connections_per_insert -> connections_per_insert per docs/benchmark-v2-contract.md §7 (2026-07-07)
+--
+-- Connection-churn metrics from system.metric_log: connections_per_insert
 -- is ~1.0 today (one cold connection per insert) and should drop to << 1.0
 -- once the connector caches an HTTP client per executor.
 
@@ -31,7 +33,7 @@ SELECT {run_id:String}, metric_name, unit, value FROM (
   UNION ALL
   -- Ratio: connections opened / inserts. 1.0 = one connection per insert;
   -- << 1.0 = one connection serves many inserts.
-  SELECT 'ch_connections_per_insert', 'ratio',
+  SELECT 'connections_per_insert', 'ratio',
          (SELECT toFloat64(max(ProfileEvent_HTTPConnectionsCreated) - min(ProfileEvent_HTTPConnectionsCreated))
           FROM remoteSecure({target_addr:String}, system.metric_log, {target_user:String}, {target_password:String})
           WHERE event_time BETWEEN parseDateTimeBestEffort({run_start:String}) AND parseDateTimeBestEffort({run_end:String}))
