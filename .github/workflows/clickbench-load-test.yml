@@ -113,16 +113,20 @@ jobs:
       # Run dimensions recorded on perf.runs (and exported to the DWH).
       CONNECTOR: ${{ inputs.connector || 'spark' }}
       RUN_PROFILE: ${{ inputs.run_profile || 'small' }}
-      # Documented full-glob source reference for the integrity check (plan §6.1).
-      # 20_insert_integrity.sql re-derives rows_expected / unique_expected from the
-      # actual input glob at run time (so a single-file smoke glob still verifies),
-      # but the full ClickBench hits dataset has this many rows — recorded here as a
-      # cross-check. NOTE: WatchID is NOT unique in the source (many rows share a
-      # WatchID), which is why duplicate detection is a target-vs-source delta, not
-      # count()-uniqExact() on the target. SOURCE_UNIQUE_EXPECTED is left empty
-      # because the exact source uniqExact(WatchID) is derived per run, not pinned.
+      # Integrity-check source ground truth (plan §6.1, contract §2.1). When the
+      # run's INPUT_PARQUET_GLOB equals DEFAULT_INPUT_PARQUET_GLOB, these pinned
+      # constants ARE rows_expected / unique_expected; run_metrics_sql.py
+      # re-derives them via s3() ONLY for non-default (smoke/override) globs —
+      # per-run uniqExact over the full ~100M-row source would be a full WatchID
+      # scan with GB-scale hash state every run. Both values were derived once
+      # with `clickhouse local` over the public glob (count(): 4.8s;
+      # uniqExact(WatchID): 73s). NOTE: the source has exactly 4 duplicate
+      # WatchIDs (…497 rows vs …493 distinct), which is why duplicate detection
+      # is a target-vs-source delta, never count()-uniqExact() on the target.
+      # Re-derive both constants if the dataset or default glob changes.
+      DEFAULT_INPUT_PARQUET_GLOB: "s3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet"
       SOURCE_ROWS_EXPECTED: "99997497"
-      SOURCE_UNIQUE_EXPECTED: ""
+      SOURCE_UNIQUE_EXPECTED: "99997493"
     steps:
       - uses: actions/checkout@v4
 
@@ -433,10 +437,13 @@ jobs:
       - name: Verify integrity (fail the run on a row-count / duplicate mismatch)
         # Runs AFTER capture + run-record + export so the integrity metrics are
         # already persisted and exported; this step only reads them back and
-        # fails the job on a mismatch (plan §6.1/§6.10 — mismatch fails outright).
-        # Gated on capture success so the metrics exist; independent of export so
-        # a mismatch is still surfaced even if export was skipped.
-        if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
+        # fails the job on a mismatch (contract §3 — mismatch fails outright).
+        # Gated on capture AND run-record success: if the run record failed, the
+        # rollback step has already wiped this run's perf.* rows, so integrity is
+        # not evaluable here (and the job is already red from that failure) — a
+        # second "no integrity metrics found" failure would just be noise.
+        # Independent of export so a mismatch is surfaced even if export failed.
+        if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' && steps.run_record.outcome == 'success' }}
         env:
           METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
           METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}

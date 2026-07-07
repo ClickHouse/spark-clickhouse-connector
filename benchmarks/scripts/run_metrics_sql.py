@@ -20,6 +20,9 @@ Optional env: RUN_END (defaults to RUN_START — unset for pre-ingest capture),
               SETTLE_END (defaults to RUN_END), SETTLE_SECONDS (default 0),
               SETTLE_TIMED_OUT (default 0), INPUT_PARQUET_GLOB (source glob,
               s3a:// or s3://; exposed to SQL as {source_glob} in s3:// form),
+              DEFAULT_INPUT_PARQUET_GLOB, SOURCE_ROWS_EXPECTED,
+              SOURCE_UNIQUE_EXPECTED (integrity source ground truth — see
+              resolve_expected below),
               EVENT_LOG_URI, AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY,
               AWS_SESSION_TOKEN
 """
@@ -27,6 +30,49 @@ import os
 import sys
 
 import ch_common
+
+
+def resolve_expected(client, sql: str, source_glob: str):
+    """Resolve the integrity check's source ground truth (contract §2.1).
+
+    For the DEFAULT full glob the values MUST come from the constants pinned in
+    the workflow env (SOURCE_ROWS_EXPECTED / SOURCE_UNIQUE_EXPECTED) — per-run
+    re-derivation would uniqExact-scan the full ~100M-row source with GB-scale
+    hash state on a memory-capped service, every run. Re-derivation via s3() is
+    the fallback ONLY for non-default (smoke/override) globs, which are small.
+
+    Lazy: only runs when the SQL actually references {rows_expected} /
+    {unique_expected} (i.e. 20_insert_integrity.sql), so the other capture SQL
+    files never trigger a source scan.
+    """
+    if "{rows_expected:" not in sql and "{unique_expected:" not in sql:
+        return 0.0, 0.0
+    default_glob = os.environ.get("DEFAULT_INPUT_PARQUET_GLOB", "")
+    raw_glob = os.environ.get("INPUT_PARQUET_GLOB", "")
+    const_rows = os.environ.get("SOURCE_ROWS_EXPECTED", "")
+    const_uniq = os.environ.get("SOURCE_UNIQUE_EXPECTED", "")
+    is_default = bool(raw_glob) and raw_glob == default_glob
+
+    if is_default and const_rows and const_uniq:
+        print(f"integrity: using pinned source constants (rows={const_rows}, "
+              f"unique={const_uniq}) for the default glob", file=sys.stderr)
+        return float(const_rows), float(const_uniq)
+
+    if is_default:
+        print("WARNING: default input glob but SOURCE_ROWS_EXPECTED / "
+              "SOURCE_UNIQUE_EXPECTED are not both set — falling back to a "
+              "FULL per-run source derivation (expensive full WatchID scan). "
+              "Pin the constants in the workflow env.", file=sys.stderr)
+    else:
+        print(f"integrity: non-default glob — deriving source ground truth "
+              f"from {source_glob}", file=sys.stderr)
+
+    rows, uniq = client.query(
+        "SELECT count(), uniqExact(WatchID) FROM s3({glob:String}, NOSIGN, 'Parquet')",
+        parameters={"glob": source_glob},
+    ).result_rows[0]
+    print(f"integrity: derived source rows={rows}, unique={uniq}", file=sys.stderr)
+    return float(rows), float(uniq)
 
 
 def main() -> None:
@@ -40,6 +86,10 @@ def main() -> None:
     source_glob = os.environ.get("INPUT_PARQUET_GLOB", "")
     if source_glob.startswith("s3a://"):
         source_glob = "s3://" + source_glob[len("s3a://"):]
+
+    client = ch_common.get_client("METRICS_CH_HOST", "METRICS_CH_USER", "METRICS_CH_PASSWORD")
+    rows_expected, unique_expected = resolve_expected(client, sql, source_glob)
+
     parameters = {
         "run_id": ch_common.require("RUN_ID"),
         "run_start": ch_common.require("RUN_START"),
@@ -52,6 +102,8 @@ def main() -> None:
         "settle_seconds": float(os.environ.get("SETTLE_SECONDS", "0")),
         "settle_timed_out": float(os.environ.get("SETTLE_TIMED_OUT", "0")),
         "source_glob": source_glob,
+        "rows_expected": rows_expected,
+        "unique_expected": unique_expected,
         "event_log_uri": os.environ.get("EVENT_LOG_URI", ""),
         "aws_access_key": os.environ.get("AWS_ACCESS_KEY_ID", ""),
         "aws_secret_key": os.environ.get("AWS_SECRET_ACCESS_KEY", ""),
@@ -66,7 +118,6 @@ def main() -> None:
         "table_qualified": f"{db}.{table}",
     }
 
-    client = ch_common.get_client("METRICS_CH_HOST", "METRICS_CH_USER", "METRICS_CH_PASSWORD")
     client.command(sql, parameters=parameters)
 
 
