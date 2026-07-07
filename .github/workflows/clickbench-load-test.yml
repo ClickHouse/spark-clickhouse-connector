@@ -387,6 +387,51 @@ jobs:
           echo "=== run_cost_usd ==="
           python benchmarks/scripts/compute_run_cost.py
 
+      - name: Decide validity-guard flags (flagged-not-failed, contract §1.3)
+        id: flags
+        # Plan §6.10 / contract §1.3: some conditions make a run NON-COMPARABLE
+        # without failing it — they FLAG it so bands/ratios exclude it by default,
+        # while capture/export stay complete. Two Spark-relevant guards here:
+        #   task_retries   — task_failed_count > 0 (retried work pollutes volume)
+        #   settle_timeout — settle right-censored at the 1800s cap
+        # (integrity MISMATCH is a separate case — it FAILS the run, handled by
+        # the "Verify integrity" step; it is NOT a flag.)
+        #
+        # The flag must be decided AFTER the facts exist: SETTLE_TIMED_OUT is
+        # already in GITHUB_ENV (settle step), and task_failed_count exists as a
+        # perf.metrics row only once "Capture metrics" (10_insert_from_event_log)
+        # has run — hence this step is gated on capture success and reads that one
+        # metric back with a cheap point query by run_id (read_task_failed_count.py).
+        # It emits FLAGGED / FLAG_REASON into GITHUB_ENV; the RUNTIME jq assembly in
+        # "Insert run record" turns them into runtime['flagged'] / ['flag_reason'].
+        if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
+        env:
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+        run: |
+          set -euo pipefail
+          TASK_FAILED_COUNT=$(python benchmarks/scripts/read_task_failed_count.py)
+          echo "task_failed_count=${TASK_FAILED_COUNT} settle_timed_out=${SETTLE_TIMED_OUT:-0}"
+          # Assemble flag_reason tokens in the contract's fixed vocabulary,
+          # order = definition order (task_retries before settle_timeout). Join
+          # multiples with a single '|' (the ONLY permitted separator — a comma
+          # would collide with map-value parsing, contract §1.3).
+          REASONS=()
+          if [ "${TASK_FAILED_COUNT:-0}" -gt 0 ]; then REASONS+=("task_retries"); fi
+          if [ "${SETTLE_TIMED_OUT:-0}" != "0" ]; then REASONS+=("settle_timeout"); fi
+          if [ "${#REASONS[@]}" -gt 0 ]; then
+            FLAG_REASON=$(IFS='|'; echo "${REASONS[*]}")
+            echo "FLAGGED=1" >> "$GITHUB_ENV"
+            echo "FLAG_REASON=$FLAG_REASON" >> "$GITHUB_ENV"
+            echo "run FLAGGED (non-comparable): flag_reason=$FLAG_REASON"
+          else
+            # Contract §1.3: flagged is present-iff-tripped — write NEITHER key
+            # when no guard trips (do NOT emit flagged='0'). Leaving FLAGGED unset
+            # makes the jq assembly below omit both keys entirely.
+            echo "run not flagged (no validity guard tripped)"
+          fi
+
       - name: Insert run record
         id: run_record
         # Written AFTER metrics capture, gated on its success — perf.runs only
@@ -416,6 +461,13 @@ jobs:
           # partition_scheme, dataset); target_region + environment_class are
           # the mandatory scope keys (contract §1.1). spark_version/scala_version/
           # emr_release stay connector-namespaced (contract §1.4).
+          # Validity-guard flags (contract §1.3), decided by the "Decide
+          # validity-guard flags" step above and passed via GITHUB_ENV. Present
+          # iff a guard tripped: FLAGGED is set to '1' with FLAG_REASON only when
+          # non-comparable, otherwise BOTH are unset. The jq below adds
+          # runtime['flagged'] / runtime['flag_reason'] ONLY when FLAGGED='1', so
+          # a clean run carries neither key (never flagged='0') — the contract's
+          # present-iff-tripped rule.
           export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
             --arg it "$EMR_INSTANCE_TYPE" --arg cc "$EMR_CORE_COUNT" \
             --arg sto "${SETTLE_TIMED_OUT:-0}" \
@@ -423,12 +475,16 @@ jobs:
             --arg ai "$ASYNC_INSERT" --arg ps "$PARTITION_SCHEME" \
             --arg ds "$DATASET" \
             --arg ec "$ENVIRONMENT_CLASS" --arg tr "$TARGET_REGION" \
+            --arg flagged "${FLAGGED:-}" --arg flag_reason "${FLAG_REASON:-}" \
             '{spark_version: $sv, scala_version: $scv, emr_release: $emr,
               emr_instance_type: $it, emr_core_count: $cc,
               settle_timed_out: $sto,
               batch_size: $bs, write_parallelism: $wp, async_insert: $ai,
               partition_scheme: $ps, dataset: $ds,
-              environment_class: $ec, target_region: $tr}')
+              environment_class: $ec, target_region: $tr}
+             + (if $flagged == "1"
+                then {flagged: "1", flag_reason: $flag_reason}
+                else {} end)')
           python benchmarks/scripts/insert_run_record.py
 
       - name: Roll back this run if it wasn't fully recorded
