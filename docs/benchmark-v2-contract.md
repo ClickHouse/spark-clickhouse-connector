@@ -52,7 +52,7 @@ below are the pinned contract. Both pipelines **MUST** spell them identically.
 | `pair_id` | see §1.2 | — | Shared by the two runs of one nightly two-arm pair. |
 | `target_region` | e.g. `'us-east-1'` | — (MANDATORY) | Cloud region of the run's target service. **MUST** be set from repo config, never hardcoded per run. |
 | `compute_region` | e.g. `'us-east-1'` | — (MANDATORY) | Cloud region of the load generator (EMR / EKS). When it differs from `target_region` the connector→server path is cross-region — a structural bias that cross-connector comparisons **MUST** be able to compute. (Amendment 2026-07-07.) |
-| `environment_class` | `'staging'` \| `'production'` \| `'self_hosted'` | — (MANDATORY) | Deployment class of the target service. `'self_hosted'` (Amendment 2026-07-07) is for Tier-0 instrument targets — the pinned Docker ClickHouse running on the load generator; Tier-0 rows MUST use it (a Cloud class on an ephemeral instrument would be misleading). On Tier-0 rows `target_region` equals the compute region (the instrument runs on the load generator). |
+| `environment_class` | `'staging'` \| `'production'` \| `'self_hosted'` | — (MANDATORY) | Deployment class of the target service. `'self_hosted'` (Amendment 2026-07-07, scoped 2026-07-07b) applies to Tier-0 rows whose instrument is **load-generator-local** (e.g. Spark's pinned Docker ClickHouse on the EMR master); such rows MUST use it, and their `target_region` equals the compute region. Tier-0 rows whose Null target is **Cloud-hosted** (e.g. Kafka's Null table on its staging target, per that plan's decision 9) keep the target service's own class (e.g. `'staging'`) and region — see the `tier0_ch_version` scoping note. |
 
 `target_region`, `compute_region`, and `environment_class` are **MANDATORY on
 every `perf.runs` row in both pipelines**, from day one.
@@ -166,7 +166,7 @@ dashboard filter spans both pipelines. Connector-specific keys are allowed and
 | `partition_scheme` | target table partitioning under test (e.g. `'toYYYYMM(EventDate)'` or `'none'`) | DDL | DDL |
 | `dataset` | logical dataset shape (e.g. `'hits'`, `'pypi'`) | workload config | workload config |
 | `warm_up` | OPTIONAL — present iff a priming insert ran before the arm's truncate; value identifies the warm-up workload (e.g. `'hits_0'`). Absent ⇒ no warm-up. (Amendment 2026-07-07.) | warm-up step | warm-up step |
-| `tier0_ch_version` | MANDATORY on `tier='0'` rows, absent otherwise — the pinned version of the Tier-0 instrument ClickHouse (e.g. `'25.8.28'`); a version bump is an annotatable environment event. (Amendment 2026-07-07.) | tier0 bootstrap pin | tier0 bootstrap pin |
+| `tier0_ch_version` | MANDATORY on `tier='0'` rows **whose instrument is load-generator-local** (pinned version, e.g. `'25.8.28'`; a bump is an annotatable environment event), absent otherwise. Tier-0 rows on a **Cloud-hosted** Null target have no pinned instrument version by design (the Cloud version drifts): they omit this key, rely on the `clickhouse_version` covariate, and the `ch_insert_cpu_share_tier0` parse-watch metric is MANDATORY for them instead. (Amendment 2026-07-07, scoped 2026-07-07b.) | tier0 bootstrap pin (load-generator-local) | clickhouse_version covariate + parse-watch (Cloud-hosted Null) |
 
 **Connector-specific keys (allowed, MUST be namespaced):** e.g.
 `spark_version`, `scala_version`, `emr_release` (Spark); `kafka_connect_version`,
