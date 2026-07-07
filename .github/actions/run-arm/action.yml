@@ -23,6 +23,19 @@
 # arm order, provision, teardown, pair-level run_cost_usd, final truncate) stays
 # inline in the workflow.
 #
+# OUTCOME-CLASS INVARIANT (task #6). A run has an OUTCOME CLASS — 'success' (Spark
+# submit succeeded) or 'failed' (submit failed) — recorded as runtime['outcome'].
+# Capture, the flag decision, the run record and the DWH export all run in BOTH
+# classes, so a failed run is a FIRST-CLASS, MARKED artifact rather than silently
+# absent (killing the survivorship bias in plan §6.5/§10). A success-class run
+# captures the full metric-family set; a failed-class run captures the CH-side
+# families that do not require a successful ingest (event-log and integrity are
+# tolerated / integrity-verification is skipped — it is 'integrity_unverified' by
+# definition, contract §1.3). Rollback means "artifact INCOMPLETE FOR ITS CLASS"
+# (capture/flags/run_record broke, partial rows) — NOT "the run failed"; a
+# complete failed-class artifact is KEPT. See the per-step comments for the gates
+# and the per-SQL decision matrix (in the capture step).
+#
 # WHY EVERY SECRET IS AN INPUT: composite-action `run:` steps cannot read the
 # `secrets.*` context. Every secret the moved steps use is therefore threaded in
 # as an input and re-exported to $GITHUB_ENV / step env here. Non-secret job-level
@@ -244,9 +257,57 @@ runs:
 
     - name: "Capture metrics (arm ${{ inputs.arm }})"
       id: capture
-      if: ${{ !cancelled() && steps.submit.outcome == 'success' }}
+      # OUTCOME-CLASS CAPTURE (task #6). Runs in BOTH outcome classes — not gated
+      # on submit success — so a FAILED run still lands its CH-side telemetry (the
+      # most informative runs are the least observed; plan §6.5, §10). !cancelled()
+      # only skips a user/timeout cancellation. The submit outcome is threaded in
+      # as SUBMIT_OUTCOME and selects the per-SQL family list below.
+      #
+      # ROLLBACK INVARIANT (redefined, task #6 directive 1): a run is COMPLETE FOR
+      # ITS OUTCOME CLASS. A success-class run captures the full family set; a
+      # failed-class run captures the CH-side families that do NOT require a
+      # successful ingest, and is a COMPLETE artifact at that reduced set — it must
+      # NOT be rolled back merely for being failed. Rollback still fires only when
+      # capture itself BREAKS (partial rows) — this step exits non-zero.
+      #
+      # PER-SQL DECISION MATRIX (which families run per class, and why):
+      #   file  metric family            success  failed   rationale
+      #   10  event_log (Spark)            yes    tolerant the event log may be
+      #         absent/partial on a failed submit; on the failed path a missing/
+      #         unreadable log is TOLERATED (|| true) — capture what exists, never
+      #         fail the class over it (directive 3). On success it is strict.
+      #   11  query_log (CH insert CPU)    yes     yes    server-side; time-windowed
+      #         on run_start..run_end — valid for whatever inserts landed before the
+      #         failure. Empty window => aggregates are 0/NULL, not an error.
+      #   12  metric_log (conns/merge)     yes     yes    server-side, windowed.
+      #   13  part_log (parts/merge amp)   yes     yes    server-side, windowed.
+      #   14  settle_seconds               yes     yes    literal from SETTLE_SECONDS
+      #         (reset to 0 when settle was skipped) — records 0, not an error.
+      #   15  raw inserts -> ch_inserts    yes     yes    server-side, windowed.
+      #   16  throttling                   yes     yes    server-side, windowed.
+      #   17  memory peaks                 yes     yes    server-side, windowed.
+      #   18  derived (bytes/wire per row) yes     yes    server-side, windowed.
+      #   19  rate stability               yes     yes    reads perf.ch_inserts (15
+      #         ran just above); HAVING count()>=2 => omitted, never errors.
+      #   20  integrity                    yes    tolerant needs a SUCCESSFUL ingest:
+      #         on a failed-class run the load is partial by definition, so the run
+      #         is 'integrity_unverified' (contract §1.3) and the integrity CHECK
+      #         step is skipped (below). The dedup-context half (ch_dedup_dropped_
+      #         blocks) is not separable from the same INSERT, so on the failed path
+      #         the whole file is TOLERATED (|| true): if it runs it lands context
+      #         rows, if it errors it does not fail the class. It is NEVER allowed
+      #         to fail the run on the failed path (directive 3).
+      #   22  settle_timed_out             yes     yes    literal from SETTLE_TIMED_OUT
+      #         (reset to 0 when settle was skipped) — records 0, not an error.
+      # (21 pre-run covariates runs earlier, pre-submit, in its own step.)
+      #
+      # run_cost_usd is NOT captured here: it is a PAIR-level metric recorded once,
+      # top-level in the workflow after "Teardown EMR", onto the first-run arm's row
+      # (contract §2.1 amendment).
+      if: ${{ !cancelled() }}
       shell: bash
       env:
+        SUBMIT_OUTCOME: ${{ steps.submit.outcome }}
         METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
         METRICS_CH_USER: ${{ inputs.metrics_ch_user }}
         METRICS_CH_PASSWORD: ${{ inputs.metrics_ch_password }}
@@ -257,13 +318,24 @@ runs:
         CH_TABLE: hits
       run: |
         set -euo pipefail
-        # Order within the loop is irrelevant: independent INSERTs into
-        # perf.metrics / perf.ch_inserts (tables exist from the bootstrap step).
-        # run_cost_usd is NOT captured here: it is a PAIR-level metric recorded
-        # once, top-level in the workflow after "Teardown EMR", onto the
-        # first-run arm's row (contract §2.1 amendment).
-        for sql in \
-          benchmarks/sql/perf/10_insert_from_event_log.sql \
+        # Order within the loop is irrelevant EXCEPT that 15 must precede 19 (19
+        # reads the perf.ch_inserts rows 15 writes); the numeric order preserves
+        # that. Everything else is independent INSERTs into perf.metrics /
+        # perf.ch_inserts (tables exist from the bootstrap step).
+        #
+        # STRICT vs TOLERANT: STRICT files fail the step (=> rollback) on error —
+        # a partial-rows break must not silently produce an incomplete artifact.
+        # TOLERANT files (10 event log, 20 integrity) only apply on the FAILED
+        # class, where the underlying data is expected to be absent/partial; there
+        # they are wrapped in `|| true` so their absence does not fail the class.
+        run_sql () { echo "=== $1 ==="; python benchmarks/scripts/run_metrics_sql.py "$1"; }
+        run_sql_tolerant () {
+          echo "=== $1 (tolerant: failed-class) ==="
+          python benchmarks/scripts/run_metrics_sql.py "$1" || \
+            echo "NOTE: $1 produced no rows on the failed-class run (tolerated)"
+        }
+        # Server-side families run in BOTH classes (windowed system.*_log reads).
+        COMMON_STRICT=" \
           benchmarks/sql/perf/11_insert_from_query_log.sql \
           benchmarks/sql/perf/12_insert_from_metric_log.sql \
           benchmarks/sql/perf/13_insert_from_part_log.sql \
@@ -273,16 +345,38 @@ runs:
           benchmarks/sql/perf/17_insert_memory_peaks.sql \
           benchmarks/sql/perf/18_insert_derived_metrics.sql \
           benchmarks/sql/perf/19_insert_rate_stability.sql \
-          benchmarks/sql/perf/20_insert_integrity.sql \
-          benchmarks/sql/perf/22_insert_settle_timed_out.sql
-        do
-          echo "=== $sql ==="
-          python benchmarks/scripts/run_metrics_sql.py "$sql"
-        done
+          benchmarks/sql/perf/22_insert_settle_timed_out.sql"
+        if [ "${SUBMIT_OUTCOME}" = "success" ]; then
+          echo "capture: success-class — full family set (strict)"
+          # 10 (event log) + 20 (integrity) are STRICT here: on a successful
+          # ingest their inputs exist, and a partial write of these rows must
+          # roll the run back like any other capture break.
+          run_sql benchmarks/sql/perf/10_insert_from_event_log.sql
+          for sql in $COMMON_STRICT; do run_sql "$sql"; done
+          run_sql benchmarks/sql/perf/20_insert_integrity.sql
+        else
+          echo "capture: failed-class (submit outcome='${SUBMIT_OUTCOME}') — CH-side families + tolerant event-log/integrity"
+          # 10 (event log) is TOLERATED: a failed submit may leave no/partial log.
+          run_sql_tolerant benchmarks/sql/perf/10_insert_from_event_log.sql
+          for sql in $COMMON_STRICT; do run_sql "$sql"; done
+          # 20 (integrity) is TOLERATED and its VERDICT step is skipped for this
+          # class (integrity_unverified by definition — a partial load has no
+          # meaningful rows_delivered==rows_expected comparison).
+          run_sql_tolerant benchmarks/sql/perf/20_insert_integrity.sql
+        fi
 
     - name: "Decide validity-guard flags (arm ${{ inputs.arm }})"
       id: flags
-      if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
+      # Runs in BOTH outcome classes (task #6): gated on capture success, NOT on
+      # submit success. flagged/flag_reason are the validity-guard semantics
+      # (contract §1.3) and stay SEPARATE from the outcome class — a failed-class
+      # run is NOT merely "flagged" (contract §3): its outcome='failed' is set on
+      # the run record, while flagged is present only if a guard (task_retries /
+      # settle_timeout) also tripped. On the failed class settle was skipped
+      # (settle_timeout cannot trip) and task_failed_count may be absent (10 was
+      # tolerated) => read_task_failed_count.py returns 0 => typically no flag,
+      # which is correct: the run is failed, not flagged.
+      if: ${{ !cancelled() && steps.capture.outcome == 'success' }}
       shell: bash
       env:
         METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
@@ -308,9 +402,16 @@ runs:
 
     - name: "Insert run record (arm ${{ inputs.arm }})"
       id: run_record
-      if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' }}
+      # OUTCOME-CLASS RECORD (task #6): lands the perf.runs row in BOTH classes so
+      # a failed run is a first-class, marked artifact — not silently absent
+      # (survivorship bias, plan §6.5). Gated on the FLAGS step's success (which in
+      # turn requires capture success): no run record may exist without a flag
+      # decision (directive 5b — symmetric with the metrics invariant). NOT gated
+      # on submit success. runtime['outcome'] marks the class (below).
+      if: ${{ !cancelled() && steps.flags.outcome == 'success' }}
       shell: bash
       env:
+        SUBMIT_OUTCOME: ${{ steps.submit.outcome }}
         METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
         METRICS_CH_USER: ${{ inputs.metrics_ch_user }}
         METRICS_CH_PASSWORD: ${{ inputs.metrics_ch_password }}
@@ -319,6 +420,14 @@ runs:
         TARGET_CH_PASSWORD: ${{ inputs.target_ch_password }}
       run: |
         set -euo pipefail
+        # Outcome class (task #6 directive 4). 'success' iff the Spark submit
+        # succeeded, else 'failed'. This is SET EXPLICITLY on both paths; dashboards
+        # coalesce a MISSING outcome key to 'success' for legacy rows (the pre-task-6
+        # rows only ever landed on the success path). That coalesce default is a
+        # CONTRACT-AMENDMENT CANDIDATE: 'outcome' is not yet a pinned runtime key in
+        # docs/benchmark-v2-contract.md §1.3 — report, do not edit the contract here.
+        if [ "${SUBMIT_OUTCOME}" = "success" ]; then RUN_OUTCOME="success"; else RUN_OUTCOME="failed"; fi
+        echo "outcome class: $RUN_OUTCOME (submit outcome='${SUBMIT_OUTCOME}')"
         # Per-arm provenance: CONNECTOR_VERSION + ARM_GIT_SHA set in the first
         # step (head: version.txt + github.sha; pinned: PINNED_*). insert_run_record
         # reads GIT_SHA, so map the arm sha onto it here.
@@ -347,6 +456,7 @@ runs:
           --arg ec "$ENVIRONMENT_CLASS" --arg tr "$TARGET_REGION" \
           --arg cr "$COMPUTE_REGION" \
           --arg arm "$ARM" --arg pair "$PAIR_ID" \
+          --arg outcome "$RUN_OUTCOME" \
           --arg warmup "${WARMUP_WORKLOAD:-}" \
           --arg flagged "${FLAGGED:-}" --arg flag_reason "${FLAG_REASON:-}" \
           '{spark_version: $sv, scala_version: $scv, emr_release: $emr,
@@ -356,7 +466,8 @@ runs:
             partition_scheme: $ps, dataset: $ds,
             environment_class: $ec, target_region: $tr,
             compute_region: $cr,
-            arm: $arm, pair_id: $pair}
+            arm: $arm, pair_id: $pair,
+            outcome: $outcome}
            + (if $warmup != "" then {warm_up: $warmup} else {} end)
            + (if $flagged == "1"
               then {flagged: "1", flag_reason: $flag_reason}
@@ -364,7 +475,28 @@ runs:
         python benchmarks/scripts/insert_run_record.py
 
     - name: "Roll back this arm if it wasn't fully recorded (arm ${{ inputs.arm }})"
-      if: ${{ !cancelled() && steps.submit.outcome == 'success' && (steps.capture.outcome == 'failure' || steps.run_record.outcome == 'failure') }}
+      # OUTCOME-CLASS ROLLBACK (task #6 directive 1, redefined invariant): rollback
+      # means "the artifact is INCOMPLETE FOR ITS OUTCOME CLASS", NOT "the run
+      # failed". It fires in EITHER class — success OR failed — when capture, the
+      # flag decision, or the run-record insert BREAKS (partial rows / no flag
+      # decision / no run record). It does NOT fire merely because submit failed:
+      # a failed-class run whose reduced capture + flags + run record all succeeded
+      # is a COMPLETE artifact and is KEPT (marked outcome='failed').
+      #
+      # It is NOT gated on submit success — that gate is exactly what orphaned the
+      # pre-run covariate rows (SQL 21, written pre-submit): on a failed submit the
+      # old rollback never fired and no run record landed, leaving covariate metric
+      # rows with no owning perf.runs row (directive 5a). Now: either the run record
+      # lands and ADOPTS those covariate rows (failed-class success), or — if the
+      # reduced capture/flags/run_record breaks — this rollback wipes them. Either
+      # way no metric row is ever left orphaned.
+      #
+      # Including steps.flags.outcome == 'failure' closes directive 5b: a broken
+      # flag decision must also roll the artifact back (no run record — and no
+      # adopted covariates — may exist without a flag decision), symmetric with the
+      # capture/run_record legs. rollback_run_metrics.py DELETEs perf.{runs,metrics,
+      # ch_inserts} by run_id, so it cleans the covariate rows too.
+      if: ${{ !cancelled() && (steps.capture.outcome == 'failure' || steps.flags.outcome == 'failure' || steps.run_record.outcome == 'failure') }}
       shell: bash
       env:
         METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
@@ -376,7 +508,14 @@ runs:
       # Assumes the cross-account DWH write role (clickbench-load-test-ci is a
       # trusted principal) to stream this arm's perf.runs/metrics/ch_inserts to
       # the DWH bucket as Parquet; the DWH side ingests via s3queue.
-      if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' && steps.run_record.outcome == 'success' }}
+      #
+      # OUTCOME-CLASS EXPORT (task #6 directive 6, plan §6.5/§10): exports in BOTH
+      # classes so a FAILED-class run reaches the DWH fully — MARKED via
+      # runtime['outcome']='failed'. Dashboards EXCLUDE failed runs by outcome, not
+      # by absence; the atomic/gated discipline is preserved by gating on the same
+      # capture+flags+run_record success chain (a rolled-back run has no rows to
+      # export and this step is skipped). NOT gated on submit success.
+      if: ${{ !cancelled() && steps.capture.outcome == 'success' && steps.flags.outcome == 'success' && steps.run_record.outcome == 'success' }}
       shell: bash
       env:
         METRICS_CH_HOST: ${{ inputs.metrics_ch_host }}
@@ -397,6 +536,14 @@ runs:
       # the other arm — failure isolation is at the job level (arm 2 runs
       # regardless of arm 1), so a red integrity check here marks THIS arm's run
       # bad without stopping the pair.
+      #
+      # STILL GATED ON SUBMIT SUCCESS (task #6 directive 3): a failed-class run is
+      # 'integrity_unverified' BY DEFINITION — its load is partial, so there is no
+      # meaningful rows_delivered==rows_expected comparison, and the integrity SQL
+      # (20) was only TOLERANTLY captured (may be absent) for that class. Running
+      # this verdict on a failed-class run would either error ("no integrity
+      # metrics") or falsely FAIL a run that is already correctly marked
+      # outcome='failed'. So integrity verification is a SUCCESS-class-only gate.
       if: ${{ !cancelled() && steps.submit.outcome == 'success' && steps.capture.outcome == 'success' && steps.run_record.outcome == 'success' }}
       shell: bash
       env:

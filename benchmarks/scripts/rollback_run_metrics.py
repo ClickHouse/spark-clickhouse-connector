@@ -12,13 +12,22 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 #
-"""Roll back this run's rows when it wasn't fully recorded.
+"""Roll back this run's rows when it wasn't fully recorded FOR ITS OUTCOME CLASS.
 
 Metrics capture is several independent INSERTs into perf.metrics / perf.ch_inserts,
-and the run record (perf.runs) is a separate step. If capture fails partway, or
-capture succeeds but the run-record insert fails, this run's rows are deleted from
-all three perf tables so the source never holds metrics for a run that was never
-fully recorded (and the DWH export is skipped in those cases).
+and the run record (perf.runs) is a separate step. This deletes the run's rows
+from all three perf tables (including any pre-run covariate rows written before
+submit) so the source never holds an incomplete artifact.
+
+OUTCOME-CLASS INVARIANT (task #6): a run has an outcome class — 'success' or
+'failed' (runtime['outcome']). A run's rows are COMPLETE FOR ITS CLASS when that
+class's capture families + flag decision + run record all landed. This rollback
+fires ONLY when that artifact BREAKS (capture partial, flag decision failed, or
+run-record insert failed) — in EITHER class. It MUST NOT fire merely because the
+run failed: a failed-class run whose reduced capture + flags + run record all
+succeeded is a complete, marked artifact and is kept and exported. The caller
+(the run-arm composite action) encodes exactly this gating; this script is the
+unconditional delete it invokes.
 
 Required env: METRICS_CH_HOST, METRICS_CH_USER, METRICS_CH_PASSWORD, RUN_ID
 """
