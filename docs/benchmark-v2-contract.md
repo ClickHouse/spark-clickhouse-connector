@@ -52,7 +52,7 @@ below are the pinned contract. Both pipelines **MUST** spell them identically.
 | `pair_id` | see §1.2 | — | Shared by the two runs of one nightly two-arm pair. |
 | `target_region` | e.g. `'us-east-1'` | — (MANDATORY) | Cloud region of the run's target service. **MUST** be set from repo config, never hardcoded per run. |
 | `compute_region` | e.g. `'us-east-1'` | — (MANDATORY) | Cloud region of the load generator (EMR / EKS). When it differs from `target_region` the connector→server path is cross-region — a structural bias that cross-connector comparisons **MUST** be able to compute. (Amendment 2026-07-07.) |
-| `environment_class` | `'staging'` \| `'production'` \| `'self_hosted'` | — (MANDATORY) | Deployment class of the target service. `'self_hosted'` (Amendment 2026-07-07, scoped 2026-07-07b) applies to Tier-0 rows whose instrument is **load-generator-local** (e.g. Spark's pinned Docker ClickHouse on the EMR master); such rows MUST use it, and their `target_region` equals the compute region. Tier-0 rows whose Null target is **Cloud-hosted** (e.g. Kafka's Null table on its staging target, per that plan's decision 9) keep the target service's own class (e.g. `'staging'`) and region — see the `tier0_ch_version` scoping note. |
+| `environment_class` | `'staging'` \| `'production'` \| `'self_hosted'` | — (MANDATORY) | Deployment class of the target service. Tier-0 rows whose Null target is **Cloud-hosted** keep the target service's own class and region — this is now the case for **BOTH** pipelines: Spark's Tier 0 runs `clickbench.hits_null` (`ENGINE=Null`) on its production Cloud target (`'production'` / `us-east-2`; Amendment 2026-07-07c — was Docker-on-master), and Kafka's Null table on its staging target (`'staging'`, per that plan's decision 9). `'self_hosted'` (Amendment 2026-07-07, scoped 2026-07-07b) is the value for Tier-0 rows whose instrument is **load-generator-local** (a pinned ClickHouse riding the load generator, `target_region` = compute region); it remains a **defined-but-currently-unused** branch (no pipeline emits it as of 2026-07-07c) — see the `tier0_ch_version` scoping note. |
 
 `target_region`, `compute_region`, and `environment_class` are **MANDATORY on
 every `perf.runs` row in both pipelines**, from day one.
@@ -61,7 +61,12 @@ every `perf.runs` row in both pipelines**, from day one.
   is a production service). `target_region` = `'us-east-2'` (confirmed 2026-07-07),
   `compute_region` = `'us-east-1'` (EMR) — the Spark connector→server path is
   **cross-region**; both values are set from repo config — **MUST NOT** be
-  hardcoded per run.
+  hardcoded per run. **Both tiers** carry these same values (Amendment 2026-07-07c):
+  Spark's Tier 0 now runs a Cloud-hosted `ENGINE=Null` table (`clickbench.hits_null`)
+  on the SAME production Cloud target, so its t0 rows **inherit** `environment_class`
+  = `'production'` and `target_region` = `'us-east-2'`, carry **no**
+  `tier0_ch_version`, and MUST emit the mandatory `ch_insert_cpu_share_tier0`
+  parse-watch (see §1.4 and §2.1).
 - **Kafka pipeline:** its dedicated target is a **us-east-2 staging** service, so
   `environment_class` = `'staging'`, `target_region` = `'us-east-2'`, and
   `compute_region` per its own infrastructure (in-region when compute is also
@@ -166,7 +171,7 @@ dashboard filter spans both pipelines. Connector-specific keys are allowed and
 | `partition_scheme` | target table partitioning under test (e.g. `'toYYYYMM(EventDate)'` or `'none'`) | DDL | DDL |
 | `dataset` | logical dataset shape (e.g. `'hits'`, `'pypi'`) | workload config | workload config |
 | `warm_up` | OPTIONAL — present iff a priming insert ran before the arm's truncate; value identifies the warm-up workload (e.g. `'hits_0'`). Absent ⇒ no warm-up. (Amendment 2026-07-07.) | warm-up step | warm-up step |
-| `tier0_ch_version` | MANDATORY on `tier='0'` rows **whose instrument is load-generator-local** (pinned version, e.g. `'25.8.28'`; a bump is an annotatable environment event), absent otherwise. Tier-0 rows on a **Cloud-hosted** Null target have no pinned instrument version by design (the Cloud version drifts): they omit this key, rely on the `clickhouse_version` covariate, and the `ch_insert_cpu_share_tier0` parse-watch metric is MANDATORY for them instead. (Amendment 2026-07-07, scoped 2026-07-07b.) | tier0 bootstrap pin (load-generator-local) | clickhouse_version covariate + parse-watch (Cloud-hosted Null) |
+| `tier0_ch_version` | MANDATORY on `tier='0'` rows **whose instrument is load-generator-local** (pinned version, e.g. `'25.8.28'`; a bump is an annotatable environment event), absent otherwise. Tier-0 rows on a **Cloud-hosted** Null target have no pinned instrument version by design (the Cloud version drifts): they omit this key, rely on the `clickhouse_version` covariate, and the `ch_insert_cpu_share_tier0` parse-watch metric is MANDATORY for them instead. As of Amendment 2026-07-07c **BOTH** pipelines use Cloud-hosted Null targets, so **neither emits `tier0_ch_version`** — it is reserved for the defined-but-currently-unused `self_hosted` branch. (Amendment 2026-07-07, scoped 2026-07-07b, both-Cloud 2026-07-07c.) | omitted (Cloud-hosted Null): clickhouse_version covariate + parse-watch | clickhouse_version covariate + parse-watch (Cloud-hosted Null) |
 
 **Connector-specific keys (allowed, MUST be namespaced):** e.g.
 `spark_version`, `scala_version`, `emr_release` (Spark); `kafka_connect_version`,
@@ -207,7 +212,7 @@ pipelines. Units are the string written to the `unit` column.
 | `ch_memory_limit_errors` | `count` | Insert/flush queries that failed with MEMORY_LIMIT_EXCEEDED (241) or CANNOT_READ_ALL_DATA (33) over the run window, scoped to the target table. |
 | `ch_dedup_dropped_blocks` | `count` | `DuplicatedInsertedBlocks` ProfileEvent delta over the window (max−min). Retried batches the server absorbed as duplicate-drops — the benign counterpart to `duplicate_rows`. |
 | `bytes_on_wire_per_row` | `bytes/row` | Server `NetworkReceiveBytes` (post-compression ingress on Insert receipts) ÷ delivered rows. Wire efficiency; catches compression/encoding regressions. |
-| `ch_insert_cpu_share_tier0` | `percent` | (Tier 0 only) Docker-CH `query_log` insert CPU ÷ wall-clock, ×100. Instrument-health watch: if it camps near 100%, the Null target is parse-bound and Tier 0 is measuring the server, not the connector. |
+| `ch_insert_cpu_share_tier0` | `percent` | (Tier 0 only) Null-target `query_log` insert CPU ÷ wall-clock, ×100 (read against whatever hosts the Null table — a Cloud-hosted target for both pipelines as of 2026-07-07c). Instrument-health watch: if it camps near 100%, the Null target is parse-bound and Tier 0 is measuring the server, not the connector. **MANDATORY** on Cloud-hosted Null t0 rows (§1.4). |
 | `connections_per_insert` | `ratio` | New server connections created ÷ insert count over the run window (`metric_log` connection counters). Pool/keep-alive health. Same spelling on ALL tiers (Amendment 2026-07-07); the Tier-1 rename from `ch_connections_per_insert` landed 2026-07-07 (see §7 for the legacy-name coalesce). |
 | `settle_seconds` | `seconds` | Seconds from ingest-end until active parts stabilise (merge debt left behind). **MUST** be spelled `settle_seconds` (§7: Spark SQL currently emits `ch_settle_seconds`). |
 | `settle_timed_out` | `bool` | `1` iff settle hit the timeout cap (default 1800s), right-censoring `settle_seconds`. Feeds the `settle_timeout` flag (§1.3). |
