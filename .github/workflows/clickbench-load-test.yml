@@ -58,6 +58,27 @@ jobs:
       CH_TABLE: hits
       CH_SECRET_ID: clickbench-load-test/target-ch-password
       INPUT_PARQUET_GLOB: ${{ inputs.input_parquet_glob || 's3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet' }}
+      # --- Connector operating config UNDER TEST (plan §4, §6.9) ---------------
+      # These live in version control and are echoed into perf.runs.runtime (see
+      # "Insert run record"), so the config under test is auditable per run and
+      # the dashboard config filter can slice on them. This repo is the SINGLE
+      # SOURCE OF TRUTH: the diverged S3 orchestrator copy that used to carry
+      # batchSize (~line 95 there) is retired — the workflow uploads
+      # benchmarks/clickbench_ingest.py fresh every run (see "Upload jar and
+      # script to S3" + emr_submit.sh SCRIPT_S3_URI), so these values reach EMR
+      # from the repo, not from S3. Contract §1.4 key spellings.
+      BATCH_SIZE: "100000"          # spark.clickhouse.write.batchSize (rows/batch); known operating point
+      WRITE_PARALLELISM: "32"       # concurrent insert streams (baseline EMR profile); drives df repartition
+      ASYNC_INSERT: "0"             # server async_insert mode OFF at the operating point
+      PARTITION_SCHEME: "toYear(EventDate)"  # current target DDL (benchmarks/sql/clickbench/02_create_hits.sql); toYYYYMM switch is a later plan §9 step
+      DATASET: "hits"               # logical dataset shape (contract §1.4)
+      # --- Mandatory scope keys on every perf.runs row (contract §1.1) --------
+      ENVIRONMENT_CLASS: "production"  # the Spark target is a production Cloud service
+      # TARGET_REGION: Cloud region of the TARGET ClickHouse service. Set from
+      # repo config, never hardcoded per run (contract §1.1). us-east-1 matches
+      # the EMR side; task #9 confirms the ClickHouse target's region via the
+      # Cloud console — update here (one place) once confirmed.
+      TARGET_REGION: "us-east-1"
       # Run dimensions recorded on perf.runs (and exported to the DWH).
       CONNECTOR: ${{ inputs.connector || 'spark' }}
       RUN_PROFILE: ${{ inputs.run_profile || 'small' }}
@@ -202,6 +223,12 @@ jobs:
           CH_PORT: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
           CH_PROTOCOL: https
           CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          # Connector operating config under test — forwarded to the Spark job
+          # via emr_submit.sh appMasterEnv so clickbench_ingest.py applies them
+          # (plan §6.9). Sourced from the top-level workflow env, not S3.
+          BATCH_SIZE: ${{ env.BATCH_SIZE }}
+          WRITE_PARALLELISM: ${{ env.WRITE_PARALLELISM }}
+          ASYNC_INSERT: ${{ env.ASYNC_INSERT }}
         run: benchmarks/scripts/emr_submit.sh
 
       - name: Capture run end timestamp
@@ -287,14 +314,26 @@ jobs:
           GIT_SHA: ${{ github.sha }}
         run: |
           export CONNECTOR_VERSION=$(cat version.txt)
-          # Spark/EMR attrs go into the generic perf.runs.runtime map; another
-          # connector would build its own RUNTIME json here.
+          # Spark/EMR attrs + connector operating config + mandatory scope keys
+          # go into the generic perf.runs.runtime map; another connector would
+          # build its own RUNTIME json here. Config keys use contract §1.4
+          # shared spellings (batch_size, write_parallelism, async_insert,
+          # partition_scheme, dataset); target_region + environment_class are
+          # the mandatory scope keys (contract §1.1). spark_version/scala_version/
+          # emr_release stay connector-namespaced (contract §1.4).
           export RUNTIME=$(jq -cn --arg sv 3.5 --arg scv 2.12 --arg emr "$EMR_RELEASE_LABEL" \
             --arg it "$EMR_INSTANCE_TYPE" --arg cc "$EMR_CORE_COUNT" \
             --arg sto "${SETTLE_TIMED_OUT:-0}" \
+            --arg bs "$BATCH_SIZE" --arg wp "$WRITE_PARALLELISM" \
+            --arg ai "$ASYNC_INSERT" --arg ps "$PARTITION_SCHEME" \
+            --arg ds "$DATASET" \
+            --arg ec "$ENVIRONMENT_CLASS" --arg tr "$TARGET_REGION" \
             '{spark_version: $sv, scala_version: $scv, emr_release: $emr,
               emr_instance_type: $it, emr_core_count: $cc,
-              settle_timed_out: $sto}')
+              settle_timed_out: $sto,
+              batch_size: $bs, write_parallelism: $wp, async_insert: $ai,
+              partition_scheme: $ps, dataset: $ds,
+              environment_class: $ec, target_region: $tr}')
           python benchmarks/scripts/insert_run_record.py
 
       - name: Roll back this run if it wasn't fully recorded

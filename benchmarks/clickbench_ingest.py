@@ -24,6 +24,17 @@ Required env vars:
   CH_HOST, CH_PORT, CH_PROTOCOL, CH_USER,
   CH_DATABASE, CH_TABLE, INPUT_PARQUET_GLOB, RUN_ID
 
+Connector operating config under test (plan §6.9; version-controlled in the
+workflow env, forwarded via emr_submit.sh appMasterEnv). Defaulted here to the
+known operating point so a bare invocation still runs the pinned config:
+  BATCH_SIZE         rows per insert batch -> spark.clickhouse.write.batchSize
+                     (default 100000)
+  WRITE_PARALLELISM  concurrent insert streams; the input is repartitioned to
+                     this many partitions before the write so parallelism is a
+                     controlled, recorded number, not an artifact of the input
+                     file count (default 32)
+  ASYNC_INSERT       server async_insert mode, '0' | '1' (default '0')
+
 Password resolution:
   CH_SECRET_ID  AWS Secrets Manager secret holding the CH password, read at
                 runtime via the instance profile (used on EMR - the password is
@@ -75,8 +86,35 @@ def load_config(env):
     return cfg
 
 
+def load_operating_config(env):
+    """Connector operating config under test (plan §6.9). Version-controlled in
+    the workflow env; defaulted here to the known operating point so a bare run
+    still exercises the pinned config."""
+    batch_size = env.get("BATCH_SIZE", "100000")
+    write_parallelism = env.get("WRITE_PARALLELISM", "32")
+    async_insert = env.get("ASYNC_INSERT", "0")
+    try:
+        int(batch_size)
+    except ValueError:
+        sys.exit(f"BATCH_SIZE must be an integer, got: {batch_size}")
+    try:
+        wp = int(write_parallelism)
+    except ValueError:
+        sys.exit(f"WRITE_PARALLELISM must be an integer, got: {write_parallelism}")
+    if wp < 1:
+        sys.exit(f"WRITE_PARALLELISM must be >= 1, got: {write_parallelism}")
+    if async_insert not in ("0", "1"):
+        sys.exit(f"ASYNC_INSERT must be '0' or '1', got: {async_insert}")
+    return {
+        "BATCH_SIZE": batch_size,
+        "WRITE_PARALLELISM": write_parallelism,
+        "ASYNC_INSERT": async_insert,
+    }
+
+
 def main():
     cfg = load_config(os.environ)
+    op = load_operating_config(os.environ)
 
     spark = (
         SparkSession.builder
@@ -90,18 +128,32 @@ def main():
         .config("spark.sql.catalog.clickhouse.database", cfg["CH_DATABASE"])
         .config("spark.sql.catalog.clickhouse.option.ssl",
                 str(cfg["CH_PROTOCOL"] == "https").lower())
-        .config("spark.sql.catalog.clickhouse.option.clickhouse_setting_async_insert", "0")
-        .config("spark.sql.catalog.clickhouse.option.clickhouse_setting_wait_for_async_insert", "0")
+        # Batch size (rows per insert) under test — connector write conf.
+        .config("spark.clickhouse.write.batchSize", op["BATCH_SIZE"])
+        # async_insert mode under test. wait_for_async_insert kept coupled so a
+        # sync run (async=0) is a clean synchronous insert.
+        .config("spark.sql.catalog.clickhouse.option.clickhouse_setting_async_insert",
+                op["ASYNC_INSERT"])
+        .config("spark.sql.catalog.clickhouse.option.clickhouse_setting_wait_for_async_insert",
+                op["ASYNC_INSERT"])
         .getOrCreate()
     )
     spark.sparkContext.setLogLevel("WARN")
 
     print(f"[clickbench_ingest] run_id={cfg['RUN_ID']}")
+    print(f"[clickbench_ingest] operating config: batch_size={op['BATCH_SIZE']} "
+          f"write_parallelism={op['WRITE_PARALLELISM']} async_insert={op['ASYNC_INSERT']}")
     print(f"[clickbench_ingest] reading: {cfg['INPUT_PARQUET_GLOB']}")
     df = spark.read.parquet(cfg["INPUT_PARQUET_GLOB"])
 
+    # Write parallelism is a controlled, recorded number, not an artifact of the
+    # input file count: repartition to WRITE_PARALLELISM so the number of
+    # concurrent insert streams matches the value echoed into runtime.
+    parallelism = int(op["WRITE_PARALLELISM"])
+    df = df.repartition(parallelism)
+
     target = f"clickhouse.{cfg['CH_DATABASE']}.{cfg['CH_TABLE']}"
-    print(f"[clickbench_ingest] writing to: {target}")
+    print(f"[clickbench_ingest] writing to: {target} (parallelism={parallelism})")
     df.writeTo(target).append()
 
     spark.stop()

@@ -16,8 +16,17 @@
 Required env: METRICS_CH_HOST, METRICS_CH_USER, METRICS_CH_PASSWORD,
               RUN_ID, RUN_START, RUN_END, GIT_SHA, CONNECTOR_VERSION
 Optional env: CONNECTOR (default 'spark'), RUN_PROFILE (default ''),
-              RUNTIME (JSON object of connector/runtime attributes, e.g.
-              {"spark_version":"3.5","scala_version":"2.12","emr_release":"emr-7.13.0"})
+              RUNTIME (JSON object of connector/runtime attributes written
+              verbatim into perf.runs.runtime Map(String,String)). The workflow
+              populates it with connector/EMR attrs, the operating config under
+              test (contract §1.4 shared keys: batch_size, write_parallelism,
+              async_insert, partition_scheme, dataset) and the mandatory scope
+              keys (contract §1.1: environment_class, target_region), e.g.
+              {"spark_version":"3.5","scala_version":"2.12",
+               "emr_release":"emr-7.13.0","batch_size":"100000",
+               "write_parallelism":"32","async_insert":"0",
+               "partition_scheme":"toYear(EventDate)","dataset":"hits",
+               "environment_class":"production","target_region":"us-east-1"}
 """
 import json
 import os
