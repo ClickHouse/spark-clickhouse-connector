@@ -107,29 +107,55 @@ WITH
       -- Re-map legacy ch_-prefixed names to the pinned contract name so both
       -- sides of the cutover share one `metric` key (contract §7). Non-renamed
       -- gated metrics pass through unchanged.
+      --
+      -- REGRESSION GUARD (review nit, 2026-07-08): a run straddling the rename
+      -- cutover could transiently emit BOTH spellings of the same metric (e.g.
+      -- `parts_per_insert` AND `ch_parts_per_insert`). Without de-dup the remap
+      -- would yield TWO (run_id, 'parts_per_insert') rows, and the head<->pinned
+      -- self-join below would fan out (up to 4 ratio rows for that pair/tier/
+      -- metric cell instead of 1). We collapse to one row per (run_id, remapped
+      -- name) here, PREFERRING the new spelling: `prefer` = 1 for a row whose
+      -- ORIGINAL name already was the pinned spelling (not remapped), 0 for a
+      -- row remapped from a legacy ch_ alias; argMax(value, prefer) then takes
+      -- the new-spelling value when both exist. When only one spelling is
+      -- present (the normal case) argMax returns that sole value unchanged, so
+      -- results are byte-identical to the pre-guard query.
       SELECT
         run_id,
-        multiIf(
-          metric_name = 'ch_parts_per_insert',         'parts_per_insert',
-          metric_name = 'ch_merge_amplification',      'merge_amplification',
-          metric_name = 'ch_inserts_delayed_fraction', 'inserts_delayed_fraction',
-          metric_name = 'ch_merge_pool_peak_pct',      'merge_pool_peak_pct',
-          metric_name = 'ch_settle_seconds',           'settle_seconds',
-          metric_name
-        ) AS metric_name,
-        value
-      FROM m
-      WHERE metric_name IN (
-        -- gated / comparable metrics (plan §3): pinned names ...
-        'throughput_rows_per_sec','null_rows_per_sec',
-        'parts_per_insert','merge_amplification','inserts_delayed_fraction',
-        'merge_pool_peak_pct','settle_seconds',
-        'cpu_seconds_per_Mrows','serialize_seconds_per_Mrows',
-        'ch_insert_cpu_seconds_per_Mrows','bytes_on_wire_per_row',
-        -- ... and their legacy aliases (coalesced above)
-        'ch_parts_per_insert','ch_merge_amplification',
-        'ch_inserts_delayed_fraction','ch_merge_pool_peak_pct','ch_settle_seconds'
+        metric_name,
+        argMax(value, prefer) AS value
+      FROM (
+        SELECT
+          m.run_id AS run_id,
+          multiIf(
+            m.metric_name = 'ch_parts_per_insert',         'parts_per_insert',
+            m.metric_name = 'ch_merge_amplification',      'merge_amplification',
+            m.metric_name = 'ch_inserts_delayed_fraction', 'inserts_delayed_fraction',
+            m.metric_name = 'ch_merge_pool_peak_pct',      'merge_pool_peak_pct',
+            m.metric_name = 'ch_settle_seconds',           'settle_seconds',
+            m.metric_name
+          ) AS metric_name,
+          -- 1 = original name was already the pinned spelling (no remap applied),
+          -- 0 = remapped from a legacy ch_ alias -> new spelling wins the argMax.
+          -- MUST read the RAW source name (m.metric_name); the projected
+          -- `metric_name` alias above is the POST-remap value, so a legacy row
+          -- would look pinned (prefer=1) and win ties wrongly.
+          if(startsWith(m.metric_name, 'ch_'), 0, 1) AS prefer,
+          m.value AS value
+        FROM m
+        WHERE m.metric_name IN (
+          -- gated / comparable metrics (plan §3): pinned names ...
+          'throughput_rows_per_sec','null_rows_per_sec',
+          'parts_per_insert','merge_amplification','inserts_delayed_fraction',
+          'merge_pool_peak_pct','settle_seconds',
+          'cpu_seconds_per_Mrows','serialize_seconds_per_Mrows',
+          'ch_insert_cpu_seconds_per_Mrows','bytes_on_wire_per_row',
+          -- ... and their legacy aliases (coalesced above)
+          'ch_parts_per_insert','ch_merge_amplification',
+          'ch_inserts_delayed_fraction','ch_merge_pool_peak_pct','ch_settle_seconds'
+        )
       )
+      GROUP BY run_id, metric_name
     ) AS mm ON e.run_id = mm.run_id
   )
 SELECT
