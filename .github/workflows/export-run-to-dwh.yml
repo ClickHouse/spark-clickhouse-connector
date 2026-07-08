@@ -1,0 +1,212 @@
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# ============================================================================
+# INTERIM CROSS-REPO EXPORT BRIDGE
+# ----------------------------------------------------------------------------
+# Manual-dispatch bridge that exports ANY already-recorded perf run from the
+# shared metrics ClickHouse to the analytics DWH, reusing THIS repo's existing
+# AWS trust (CLICKBENCH_AWS_ROLE_ARN for OIDC + CLICKBENCH_DWH_ROLE_ARN as the
+# cross-account write role). It adds NO new AWS trust, NO new secrets, NO new
+# roles — it is the interim path for runs whose OWN repo's export role is
+# blocked (notably the Kafka connector's runs), until each repo can export on
+# its own credentials.
+#
+# The metrics store is shared, so a run_id recorded there by another pipeline
+# can be re-exported from here without that pipeline holding DWH trust. This
+# workflow takes run_ids and nothing else.
+#
+# SEQUENCING CAVEAT (read verbatim):
+#   Kafka pair #1 must NOT be exported until kafka-manager's quarantine flags
+#   land — this workflow only takes run_ids; sequencing is the caller's
+#   responsibility.
+# ============================================================================
+
+name: "Export Run to DWH"
+
+on:
+  workflow_dispatch:
+    inputs:
+      run_ids:
+        description: "One or more run_ids (comma- or space-separated). Each is exported independently."
+        required: true
+        type: string
+      dry_run:
+        description: "Print per-run_id row counts that WOULD be exported, without writing to the DWH."
+        required: false
+        type: boolean
+        default: false
+
+concurrency:
+  # Share the main pipeline's export contention domain loosely: this is a
+  # separate group so a manual export never blocks a scheduled load-test, but
+  # two manual exports serialize to avoid racing s3_truncate_on_insert on the
+  # same per-run key.
+  group: export-run-to-dwh
+  cancel-in-progress: false
+
+jobs:
+  export:
+    runs-on: ubuntu-22.04
+    permissions:
+      # Same OIDC permissions block as the main workflow's export path.
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: us-east-1
+    steps:
+      - uses: actions/checkout@v4
+
+      # Same python setup/deps as the main workflow's export step
+      # (clickbench-load-test.yml line 160-161): clickhouse-connect + boto3.
+      - name: Install ClickHouse client (clickhouse-connect) + boto3
+        run: pip install --quiet clickhouse-connect boto3
+
+      # Same OIDC role assumption as the main workflow (clickbench-load-test.yml
+      # line 169-173): the ambient GitHub Actions role that export_metrics_to_dwh.py
+      # then uses (via STS) to assume DWH_ROLE_ARN.
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.CLICKBENCH_AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Validate and normalize run_ids
+        id: parse
+        shell: bash
+        env:
+          RAW_RUN_IDS: ${{ inputs.run_ids }}
+        run: |
+          set -euo pipefail
+          # Split on commas AND whitespace — including newlines/tabs from a
+          # multi-line paste in the dispatch UI textarea. Newlines MUST be
+          # normalized to spaces BEFORE the read: `read <<<` consumes only the
+          # first line, so un-normalized newline-separated ids would be
+          # silently dropped. Read into an array so nothing is word-split
+          # unsafely downstream.
+          normalized="${RAW_RUN_IDS//[$'\n\t,']/ }"
+          read -r -a ids <<< "$normalized"
+          if [ "${#ids[@]}" -eq 0 ]; then
+            echo "::error::no run_ids provided after parsing '$RAW_RUN_IDS'"
+            exit 1
+          fi
+          # Permissive but shell-safe: run_ids are alphanumerics, dot, dash,
+          # underscore only (covers <ts>-<sha>-<arm>-t<tier> and legacy forms).
+          # Anything with whitespace/quotes/slashes/$/;/&/| etc. is rejected —
+          # no shell metacharacters can survive into the export loop.
+          pattern='^[A-Za-z0-9._-]+$'
+          clean=()
+          for id in "${ids[@]}"; do
+            if [[ ! "$id" =~ $pattern ]]; then
+              echo "::error::run_id '$id' is invalid (allowed: A-Z a-z 0-9 . _ -); refusing to proceed"
+              exit 1
+            fi
+            clean+=("$id")
+          done
+          echo "validated ${#clean[@]} run_id(s): ${clean[*]}"
+          # Emit a single space-joined line for the export step to re-read.
+          printf 'run_ids=%s\n' "${clean[*]}" >> "$GITHUB_OUTPUT"
+
+      - name: Export run_ids to DWH
+        shell: bash
+        env:
+          # Same metrics-CH + DWH-role env names as the main pipeline's export
+          # step (.github/actions/run-arm/action.yml ~702-706), fed from the
+          # same secrets the main workflow passes as composite inputs
+          # (clickbench-load-test.yml ~349-352).
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          DWH_ROLE_ARN: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
+          RUN_IDS: ${{ steps.parse.outputs.run_ids }}
+          DRY_RUN: ${{ inputs.dry_run }}
+        run: |
+          set -uo pipefail
+          # DRY-RUN NOTE: export_metrics_to_dwh.py has no dry-run flag, so dry-run
+          # is implemented here by querying per-run_id row counts from the shared
+          # metrics ClickHouse using the SAME ch_common client the exporter uses
+          # (benchmarks/scripts/ch_common.py). No DWH write, no role assumption.
+          #
+          # ZERO-ROW GATE (both modes): the count check below runs BEFORE any
+          # real export too — a typo'd/absent run_id would otherwise "export"
+          # empty parquet keys to the DWH. Zero rows -> warn + mark failed for
+          # that run_id and SKIP the export call.
+          read -r -a ids <<< "$RUN_IDS"
+          declare -a summary=()
+          failed=0
+          for RUN_ID in "${ids[@]}"; do
+            echo "::group::run_id ${RUN_ID}"
+            # Cheap point counts per perf.* table; parameterized (never
+            # interpolated) so the run_id is bound, not injected. Exit codes:
+            # 0 = rows exist, 3 = zero rows everywhere, other = query failure.
+            python3 - "$RUN_ID" <<'PY'
+          import sys
+          sys.path.insert(0, "benchmarks/scripts")
+          import ch_common
+          run_id = sys.argv[1]
+          client = ch_common.get_client("METRICS_CH_HOST", "METRICS_CH_USER", "METRICS_CH_PASSWORD")
+          total = 0
+          for table in ("runs", "metrics", "ch_inserts"):
+              n = client.command(
+                  "SELECT count() FROM perf." + table + " WHERE run_id = {rid:String}",
+                  parameters={"rid": run_id},
+              )
+              n = int(n)
+              total += n
+              print(f"  [count] perf.{table}: {n} row(s) to export")
+          print(f"  [count] total rows for {run_id}: {total}")
+          sys.exit(0 if total > 0 else 3)
+          PY
+            rc=$?
+            if [ "$rc" -eq 3 ]; then
+              echo "::warning::run_id ${RUN_ID} has NO rows in perf.* (nothing to export); skipping"
+              summary+=("${RUN_ID} -> NO-ROWS(skipped)")
+              failed=1
+            elif [ "$rc" -ne 0 ]; then
+              echo "::error::row-count check failed for run_id ${RUN_ID} (rc=$rc)"
+              summary+=("${RUN_ID} -> COUNT-FAILED")
+              failed=1
+            elif [ "$DRY_RUN" = "true" ]; then
+              summary+=("${RUN_ID} -> dry-run:has-rows")
+            else
+              # Real export: the exporter filters by the single RUN_ID env var
+              # (export_metrics_to_dwh.py reads os.environ["RUN_ID"]).
+              if RUN_ID="$RUN_ID" python benchmarks/scripts/export_metrics_to_dwh.py; then
+                summary+=("${RUN_ID} -> exported")
+              else
+                echo "::error::export failed for run_id ${RUN_ID}"
+                summary+=("${RUN_ID} -> FAILED")
+                failed=1
+              fi
+            fi
+            echo "::endgroup::"
+          done
+
+          # Summary table (run_id -> exported/failed), also to the job summary.
+          {
+            echo "### Export summary"
+            echo ""
+            echo "| run_id | result |"
+            echo "| --- | --- |"
+            for row in "${summary[@]}"; do
+              rid="${row%% -> *}"
+              res="${row##* -> }"
+              echo "| ${rid} | ${res} |"
+            done
+          } | tee -a "$GITHUB_STEP_SUMMARY"
+
+          if [ "$failed" -ne 0 ]; then
+            echo "::error::one or more run_ids failed (see summary); failing the job"
+            exit 1
+          fi
+          echo "all run_ids processed successfully"
