@@ -19,6 +19,14 @@
 -- Channel wiring is a FLAGGED follow-up (open decision 3) — see README.md.
 -- Non-empty result set == alert should fire; attach `run_link` per row.
 --
+-- CONNECTOR SCOPING (2026-07-10): kafka rows now share these SAME DWH tables (runs
+--   carries a first-class `connector` column; our rows are connector='spark'). This
+--   alert fires on SPARK integrity failures only, so its runs CTE is scoped to
+--   'spark'. Cross-connector lives on kafka's Tab 5 per contract §6. FLAGGED NOTE:
+--   kafka's first ingested pair carries a pre-correction flagged='true' spelling the
+--   flagged predicate (runtime['flagged']='1') would misread as unflagged —
+--   connector scoping moots that here; contract pins '1'.
+--
 -- Run against: DWH connection dc93cd97, db 1, schema raw_connectors_load_testing.
 -- Empty today. MUST NOT error on the empty dataset.
 -- =============================================================================
@@ -54,10 +62,16 @@ WITH
       p.unique_delivered, p.unique_expected, p.duplicate_rows
     FROM raw_connectors_load_testing.runs AS r
     LEFT JOIN pivot AS p ON r.run_id = p.run_id
+    -- kafka rows share these tables since 2026-07-10; Spark dashboard datasets are
+    -- connector-scoped; cross-connector lives on kafka's Tab 5 per contract §6.
+    -- This alert fires on SPARK integrity failures only — a kafka mismatch would
+    -- cross-fire, so scope positively to 'spark'.
+    WHERE r.connector = 'spark'
     -- contract §3: exclude the reserved verdict-fixture connector (a CI truth
     -- table, never a real run) — matches the consumer views' predicate so a
     -- mirrored fixture row can never raise a spurious INTEGRITY_MISMATCH.
-    WHERE r.connector != 'verdict_fixture'
+    -- (connector='spark' already excludes it — kept as belt-and-braces.)
+      AND r.connector != 'verdict_fixture'
   )
 SELECT
   run_id,

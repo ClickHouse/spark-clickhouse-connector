@@ -30,6 +30,14 @@
 --   defaults), §2.1 (metric names), §3 (integrity/flag semantics), §7 (legacy ->
 --   contract metric renames coalesced so history is one series).
 --
+-- CONNECTOR SCOPING (2026-07-10): kafka rows now share these SAME DWH tables (runs
+--   carries a first-class `connector` column; our rows are connector='spark').
+--   Scoped to 'spark' so kafka rows never enter the trailing windows / band /
+--   noise-gauge statistics; cross-connector lives on kafka's Tab 5 per contract §6.
+--   FLAGGED NOTE: kafka's first ingested pair carries a pre-correction flagged='true'
+--   spelling our flagged predicate (runtime['flagged']='1') would misread as
+--   unflagged — connector scoping moots that here; the contract pins '1'.
+--
 -- HARD REQUIREMENTS met:
 --   * ABSOLUTE metric set (6 series-kinds) — the deviation-band + noise-gauge
 --     surface. Cardinality is (eligible rows) × 6, kept sane by never cross-joining:
@@ -163,9 +171,13 @@ WITH
       )                                                     AS integrity_ok
     FROM raw_connectors_load_testing.runs AS r
     LEFT JOIN pivot AS p ON r.run_id = p.run_id
+    -- kafka rows share these tables since 2026-07-10; Spark dashboard datasets are
+    -- connector-scoped; cross-connector lives on kafka's Tab 5 per contract §6.
+    WHERE r.connector = 'spark'
     -- contract §3 acceptance rule: exclude the reserved verdict-fixture connector
     -- from all real trends (fixture is a CI truth-table, never a real run).
-    WHERE r.connector != 'verdict_fixture'
+    -- (connector='spark' already excludes it — kept as belt-and-braces.)
+      AND r.connector != 'verdict_fixture'
   ),
   -- Headline-eligible rows only. A row is eligible iff not flagged, outcome !=
   -- 'failed', and NOT integrity-failed. coalesce(integrity_ok, 1) lets unknown

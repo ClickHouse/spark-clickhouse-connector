@@ -8,6 +8,14 @@
 --   Environment noise hits both arms of a pair and cancels in the ratio; only a
 --   connector change moves it (plan §2, §7 v_pair_ratios sketch). Feeds Tab 1.
 --
+--   CONNECTOR SCOPING (2026-07-10): kafka pairs now land in these SAME DWH tables
+--   (runs carries a first-class `connector` column; our rows are connector='spark').
+--   Scoped to 'spark' so kafka pairs never contaminate the Tab-1 pair filter or
+--   ratios; cross-connector lives on kafka's Tab 5 per contract §6. FLAGGED NOTE:
+--   kafka's first ingested pair carries a pre-correction flagged='true' spelling
+--   that our flagged predicate (runtime['flagged']='1') would misread as unflagged —
+--   connector scoping moots that here; the contract pins '1'.
+--
 --   JOIN-strictness asymmetry (deliberate): this view keeps an INNER join —
 --   incomplete pairs must not produce ratios (it is the GATE). The Tab-4 drill
 --   view v2_pair_metrics_long uses a LEFT join and shows head-only pairs with
@@ -128,9 +136,13 @@ WITH
         max(if(metric_name = 'unique_expected',  value, NULL)) AS unique_expected
       FROM m GROUP BY run_id
     ) AS p ON r.run_id = p.run_id
+    -- kafka rows share these tables since 2026-07-10; Spark dashboard datasets are
+    -- connector-scoped; cross-connector lives on kafka's Tab 5 per contract §6.
+    WHERE r.connector = 'spark'
     -- contract §3 acceptance rule: exclude the reserved verdict-fixture connector
     -- from all real trends (fixture is a CI truth-table, never a real run).
-    WHERE r.connector != 'verdict_fixture'
+    -- (connector='spark' already excludes it — kept as belt-and-braces.)
+      AND r.connector != 'verdict_fixture'
   ),
   -- Apply the FAIL-class exclusions ONLY (contract §3: FAIL is distinct from
   -- FLAG). A run is eligible iff: NOT outcome='failed' and NOT integrity-failed

@@ -16,6 +16,14 @@
 -- Contract reference:  docs/benchmark-v2-contract.md §1 (pair_id/arm/tier), §7
 --   (renamed metrics coalesced via multiIf remap).
 --
+-- CONNECTOR SCOPING (2026-07-10): kafka pairs now share these SAME DWH tables (runs
+--   carries a first-class `connector` column; our rows are connector='spark').
+--   Scoped to 'spark' so kafka pairs never contaminate the Tab-4 pair drill;
+--   cross-connector lives on kafka's Tab 5 per contract §6. FLAGGED NOTE: kafka's
+--   first ingested pair carries a pre-correction flagged='true' spelling our flagged
+--   predicate (runtime['flagged']='1') would misread as unflagged — connector
+--   scoping moots that here; the contract pins '1'.
+--
 -- Relationship to v_pair_ratios:
 --   v_pair_ratios feeds Tab-1 (all pairs, ratio = head/pinned). This view is the
 --   per-pair DRILL companion: same head<->pinned self-join skeleton and the same
@@ -93,9 +101,13 @@ WITH
         max(if(metric_name = 'unique_expected',  value, NULL)) AS unique_expected
       FROM m GROUP BY run_id
     ) AS p ON r.run_id = p.run_id
+    -- kafka rows share these tables since 2026-07-10; Spark dashboard datasets are
+    -- connector-scoped; cross-connector lives on kafka's Tab 5 per contract §6.
+    WHERE r.connector = 'spark'
     -- contract §3 acceptance rule: exclude the reserved verdict-fixture connector
     -- from all real trends (fixture is a CI truth-table, never a real run).
-    WHERE r.connector != 'verdict_fixture'
+    -- (connector='spark' already excludes it — kept as belt-and-braces.)
+      AND r.connector != 'verdict_fixture'
   ),
   -- Default exclusions. Eligible iff: not flagged, not outcome='failed', and
   -- NOT integrity-failed (=0). Integrity-unknown (NULL) passes via coalesce(x,1).

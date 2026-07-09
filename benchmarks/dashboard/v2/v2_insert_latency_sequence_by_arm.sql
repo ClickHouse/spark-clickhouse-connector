@@ -15,6 +15,14 @@
 -- Contract reference:  docs/benchmark-v2-contract.md §1 (arm/pair_id/tier).
 -- Added: 2026-07-08 (merged-dashboard build, Phase 0).
 --
+-- CONNECTOR SCOPING (2026-07-10): kafka rows now share these SAME DWH tables (runs
+--   carries a first-class `connector` column; our rows are connector='spark').
+--   Scoped to 'spark' so kafka runs never contaminate the Tab-4 drill; cross-
+--   connector lives on kafka's Tab 5 per contract §6. FLAGGED NOTE: kafka's first
+--   ingested pair carries a pre-correction flagged='true' spelling the flagged
+--   predicate (runtime['flagged']='1') would misread as unflagged — connector
+--   scoping moots that here; the contract pins '1'.
+--
 -- Source schema (VERIFIED against 04_create_ch_inserts.sql): run_id, event_time,
 --   query_duration_ms, written_rows, ... exception_code. There is NO explicit
 --   sequence column, so insert_seq is derived as the row_number over event_time
@@ -55,10 +63,14 @@ FROM (
     ci.exception_code                                     AS exception_code
   FROM raw_connectors_load_testing.ch_inserts AS ci
   INNER JOIN raw_connectors_load_testing.runs AS r ON ci.run_id = r.run_id
+  -- kafka rows share these tables since 2026-07-10; Spark dashboard datasets are
+  -- connector-scoped; cross-connector lives on kafka's Tab 5 per contract §6.
+  WHERE r.connector = 'spark'
   -- contract §3 acceptance rule: exclude the reserved verdict-fixture connector
   -- from all real trends (drill base row is a ch_inserts row with only run_id, so
   -- we exclude on BOTH the joined connector and the 'FIXTURE-' run_id prefix).
-  WHERE r.connector != 'verdict_fixture'
+  -- (connector='spark' already excludes verdict_fixture — kept as belt-and-braces.)
+    AND r.connector != 'verdict_fixture'
     AND NOT startsWith(ci.run_id, 'FIXTURE-')
 )
 ORDER BY arm, insert_seq
