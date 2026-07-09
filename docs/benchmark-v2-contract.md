@@ -303,7 +303,7 @@ Three outcomes, applied identically by both pipelines:
    | Metric | direction |
    |--------|-----------|
    | `throughput_rows_per_sec` (verified), `null_rows_per_sec` / `null_drain_rows_per_sec`, `drain_rows_per_sec` | `higher_better` |
-   | `parts_per_insert`, `merge_amplification`, `cpu_seconds_per_Mrows`, `serialize_seconds_per_Mrows`, `ch_insert_cpu_seconds_per_Mrows` | `lower_better` |
+   | `parts_per_insert`, `merge_amplification`, `cpu_seconds_per_Mrows`, `connect_cpu_seconds_per_Mrows`, `serialize_seconds_per_Mrows`, `ch_insert_cpu_seconds_per_Mrows` | `lower_better` |
 
    **Calibrated per-metric bands (PINNED — Amendment 2026-07-09b, supersedes the
    flat ±3%/±5% rule).** Each band is **2× the measured noise floor** for its
@@ -314,7 +314,7 @@ Three outcomes, applied identically by both pipelines:
    |----------------------------------------|-------------------|
    | `throughput_rows_per_sec` (verified) | **±9%** |
    | `null_rows_per_sec`, `null_drain_rows_per_sec`, `drain_rows_per_sec` (Tier-0 null + Kafka drain analogues) | **±8.5%** |
-   | `ch_insert_cpu_seconds_per_Mrows`, `cpu_seconds_per_Mrows` | **±6%** |
+   | `ch_insert_cpu_seconds_per_Mrows`, `cpu_seconds_per_Mrows`, `connect_cpu_seconds_per_Mrows` (Kafka client-cpu spelling; gated at the family band — Amendment 2026-07-09f) | **±6%** |
    | `serialize_seconds_per_Mrows` | **±8.5%** |
 
    in-band ⇒ ratio ∈ `[1 − band, 1 + band]` (e.g. throughput `[0.91, 1.09]`;
@@ -343,9 +343,13 @@ Three outcomes, applied identically by both pipelines:
    flat-band gated set):**
    - **Tier 1 gate** = verified throughput (`throughput_rows_per_sec` /
      `drain_rows_per_sec`, banded) **+** `parts_per_insert` (tripwire).
-   - **Tier 0 gate** = `null_rows_per_sec` (banded), the cpu-per-Mrows metric
-     (`ch_insert_cpu_seconds_per_Mrows` / `cpu_seconds_per_Mrows`, banded) and
-     `serialize_seconds_per_Mrows` (banded).
+   - **Tier 0 gate** = `null_rows_per_sec` / `null_drain_rows_per_sec` (banded)
+     and the client cpu-per-Mrows metric (`cpu_seconds_per_Mrows` Spark /
+     `connect_cpu_seconds_per_Mrows` Kafka, banded), plus
+     `serialize_seconds_per_Mrows` (banded) — **Spark-specific** (Amendment
+     2026-07-09f): Kafka does not emit a serialize decomposition and correctly
+     OMITS the metric rather than rendering a perpetual NO_DATA row; a pipeline
+     gates only the metrics it emits.
    - **`merge_amplification` is DEMOTED to WATCH-ONLY** — it is **not gated** and
      does **not** raise a REGRESSION. Single-pair excursions **<25%** are
      indistinguishable from merge-timing noise (measured within-arm floor 12.7%,
