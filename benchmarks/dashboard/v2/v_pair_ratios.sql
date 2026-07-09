@@ -19,12 +19,44 @@
 -- Contract reference:  docs/benchmark-v2-contract.md §1 (pair_id/arm), §3
 --   (flagged & integrity semantics), §7 (renamed metrics coalesced).
 --
+-- ============================================================================
+-- CONSUMER OBLIGATION (READ THIS — flagged pairs are now CARRIED, not dropped):
+--   Contract §3 pins a FLAGGED verdict state (pair flagged => FLAGGED, excluded
+--   from bands/calibration BY DEFAULT). This view historically DROPPED flagged
+--   pairs pre-join, so the FLAGGED state never rendered in prod (only the CI
+--   fixture ever exercised it). Kafka renders FLAGGED rows per the map. To ALIGN
+--   (manager-concurred design change, 2026-07-09), this view now CARRIES flagged
+--   pairs through and emits two extra columns:
+--       flagged      UInt8   — 1 if EITHER arm of the (pair,tier) is flagged.
+--       flag_reason  String  — the flag token(s), '' when not flagged.
+--   Ratio is still computed where possible (head.value / nullIf(pinned,0)).
+--
+--   THEREFORE, per contract §3 ("flagged pairs excluded from bands/calibration BY
+--   DEFAULT"), the OBLIGATION MOVES TO THE CONSUMER:
+--     * CALIBRATION / GATE / BAND consumers  MUST filter  flagged = 0.
+--       (band-excursion alert, calibration stats, deviation-band inputs — a
+--        flagged pair must NEVER raise a REGRESSION/TRIPWIRE or shift a band.)
+--     * DISPLAY consumers  MAY render FLAGGED rows (Tab-1 verdict tiles /
+--       excursion log surface them as the FLAGGED verdict state per the map).
+--   A consumer that neither calibrates nor is a pure display surface should
+--   default to flagged = 0 (the safe, band-excluding default).
+--
+-- PAIR-LEVEL FLAG SEMANTICS (documented): a (pair, tier, metric) row is flagged
+--   iff EITHER arm of that (pair, tier) carries runtime['flagged']='1'. The flag
+--   is a per-RUN property; a pair inherits it from EITHER arm (contract §3: "a
+--   pair is flagged, so both arms exclude from bands"). flag_reason is the OR-arm
+--   union of the two arms' reason tokens (deduped, '|'-joined).
+-- ============================================================================
+--
 -- HARD REQUIREMENTS met:
 --   * Self-join on runtime pair_id, ratio = head.value / pinned.value per
 --     (pair_id, tier, metric).
---   * EXCLUDE BY DEFAULT, on BOTH arms: flagged runs (runtime['flagged']='1'),
---     integrity-FAILED runs (integrity_ok = 0), and outcome='failed' runs. A pair
---     is only emitted when BOTH its arms survive these filters.
+--   * FAIL-class exclusions kept AS-IS, on BOTH arms (these are FAIL, distinct
+--     from FLAG): integrity-FAILED runs (integrity_ok = 0) and outcome='failed'
+--     runs are DROPPED (they produce no headline number, contract §3). A pair is
+--     only emitted when BOTH its arms survive these FAIL filters.
+--   * FLAGGED pairs are NO LONGER dropped — they are carried with flagged=1 +
+--     flag_reason (see CONSUMER OBLIGATION above).
 --   * Pairs missing an arm simply don't appear (INNER JOIN head<->pinned).
 --   * Renamed metrics are coalesced to the pinned name (contract §7) inside the
 --     long-form CTE, so a pair straddling the 2026-07-07 cutover still joins as
@@ -56,6 +88,7 @@ WITH
       coalesce(nullIf(r.runtime['arm'], ''), 'head')    AS arm,
       coalesce(nullIf(r.runtime['tier'], ''), '1')      AS tier,
       (r.runtime['flagged'] = '1')                      AS flagged,
+      r.runtime['flag_reason']                          AS flag_reason,
       coalesce(nullIf(r.runtime['outcome'], ''), 'success') AS outcome,
       p.integrity_ok_metric,
       p.rows_delivered, p.rows_expected, p.unique_delivered, p.unique_expected
@@ -79,14 +112,19 @@ WITH
     -- from all real trends (fixture is a CI truth-table, never a real run).
     WHERE r.connector != 'verdict_fixture'
   ),
-  -- Apply the default exclusions. A run is eligible iff: not flagged, not
-  -- outcome='failed', and NOT integrity-failed (integrity_ok=0). Integrity
-  -- unknown (NULL) is allowed through (legacy rows) — same policy as headline_ok.
+  -- Apply the FAIL-class exclusions ONLY (contract §3: FAIL is distinct from
+  -- FLAG). A run is eligible iff: NOT outcome='failed' and NOT integrity-failed
+  -- (integrity_ok=0). Integrity unknown (NULL) is allowed through (legacy rows) —
+  -- same policy as headline_ok.
+  --   FLAG IS NO LONGER A FILTER HERE (design change 2026-07-09): flagged runs are
+  --   carried through with flagged + flag_reason so the FLAGGED verdict state can
+  --   render (contract §3). Band/calibration consumers filter flagged=0 downstream
+  --   (see CONSUMER OBLIGATION in the header). FAIL still drops the run entirely —
+  --   a failed / integrity-failed run yields NO headline number at all.
   eligible AS (
-    SELECT run_id, pair_id, arm, tier
+    SELECT run_id, pair_id, arm, tier, flagged, flag_reason
     FROM runs_scoped
     WHERE pair_id != ''
-      AND flagged = 0
       AND outcome != 'failed'
       -- Exclude ONLY integrity-FAILED (= 0). The multiIf is NULL for
       -- integrity-unknown runs; coalesce(x, 1) lets unknown pass. A bare
@@ -109,6 +147,8 @@ WITH
       e.pair_id AS pair_id,
       e.tier    AS tier,
       e.arm     AS arm,
+      e.flagged      AS flagged,       -- per-arm flag, OR-ed across arms at the join
+      e.flag_reason  AS flag_reason,   -- per-arm reason token(s)
       mm.metric_name AS metric,
       mm.value       AS value
     FROM eligible AS e
@@ -189,6 +229,11 @@ SELECT
   pr.head_value                    AS head_value,
   pr.pinned_value                  AS pinned_value,
   pr.ratio                         AS ratio,
+  -- FLAGGED-carry (contract §3, design change 2026-07-09). See CONSUMER
+  -- OBLIGATION in the header: band/calibration/gate consumers MUST filter
+  -- flagged = 0; display consumers MAY render these rows as the FLAGGED verdict.
+  pr.flagged                       AS flagged,
+  pr.flag_reason                   AS flag_reason,
   pr.pair_ts                       AS pair_ts,
   dense_rank() OVER (
     PARTITION BY pr.tier ORDER BY pr.pair_ts DESC
@@ -201,6 +246,21 @@ FROM (
     h.value                          AS head_value,
     pn.value                         AS pinned_value,
     h.value / nullIf(pn.value, 0)    AS ratio,
+    -- Pair-level flag: EITHER arm flagged => the pair is flagged (contract §3).
+    toUInt8(h.flagged OR pn.flagged) AS flagged,
+    -- flag_reason: union the two arms' reason tokens, dedup + '|'-join, '' when
+    -- neither arm carries a reason. arms usually share the same reason, but a
+    -- one-sided flag (only head OR only pinned) still surfaces its token.
+    arrayStringConcat(
+      arrayDistinct(
+        arrayFilter(x -> x != '',
+          arrayConcat(
+            splitByChar('|', h.flag_reason),
+            splitByChar('|', pn.flag_reason)
+          )
+        )
+      ), '|'
+    )                                AS flag_reason,
     if(
       extract(h.pair_id, '^(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2})Z') = '',
       NULL,

@@ -17,10 +17,19 @@
 --   (b) the parts_per_insert TRIPWIRE fires: head arm's ABSOLUTE value != 1.0
 --       (parts is a constant-1.0 structural invariant, NOT a ratio) => TRIPWIRE.
 --   One output row per (pair, tier, metric) excursion/trip.
---   FLAGGED runs are ALREADY excluded upstream (v2_pair_ratios only emits pairs
---   whose BOTH arms are un-flagged, outcome!='failed', not integrity-failed), so
---   a row here is a genuine regression/tripwire — never a flagged/non-comparable
---   run.
+--   FLAGGED pairs MUST NOT fire (contract §3: flagged => FLAGGED verdict, excluded
+--   from bands/alerts BY DEFAULT — a flagged run is non-comparable, not a
+--   regression). This alert reads the BASE tables directly (NOT v2_pair_ratios)
+--   and enforces the exclusion in its OWN `eligible` CTE via `flagged = 0` (a run
+--   enters only if NEITHER arm is flagged; a pair-level flag on either arm removes
+--   that arm and the INNER head<->pinned join then drops the pair). This is a
+--   CALIBRATION/GATE consumer, so per the CONSUMER OBLIGATION documented in
+--   v_pair_ratios.sql it filters flagged=0. (NOTE 2026-07-09: v2_pair_ratios now
+--   CARRIES flagged pairs — flagged=1 + flag_reason — so the FLAGGED verdict can
+--   render on DISPLAY surfaces. This alert must therefore NOT be reworked to read
+--   v2_pair_ratios without ALSO adding a `flagged = 0` filter; keeping the
+--   independent base-table CTE with its own flagged=0 filter is the safe form.)
+--   A row here is thus a genuine regression/tripwire — never a flagged run.
 --
 --   merge_amplification is WATCH-ONLY (contract §3): it is NOT gated and is
 --   EXCLUDED from this alert — single-pair excursions <25% are indistinguishable
