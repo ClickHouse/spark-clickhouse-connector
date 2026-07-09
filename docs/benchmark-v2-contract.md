@@ -256,14 +256,44 @@ Three outcomes, applied identically by both pipelines:
    from bands and ratios by default**. Flagged runs are still **fully captured
    and exported** — the most informative runs are often the least clean.
 
-3. **Ratio band-exit ⇒ a REGRESSION alert.** When a gated metric's H/P ratio
-   leaves its band (start ±3% Tier 0 / ±5% Tier 1, recalibrated from the first
-   ~20 pairs), that is a **REGRESSION** and files an alert with the pair link.
-   Band-exit tracking is on the **ratio**, not absolutes (absolutes are context;
-   the ratio is the contract).
+3. **Ratio band-exit ⇒ a verdict via the PINNED ratio→verdict map** (Amendment
+   2026-07-09; root cause on record: the contract pinned verdict classes but
+   never the mapping or the direction of goodness, so "outside band =
+   REGRESSION" was the natural wrong implementation). Bands start ±3% Tier 0 /
+   ±5% Tier 1, recalibrated from the first ~20 pairs; tracking is on the
+   **ratio**, not absolutes.
 
-Precedence: FAIL (integrity mismatch) overrides FLAG overrides pass/regression —
-a failed run yields no headline, so it cannot also be a regression.
+   **Per-gated-metric `direction` (PINNED):**
+
+   | Metric | direction |
+   |--------|-----------|
+   | `throughput_rows_per_sec` (verified), `null_rows_per_sec` / `null_drain_rows_per_sec`, `drain_rows_per_sec` | `higher_better` |
+   | `parts_per_insert`, `merge_amplification`, `cpu_seconds_per_Mrows`, `serialize_seconds_per_Mrows`, `ch_insert_cpu_seconds_per_Mrows` | `lower_better` |
+
+   **Ratio→verdict map (PINNED, both pipelines, any artifact emitting a
+   verdict):** ratio NULL or 0-denominator ⇒ **NO_DATA** (never REGRESSION);
+   pair flagged ⇒ **FLAGGED** (excluded from bands); ratio outside the band in
+   the GOOD direction ⇒ **IMPROVEMENT** (reported, not alarmed); outside in the
+   BAD direction ⇒ **REGRESSION** (alerts once calibration completes); else
+   **OK**. During calibration (fewer than ~20 pairs) verdicts MUST display as
+   provisional ("calibrating, n=X/20") and band-excursion alerts stay unwired;
+   only integrity failures alert.
+
+   **Gate composition:** the pair-level verdict uses ONLY the pinned gated set
+   (Tier 1: verified rows/s, `parts_per_insert`, `merge_amplification`; Tier 0:
+   the three client metrics). Pair-level roll-ups MUST also expose per-metric
+   in-band counts so a single noisy metric cannot zero the headline.
+
+   **Acceptance rule (PINNED):** any artifact that emits a VERDICT (not a
+   number) requires fixture-based acceptance: synthetic pair rows under a
+   reserved fixture connector, asserted through the REAL dataset SQL, covering
+   at least {NULL, 0-denominator, below-band, in-band, above-band} ×
+   {higher_better, lower_better} × {flagged, unflagged}. Consumer views MUST
+   exclude the fixture connector from real trends.
+
+Precedence: FAIL (integrity mismatch) overrides FLAG overrides
+NO_DATA/IMPROVEMENT/REGRESSION/OK — a failed run yields no headline, so it
+cannot also be a regression.
 
 ---
 
