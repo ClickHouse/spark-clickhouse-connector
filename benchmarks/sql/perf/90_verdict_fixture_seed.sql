@@ -59,17 +59,17 @@
 --   FAIL > FLAG > {NO_DATA / TRIPWIRE / IMPROVEMENT / REGRESSION / OK}:
 --     pair flagged                     => FLAGGED   (overrides EVERYTHING below,
 --                                                    incl. an armed TRIPWIRE)
---     (banded) ratio NULL/0-denominator=> NO_DATA
+--     (banded) ratio NULL/0-denominator=> NO_DATA   (absent EITHER arm, or /0)
 --     (banded) outside band, GOOD dir  => IMPROVEMENT
 --     (banded) outside band, BAD dir   => REGRESSION
 --     (banded) else                    => OK
---     (tripwire) head absent           => NO_DATA
+--     (tripwire) head absent (NULL)    => NO_DATA   (P16 — absent-HEAD cell)
 --     (tripwire) head == 1.0           => OK
 --     (tripwire) head != 1.0           => TRIPWIRE
 --
--- FIXTURE MATRIX (15 pairs × {throughput_rows_per_sec (HB banded ±9%),
+-- FIXTURE MATRIX (16 pairs × {throughput_rows_per_sec (HB banded ±9%),
 --   cpu_seconds_per_Mrows (LB banded ±6%), parts_per_insert (TRIPWIRE)}
---   = 45 asserted cells). Banded-ratio cells are engineered by fixing
+--   = 48 asserted cells). Banded-ratio cells are engineered by fixing
 --   pinned = 100 (throughput) / 10 (cpu) and setting head = pinned*ratio; NULL
 --   cells omit the PINNED arm's banded metric; 0-denom cells set pinned = 0.
 --   Tripwire cells set the HEAD arm's parts value directly (pinned parts is a
@@ -92,22 +92,28 @@
 --   FIXTURE-PAIR-13  YES      in-band             FLAGGED     FLAGGED     FLAGGED
 --   FIXTURE-PAIR-14  YES      above-band          FLAGGED     FLAGGED     FLAGGED
 --   FIXTURE-PAIR-15  YES      tripwire ARMED      FLAGGED     FLAGGED     FLAGGED (armed 1.05)
+--   FIXTURE-PAIR-16  no       HEAD arm absent      NO_DATA     NO_DATA     NO_DATA
+--                            (pinned present; head emits NO gated metric)
 --
 --   Coverage of the PINNED acceptance grid:
---     BANDED {below,in,above,NULL,0-denom} × {HB,LB} × {flagged,unflagged}:
---       unflagged HB/LB: 01(below) 02(in) 03(above) 04(NULL) 05(0-denom)
---         + near-edge 06(inside)/07(outside) for band-edge precision.
+--     BANDED {below,in,above,NULL(pinned-absent),NULL(head-absent),0-denom} ×
+--       {HB,LB} × {flagged,unflagged}:
+--       unflagged HB/LB: 01(below) 02(in) 03(above) 04(pinned-NULL) 05(0-denom)
+--         16(head-NULL) + near-edge 06(inside)/07(outside) for band-edge precision.
 --       flagged  HB/LB: 10(below) 11(NULL) 12(0-denom) 13(in) 14(above) — verdict
 --         is CONSTANT FLAGGED, but each guards a DISTINCT precedence bug (an impl
 --         that hoists in-band=>OK or good-excursion=>IMPROVEMENT above the flag
 --         check is caught only by 13/14).
---     TRIPWIRE {OK(==1.0), fired(!=1.0)} × {flagged,unflagged}:
+--     TRIPWIRE {OK(==1.0), fired(!=1.0), head-absent} × {flagged,unflagged}:
 --       unflagged: 08(fired hi 1.05) 09(fired lo 0.95) prove ANY deviation trips
---         (both directions); 01-07 (==1.0) prove OK. (An ABSENT head parts value
---         produces NO ROW — the honest production behaviour, matching v_pair_ratios
---         which is driven off present metric rows; there is no synthetic parts
---         NO_DATA cell, since a truly-absent tripwire metric is a no-row, not a
---         NO_DATA verdict.)
+--         (both directions); 01-07 (==1.0) prove OK; 16(head parts ABSENT) proves
+--         an absent HEAD tripwire metric => NO_DATA (kafka cross-check gap: the
+--         head-side join drop meant this cell could never render — the contract
+--         map's "NULL/absent parts_per_insert => NO_DATA" was unreachable in the
+--         Spark artifact. NOTE the asymmetry: P04/P11 exercise absent-PINNED only;
+--         P16 is the NEW absent-HEAD cell, which the head-driven join used to drop
+--         for BOTH banded metrics AND the tripwire — hence P16 asserts NO_DATA on
+--         all three).
 --       flagged:   15 ARMS the tripwire (head parts=1.05) yet expects FLAGGED —
 --         proves FLAG > TRIPWIRE precedence (10-14 carry parts=1.0, so 15 is the
 --         cell that catches a tripwire hoisted above the flag check).
@@ -191,7 +197,12 @@ FROM
       ('FIXTURE-P14-head',   'FIXTURE-PAIR-14', 'head',   '1'),
       ('FIXTURE-P14-pinned', 'FIXTURE-PAIR-14', 'pinned', '1'),
       ('FIXTURE-P15-head',   'FIXTURE-PAIR-15', 'head',   '1'),
-      ('FIXTURE-P15-pinned', 'FIXTURE-PAIR-15', 'pinned', '1')
+      ('FIXTURE-P15-pinned', 'FIXTURE-PAIR-15', 'pinned', '1'),
+      -- P16: absent-HEAD cell (kafka cross-check gap). Both arm RUNS exist and are
+      -- eligible; the HEAD arm deliberately emits NO gated metric (throughput/cpu/
+      -- parts) while the PINNED arm emits all three. => every metric NO_DATA.
+      ('FIXTURE-P16-head',   'FIXTURE-PAIR-16', 'head',   '0'),
+      ('FIXTURE-P16-pinned', 'FIXTURE-PAIR-16', 'pinned', '0')
     ]) AS t,
     t.1 AS run_id,
     t.2 AS pair_id,
@@ -229,7 +240,7 @@ FROM
       'FIXTURE-P09-head','FIXTURE-P09-pinned','FIXTURE-P10-head','FIXTURE-P10-pinned',
       'FIXTURE-P11-head','FIXTURE-P11-pinned','FIXTURE-P12-head','FIXTURE-P12-pinned',
       'FIXTURE-P13-head','FIXTURE-P13-pinned','FIXTURE-P14-head','FIXTURE-P14-pinned',
-      'FIXTURE-P15-head','FIXTURE-P15-pinned'
+      'FIXTURE-P15-head','FIXTURE-P15-pinned','FIXTURE-P16-head','FIXTURE-P16-pinned'
     ]) AS run_id,
     arrayJoin([
       ('integrity_ok',     'bool',  1.0),
@@ -270,7 +281,10 @@ FROM
     ('FIXTURE-P12-head',   100.0), ('FIXTURE-P12-pinned',   0.0),  -- 0-denom but FLAGGED
     ('FIXTURE-P13-head',   100.0), ('FIXTURE-P13-pinned', 100.0),  -- 1.00 in-band but FLAGGED
     ('FIXTURE-P14-head',   115.0), ('FIXTURE-P14-pinned', 100.0),  -- 1.15 above but FLAGGED
-    ('FIXTURE-P15-head',   100.0), ('FIXTURE-P15-pinned', 100.0)   -- 1.00 in (tripwire ARMED) but FLAGGED
+    ('FIXTURE-P15-head',   100.0), ('FIXTURE-P15-pinned', 100.0),  -- 1.00 in (tripwire ARMED) but FLAGGED
+    -- P16: HEAD arm OMITS throughput; only PINNED present => head_value NULL =>
+    -- ratio NULL => NO_DATA (absent-head banded cell).
+    ('FIXTURE-P16-pinned', 100.0)
   ]) AS t, t.1 AS run_id, t.2 AS value
 );
 
@@ -302,7 +316,9 @@ FROM
     ('FIXTURE-P12-head',    10.0), ('FIXTURE-P12-pinned',  0.0),  -- 0-denom but FLAGGED
     ('FIXTURE-P13-head',    10.0), ('FIXTURE-P13-pinned', 10.0),  -- 1.00 in-band but FLAGGED
     ('FIXTURE-P14-head',    11.0), ('FIXTURE-P14-pinned', 10.0),  -- 1.10 above but FLAGGED
-    ('FIXTURE-P15-head',    10.0), ('FIXTURE-P15-pinned', 10.0)   -- 1.00 in (tripwire ARMED) but FLAGGED
+    ('FIXTURE-P15-head',    10.0), ('FIXTURE-P15-pinned', 10.0),  -- 1.00 in (tripwire ARMED) but FLAGGED
+    -- P16: HEAD arm OMITS cpu; only PINNED present => NO_DATA (absent-head banded).
+    ('FIXTURE-P16-pinned',  10.0)
   ]) AS t, t.1 AS run_id, t.2 AS value
 );
 
@@ -335,6 +351,10 @@ FROM
     ('FIXTURE-P12-head',   1.00), ('FIXTURE-P12-pinned', 1.00),  -- ==1.0 but FLAGGED
     ('FIXTURE-P13-head',   1.00), ('FIXTURE-P13-pinned', 1.00),  -- ==1.0 but FLAGGED
     ('FIXTURE-P14-head',   1.00), ('FIXTURE-P14-pinned', 1.00),  -- ==1.0 but FLAGGED
-    ('FIXTURE-P15-head',   1.05), ('FIXTURE-P15-pinned', 1.05)   -- !=1.0 ARMED but FLAGGED => FLAGGED
+    ('FIXTURE-P15-head',   1.05), ('FIXTURE-P15-pinned', 1.05),  -- !=1.0 ARMED but FLAGGED => FLAGGED
+    -- P16: HEAD arm OMITS parts entirely (only PINNED present). head_value NULL =>
+    -- NO_DATA (absent-head TRIPWIRE metric — NOT an armed tripwire, NOT OK). This is
+    -- the kafka cross-check gap cell: the head-driven join used to DROP this row.
+    ('FIXTURE-P16-pinned', 1.00)
   ]) AS t, t.1 AS run_id, t.2 AS value
 );

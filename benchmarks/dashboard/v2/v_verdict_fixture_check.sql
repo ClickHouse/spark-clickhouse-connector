@@ -34,10 +34,11 @@
 --     IMPROVEMENT / REGRESSION / OK}:
 --       pair flagged                     => FLAGGED  (overrides EVERYTHING below,
 --                                                     incl. an armed TRIPWIRE)
---       (banded) ratio NULL/0-denominator=> NO_DATA
+--       (banded) ratio NULL/0-denominator=> NO_DATA   (absent EITHER arm, or /0)
 --       (banded) outside band, GOOD dir  => IMPROVEMENT
 --       (banded) outside band, BAD dir   => REGRESSION
 --       (banded) else                    => OK
+--       (tripwire) head ABSENT (NULL)    => NO_DATA   (absent-head, kafka x-check)
 --       (tripwire) head == 1.0           => OK
 --       (tripwire) head != 1.0           => TRIPWIRE
 --   (Integrity-FAIL precedence is not exercised here — all fixture rows pass
@@ -49,27 +50,34 @@
 --   benchmarks/dashboard/v2/v_pair_ratios.sql so the fixture ratio flows through
 --   the EXACT same computation the production Tab-1 view uses (head.value /
 --   nullIf(pinned.value, 0), same §7 rename remap, same argMax latest-capture).
---   Three DELIBERATE differences, all required by the acceptance rule:
+--   CONVERGENCE (2026-07-09): v_pair_ratios NOW ALSO carries flagged pairs
+--   (flagged=1 + flag_reason, design change to render the FLAGGED verdict per
+--   contract §3). The flagged-carry logic that used to be UNIQUE to this fixture
+--   view therefore now MATCHES production, and the pair-level flag rule is IDENTICAL
+--   on both sides: a pair is flagged iff EITHER arm is flagged
+--   (`h.flagged OR pn.flagged`). Remaining DELIBERATE differences:
 --     1. INVERTED SCOPE: this view keeps ONLY connector='verdict_fixture'
 --        (WHERE r.connector = 'verdict_fixture'); v_pair_ratios EXCLUDES it.
---     2. flagged rows are NOT filtered out — v_pair_ratios drops flagged pairs
---        (they never reach the ratio), but the verdict map's FLAGGED branch must
---        be exercised, so this view CARRIES the flagged bit through to the map.
---     3. metric_long carries the flag: because of (2) the projection adds
---        `any(e.flagged)` and therefore a `GROUP BY e.pair_id, e.tier, e.arm,
---        mm.metric_name, mm.value` that v_pair_ratios' metric_long does not have
---        (its rows are already flag-free). any() is safe — the flag is a per-run
---        constant across that run's metrics — and grouping ALSO by mm.value keeps
---        the row grain identical to v_pair_ratios' (one row per run/metric after
---        the inner argMax de-dup; the GROUP BY collapses nothing, it only
---        satisfies the aggregate).
+--     2. FULL OUTER head<->pinned join (vs v_pair_ratios' INNER): production GATES
+--        complete pairs (INNER drops an arm-missing metric), but acceptance MUST
+--        surface an ABSENT metric on EITHER arm as NO_DATA (contract §3: NULL/
+--        absent => NO_DATA), so a metric present on only ONE arm still emits a row
+--        here. This is the ONLY join-strictness divergence and it is intentional
+--        (the fixture's whole job is to prove the NULL/absent -> NO_DATA cells).
+--     3. metric_long carries the flag per arm: the projection adds `any(e.flagged)`
+--        and a `GROUP BY ..., mm.metric_name, mm.value`. any() is safe — the flag
+--        is a per-run constant across that run's metrics — and grouping ALSO by
+--        mm.value keeps the row grain identical to v_pair_ratios' (one row per
+--        run/metric after the inner argMax de-dup). (v_pair_ratios projects
+--        e.flagged directly instead of any() because its metric_long has no GROUP
+--        BY; both yield the same per-arm flag — the difference is cosmetic.)
 --   A parameterized single-source approach was rejected: ClickHouse virtual-
 --   dataset SQL cannot self-reference (a view cannot `SELECT ... FROM
 --   v_pair_ratios WHERE ...`), and templating one body with an inverted predicate
 --   would need a build step this repo does not have for the .sql files. Copying
 --   the CTE skeleton is the faithful, self-contained choice. IF v_pair_ratios'
---   ratio/rename/argMax logic changes, MIRROR it here (the acceptance runner will
---   catch a drift only if the fixture cell it breaks is covered — keep both in
+--   ratio/rename/argMax/flag logic changes, MIRROR it here (the acceptance runner
+--   will catch a drift only if the fixture cell it breaks is covered — keep both in
 --   step by hand).
 --
 -- Reads perf.* DIRECTLY (NOT the DWH mirror): the fixture seed
@@ -92,8 +100,9 @@ WITH
   -- Runs with unnested scope. COPIED from v_pair_ratios.runs_scoped, EXCEPT:
   --   * source is perf.runs filtered to connector='verdict_fixture' (INVERTED
   --     scope — the production view excludes this connector);
-  --   * `flagged` is CARRIED THROUGH (production view filters flagged rows out
-  --     here; the verdict map needs the flag to emit FLAGGED).
+  --   * `flagged` is CARRIED THROUGH so the verdict map can emit FLAGGED. As of
+  --     2026-07-09 v_pair_ratios ALSO carries flagged (it no longer drops flagged
+  --     pairs), so this is now a MATCH with production, not a divergence.
   runs_scoped AS (
     SELECT
       r.run_id                                          AS run_id,
@@ -180,29 +189,48 @@ WITH
     ) AS mm ON e.run_id = mm.run_id
     GROUP BY e.pair_id, e.tier, e.arm, mm.metric_name, mm.value
   ),
-  -- Ratio per (pair, tier, metric) — head LEFT JOIN pinned so a MISSING pinned
-  -- gated metric (the NULL cell, P04/P11) yields a NULL pinned_value and hence a
-  -- NULL ratio, and a pinned value of 0 (the 0-denominator cell, P05/P12) yields
-  -- ratio NULL via nullIf(pinned,0). v_pair_ratios uses INNER (it gates complete
-  -- pairs); acceptance NEEDS the missing-metric arm to surface as NO_DATA, so we
-  -- LEFT JOIN here and toNullable() the pinned side (join_use_nulls=0 would else
-  -- fake pinned=0). The ratio expression itself is v_pair_ratios' verbatim
-  -- head.value / nullIf(pinned.value, 0).
+  -- Ratio per (pair, tier, metric). FULL OUTER JOIN head <-> pinned on
+  -- (pair_id, tier, metric) so an ABSENT metric on EITHER arm still surfaces a
+  -- row that maps to NO_DATA (contract §3: ratio NULL / absent tripwire metric
+  -- => NO_DATA):
+  --   * MISSING pinned gated metric (P04/P11): head present, pinned_value NULL =>
+  --     ratio NULL => NO_DATA (the absent-PINNED cell).
+  --   * MISSING head gated metric (P16, kafka cross-check gap): pinned present,
+  --     head_value NULL => ratio NULL (banded) => NO_DATA, and for the tripwire
+  --     head_value NULL => NO_DATA (the absent-HEAD cell — head-side drop was the
+  --     bug; head LEFT JOIN pinned would DROP the whole row and the contract's
+  --     "NULL/absent => NO_DATA" map could never render).
+  --   * pinned value 0 (0-denominator cell, P05/P12): ratio NULL via
+  --     nullIf(pinned,0) => NO_DATA.
+  -- v_pair_ratios uses INNER (it gates COMPLETE pairs and drops incomplete ones);
+  -- acceptance NEEDS the missing-metric arm to surface as NO_DATA, so we FULL JOIN
+  -- here and toNullable() BOTH sides (join_use_nulls=0 would else fake a 0 value on
+  -- the absent arm). The ratio expression itself is v_pair_ratios' verbatim
+  -- head.value / nullIf(pinned.value, 0). Key columns (pair_id/tier/metric) and the
+  -- flag are coalesced across arms because on a one-sided match only that arm's
+  -- copy is non-NULL.
   --
   -- head_value is carried THROUGH for the TRIPWIRE verdict (parts_per_insert),
-  -- which reads the head ABSOLUTE value and IGNORES pinned/ratio entirely.
+  -- which reads the head ABSOLUTE value and IGNORES pinned/ratio entirely; a NULL
+  -- head_value there is the absent-tripwire-metric => NO_DATA case.
   ratios AS (
     SELECT
-      h.pair_id                        AS pair_id,
-      h.tier                           AS tier,
-      h.metric                         AS metric,
-      h.flagged                        AS flagged,
+      coalesce(nullIf(h.pair_id, ''), pn.pair_id) AS pair_id,
+      coalesce(nullIf(h.tier, ''),    pn.tier)    AS tier,
+      coalesce(nullIf(h.metric, ''),  pn.metric)  AS metric,
+      -- PAIR-LEVEL flag (matches v_pair_ratios' `h.flagged OR pn.flagged`): the
+      -- pair is flagged iff EITHER arm is flagged (contract §3). coalesce(x,0)
+      -- guards the one-sided FULL-join match (absent arm => NULL flag => treat 0).
+      ((coalesce(h.flagged, 0) != 0) OR (coalesce(pn.flagged, 0) != 0)) AS flagged,
       h.value                          AS head_value,
       pn.value                         AS pinned_value,
       h.value / nullIf(pn.value, 0)    AS ratio
-    FROM (SELECT * FROM metric_long WHERE arm = 'head') AS h
-    LEFT JOIN (
-      SELECT pair_id, tier, metric, toNullable(value) AS value
+    FROM (
+      SELECT pair_id, tier, metric, toNullable(flagged) AS flagged, toNullable(value) AS value
+      FROM metric_long WHERE arm = 'head'
+    ) AS h
+    FULL OUTER JOIN (
+      SELECT pair_id, tier, metric, toNullable(flagged) AS flagged, toNullable(value) AS value
       FROM metric_long WHERE arm = 'pinned'
     ) AS pn
       ON h.pair_id = pn.pair_id AND h.tier = pn.tier AND h.metric = pn.metric
@@ -270,6 +298,10 @@ SELECT
   multiIf(
     flagged,                                              'FLAGGED',
     -- TRIPWIRE branch (parts_per_insert): head absolute value, NO ratio/band.
+    -- Absent head metric (head_value NULL) => NO_DATA per the map (NULL/absent
+    -- parts_per_insert => NO_DATA), checked BEFORE the ==1.0 / !=1.0 split so a
+    -- NULL head can never be mis-read as an armed tripwire.
+    is_tripwire AND head_value IS NULL,                   'NO_DATA',
     is_tripwire AND head_value = 1.0,                     'OK',
     is_tripwire,                                          'TRIPWIRE',
     -- BANDED branch: NO_DATA before band excursions.
@@ -291,6 +323,12 @@ SELECT
     -- flag check.
     pair_id IN ('FIXTURE-PAIR-10','FIXTURE-PAIR-11','FIXTURE-PAIR-12',
                 'FIXTURE-PAIR-13','FIXTURE-PAIR-14','FIXTURE-PAIR-15'), 'FLAGGED',
+    -- ABSENT-HEAD pair (P16, kafka cross-check gap): the HEAD arm emits NONE of
+    -- the gated metrics (pinned present). EVERY metric => NO_DATA — banded because
+    -- head_value NULL => ratio NULL, and the parts TRIPWIRE because an absent head
+    -- metric is NULL/absent => NO_DATA (NOT an armed tripwire). Checked BEFORE the
+    -- tripwire OK branch so parts on P16 is NO_DATA, not OK.
+    pair_id = 'FIXTURE-PAIR-16',                                       'NO_DATA',
     -- TRIPWIRE metric (parts_per_insert), unflagged pairs:
     metric = 'parts_per_insert' AND pair_id IN
       ('FIXTURE-PAIR-08','FIXTURE-PAIR-09'),                            'TRIPWIRE',

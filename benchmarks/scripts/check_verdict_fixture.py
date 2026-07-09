@@ -173,14 +173,17 @@ def _str(v):
 # ----------------------------------------------------------------------------
 # Assertion + reporting.
 # ----------------------------------------------------------------------------
-# 15 pairs × {throughput_rows_per_sec (HB banded ±9%),
+# 16 pairs × {throughput_rows_per_sec (HB banded ±9%),
 #             cpu_seconds_per_Mrows (LB banded ±6%),
-#             parts_per_insert (TRIPWIRE)} = 45 cells (contract §3, Amendment
-# 2026-07-09b). Covers {NULL,0-denom,below,in,above,near-edge} × {HB,LB} banded
-# × {flagged,unflagged}, PLUS the parts TRIPWIRE axis {OK(==1.0), fired(!=1.0)}
-# × {flagged (armed), unflagged}. merge_amplification is WATCH-ONLY (not gated)
-# and is intentionally NOT asserted.
-EXPECTED_CELL_COUNT = 45
+#             parts_per_insert (TRIPWIRE)} = 48 cells (contract §3, Amendment
+# 2026-07-09b). Covers {NULL(pinned-absent),NULL(head-absent),0-denom,below,in,
+# above,near-edge} × {HB,LB} banded × {flagged,unflagged}, PLUS the parts TRIPWIRE
+# axis {OK(==1.0), fired(!=1.0), head-absent(NO_DATA)} × {flagged (armed),
+# unflagged}. The head-absent pair (P16, +3 cells) is the kafka cross-check gap:
+# the head-driven join used to DROP an absent-head metric so the contract map's
+# "NULL/absent => NO_DATA" could never render in the Spark artifact.
+# merge_amplification is WATCH-ONLY (not gated) and is intentionally NOT asserted.
+EXPECTED_CELL_COUNT = 48
 
 
 def _truthy(v: str) -> bool:
