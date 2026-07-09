@@ -259,9 +259,9 @@ Three outcomes, applied identically by both pipelines:
 3. **Ratio band-exit ⇒ a verdict via the PINNED ratio→verdict map** (Amendment
    2026-07-09; root cause on record: the contract pinned verdict classes but
    never the mapping or the direction of goodness, so "outside band =
-   REGRESSION" was the natural wrong implementation). Bands start ±3% Tier 0 /
-   ±5% Tier 1, recalibrated from the first ~20 pairs; tracking is on the
-   **ratio**, not absolutes.
+   REGRESSION" was the natural wrong implementation). Tracking is on the
+   **ratio**, not absolutes. The flat ±3%/±5% starter bands are **superseded**
+   by the per-metric CALIBRATED bands below (Amendment 2026-07-09b).
 
    **Per-gated-metric `direction` (PINNED):**
 
@@ -270,6 +270,22 @@ Three outcomes, applied identically by both pipelines:
    | `throughput_rows_per_sec` (verified), `null_rows_per_sec` / `null_drain_rows_per_sec`, `drain_rows_per_sec` | `higher_better` |
    | `parts_per_insert`, `merge_amplification`, `cpu_seconds_per_Mrows`, `serialize_seconds_per_Mrows`, `ch_insert_cpu_seconds_per_Mrows` | `lower_better` |
 
+   **Calibrated per-metric bands (PINNED — Amendment 2026-07-09b, supersedes the
+   flat ±3%/±5% rule).** Each band is **2× the measured noise floor** for its
+   metric (basis in the provenance note below). The band is the same on both
+   tiers — it is a property of the metric's noise, not the tier:
+
+   | Metric (and its rename/alias siblings) | band (± of ratio) |
+   |----------------------------------------|-------------------|
+   | `throughput_rows_per_sec` (verified) | **±9%** |
+   | `null_rows_per_sec`, `null_drain_rows_per_sec`, `drain_rows_per_sec` (Tier-0 null + Kafka drain analogues) | **±8.5%** |
+   | `ch_insert_cpu_seconds_per_Mrows`, `cpu_seconds_per_Mrows` | **±6%** |
+   | `serialize_seconds_per_Mrows` | **±8.5%** |
+
+   in-band ⇒ ratio ∈ `[1 − band, 1 + band]` (e.g. throughput `[0.91, 1.09]`;
+   cpu `[0.94, 1.06]`). A metric not in this table is **not banded** — it is
+   either watch-only or a tripwire (see gate composition).
+
    **Ratio→verdict map (PINNED, both pipelines, any artifact emitting a
    verdict):** ratio NULL or 0-denominator ⇒ **NO_DATA** (never REGRESSION);
    pair flagged ⇒ **FLAGGED** (excluded from bands); ratio outside the band in
@@ -277,23 +293,60 @@ Three outcomes, applied identically by both pipelines:
    BAD direction ⇒ **REGRESSION** (alerts once calibration completes); else
    **OK**. During calibration (fewer than ~20 pairs) verdicts MUST display as
    provisional ("calibrating, n=X/20") and band-excursion alerts stay unwired;
-   only integrity failures alert.
+   only integrity failures (and the parts **TRIPWIRE**, below) alert.
 
-   **Gate composition:** the pair-level verdict uses ONLY the pinned gated set
-   (Tier 1: verified rows/s, `parts_per_insert`, `merge_amplification`; Tier 0:
-   the three client metrics). Pair-level roll-ups MUST also expose per-metric
-   in-band counts so a single noisy metric cannot zero the headline.
+   **`TRIPWIRE` verdict (PINNED — Amendment 2026-07-09b, added to the verdict
+   vocabulary).** `parts_per_insert` is a **constant 1.0 by design** (one part
+   per insert). It is **not banded** and gets **no ratio comparison**: the
+   check is a **binary tripwire on the head arm's absolute value** — exactly
+   `1.0` ⇒ **OK**; **any** deviation from `1.0` ⇒ **TRIPWIRE** (investigate;
+   batches are spraying across partitions). A TRIPWIRE alerts regardless of
+   calibration state (it is not a noise-band excursion; it is a structural
+   invariant break). NULL/absent `parts_per_insert` ⇒ **NO_DATA** as usual.
+
+   **Gate composition (PINNED — Amendment 2026-07-09b, replaces the prior
+   flat-band gated set):**
+   - **Tier 1 gate** = verified throughput (`throughput_rows_per_sec` /
+     `drain_rows_per_sec`, banded) **+** `parts_per_insert` (tripwire).
+   - **Tier 0 gate** = `null_rows_per_sec` (banded), the cpu-per-Mrows metric
+     (`ch_insert_cpu_seconds_per_Mrows` / `cpu_seconds_per_Mrows`, banded) and
+     `serialize_seconds_per_Mrows` (banded).
+   - **`merge_amplification` is DEMOTED to WATCH-ONLY** — it is **not gated** and
+     does **not** raise a REGRESSION. Single-pair excursions **<25%** are
+     indistinguishable from merge-timing noise (measured within-arm floor 12.7%,
+     and it gets **no pairing dividend** — the noise is per-run, not shared
+     across the pair), so gating it would manufacture false regressions. It stays
+     a reported covariate.
+   - `settle_seconds` / `settle_timed_out` and `merge_pool_peak_pct` remain
+     **covariates** (already non-gate).
+
+   Pair-level roll-ups MUST still expose per-metric in-band counts so a single
+   noisy metric cannot zero the headline.
+
+   **Calibration provenance (PINNED — Amendment 2026-07-09b).** The bands above
+   were calibrated on **2026-07-09** from `n=4` two-arm pairs' between-pair
+   ratio CoV (chi-square `df=3` — a small-sample caveat: the point estimate is
+   wide), **anchored** by `n=180` legacy calm-segment (2026-07-01..06)
+   within-arm CoVs. Measured noise floors: throughput ratio **4.24%**,
+   `merge_amplification` **12.7%**, Tier-0 cpu **2.83%**, Tier-0 serialize
+   **4.24%**, `null_rows` **4.24%**. `merge_amplification` and throughput get
+   **no pairing dividend** (per-run noise, not shared across arms).
+   `parts_per_insert` is a **constant 1.0** (not a noisy series → tripwire, not a
+   band). **Recalibration rule:** at ~12 pairs (~**2026-07-21**) the bands
+   recalibrate from **trailing-20** window statistics, and thereafter follow the
+   plan's **median ± 2·MAD** deviation-band design (`v2_trailing_windows`).
 
    **Acceptance rule (PINNED):** any artifact that emits a VERDICT (not a
    number) requires fixture-based acceptance: synthetic pair rows under a
    reserved fixture connector, asserted through the REAL dataset SQL, covering
    at least {NULL, 0-denominator, below-band, in-band, above-band} ×
-   {higher_better, lower_better} × {flagged, unflagged}. Consumer views MUST
-   exclude the fixture connector from real trends.
+   {higher_better, lower_better} × {flagged, unflagged}, **plus** the
+   `parts_per_insert` tripwire cells (`==1.0` ⇒ OK, `!=1.0` ⇒ TRIPWIRE).
+   Consumer views MUST exclude the fixture connector from real trends.
 
 Precedence: FAIL (integrity mismatch) overrides FLAG overrides
-NO_DATA/IMPROVEMENT/REGRESSION/OK — a failed run yields no headline, so it
-cannot also be a regression.
+NO_DATA/TRIPWIRE/IMPROVEMENT/REGRESSION/OK — a failed run yields no headline, so
+it cannot also be a regression or a tripwire.
 
 ---
 
