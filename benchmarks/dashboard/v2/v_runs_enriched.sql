@@ -50,6 +50,44 @@
 --     convention in the legacy build_superset.py.
 --   * Map value access on a missing key yields '' in ClickHouse, so nullIf(...,'')
 --     turns "key absent" into NULL before COALESCE applies the contract default.
+--
+-- PATCH A (merged-dashboard build, 2026-07-08 — merged-dashboard-spec.md §2):
+--   Adds the Tier-0 connector-cost pivot columns and SELECT-level derived
+--   task-time decomposition shares needed by the new Tab-2 charts
+--   (v2_t0_cpu_serialize_per_Mrows, v2_t0_time_decomposition).
+--   New pivot columns (all `max(if(...,value,NULL))`, NEVER maxIf — see the
+--   pivot note below; absent metric must stay NULL, not collapse to 0.0):
+--       cpu_seconds_per_Mrows         (emitted by 10_insert_from_event_log.sql)
+--       serialize_seconds_per_Mrows   (emitted by 10_insert_from_event_log.sql)
+--       serialize_time_total          (emitted by 10_insert_from_event_log.sql)
+--       executor_cpu_time_total       (emitted by 10_insert_from_event_log.sql)
+--       write_time_total              (emitted by 10_insert_from_event_log.sql)
+--       write_wait_share              (the EMITTED metric, 10_insert_from_event_log.sql:
+--                                      write_time_total / (write + serialize + cpu))
+--       ch_insert_cpu_share_tier0     (contract §2.1 Tier-0 instrument-health
+--                                      watch: Null-target insert CPU / wall-clock
+--                                      ×100. WATCH-ONLY — live verification saw
+--                                      it swing 20-44% between t0 arms; surfaced
+--                                      so dashboards can watch for the parse-
+--                                      bound-instrument failure mode, NOT gated.)
+--   New SELECT-level derived shares (normalized task-time decomposition; the
+--   three sum to 1 on any row where the three *_total metrics are present):
+--       serialize_share          = serialize_time_total  / denom
+--       other_cpu_share          = executor_cpu_time_total / denom
+--       write_wait_share_derived = write_time_total       / denom
+--     where denom = nullIf(write_time_total + serialize_time_total
+--                          + executor_cpu_time_total, 0)  (NULL denom -> NULL share).
+--
+--   NAMING DECISION (write_wait_share collision) — documented per spec §2:
+--     `write_wait_share` ALREADY exists as a first-class emitted metric
+--     (10_insert_from_event_log.sql line ~189), so it is pivoted UNCHANGED under
+--     that exact name (preserves the raw series for any chart binding it).
+--     The SELECT-level RE-derivation of the same quantity is emitted under the
+--     DISTINCT name `write_wait_share_derived` to avoid a column-name collision
+--     with the pivoted emitted metric. Algebraically the derived value equals the
+--     emitted `write_wait_share` (identical formula); the decomposition chart uses
+--     the *_derived trio so all three shares are computed from one consistent
+--     denominator on the same row.
 -- =============================================================================
 WITH
   -- One value per (run_id, metric_name): latest capture wins.
@@ -121,7 +159,20 @@ WITH
       max(if(metric_name = 'pre_run_active_parts', value, NULL)) AS pre_run_active_parts,
       -- Tier 0 (may not exist yet)
       max(if(metric_name = 'null_rows_per_sec',    value, NULL)) AS null_rows_per_sec,
-      max(if(metric_name = 'run_cost_usd',         value, NULL)) AS run_cost_usd
+      max(if(metric_name = 'run_cost_usd',         value, NULL)) AS run_cost_usd,
+      -- PATCH A (spec §2): Tier-0 connector-cost signals + task-time decomposition
+      -- inputs. All max(if(...,value,NULL)) — an absent metric MUST be NULL, not
+      -- 0.0 (see pivot note above); the derived shares below rely on NULL-on-absence.
+      max(if(metric_name = 'cpu_seconds_per_Mrows',       value, NULL)) AS cpu_seconds_per_Mrows,
+      max(if(metric_name = 'serialize_seconds_per_Mrows', value, NULL)) AS serialize_seconds_per_Mrows,
+      max(if(metric_name = 'serialize_time_total',        value, NULL)) AS serialize_time_total,
+      max(if(metric_name = 'executor_cpu_time_total',     value, NULL)) AS executor_cpu_time_total,
+      max(if(metric_name = 'write_time_total',            value, NULL)) AS write_time_total,
+      -- The EMITTED write_wait_share metric, pivoted under its exact name (the
+      -- SELECT-level re-derivation is `write_wait_share_derived` — see header).
+      max(if(metric_name = 'write_wait_share',            value, NULL)) AS write_wait_share,
+      -- Tier-0 instrument-health watch (contract §2.1) — watch-only, see header.
+      max(if(metric_name = 'ch_insert_cpu_share_tier0',   value, NULL)) AS ch_insert_cpu_share_tier0
     FROM m
     GROUP BY run_id
   )
@@ -181,6 +232,31 @@ SELECT
   p.pre_run_active_parts,
   p.null_rows_per_sec,
   p.run_cost_usd,
+
+  -- ---- PATCH A pivoted connector-cost metrics (spec §2) ----
+  p.cpu_seconds_per_Mrows,
+  p.serialize_seconds_per_Mrows,
+  p.serialize_time_total,
+  p.executor_cpu_time_total,
+  p.write_time_total,
+  p.write_wait_share,             -- emitted metric, verbatim
+  p.ch_insert_cpu_share_tier0,    -- t0 instrument-health watch (watch-only)
+
+  -- ---- PATCH A derived task-time decomposition shares (spec §2) ----
+  -- Normalized share of client task-time: serialize vs other CPU vs wire-wait.
+  -- The three sum to 1 whenever all three *_total inputs are present; any NULL
+  -- input (or a zero total -> nullIf denom NULL) yields NULL shares, so absent
+  -- rows stay blank rather than reading as 0. `write_wait_share_derived` is the
+  -- deliberately-distinct twin of the emitted `write_wait_share` (header note).
+  p.serialize_time_total
+    / nullIf(p.write_time_total + p.serialize_time_total + p.executor_cpu_time_total, 0)
+                                                         AS serialize_share,
+  p.executor_cpu_time_total
+    / nullIf(p.write_time_total + p.serialize_time_total + p.executor_cpu_time_total, 0)
+                                                         AS other_cpu_share,
+  p.write_time_total
+    / nullIf(p.write_time_total + p.serialize_time_total + p.executor_cpu_time_total, 0)
+                                                         AS write_wait_share_derived,
 
   -- ---- integrity (contract §3) ----
   -- Prefer the directly-emitted integrity_ok metric; else derive from the

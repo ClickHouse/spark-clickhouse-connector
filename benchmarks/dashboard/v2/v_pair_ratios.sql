@@ -8,6 +8,11 @@
 --   Environment noise hits both arms of a pair and cancels in the ratio; only a
 --   connector change moves it (plan §2, §7 v_pair_ratios sketch). Feeds Tab 1.
 --
+--   JOIN-strictness asymmetry (deliberate): this view keeps an INNER join —
+--   incomplete pairs must not produce ratios (it is the GATE). The Tab-4 drill
+--   view v2_pair_metrics_long uses a LEFT join and shows head-only pairs with
+--   NULL pinned/delta (it is the MICROSCOPE, for inspection not gating).
+--
 -- Plan reference:  docs/benchmark-v2-plan.md §7 ("v_pair_ratios ... self-join on
 --   runtime['pair_id']: head.value / pinned.value AS ratio per (pair, tier,
 --   metric)"), §3 (gated metric set).
