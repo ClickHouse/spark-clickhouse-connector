@@ -35,6 +35,14 @@
 name: "Export Run to DWH"
 
 on:
+  # Registration trigger: GitHub only indexes (and allows dispatching) workflows
+  # that exist on the default branch OR have at least one run. This workflow
+  # lives on a feature branch, so a push touching this file creates a (skipped)
+  # run that registers it for workflow_dispatch. The export job itself is
+  # guarded to dispatch events only.
+  push:
+    branches: [clickbench-load-test]
+    paths: [".github/workflows/export-run-to-dwh.yml"]
   workflow_dispatch:
     inputs:
       run_ids:
@@ -63,6 +71,8 @@ concurrency:
 
 jobs:
   export:
+    # push events exist only to register the workflow for dispatch — skip the job.
+    if: github.event_name == 'workflow_dispatch'
     runs-on: ubuntu-22.04
     permissions:
       # Same OIDC permissions block as the main workflow's export path.
