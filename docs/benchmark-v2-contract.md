@@ -149,10 +149,30 @@ contract change):**
 | `task_restart` | a worker/task process restarted mid-run (Spark executor loss / Kafka worker restart). |
 | `drain_incomplete` | (Kafka) the sink did not fully drain the topic within the run window. |
 | `integrity_unverified` | integrity verification could not be computed (capture failed / source glob unavailable) — distinct from an integrity **mismatch**, which FAILS the run (§3). |
+| `instrument_resize` | (Amendment 2026-07-09c) the measurement harness's **compute resources changed** (node/instance type, worker pod CPU/memory requests or limits). Runs so flagged are **excluded from band calibration and trend baselines**; band calibration **restarts at the first pair on the new instrument**. |
 
 A run MAY trip more than one guard; when it does, `flag_reason` **MUST** list the
 tokens separated by a single `|` (pipe), e.g. `task_retries|settle_timeout`. No
 other separator is permitted (commas would collide with map-value parsing).
+
+**Instrument-truth runtime keys (Amendment 2026-07-09c):** each pipeline MUST
+record the deployed compute truth of its harness as connector-namespaced runtime
+keys (§1.4 namespacing), so `instrument_resize` is detectable from data, not
+memory — e.g. Kafka: `kafka_compute_instance_type`, `kafka_worker_cpu_limit`,
+`kafka_worker_mem_limit`; Spark: the existing `emr_*` keys serve this role. A
+change in any instrument-truth key between consecutive pairs of the same
+connector is the trigger for the `instrument_resize` flag on the first affected
+run and an environment annotation.
+
+> **PROVISIONAL — pending principal sign-off (wording owned by the
+> kafka-manager's decision package; not yet normative):** Kafka instrument
+> definition — the Connect worker is deliberately CPU-quota-bounded at 3.5
+> cores; `kafka_worker_cpu_share` expected ~0.9–1.0; instrument acceptance =
+> resources recorded + drain-rate stability good + throttling symmetric across
+> arms (2026-07-09 live evidence: pinned-t1 95%/94%, head-t0 92%/91%, head-t1
+> 96%/94%, cores-of-limit/periods-throttled). This block becomes normative
+> (and loses this banner) when the principal signs off decision (a)
+> accept-and-document.
 
 ### 1.4 Config keys (shared concepts share names)
 
@@ -464,7 +484,7 @@ commit onward.
 | `pair_id` | `= RUN_ID` = `YYYY-MM-DDTHH-MM-SSZ-<shortsha>` |
 | `run_id` | `<pair_id>-<arm>-t<tier>` (recommended form; MUST be distinct per (arm, tier) row) |
 | rows per night (both tiers) | 4 `perf.runs` rows, one `pair_id` |
-| `flag_reason` tokens | `task_retries`, `settle_timeout`, `rebalance`, `task_restart`, `drain_incomplete`, `integrity_unverified` (join multiples with `|`) |
+| `flag_reason` tokens | `task_retries`, `settle_timeout`, `rebalance`, `task_restart`, `drain_incomplete`, `integrity_unverified`, `instrument_resize` (join multiples with `|`) |
 | mandatory scope keys | `target_region`, `environment_class` (`staging`\|`production`) |
 | shared config keys | `batch_size`, `write_parallelism`, `async_insert`, `partition_scheme`, `dataset` |
 | Tab-5 server-cost name | `ch_insert_cpu_seconds_per_Mrows` (NOT `server_cpu_per_Mrows`) |
