@@ -92,7 +92,10 @@ class ClickHouseTableProvider extends TableProvider
     val catalog = createCatalog(options)
     val identifier = extractIdentifier(options)
 
+    // relations created through the TableProvider API carry no catalog, so Spark has no
+    // FunctionCatalog to resolve catalog function based sort orders at plan time
     loadOrCreateTable(catalog, identifier, schema, partitioning, properties)
+      .copy(functionCatalogUsable = false)
   }
 
   private def loadOrCreateTable(
@@ -101,7 +104,7 @@ class ClickHouseTableProvider extends TableProvider
     schema: StructType,
     partitioning: Array[Transform],
     properties: util.Map[String, String]
-  ): Table =
+  ): ClickHouseTable =
     try
       catalog.loadTable(identifier)
     catch {
@@ -116,7 +119,7 @@ class ClickHouseTableProvider extends TableProvider
     schema: StructType,
     partitioning: Array[Transform],
     properties: util.Map[String, String]
-  ): Table = {
+  ): ClickHouseTable = {
     import scala.jdk.CollectionConverters._
     val propsMap = properties.asScala.toMap
     val updatedProps = ensureOrderByConfiguration(schema, propsMap)

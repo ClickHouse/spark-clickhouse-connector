@@ -43,7 +43,10 @@ case class WriteJobDescription(
   sortingKey: Option[List[OrderExpr]],
   writeOptions: WriteOptions,
   writeSettings: Map[String, String],
-  functionRegistry: FunctionRegistry
+  functionRegistry: FunctionRegistry,
+  // whether the write plan is resolved with a FunctionCatalog available, i.e. the write goes
+  // through a registered catalog rather than the format-based `TableProvider` path
+  functionCatalogUsable: Boolean = true
 ) {
 
   def targetDatabase(convert2Local: Boolean): String = tableEngineSpec match {
@@ -97,11 +100,14 @@ case class WriteJobDescription(
       None
     }
     val _sortingKey = if (writeOptions.localSortByKey) sortingKey else None
+    // Sort by shard number only when the writer routes rows per shard (convertDistributedToLocal)
+    // and Spark can resolve the shard-num function at plan time (requires a FunctionCatalog).
+    val _cluster = if (writeOptions.convertDistributedToLocal && functionCatalogUsable) cluster else None
     ExprUtils.toSparkSortOrders(
       shardingKeyIgnoreRand,
       _partitionKey,
       _sortingKey,
-      cluster,
+      _cluster,
       functionRegistry
     )
   }

@@ -56,7 +56,10 @@ case class ClickHouseTable(
   implicit val tz: ZoneId,
   spec: TableSpec,
   engineSpec: TableEngineSpec,
-  functionRegistry: FunctionRegistry
+  functionRegistry: FunctionRegistry,
+  // tables loaded via `ClickHouseTableProvider` have no catalog in their relation, so Spark can
+  // not resolve catalog function based sort orders at plan time
+  functionCatalogUsable: Boolean = true
 ) extends Table
     with SupportsRead
     with SupportsWrite
@@ -189,7 +192,8 @@ case class ClickHouseTable(
       sortingKey = sortingKey,
       writeOptions = writeOptions,
       writeSettings = writeOptions.settings,
-      functionRegistry = functionRegistry
+      functionRegistry = functionRegistry,
+      functionCatalogUsable = functionCatalogUsable
     )
 
     writeJob.validateDistributedTableSharding()
