@@ -43,7 +43,7 @@ object Metrics {
   val BATCH_FILL_25_50 = "batchFill25to50"
   val BATCH_FILL_50_75 = "batchFill50to75"
   val BATCH_FILL_75_100 = "batchFill75to100"
-  val CONNECTIONS = "connections"
+  val CLIENTS = "clients"
 }
 
 case class BlocksReadMetric() extends CustomSumMetric {
@@ -121,7 +121,7 @@ case class BatchFill75To100Metric() extends CustomSumMetric {
   override def description: String = "batches 75-100% of configured batch size"
 }
 
-case class ConnectionsMetric() extends CustomSumMetric {
-  override def name: String = CONNECTIONS
-  override def description: String = "connections to ClickHouse"
+case class ClientsMetric() extends CustomSumMetric {
+  override def name: String = CLIENTS
+  override def description: String = "clients connected to ClickHouse"
 }

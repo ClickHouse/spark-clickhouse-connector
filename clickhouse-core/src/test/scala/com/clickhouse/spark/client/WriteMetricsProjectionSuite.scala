@@ -54,18 +54,18 @@ class WriteMetricsProjectionSuite extends AnyFunSuite {
     assert(WriteMetricsProjection.bucketedBatches(counted = 2, bucket = 0, pendingRows = 0, batchSize = 10000) === 2L)
   }
 
-  test("connections are predicted without creating a client") {
+  test("clients are predicted without creating a client") {
     def failingClient: Either[ClusterClient, NodeClient] =
       fail("client must not be created just to report a metric")
-    assert(WriteMetricsProjection.connections(flushed = 0, pendingRows = 0, failingClient) === 0L)
-    assert(WriteMetricsProjection.connections(flushed = 0, pendingRows = 5, failingClient) === 1L)
+    assert(WriteMetricsProjection.clients(flushed = 0, pendingRows = 0, failingClient) === 0L)
+    assert(WriteMetricsProjection.clients(flushed = 0, pendingRows = 5, failingClient) === 1L)
   }
 
-  test("single-node client counts as one connection without touching it") {
-    assert(WriteMetricsProjection.connections(flushed = 1, pendingRows = 0, Right(null)) === 1L)
+  test("single-node client counts as one client without touching it") {
+    assert(WriteMetricsProjection.clients(flushed = 1, pendingRows = 0, Right(null)) === 1L)
   }
 
-  test("cluster connections count distinct (shard, replica) node clients") {
+  test("cluster clients count distinct (shard, replica) node clients") {
     val node = NodeSpec("127.0.0.1", Some(8123))
     val clusterSpec = ClusterSpec(
       name = "metrics-suite-cluster",
@@ -78,9 +78,9 @@ class WriteMetricsProjectionSuite extends AnyFunSuite {
     try {
       clusterClient.node(Some(1), Some(1))
       clusterClient.node(Some(1), Some(1)) // same (shard, replica) reuses the cached client
-      assert(WriteMetricsProjection.connections(flushed = 1, pendingRows = 0, Left(clusterClient)) === 1L)
+      assert(WriteMetricsProjection.clients(flushed = 1, pendingRows = 0, Left(clusterClient)) === 1L)
       clusterClient.node(Some(2), Some(1)) // a new shard opens a second client
-      assert(WriteMetricsProjection.connections(flushed = 2, pendingRows = 0, Left(clusterClient)) === 2L)
+      assert(WriteMetricsProjection.clients(flushed = 2, pendingRows = 0, Left(clusterClient)) === 2L)
     } finally clusterClient.close()
   }
 }

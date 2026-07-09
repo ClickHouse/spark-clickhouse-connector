@@ -61,7 +61,7 @@ class ClusterClient(cluster: ClusterSpec, queryTimeoutMs: Long = NodeClient.DEFA
   }
 
   // node clients opened so far, one per distinct (shard, replica); never evicted
-  def openConnections: Int = cache.size()
+  def openClients: Int = cache.size()
 
   override def close(): Unit = cache.asScala.values.foreach(_.close())
 }

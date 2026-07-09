@@ -17,7 +17,7 @@ package com.clickhouse.spark.client
 /**
  * Write-task metric projections. Task metrics are snapshotted while the last batch may still be
  * buffered (it is flushed during commit), so pending rows are counted as the flush and the
- * connection that will write them.
+ * client that will write them.
  */
 object WriteMetricsProjection {
 
@@ -46,19 +46,19 @@ object WriteMetricsProjection {
     counted + (if (pendingRows > 0 && batchFillBucket(pendingRows, batchSize) == bucket) 1 else 0)
 
   /**
-   * Connections opened so far: one per node client in cluster mode, one in single-node mode.
+   * Clients connected so far: one per node client in cluster mode, one in single-node mode.
    * `client` is by-name so a client is never created just to report this metric — before the
-   * first flush creates one, the single connection that will write the pending rows is predicted.
+   * first flush creates one, the single client that will write the pending rows is predicted.
    */
-  def connections(flushed: Long, pendingRows: Long, client: => Either[ClusterClient, NodeClient]): Long = {
+  def clients(flushed: Long, pendingRows: Long, client: => Either[ClusterClient, NodeClient]): Long = {
     val clientCreated = flushed > 0 // reading `client` before the first flush would create it
-    if (clientCreated) countOpenConnections(client)
-    else if (pendingRows > 0) 1L // commit() will open the first connection for the pending batch
+    if (clientCreated) countOpenClients(client)
+    else if (pendingRows > 0) 1L // commit() will open the first client for the pending batch
     else 0L
   }
 
-  private def countOpenConnections(client: Either[ClusterClient, NodeClient]): Long = client match {
-    case Left(clusterClient) => clusterClient.openConnections.toLong // cluster: one per (shard, replica) used
+  private def countOpenClients(client: Either[ClusterClient, NodeClient]): Long = client match {
+    case Left(clusterClient) => clusterClient.openClients.toLong // cluster: one per (shard, replica) used
     case Right(_) => 1L // single node: exactly one
   }
 }

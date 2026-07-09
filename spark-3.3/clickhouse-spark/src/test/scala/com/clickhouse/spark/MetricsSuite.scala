@@ -61,7 +61,7 @@ class MetricsSuite extends AnyFunSuite {
     assert(metrics(MAX_BATCH_SIZE) === 3L)
     assert(metrics(BATCH_FILL_0_25) === 1L) // 3 pending rows of the default 10k batchSize
     assert(metrics(BATCH_FILL_75_100) === 0L)
-    assert(metrics(CONNECTIONS) === 1L)
+    assert(metrics(CLIENTS) === 1L)
   }
 
   test("pending flush combines with flushed batches") {
@@ -80,7 +80,7 @@ class MetricsSuite extends AnyFunSuite {
     assert(metrics(BATCH_FILL_0_25) === 1L) // the pending batch
     assert(metrics(BATCH_FILL_25_50) === 0L)
     assert(metrics(BATCH_FILL_75_100) === 2L) // the seeded full batches
-    assert(metrics(CONNECTIONS) === 1L)
+    assert(metrics(CLIENTS) === 1L)
   }
 
   test("non-retryable write failure counts one failed attempt") {

@@ -214,7 +214,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   renewCompressedOutput()
 
-  private def bucketMetric(name: String, bucket: Int): TaskMetric =
+  private def BucketMetric(name: String, bucket: Int): TaskMetric =
     TaskMetric(name, bucketedBatches(_batchFillBuckets(bucket).longValue, bucket, currentBufferedRows, flushBatchSize))
 
   // buffered rows count as flushed: commit() writes them after Spark's final metrics snapshot
@@ -224,14 +224,14 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     TaskMetric(SERIALIZE_TIME, totalSerializeTime),
     TaskMetric(WRITE_TIME, totalWriteTime),
     TaskMetric(FLUSHES, projectedFlushes(flushes, currentBufferedRows)),
+    TaskMetric(CLIENTS, clients(flushes, currentBufferedRows, client)),
     TaskMetric(FAILED_WRITE_ATTEMPTS, failedWriteAttempts),
     TaskMetric(MIN_BATCH_SIZE, minBatchSize(_minBatchSize, currentBufferedRows)),
     TaskMetric(MAX_BATCH_SIZE, maxBatchSize(_maxBatchSize, currentBufferedRows)),
-    bucketMetric(BATCH_FILL_0_25, 0),
-    bucketMetric(BATCH_FILL_25_50, 1),
-    bucketMetric(BATCH_FILL_50_75, 2),
-    bucketMetric(BATCH_FILL_75_100, 3),
-    TaskMetric(CONNECTIONS, connections(flushes, currentBufferedRows, client))
+    BucketMetric(BATCH_FILL_0_25, 0),
+    BucketMetric(BATCH_FILL_25_50, 1),
+    BucketMetric(BATCH_FILL_50_75, 2),
+    BucketMetric(BATCH_FILL_75_100, 3)
   )
 
   def format: String
