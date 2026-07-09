@@ -167,13 +167,51 @@ WITH
       GROUP BY run_id, metric_name
     ) AS mm ON e.run_id = mm.run_id
   )
+-- TIME COLUMNS (added for time-windowed Tab-1 verdict tiles):
+--   pair_ts   — the pair's start time, DERIVED from pair_id exactly as charts
+--     5703/5704 parse it. Real pair_ids carry a 'YYYY-MM-DDTHH-MM-SSZ' prefix
+--     (e.g. 2026-07-09T07-08-54Z-718f00e). We extract that prefix, turn the
+--     time-part hyphens back into colons ('T07-08-54' -> 'T07:08:54') and parse.
+--     NULL-SAFE by construction: the anchored regex only matches a real
+--     timestamp prefix, so any malformed id (or the reserved FIXTURE-PAIR-NN
+--     ids, though those are already excluded upstream) yields '' -> NULL pair_ts
+--     without erroring. parseDateTimeBestEffortOrNull is the *OrNull variant so
+--     a surprise value can never throw.
+--   pair_seq  — dense rank of the pair WITHIN its tier by pair_ts DESC (1 =
+--     newest pair). dense_rank (not row_number) so every metric row of the same
+--     pair shares one sequence number; tiles then filter pair_seq <= 20 for a
+--     TRUE trailing-20 window and pair_seq = 1 for latest-pair scoping. Pairs
+--     with a NULL pair_ts sort last under DESC ordering.
 SELECT
-  h.pair_id                        AS pair_id,
-  h.tier                           AS tier,
-  h.metric                         AS metric,
-  h.value                          AS head_value,
-  pn.value                         AS pinned_value,
-  h.value / nullIf(pn.value, 0)    AS ratio
-FROM (SELECT * FROM metric_long WHERE arm = 'head')   AS h
-INNER JOIN (SELECT * FROM metric_long WHERE arm = 'pinned') AS pn
-  ON h.pair_id = pn.pair_id AND h.tier = pn.tier AND h.metric = pn.metric
+  pr.pair_id                       AS pair_id,
+  pr.tier                          AS tier,
+  pr.metric                        AS metric,
+  pr.head_value                    AS head_value,
+  pr.pinned_value                  AS pinned_value,
+  pr.ratio                         AS ratio,
+  pr.pair_ts                       AS pair_ts,
+  dense_rank() OVER (
+    PARTITION BY pr.tier ORDER BY pr.pair_ts DESC
+  )                                AS pair_seq
+FROM (
+  SELECT
+    h.pair_id                        AS pair_id,
+    h.tier                           AS tier,
+    h.metric                         AS metric,
+    h.value                          AS head_value,
+    pn.value                         AS pinned_value,
+    h.value / nullIf(pn.value, 0)    AS ratio,
+    if(
+      extract(h.pair_id, '^(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2})Z') = '',
+      NULL,
+      parseDateTimeBestEffortOrNull(
+        replaceRegexpOne(
+          extract(h.pair_id, '^(\\d{4}-\\d{2}-\\d{2}T\\d{2}-\\d{2}-\\d{2})Z'),
+          'T(\\d{2})-(\\d{2})-(\\d{2})$', 'T\\1:\\2:\\3'
+        )
+      )
+    )                                AS pair_ts
+  FROM (SELECT * FROM metric_long WHERE arm = 'head')   AS h
+  INNER JOIN (SELECT * FROM metric_long WHERE arm = 'pinned') AS pn
+    ON h.pair_id = pn.pair_id AND h.tier = pn.tier AND h.metric = pn.metric
+) AS pr
