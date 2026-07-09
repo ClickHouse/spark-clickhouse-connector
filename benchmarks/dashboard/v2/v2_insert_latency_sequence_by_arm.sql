@@ -55,5 +55,10 @@ FROM (
     ci.exception_code                                     AS exception_code
   FROM raw_connectors_load_testing.ch_inserts AS ci
   INNER JOIN raw_connectors_load_testing.runs AS r ON ci.run_id = r.run_id
+  -- contract §3 acceptance rule: exclude the reserved verdict-fixture connector
+  -- from all real trends (drill base row is a ch_inserts row with only run_id, so
+  -- we exclude on BOTH the joined connector and the 'FIXTURE-' run_id prefix).
+  WHERE r.connector != 'verdict_fixture'
+    AND NOT startsWith(ci.run_id, 'FIXTURE-')
 )
 ORDER BY arm, insert_seq

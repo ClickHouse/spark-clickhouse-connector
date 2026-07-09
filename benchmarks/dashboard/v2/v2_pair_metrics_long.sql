@@ -93,6 +93,9 @@ WITH
         max(if(metric_name = 'unique_expected',  value, NULL)) AS unique_expected
       FROM m GROUP BY run_id
     ) AS p ON r.run_id = p.run_id
+    -- contract §3 acceptance rule: exclude the reserved verdict-fixture connector
+    -- from all real trends (fixture is a CI truth-table, never a real run).
+    WHERE r.connector != 'verdict_fixture'
   ),
   -- Default exclusions. Eligible iff: not flagged, not outcome='failed', and
   -- NOT integrity-failed (=0). Integrity-unknown (NULL) passes via coalesce(x,1).

@@ -65,6 +65,7 @@ WITH
       -- when no row matches, which would make a run with NO integrity capture
       -- look integrity-FAILED (0) instead of unknown (NULL) and wrongly exclude
       -- it. The if(...NULL) form yields NULL on absence.
+      -- (fixture exclusion is applied in the WHERE below.)
       SELECT
         run_id,
         max(if(metric_name = 'integrity_ok',     value, NULL)) AS integrity_ok_metric,
@@ -74,6 +75,9 @@ WITH
         max(if(metric_name = 'unique_expected',  value, NULL)) AS unique_expected
       FROM m GROUP BY run_id
     ) AS p ON r.run_id = p.run_id
+    -- contract §3 acceptance rule: exclude the reserved verdict-fixture connector
+    -- from all real trends (fixture is a CI truth-table, never a real run).
+    WHERE r.connector != 'verdict_fixture'
   ),
   -- Apply the default exclusions. A run is eligible iff: not flagged, not
   -- outcome='failed', and NOT integrity-failed (integrity_ok=0). Integrity

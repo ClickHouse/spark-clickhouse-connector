@@ -152,6 +152,9 @@ WITH
       )                                                     AS integrity_ok
     FROM raw_connectors_load_testing.runs AS r
     LEFT JOIN pivot AS p ON r.run_id = p.run_id
+    -- contract §3 acceptance rule: exclude the reserved verdict-fixture connector
+    -- from all real trends (fixture is a CI truth-table, never a real run).
+    WHERE r.connector != 'verdict_fixture'
   ),
   -- Headline-eligible rows only. A row is eligible iff not flagged, outcome !=
   -- 'failed', and NOT integrity-failed. coalesce(integrity_ok, 1) lets unknown

@@ -90,6 +90,8 @@ WITH
       r.runtime['partition_scheme']                     AS partition_scheme,
       up.ch_uptime                                      AS ch_uptime
     FROM raw_connectors_load_testing.runs AS r
+    -- contract §3 acceptance rule: exclude the reserved verdict-fixture connector
+    -- from all real trends (fixture is a CI truth-table, never a real run).
     LEFT JOIN (
       -- max(if(cond, value, NULL)) NOT maxIf(value, cond): maxIf returns 0.0
       -- when the metric is absent, so a run missing ch_uptime that follows a
@@ -99,6 +101,7 @@ WITH
       SELECT run_id, max(if(metric_name = 'ch_uptime', value, NULL)) AS ch_uptime
       FROM m GROUP BY run_id
     ) AS up ON r.run_id = up.run_id
+    WHERE r.connector != 'verdict_fixture'
   ),
   -- lag() the version + uptime over the PREVIOUS run in the SAME scope tuple.
   -- Scope = (connector, target_service, environment_class) per contract §4.
