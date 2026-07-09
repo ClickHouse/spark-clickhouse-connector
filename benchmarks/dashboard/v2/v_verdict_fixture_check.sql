@@ -14,7 +14,10 @@
 --   maps ratios to verdicts exactly as the contract pins. It never feeds a chart.
 --
 -- Contract reference: docs/benchmark-v2-contract.md §3 —
---   * BAND (Tier 1, PINNED): ±5% => in-band ratio ∈ [0.95, 1.05].
+--   * BAND (PINNED, tier-aware): ±3% Tier 0 / ±5% Tier 1 => in-band ratio
+--     ∈ [0.97, 1.03] for tier '0', [0.95, 1.05] for tier '1'. All current
+--     fixture rows are Tier 1; the band is keyed on the tier column anyway
+--     (see the classified CTE) so a future Tier-0 fixture is not mis-banded.
 --   * DIRECTION (PINNED): throughput_rows_per_sec = higher_better,
 --     parts_per_insert = lower_better.
 --   * RATIO→VERDICT (PINNED), precedence FAIL > FLAG > {NO_DATA/IMPROVEMENT/
@@ -33,12 +36,20 @@
 --   benchmarks/dashboard/v2/v_pair_ratios.sql so the fixture ratio flows through
 --   the EXACT same computation the production Tab-1 view uses (head.value /
 --   nullIf(pinned.value, 0), same §7 rename remap, same argMax latest-capture).
---   Two DELIBERATE differences, both required by the acceptance rule:
+--   Three DELIBERATE differences, all required by the acceptance rule:
 --     1. INVERTED SCOPE: this view keeps ONLY connector='verdict_fixture'
 --        (WHERE r.connector = 'verdict_fixture'); v_pair_ratios EXCLUDES it.
 --     2. flagged rows are NOT filtered out — v_pair_ratios drops flagged pairs
 --        (they never reach the ratio), but the verdict map's FLAGGED branch must
 --        be exercised, so this view CARRIES the flagged bit through to the map.
+--     3. metric_long carries the flag: because of (2) the projection adds
+--        `any(e.flagged)` and therefore a `GROUP BY e.pair_id, e.tier, e.arm,
+--        mm.metric_name, mm.value` that v_pair_ratios' metric_long does not have
+--        (its rows are already flag-free). any() is safe — the flag is a per-run
+--        constant across that run's metrics — and grouping ALSO by mm.value keeps
+--        the row grain identical to v_pair_ratios' (one row per run/metric after
+--        the inner argMax de-dup; the GROUP BY collapses nothing, it only
+--        satisfies the aggregate).
 --   A parameterized single-source approach was rejected: ClickHouse virtual-
 --   dataset SQL cannot self-reference (a view cannot `SELECT ... FROM
 --   v_pair_ratios WHERE ...`), and templating one body with an inverted predicate
@@ -181,7 +192,7 @@ WITH
       ON h.pair_id = pn.pair_id AND h.tier = pn.tier AND h.metric = pn.metric
   ),
   -- Attach the PINNED direction per metric (contract §3 direction table) and the
-  -- Tier-1 band (±5%).
+  -- tier-aware starting band (contract §3: ±3% Tier 0, ±5% Tier 1).
   classified AS (
     SELECT
       pair_id, tier, metric, flagged, head_value, pinned_value, ratio,
@@ -192,8 +203,14 @@ WITH
                    'serialize_seconds_per_Mrows','ch_insert_cpu_seconds_per_Mrows'), 'lower_better',
         'unknown'
       ) AS direction,
-      0.95 AS band_lo,
-      1.05 AS band_hi
+      -- TIER-AWARE band (contract §3): ±3% for tier '0', ±5% for tier '1'. All
+      -- CURRENT fixture pairs are tier '1' (seed sets runtime['tier']='1'), so
+      -- today only the 0.95/1.05 arm fires — but a future Tier-0 fixture row
+      -- (tighter ±3% band) would be MIS-BANDED by a hardcoded ±5%; keying on the
+      -- tier column removes that trap. Any other tier value falls back to the
+      -- Tier-1 band (the contract defines bands only for tiers 0 and 1).
+      if(tier = '0', 0.97, 0.95) AS band_lo,
+      if(tier = '0', 1.03, 1.05) AS band_hi
     FROM ratios
   )
 SELECT
@@ -220,8 +237,12 @@ SELECT
   -- was built to realise). Keyed on (pair_id, metric); documented in the seed
   -- header. This is the INDEPENDENT oracle — actual must equal it.
   multiIf(
-    -- flagged pairs: always FLAGGED regardless of metric/ratio
-    pair_id IN ('FIXTURE-PAIR-06','FIXTURE-PAIR-07','FIXTURE-PAIR-08'), 'FLAGGED',
+    -- flagged pairs: always FLAGGED regardless of metric/ratio — 06 below-band,
+    -- 07 NULL, 08 0-denominator, 09 in-band, 10 above-band (09/10 close the
+    -- literal 20-cell contract product AND catch a precedence bug that hoists an
+    -- in-band=>OK or good-excursion=>IMPROVEMENT arm above the flag check).
+    pair_id IN ('FIXTURE-PAIR-06','FIXTURE-PAIR-07','FIXTURE-PAIR-08',
+                'FIXTURE-PAIR-09','FIXTURE-PAIR-10'), 'FLAGGED',
     -- NULL / 0-denominator unflagged pairs: NO_DATA for both metrics
     pair_id IN ('FIXTURE-PAIR-04','FIXTURE-PAIR-05'), 'NO_DATA',
     -- below-band 0.90 (P01)

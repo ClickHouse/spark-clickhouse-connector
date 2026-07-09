@@ -33,7 +33,7 @@
 --       whose base row is a ch_inserts row that carries only run_id. Seeding both
 --       lets every consumer exclude the fixture with whichever key it has.
 --     * pair_id lives in runtime['pair_id'] (Map(String,String)); each pair uses
---       a distinct id FIXTURE-PAIR-01 .. FIXTURE-PAIR-08, arm in runtime['arm']
+--       a distinct id FIXTURE-PAIR-01 .. FIXTURE-PAIR-10, arm in runtime['arm']
 --       ('head'|'pinned'), tier in runtime['tier'] ('1').
 --
 -- BAND / DIRECTION (contract §3, PINNED): Tier-1 band is ±5% => in-band
@@ -53,10 +53,13 @@
 --     ratio outside band, BAD dir   => REGRESSION
 --     else                          => OK
 --
--- FIXTURE MATRIX (8 pairs × {throughput_rows_per_sec (HB), parts_per_insert (LB)}
---   = 16 asserted cells). Ratios are engineered by fixing pinned=100 (throughput)
---   / pinned=10 (parts) and setting head = pinned*ratio; the NULL cell omits the
---   pinned-arm metric; the 0-denominator cell pins pinned value = 0.
+-- FIXTURE MATRIX (10 pairs × {throughput_rows_per_sec (HB), parts_per_insert (LB)}
+--   = 20 asserted cells — the FULL literal contract product
+--   {NULL, 0-denominator, below-band, in-band, above-band} × {higher_better,
+--   lower_better} × {flagged, unflagged} = 5 × 2 × 2 = 20). Ratios are engineered
+--   by fixing pinned=100 (throughput) / pinned=10 (parts) and setting
+--   head = pinned*ratio; the NULL cell omits the PINNED arm's metric; the
+--   0-denominator cell pins pinned value = 0.
 --
 --   pair_id          flagged  ratio-bucket        throughput(HB)  parts(LB)
 --   ---------------  -------  ------------------   --------------  ------------
@@ -68,17 +71,21 @@
 --   FIXTURE-PAIR-06  YES      below-band 0.90      FLAGGED         FLAGGED
 --   FIXTURE-PAIR-07  YES      NULL (pinned absent) FLAGGED         FLAGGED
 --   FIXTURE-PAIR-08  YES      0-denominator (pin=0)FLAGGED         FLAGGED
+--   FIXTURE-PAIR-09  YES      in-band    1.00      FLAGGED         FLAGGED
+--   FIXTURE-PAIR-10  YES      above-band 1.10      FLAGGED         FLAGGED
 --
 --   Coverage of the PINNED acceptance grid
 --   {NULL,0-denom,below,in,above} × {HB,LB} × {flagged,unflagged}:
 --     unflagged: 01(below) 02(in) 03(above) 04(NULL) 05(0-denom) — all 5 × both
 --       metrics = 10 cells.
---     flagged:   06(below) 07(NULL) 08(0-denom) — verdict is CONSTANT FLAGGED for
---       any ratio class (flag overrides), so three flagged pairs spanning a
---       band-excursion, a NULL and a 0-denominator DEMONSTRATE the override across
---       all three interesting ratio classes; in-band/above-band flagged pairs are
---       intentionally omitted as verdict-redundant (same FLAGGED). 6 cells.
---     => 16 cells, every (ratio-class × direction × flag-state) covered.
+--     flagged:   06(below) 07(NULL) 08(0-denom) 09(in) 10(above) — all 5 × both
+--       metrics = 10 cells. The expected verdict is CONSTANT FLAGGED across the
+--       flagged row (the flag overrides every ratio class), but each cell guards
+--       a DISTINCT precedence bug: an implementation that hoists an explicit
+--       in-band=>OK arm ABOVE the flag check passes 06-08 undetected and is
+--       caught ONLY by PAIR-09; a good-direction-excursion=>IMPROVEMENT arm
+--       hoisted above the flag is caught only by PAIR-10 (throughput cell).
+--     => 20 cells, every (ratio-class × direction × flag-state) combination.
 --
 -- ELIGIBILITY THROUGH v_runs_enriched / v_pair_ratios: every fixture run is a
 --   COMPLETE, comparable row — outcome success, integrity PASSING (integrity_ok=1
@@ -101,6 +108,9 @@
 -- ---- idempotency: clear any prior fixture rows (scoped to the reserved id) ----
 DELETE FROM perf.runs    WHERE connector = 'verdict_fixture' OR startsWith(run_id, 'FIXTURE-');
 DELETE FROM perf.metrics WHERE startsWith(run_id, 'FIXTURE-');
+-- ch_inserts: PROPHYLACTIC — this seed inserts NO ch_inserts rows today; the
+-- DELETE reserves the FIXTURE- prefix there so a future per-insert fixture (or a
+-- stray manual insert) is swept by the same idempotent replace.
 DELETE FROM perf.ch_inserts WHERE startsWith(run_id, 'FIXTURE-');
 
 -- ---- perf.runs : two arms per pair (head + pinned) --------------------------
@@ -142,7 +152,11 @@ FROM
       ('FIXTURE-P07-head',   'FIXTURE-PAIR-07', 'head',   '1'),
       ('FIXTURE-P07-pinned', 'FIXTURE-PAIR-07', 'pinned', '1'),
       ('FIXTURE-P08-head',   'FIXTURE-PAIR-08', 'head',   '1'),
-      ('FIXTURE-P08-pinned', 'FIXTURE-PAIR-08', 'pinned', '1')
+      ('FIXTURE-P08-pinned', 'FIXTURE-PAIR-08', 'pinned', '1'),
+      ('FIXTURE-P09-head',   'FIXTURE-PAIR-09', 'head',   '1'),
+      ('FIXTURE-P09-pinned', 'FIXTURE-PAIR-09', 'pinned', '1'),
+      ('FIXTURE-P10-head',   'FIXTURE-PAIR-10', 'head',   '1'),
+      ('FIXTURE-P10-pinned', 'FIXTURE-PAIR-10', 'pinned', '1')
     ]) AS t,
     t.1 AS run_id,
     t.2 AS pair_id,
@@ -176,7 +190,8 @@ FROM
       'FIXTURE-P01-head','FIXTURE-P01-pinned','FIXTURE-P02-head','FIXTURE-P02-pinned',
       'FIXTURE-P03-head','FIXTURE-P03-pinned','FIXTURE-P04-head','FIXTURE-P04-pinned',
       'FIXTURE-P05-head','FIXTURE-P05-pinned','FIXTURE-P06-head','FIXTURE-P06-pinned',
-      'FIXTURE-P07-head','FIXTURE-P07-pinned','FIXTURE-P08-head','FIXTURE-P08-pinned'
+      'FIXTURE-P07-head','FIXTURE-P07-pinned','FIXTURE-P08-head','FIXTURE-P08-pinned',
+      'FIXTURE-P09-head','FIXTURE-P09-pinned','FIXTURE-P10-head','FIXTURE-P10-pinned'
     ]) AS run_id,
     arrayJoin([
       ('integrity_ok',     'bool',  1.0),
@@ -191,8 +206,9 @@ FROM
 );
 
 -- Gated metric: throughput_rows_per_sec (higher_better). pinned baseline = 100.
---   head = 100 * ratio. NULL cell (P04) omits BOTH arms' throughput on the pinned
---   arm; 0-denominator cell (P05) sets pinned = 0.
+--   head = 100 * ratio. The NULL cells (P04, P07) omit ONLY the PINNED arm's
+--   metric (the head arm's value is present) => ratio NULL via the missing
+--   denominator; the 0-denominator cells (P05, P08) set pinned = 0.
 INSERT INTO perf.metrics (run_id, metric_name, unit, value, recorded_at)
 SELECT run_id, 'throughput_rows_per_sec' AS metric_name, 'rows/s' AS unit, value,
        toDateTime('2026-07-09 00:20:00')
@@ -207,7 +223,9 @@ FROM
     ('FIXTURE-P05-head',   100.0), ('FIXTURE-P05-pinned',   0.0),  -- ratio: /0 => NULL (NO_DATA)
     ('FIXTURE-P06-head',    90.0), ('FIXTURE-P06-pinned', 100.0),  -- ratio 0.90 but FLAGGED
     ('FIXTURE-P07-head',   100.0),                                 -- P07 pinned absent => NULL but FLAGGED
-    ('FIXTURE-P08-head',   100.0), ('FIXTURE-P08-pinned',   0.0)   -- 0-denom but FLAGGED
+    ('FIXTURE-P08-head',   100.0), ('FIXTURE-P08-pinned',   0.0),  -- 0-denom but FLAGGED
+    ('FIXTURE-P09-head',   100.0), ('FIXTURE-P09-pinned', 100.0),  -- ratio 1.00 (in-band) but FLAGGED
+    ('FIXTURE-P10-head',   110.0), ('FIXTURE-P10-pinned', 100.0)   -- ratio 1.10 (above) but FLAGGED
   ]) AS t, t.1 AS run_id, t.2 AS value
 );
 
@@ -226,6 +244,8 @@ FROM
     ('FIXTURE-P05-head',    10.0), ('FIXTURE-P05-pinned',  0.0),  -- 0-denom => NULL
     ('FIXTURE-P06-head',     9.0), ('FIXTURE-P06-pinned', 10.0),  -- ratio 0.90 but FLAGGED
     ('FIXTURE-P07-head',    10.0),                                -- P07 pinned absent => NULL but FLAGGED
-    ('FIXTURE-P08-head',    10.0), ('FIXTURE-P08-pinned',  0.0)   -- 0-denom but FLAGGED
+    ('FIXTURE-P08-head',    10.0), ('FIXTURE-P08-pinned',  0.0),  -- 0-denom but FLAGGED
+    ('FIXTURE-P09-head',    10.0), ('FIXTURE-P09-pinned', 10.0),  -- ratio 1.00 (in-band) but FLAGGED
+    ('FIXTURE-P10-head',    11.0), ('FIXTURE-P10-pinned', 10.0)   -- ratio 1.10 (above) but FLAGGED
   ]) AS t, t.1 AS run_id, t.2 AS value
 );

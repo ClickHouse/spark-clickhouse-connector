@@ -173,7 +173,9 @@ def _str(v):
 # ----------------------------------------------------------------------------
 # Assertion + reporting.
 # ----------------------------------------------------------------------------
-EXPECTED_CELL_COUNT = 16  # 8 pairs × {throughput_rows_per_sec, parts_per_insert}
+# 10 pairs × {throughput_rows_per_sec, parts_per_insert} — the FULL literal
+# contract §3 product {NULL,0-denom,below,in,above} × {HB,LB} × {flagged,unflagged}.
+EXPECTED_CELL_COUNT = 20
 
 
 def _truthy(v: str) -> bool:
@@ -183,7 +185,7 @@ def _truthy(v: str) -> bool:
 def report_and_exit(rows):
     if not rows:
         sys.exit("ERROR: fixture check returned ZERO rows — seed did not land or "
-                 "the view produced nothing. Expected 16 cells.")
+                 f"the view produced nothing. Expected {EXPECTED_CELL_COUNT} cells.")
 
     # Pretty table.
     widths = {c: max(len(c), *(len(str(r.get(c, ""))) for r in rows)) for c in COLS}
