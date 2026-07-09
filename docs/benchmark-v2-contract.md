@@ -150,6 +150,7 @@ contract change):**
 | `drain_incomplete` | (Kafka) the sink did not fully drain the topic within the run window. |
 | `integrity_unverified` | integrity verification could not be computed (capture failed / source glob unavailable) — distinct from an integrity **mismatch**, which FAILS the run (§3). |
 | `instrument_resize` | (Amendment 2026-07-09c) the measurement harness's **compute resources changed** (node/instance type, worker pod CPU/memory requests or limits). Runs so flagged are **excluded from band calibration and trend baselines**; band calibration **restarts at the first pair on the new instrument**. |
+| `instrument_shift` | (Amendment 2026-07-09d) an **instrument regime shift observed without a config change**: the harness-saturation guard dropped SYMMETRICALLY on both arms (e.g. Kafka `kafka_worker_cpu_share` < ~0.85 on both) — the pair is non-comparable and investigated. Distinct from `instrument_resize` (deliberate resource change) and from an ASYMMETRIC departure, which is a real connector signal and MUST NOT be flagged. |
 
 A run MAY trip more than one guard; when it does, `flag_reason` **MUST** list the
 tokens separated by a single `|` (pipe), e.g. `task_retries|settle_timeout`. No
@@ -164,15 +165,29 @@ change in any instrument-truth key between consecutive pairs of the same
 connector is the trigger for the `instrument_resize` flag on the first affected
 run and an environment annotation.
 
-> **PROVISIONAL — pending principal sign-off (wording owned by the
-> kafka-manager's decision package; not yet normative):** Kafka instrument
-> definition — the Connect worker is deliberately CPU-quota-bounded at 3.5
-> cores; `kafka_worker_cpu_share` expected ~0.9–1.0; instrument acceptance =
-> resources recorded + drain-rate stability good + throttling symmetric across
-> arms (2026-07-09 live evidence: pinned-t1 95%/94%, head-t0 92%/91%, head-t1
-> 96%/94%, cores-of-limit/periods-throttled). This block becomes normative
-> (and loses this banner) when the principal signs off decision (a)
-> accept-and-document.
+**Kafka instrument definition (NORMATIVE — principal accept-and-document ruling,
+2026-07-09d):** the Connect worker is deliberately CPU-quota-bounded at 3.5
+cores; `kafka_worker_cpu_share` expected ~0.9–1.0; instrument acceptance =
+resources recorded + drain-rate stability good + throttling symmetric across
+arms (2026-07-09 live evidence: pinned-t1 95%/94%, head-t0 92%/91%, head-t1
+96%/94%, cores-of-limit/periods-throttled). Ruling conditions:
+
+- **(a) Quota + node type are INSTRUMENT IDENTITY.** Any change to either is an
+  annotated instrument event and restarts band calibration (see
+  `instrument_resize`).
+- **(b) The cpu_share guard separates signal from regime shift.** ASYMMETRIC
+  departure (one arm wait-bound while the other saturates) is a **real connector
+  signal** — the ratio gate speaks; it MUST NOT be flagged away. A SYMMETRIC
+  drop below ~0.85 on BOTH arms is an **instrument regime shift**: the pair is
+  flagged `instrument_shift` and investigated.
+- **(c) Documented blind spot:** parallel-CPU-scaling changes are clipped by the
+  quota and invisible to the nightly; they are assessed only by the parallelism
+  sweep campaign (kafka #37 / spark #22). A deliberate quota raise is an
+  instrument version bump, not a fix to this blind spot.
+
+**Charting hold (same ruling):** `drain_rate_stability` MUST NOT be charted
+until the commit-cadence aliasing refinement lands — dashboards exclude it until
+this sentence is amended away.
 
 ### 1.4 Config keys (shared concepts share names)
 
@@ -437,6 +452,15 @@ staging). H/P ratio gates are unaffected by the class difference (both arms shar
 the target), but absolute cross-connector numbers straddle a production/staging
 boundary and the reader **MUST** be told.
 
+**Matched-dataset rule (Amendment 2026-07-09d, principal ruling):** cross-
+connector comparisons are valid **only on a MATCHED dataset**. The `dataset`
+runtime key (§1.4) MUST be recorded by both pipelines, and Tab 5 MUST filter
+on dataset equality. A mismatched-dataset row (today: Kafka runs hits-10M vs
+Spark's hits 100M — record them as distinct `dataset` values, e.g. `'hits'` vs
+`'hits_10m'`) **MUST NEVER render as a comparable efficiency number** — it may
+appear only in clearly-separated per-connector context, never on a shared
+comparison series.
+
 ---
 
 ## 7. Required Spark-side renames (pinned name vs currently emitted name)
@@ -484,7 +508,7 @@ commit onward.
 | `pair_id` | `= RUN_ID` = `YYYY-MM-DDTHH-MM-SSZ-<shortsha>` |
 | `run_id` | `<pair_id>-<arm>-t<tier>` (recommended form; MUST be distinct per (arm, tier) row) |
 | rows per night (both tiers) | 4 `perf.runs` rows, one `pair_id` |
-| `flag_reason` tokens | `task_retries`, `settle_timeout`, `rebalance`, `task_restart`, `drain_incomplete`, `integrity_unverified`, `instrument_resize` (join multiples with `|`) |
+| `flag_reason` tokens | `task_retries`, `settle_timeout`, `rebalance`, `task_restart`, `drain_incomplete`, `integrity_unverified`, `instrument_resize`, `instrument_shift` (join multiples with `|`) |
 | mandatory scope keys | `target_region`, `environment_class` (`staging`\|`production`) |
 | shared config keys | `batch_size`, `write_parallelism`, `async_insert`, `partition_scheme`, `dataset` |
 | Tab-5 server-cost name | `ch_insert_cpu_seconds_per_Mrows` (NOT `server_cpu_per_Mrows`) |
