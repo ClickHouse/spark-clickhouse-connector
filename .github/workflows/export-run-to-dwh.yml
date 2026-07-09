@@ -46,6 +46,12 @@ on:
         required: false
         type: boolean
         default: false
+      source:
+        description: "Which metrics ClickHouse holds the runs: 'spark' (CLICKBENCH_METRICS_CH_*) or 'kafka' (CLICKBENCH_KAFKA_CH_*). The stores are separate services since 2026-07-05."
+        required: false
+        type: choice
+        options: [spark, kafka]
+        default: spark
 
 concurrency:
   # Share the main pipeline's export contention domain loosely: this is a
@@ -121,12 +127,13 @@ jobs:
         shell: bash
         env:
           # Same metrics-CH + DWH-role env names as the main pipeline's export
-          # step (.github/actions/run-arm/action.yml ~702-706), fed from the
-          # same secrets the main workflow passes as composite inputs
-          # (clickbench-load-test.yml ~349-352).
-          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
-          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
-          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          # step (.github/actions/run-arm/action.yml ~702-706). The source input
+          # selects which metrics service to read: the Spark and Kafka pipelines
+          # record to SEPARATE ClickHouse services (split 2026-07-05), so kafka
+          # run_ids only resolve against CLICKBENCH_KAFKA_CH_*.
+          METRICS_CH_HOST: ${{ inputs.source == 'kafka' && secrets.CLICKBENCH_KAFKA_CH_HOST || secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ inputs.source == 'kafka' && secrets.CLICKBENCH_KAFKA_CH_USER || secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ inputs.source == 'kafka' && secrets.CLICKBENCH_KAFKA_CH_PASSWORD || secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
           DWH_ROLE_ARN: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
           RUN_IDS: ${{ steps.parse.outputs.run_ids }}
           DRY_RUN: ${{ inputs.dry_run }}
