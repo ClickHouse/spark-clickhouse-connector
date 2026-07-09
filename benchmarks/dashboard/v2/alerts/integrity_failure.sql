@@ -26,6 +26,10 @@ WITH
   m AS (
     SELECT run_id, metric_name, argMax(value, recorded_at) AS value
     FROM raw_connectors_load_testing.metrics
+    -- contract §3: belt for the fixture rows on a metrics-only join (metrics has
+    -- no connector col; fixture identity is run_id 'FIXTURE-*'). Braces is the
+    -- connector != 'verdict_fixture' filter on the runs scope below.
+    WHERE NOT startsWith(run_id, 'FIXTURE-')
     GROUP BY run_id, metric_name
   ),
   pivot AS (
@@ -50,6 +54,10 @@ WITH
       p.unique_delivered, p.unique_expected, p.duplicate_rows
     FROM raw_connectors_load_testing.runs AS r
     LEFT JOIN pivot AS p ON r.run_id = p.run_id
+    -- contract §3: exclude the reserved verdict-fixture connector (a CI truth
+    -- table, never a real run) — matches the consumer views' predicate so a
+    -- mirrored fixture row can never raise a spurious INTEGRITY_MISMATCH.
+    WHERE r.connector != 'verdict_fixture'
   )
 SELECT
   run_id,

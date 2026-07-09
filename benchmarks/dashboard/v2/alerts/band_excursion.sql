@@ -56,6 +56,11 @@ WITH
   m AS (
     SELECT run_id, metric_name, argMax(value, recorded_at) AS value
     FROM raw_connectors_load_testing.metrics
+    -- contract §3: belt for the fixture rows on a metrics-only join (metrics has
+    -- no connector col; the fixture identity is run_id 'FIXTURE-*'). The
+    -- connector != 'verdict_fixture' filter in runs_scoped is the braces; this is
+    -- the belt so a mirrored fixture metric can never leak into a ratio.
+    WHERE NOT startsWith(run_id, 'FIXTURE-')
     GROUP BY run_id, metric_name
   ),
   runs_scoped AS (
@@ -79,6 +84,10 @@ WITH
         max(if(metric_name = 'unique_expected',  value, NULL)) AS unique_expected
       FROM m GROUP BY run_id
     ) AS p ON r.run_id = p.run_id
+    -- contract §3: exclude the reserved verdict-fixture connector (a CI truth
+    -- table, never a real run) — matches the consumer views' predicate so a
+    -- mirrored fixture row can never raise a REGRESSION/TRIPWIRE alert.
+    WHERE r.connector != 'verdict_fixture'
   ),
   eligible AS (
     SELECT run_id, pair_id, arm, tier

@@ -36,6 +36,10 @@ WITH
       coalesce(nullIf(r.runtime['tier'], ''), '1')      AS tier,
       coalesce(nullIf(r.runtime['outcome'], ''), 'success') AS outcome
     FROM raw_connectors_load_testing.runs AS r
+    -- contract §3: the reserved verdict-fixture connector is ALREADY excluded
+    -- here — this alert positively scopes to connector = 'spark', so a mirrored
+    -- 'verdict_fixture' row (and its 'FIXTURE-*' run_ids) can never enter. No
+    -- extra != 'verdict_fixture' / FIXTURE- belt is needed (no metrics-only join).
     WHERE r.connector = 'spark'
   )
 

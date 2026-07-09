@@ -35,9 +35,24 @@ virtual datasets `v2_pair_ratios` / `v2_runs_enriched` are inlined here as CTEs 
 each file is a standalone runnable query (Superset virtual datasets cannot be
 self-referenced by name from a query — see the connector notes).
 
-Band widths follow the plan: **Tier 0 ±3%, Tier 1 ±5%**, recalibrated from the
-first ~20 pairs' measured CoV (plan §7 band-width rule / open decision 6). The
-band constants live in `band_excursion.sql` — change them in ONE place.
+Band widths are **CALIBRATED per-metric** (contract §3 Amendment 2026-07-09b/f —
+the flat Tier 0 ±3% / Tier 1 ±5% rule is SUPERSEDED). Each band is **2× the
+measured noise floor** and is **keyed on the metric, NOT the tier** (the band is a
+property of the metric's noise, so it is identical on Tier 0 and Tier 1):
+
+| Metric | Band |
+|---|---|
+| `throughput_rows_per_sec` | ±9% |
+| `null_rows_per_sec` / `null_drain_rows_per_sec` / `drain_rows_per_sec` | ±8.5% |
+| `cpu_seconds_per_Mrows` / `ch_insert_cpu_seconds_per_Mrows` | ±6% |
+| `serialize_seconds_per_Mrows` | ±8.5% |
+| `merge_amplification` | **WATCH-ONLY** — not gated, never alerts |
+| `parts_per_insert` | **TRIPWIRE** — head arm `== 1.0` exactly; any deviation trips |
+
+**Recalibration rule:** at **~12 pairs (~2026-07-21)** the bands recalibrate from
+**trailing-20** window statistics and thereafter follow the plan's **median ±
+2·MAD** deviation-band design (`v2_trailing_windows`). The band constants live in
+`band_excursion.sql` — change them in ONE place.
 
 ## Empty-state / no-pairs behavior
 

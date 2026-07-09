@@ -41,6 +41,26 @@
 --   A consumer that neither calibrates nor is a pure display surface should
 --   default to flagged = 0 (the safe, band-excluding default).
 --
+--   SEQUENCE-COLUMN OBLIGATION (READ — the pair_seq/flagged TRAP):
+--     This view emits TWO recency ranks. They are NOT interchangeable:
+--       pair_seq   — dense_rank over ALL pairs (FLAG-INCLUSIVE). A flagged pair
+--                    occupies a pair_seq slot. So `flagged = 0 AND pair_seq = 1`
+--                    renders EMPTY whenever the NEWEST pair is flagged (the
+--                    flagged pair holds seq 1, and the flagged=0 predicate then
+--                    removes it, leaving no seq-1 row) — it does NOT fall back to
+--                    the previous clean pair. pair_seq MUST NOT be combined with
+--                    flagged=0 for latest / trailing-window scoping.
+--       clean_seq  — dense_rank over the flagged=0 rows ONLY (NULL on flagged
+--                    rows). Clean pairs are numbered 1..N by recency, SKIPPING
+--                    flagged pairs entirely. clean_seq = 1 always lands on the
+--                    newest CLEAN pair even when a newer pair is flagged.
+--     * GATE / trailing-window consumers  MUST scope on clean_seq
+--       (clean_seq = 1 = latest gateable pair; clean_seq <= 20 = trailing-20
+--        clean window). They do NOT need a separate flagged=0 filter for the
+--        scope — clean_seq is already NULL on flagged rows.
+--     * DISPLAY consumers  use pair_seq (they render flagged pairs too, so the
+--       flag-inclusive rank is the correct display order).
+--
 -- PAIR-LEVEL FLAG SEMANTICS (documented): a (pair, tier, metric) row is flagged
 --   iff EITHER arm of that (pair, tier) carries runtime['flagged']='1'. The flag
 --   is a per-RUN property; a pair inherits it from EITHER arm (contract §3: "a
@@ -218,10 +238,23 @@ WITH
 --     without erroring. parseDateTimeBestEffortOrNull is the *OrNull variant so
 --     a surprise value can never throw.
 --   pair_seq  — dense rank of the pair WITHIN its tier by pair_ts DESC (1 =
---     newest pair). dense_rank (not row_number) so every metric row of the same
---     pair shares one sequence number; tiles then filter pair_seq <= 20 for a
---     TRUE trailing-20 window and pair_seq = 1 for latest-pair scoping. Pairs
---     with a NULL pair_ts sort last under DESC ordering.
+--     newest pair), FLAG-INCLUSIVE (flagged pairs occupy a slot). dense_rank
+--     (not row_number) so every metric row of the same pair shares one sequence
+--     number. This is the DISPLAY rank: it preserves true chronology including
+--     flagged pairs. Pairs with a NULL pair_ts sort last under DESC ordering.
+--     *** DO NOT combine pair_seq with flagged=0 for latest/trailing scoping ***
+--     — see the SEQUENCE-COLUMN OBLIGATION in the header: if the newest pair is
+--     flagged, `flagged=0 AND pair_seq=1` is EMPTY, not the previous clean pair.
+--   clean_seq — dense rank of the pair WITHIN its tier over the flagged=0 rows
+--     ONLY (NULL on flagged rows). Computed by partitioning the dense_rank on
+--     (tier, flagged=0): the clean rows land in their own partition and are
+--     numbered 1..N by pair_ts DESC independently of the flagged rows (whose
+--     rank in the other partition is then discarded by the if(flagged,NULL,...)).
+--     This is the GATE rank: clean_seq = 1 = latest GATEABLE pair (skips a
+--     flagged-newest pair), clean_seq <= 20 = trailing-20 CLEAN window. Every
+--     metric row of one clean pair shares one clean_seq (dense_rank + shared
+--     pair_ts). Requires no extra flagged=0 filter — it is already NULL on
+--     flagged rows.
 SELECT
   pr.pair_id                       AS pair_id,
   pr.tier                          AS tier,
@@ -237,7 +270,21 @@ SELECT
   pr.pair_ts                       AS pair_ts,
   dense_rank() OVER (
     PARTITION BY pr.tier ORDER BY pr.pair_ts DESC
-  )                                AS pair_seq
+  )                                AS pair_seq,
+  -- clean_seq: dense_rank over the flagged=0 rows ONLY, NULL on flagged rows
+  -- (see the pair_seq/clean_seq doc block above + SEQUENCE-COLUMN OBLIGATION in
+  -- the header). Partitioning ALSO by (pr.flagged = 0) puts clean rows in a
+  -- separate window partition from flagged rows, so the rank over clean rows is
+  -- 1..N by recency SKIPPING flagged pairs; the if(flagged, NULL, ...) discards
+  -- the flagged partition's rank. clean_seq = 1 lands on the newest CLEAN pair
+  -- even when a NEWER pair is flagged (pair_seq would put the flagged pair at 1).
+  if(
+    pr.flagged = 1,
+    NULL,
+    dense_rank() OVER (
+      PARTITION BY pr.tier, (pr.flagged = 0) ORDER BY pr.pair_ts DESC
+    )
+  )                                AS clean_seq
 FROM (
   SELECT
     h.pair_id                        AS pair_id,
