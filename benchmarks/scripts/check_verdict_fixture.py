@@ -173,9 +173,14 @@ def _str(v):
 # ----------------------------------------------------------------------------
 # Assertion + reporting.
 # ----------------------------------------------------------------------------
-# 10 pairs × {throughput_rows_per_sec, parts_per_insert} — the FULL literal
-# contract §3 product {NULL,0-denom,below,in,above} × {HB,LB} × {flagged,unflagged}.
-EXPECTED_CELL_COUNT = 20
+# 15 pairs × {throughput_rows_per_sec (HB banded ±9%),
+#             cpu_seconds_per_Mrows (LB banded ±6%),
+#             parts_per_insert (TRIPWIRE)} = 45 cells (contract §3, Amendment
+# 2026-07-09b). Covers {NULL,0-denom,below,in,above,near-edge} × {HB,LB} banded
+# × {flagged,unflagged}, PLUS the parts TRIPWIRE axis {OK(==1.0), fired(!=1.0)}
+# × {flagged (armed), unflagged}. merge_amplification is WATCH-ONLY (not gated)
+# and is intentionally NOT asserted.
+EXPECTED_CELL_COUNT = 45
 
 
 def _truthy(v: str) -> bool:

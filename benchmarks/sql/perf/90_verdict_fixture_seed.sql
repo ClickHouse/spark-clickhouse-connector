@@ -15,12 +15,13 @@
 -- 90_verdict_fixture_seed.sql — PERMANENT verdict truth-table fixture
 -- =============================================================================
 -- Contract reference: docs/benchmark-v2-contract.md §3, "Acceptance rule
---   (PINNED)" (amendment a58c95d7): any artifact that emits a VERDICT (not a
+--   (PINNED)" (Amendment 2026-07-09b): any artifact that emits a VERDICT (not a
 --   number) requires fixture-based acceptance — synthetic PAIR rows under a
 --   RESERVED fixture connector, asserted THROUGH THE REAL dataset SQL, covering
 --   at least {NULL, 0-denominator, below-band, in-band, above-band} ×
---   {higher_better, lower_better} × {flagged, unflagged}. Consumer views MUST
---   exclude the fixture connector from real trends.
+--   {higher_better, lower_better} × {flagged, unflagged}, PLUS the
+--   parts_per_insert TRIPWIRE cells (==1.0 => OK, !=1.0 => TRIPWIRE). Consumer
+--   views MUST exclude the fixture connector from real trends.
 --
 -- RESERVED FIXTURE IDENTITY (schema-checked against 02_create_runs.sql /
 --   03_create_metrics.sql):
@@ -33,66 +34,90 @@
 --       whose base row is a ch_inserts row that carries only run_id. Seeding both
 --       lets every consumer exclude the fixture with whichever key it has.
 --     * pair_id lives in runtime['pair_id'] (Map(String,String)); each pair uses
---       a distinct id FIXTURE-PAIR-01 .. FIXTURE-PAIR-10, arm in runtime['arm']
+--       a distinct id FIXTURE-PAIR-01 .. FIXTURE-PAIR-15, arm in runtime['arm']
 --       ('head'|'pinned'), tier in runtime['tier'] ('1').
 --
--- BAND / DIRECTION (contract §3, PINNED): Tier-1 band is ±5% => in-band
---   ratio ∈ [0.95, 1.05]. Directions:
---     throughput_rows_per_sec = higher_better  (ratio>1.05 GOOD => IMPROVEMENT,
---                                                ratio<0.95 BAD  => REGRESSION)
---     parts_per_insert        = lower_better   (ratio<0.95 GOOD => IMPROVEMENT,
---                                                ratio>1.05 BAD  => REGRESSION)
---   ratio = head.value / pinned.value  (computed EXACTLY as v_pair_ratios:
---   head.value / nullIf(pinned.value, 0)).
+-- BANDS / DIRECTION / TRIPWIRE (contract §3, PINNED — Amendment 2026-07-09b:
+--   CALIBRATED per-metric bands at 2x the measured noise floor; the flat
+--   ±3%/±5% rule is superseded). The fixture exercises three gated behaviours:
+--
+--   (a) BANDED higher_better — throughput_rows_per_sec, band ±9% =>
+--       in-band ratio ∈ [0.91, 1.09].
+--         ratio > 1.09 (GOOD) => IMPROVEMENT ; ratio < 0.91 (BAD) => REGRESSION.
+--   (b) BANDED lower_better — cpu_seconds_per_Mrows, band ±6% =>
+--       in-band ratio ∈ [0.94, 1.06]. (Replaces parts_per_insert as the LB
+--       banded exemplar — parts is now a TRIPWIRE, not a banded ratio.)
+--         ratio < 0.94 (GOOD) => IMPROVEMENT ; ratio > 1.06 (BAD) => REGRESSION.
+--   (c) TRIPWIRE — parts_per_insert. NOT banded, NO ratio: a BINARY tripwire on
+--       the HEAD arm's ABSOLUTE value. head value == 1.0 => OK ; ANY deviation
+--       (head value != 1.0) => TRIPWIRE (investigate). head metric absent =>
+--       NO_DATA. The pinned arm is IRRELEVANT to this metric.
+--
+--   ratio = head.value / nullIf(pinned.value, 0)  (v_pair_ratios verbatim).
 --
 -- Ratio→verdict map (contract §3, PINNED), precedence
---   FAIL > FLAG > NO_DATA/IMPROVEMENT/REGRESSION/OK:
---     ratio NULL or 0-denominator   => NO_DATA   (never REGRESSION)
---     pair flagged                  => FLAGGED   (overrides band verdicts AND NO_DATA)
---     ratio outside band, GOOD dir  => IMPROVEMENT
---     ratio outside band, BAD dir   => REGRESSION
---     else                          => OK
+--   FAIL > FLAG > {NO_DATA / TRIPWIRE / IMPROVEMENT / REGRESSION / OK}:
+--     pair flagged                     => FLAGGED   (overrides EVERYTHING below,
+--                                                    incl. an armed TRIPWIRE)
+--     (banded) ratio NULL/0-denominator=> NO_DATA
+--     (banded) outside band, GOOD dir  => IMPROVEMENT
+--     (banded) outside band, BAD dir   => REGRESSION
+--     (banded) else                    => OK
+--     (tripwire) head absent           => NO_DATA
+--     (tripwire) head == 1.0           => OK
+--     (tripwire) head != 1.0           => TRIPWIRE
 --
--- FIXTURE MATRIX (10 pairs × {throughput_rows_per_sec (HB), parts_per_insert (LB)}
---   = 20 asserted cells — the FULL literal contract product
---   {NULL, 0-denominator, below-band, in-band, above-band} × {higher_better,
---   lower_better} × {flagged, unflagged} = 5 × 2 × 2 = 20). Ratios are engineered
---   by fixing pinned=100 (throughput) / pinned=10 (parts) and setting
---   head = pinned*ratio; the NULL cell omits the PINNED arm's metric; the
---   0-denominator cell pins pinned value = 0.
+-- FIXTURE MATRIX (15 pairs × {throughput_rows_per_sec (HB banded ±9%),
+--   cpu_seconds_per_Mrows (LB banded ±6%), parts_per_insert (TRIPWIRE)}
+--   = 45 asserted cells). Banded-ratio cells are engineered by fixing
+--   pinned = 100 (throughput) / 10 (cpu) and setting head = pinned*ratio; NULL
+--   cells omit the PINNED arm's banded metric; 0-denom cells set pinned = 0.
+--   Tripwire cells set the HEAD arm's parts value directly (pinned parts is a
+--   don't-care; seeded = head for tidiness where present).
 --
---   pair_id          flagged  ratio-bucket        throughput(HB)  parts(LB)
---   ---------------  -------  ------------------   --------------  ------------
---   FIXTURE-PAIR-01  no       below-band 0.90      REGRESSION      IMPROVEMENT
---   FIXTURE-PAIR-02  no       in-band    1.00      OK              OK
---   FIXTURE-PAIR-03  no       above-band 1.10      IMPROVEMENT      REGRESSION
---   FIXTURE-PAIR-04  no       NULL (pinned absent) NO_DATA         NO_DATA
---   FIXTURE-PAIR-05  no       0-denominator (pin=0)NO_DATA         NO_DATA
---   FIXTURE-PAIR-06  YES      below-band 0.90      FLAGGED         FLAGGED
---   FIXTURE-PAIR-07  YES      NULL (pinned absent) FLAGGED         FLAGGED
---   FIXTURE-PAIR-08  YES      0-denominator (pin=0)FLAGGED         FLAGGED
---   FIXTURE-PAIR-09  YES      in-band    1.00      FLAGGED         FLAGGED
---   FIXTURE-PAIR-10  YES      above-band 1.10      FLAGGED         FLAGGED
+--   pair_id          flagged  bucket              thr(HB±9%)  cpu(LB±6%)  parts(TRIP)
+--   ---------------  -------  ------------------   ----------  ----------  -----------
+--   FIXTURE-PAIR-01  no       below-band          REGRESSION  IMPROVEMENT OK (1.0)
+--   FIXTURE-PAIR-02  no       in-band             OK          OK          OK (1.0)
+--   FIXTURE-PAIR-03  no       above-band          IMPROVEMENT REGRESSION  OK (1.0)
+--   FIXTURE-PAIR-04  no       NULL (pinned absent) NO_DATA     NO_DATA     OK (1.0)
+--   FIXTURE-PAIR-05  no       0-denominator (pin=0)NO_DATA     NO_DATA     OK (1.0)
+--   FIXTURE-PAIR-06  no       near-edge INSIDE     OK          OK          OK (1.0)
+--   FIXTURE-PAIR-07  no       near-edge OUTSIDE    IMPROVEMENT IMPROVEMENT OK (1.0)
+--   FIXTURE-PAIR-08  no       tripwire fired hi    OK          OK          TRIPWIRE (1.05)
+--   FIXTURE-PAIR-09  no       tripwire fired lo    OK          OK          TRIPWIRE (0.95)
+--   FIXTURE-PAIR-10  YES      below-band          FLAGGED     FLAGGED     FLAGGED
+--   FIXTURE-PAIR-11  YES      NULL (pinned absent) FLAGGED     FLAGGED     FLAGGED
+--   FIXTURE-PAIR-12  YES      0-denominator (pin=0)FLAGGED     FLAGGED     FLAGGED
+--   FIXTURE-PAIR-13  YES      in-band             FLAGGED     FLAGGED     FLAGGED
+--   FIXTURE-PAIR-14  YES      above-band          FLAGGED     FLAGGED     FLAGGED
+--   FIXTURE-PAIR-15  YES      tripwire ARMED      FLAGGED     FLAGGED     FLAGGED (armed 1.05)
 --
---   Coverage of the PINNED acceptance grid
---   {NULL,0-denom,below,in,above} × {HB,LB} × {flagged,unflagged}:
---     unflagged: 01(below) 02(in) 03(above) 04(NULL) 05(0-denom) — all 5 × both
---       metrics = 10 cells.
---     flagged:   06(below) 07(NULL) 08(0-denom) 09(in) 10(above) — all 5 × both
---       metrics = 10 cells. The expected verdict is CONSTANT FLAGGED across the
---       flagged row (the flag overrides every ratio class), but each cell guards
---       a DISTINCT precedence bug: an implementation that hoists an explicit
---       in-band=>OK arm ABOVE the flag check passes 06-08 undetected and is
---       caught ONLY by PAIR-09; a good-direction-excursion=>IMPROVEMENT arm
---       hoisted above the flag is caught only by PAIR-10 (throughput cell).
---     => 20 cells, every (ratio-class × direction × flag-state) combination.
+--   Coverage of the PINNED acceptance grid:
+--     BANDED {below,in,above,NULL,0-denom} × {HB,LB} × {flagged,unflagged}:
+--       unflagged HB/LB: 01(below) 02(in) 03(above) 04(NULL) 05(0-denom)
+--         + near-edge 06(inside)/07(outside) for band-edge precision.
+--       flagged  HB/LB: 10(below) 11(NULL) 12(0-denom) 13(in) 14(above) — verdict
+--         is CONSTANT FLAGGED, but each guards a DISTINCT precedence bug (an impl
+--         that hoists in-band=>OK or good-excursion=>IMPROVEMENT above the flag
+--         check is caught only by 13/14).
+--     TRIPWIRE {OK(==1.0), fired(!=1.0)} × {flagged,unflagged}:
+--       unflagged: 08(fired hi 1.05) 09(fired lo 0.95) prove ANY deviation trips
+--         (both directions); 01-07 (==1.0) prove OK. (An ABSENT head parts value
+--         produces NO ROW — the honest production behaviour, matching v_pair_ratios
+--         which is driven off present metric rows; there is no synthetic parts
+--         NO_DATA cell, since a truly-absent tripwire metric is a no-row, not a
+--         NO_DATA verdict.)
+--       flagged:   15 ARMS the tripwire (head parts=1.05) yet expects FLAGGED —
+--         proves FLAG > TRIPWIRE precedence (10-14 carry parts=1.0, so 15 is the
+--         cell that catches a tripwire hoisted above the flag check).
 --
 -- ELIGIBILITY THROUGH v_runs_enriched / v_pair_ratios: every fixture run is a
 --   COMPLETE, comparable row — outcome success, integrity PASSING (integrity_ok=1
 --   emitted on both arms), both arms present per pair (except the NULL cells,
---   whose pinned arm run EXISTS and is eligible but deliberately lacks the gated
+--   whose pinned arm run EXISTS and is eligible but deliberately lacks the banded
 --   metric so the ratio is NULL — that is the point of that cell). The
---   0-denominator cells emit the gated metric on the pinned arm with value 0.
+--   0-denominator cells emit the banded metric on the pinned arm with value 0.
 --
 -- IDEMPOTENCY (perf.runs / perf.metrics / perf.ch_inserts are plain MergeTree —
 --   see 02/03/04 DDL; no ReplacingMergeTree, so a re-run would DUPLICATE rows):
@@ -131,7 +156,7 @@ SELECT
   'fixture-conn-v1' AS connector_version,
   '99.9.9-fixture' AS clickhouse_version,
   runtime,
-  'verdict truth-table fixture (contract §3)' AS notes
+  'verdict truth-table fixture (contract §3, Amendment 2026-07-09b)' AS notes
 FROM
 (
   SELECT
@@ -147,16 +172,26 @@ FROM
       ('FIXTURE-P04-pinned', 'FIXTURE-PAIR-04', 'pinned', '0'),
       ('FIXTURE-P05-head',   'FIXTURE-PAIR-05', 'head',   '0'),
       ('FIXTURE-P05-pinned', 'FIXTURE-PAIR-05', 'pinned', '0'),
-      ('FIXTURE-P06-head',   'FIXTURE-PAIR-06', 'head',   '1'),
-      ('FIXTURE-P06-pinned', 'FIXTURE-PAIR-06', 'pinned', '1'),
-      ('FIXTURE-P07-head',   'FIXTURE-PAIR-07', 'head',   '1'),
-      ('FIXTURE-P07-pinned', 'FIXTURE-PAIR-07', 'pinned', '1'),
-      ('FIXTURE-P08-head',   'FIXTURE-PAIR-08', 'head',   '1'),
-      ('FIXTURE-P08-pinned', 'FIXTURE-PAIR-08', 'pinned', '1'),
-      ('FIXTURE-P09-head',   'FIXTURE-PAIR-09', 'head',   '1'),
-      ('FIXTURE-P09-pinned', 'FIXTURE-PAIR-09', 'pinned', '1'),
+      ('FIXTURE-P06-head',   'FIXTURE-PAIR-06', 'head',   '0'),
+      ('FIXTURE-P06-pinned', 'FIXTURE-PAIR-06', 'pinned', '0'),
+      ('FIXTURE-P07-head',   'FIXTURE-PAIR-07', 'head',   '0'),
+      ('FIXTURE-P07-pinned', 'FIXTURE-PAIR-07', 'pinned', '0'),
+      ('FIXTURE-P08-head',   'FIXTURE-PAIR-08', 'head',   '0'),
+      ('FIXTURE-P08-pinned', 'FIXTURE-PAIR-08', 'pinned', '0'),
+      ('FIXTURE-P09-head',   'FIXTURE-PAIR-09', 'head',   '0'),
+      ('FIXTURE-P09-pinned', 'FIXTURE-PAIR-09', 'pinned', '0'),
       ('FIXTURE-P10-head',   'FIXTURE-PAIR-10', 'head',   '1'),
-      ('FIXTURE-P10-pinned', 'FIXTURE-PAIR-10', 'pinned', '1')
+      ('FIXTURE-P10-pinned', 'FIXTURE-PAIR-10', 'pinned', '1'),
+      ('FIXTURE-P11-head',   'FIXTURE-PAIR-11', 'head',   '1'),
+      ('FIXTURE-P11-pinned', 'FIXTURE-PAIR-11', 'pinned', '1'),
+      ('FIXTURE-P12-head',   'FIXTURE-PAIR-12', 'head',   '1'),
+      ('FIXTURE-P12-pinned', 'FIXTURE-PAIR-12', 'pinned', '1'),
+      ('FIXTURE-P13-head',   'FIXTURE-PAIR-13', 'head',   '1'),
+      ('FIXTURE-P13-pinned', 'FIXTURE-PAIR-13', 'pinned', '1'),
+      ('FIXTURE-P14-head',   'FIXTURE-PAIR-14', 'head',   '1'),
+      ('FIXTURE-P14-pinned', 'FIXTURE-PAIR-14', 'pinned', '1'),
+      ('FIXTURE-P15-head',   'FIXTURE-PAIR-15', 'head',   '1'),
+      ('FIXTURE-P15-pinned', 'FIXTURE-PAIR-15', 'pinned', '1')
     ]) AS t,
     t.1 AS run_id,
     t.2 AS pair_id,
@@ -178,7 +213,7 @@ FROM
     ) AS runtime
 );
 
--- ---- perf.metrics : integrity (both arms, PASSING) + gated metrics ----------
+-- ---- perf.metrics : integrity (both arms, PASSING) --------------------------
 -- Integrity: every fixture run emits integrity_ok=1 (+ delivered==expected /
 -- unique==expected) so v_runs_enriched.headline_ok = 1 and the pair is eligible.
 INSERT INTO perf.metrics (run_id, metric_name, unit, value, recorded_at)
@@ -191,7 +226,10 @@ FROM
       'FIXTURE-P03-head','FIXTURE-P03-pinned','FIXTURE-P04-head','FIXTURE-P04-pinned',
       'FIXTURE-P05-head','FIXTURE-P05-pinned','FIXTURE-P06-head','FIXTURE-P06-pinned',
       'FIXTURE-P07-head','FIXTURE-P07-pinned','FIXTURE-P08-head','FIXTURE-P08-pinned',
-      'FIXTURE-P09-head','FIXTURE-P09-pinned','FIXTURE-P10-head','FIXTURE-P10-pinned'
+      'FIXTURE-P09-head','FIXTURE-P09-pinned','FIXTURE-P10-head','FIXTURE-P10-pinned',
+      'FIXTURE-P11-head','FIXTURE-P11-pinned','FIXTURE-P12-head','FIXTURE-P12-pinned',
+      'FIXTURE-P13-head','FIXTURE-P13-pinned','FIXTURE-P14-head','FIXTURE-P14-pinned',
+      'FIXTURE-P15-head','FIXTURE-P15-pinned'
     ]) AS run_id,
     arrayJoin([
       ('integrity_ok',     'bool',  1.0),
@@ -205,10 +243,12 @@ FROM
     mt.3 AS value
 );
 
--- Gated metric: throughput_rows_per_sec (higher_better). pinned baseline = 100.
---   head = 100 * ratio. The NULL cells (P04, P07) omit ONLY the PINNED arm's
---   metric (the head arm's value is present) => ratio NULL via the missing
---   denominator; the 0-denominator cells (P05, P08) set pinned = 0.
+-- ---- Gated BANDED metric: throughput_rows_per_sec (higher_better, ±9%) ------
+-- pinned baseline = 100; head = 100 * ratio. In-band ∈ [0.91, 1.09].
+--   NULL cells (P04, P11) omit ONLY the PINNED arm's metric (head present) =>
+--   ratio NULL via the missing denominator; 0-denom cells (P05, P12) set
+--   pinned = 0. Below-band = 0.85 (<0.91); above-band = 1.15 (>1.09).
+--   near-edge INSIDE = 1.08 (< 1.09 => OK); near-edge OUTSIDE = 1.10 (> 1.09).
 INSERT INTO perf.metrics (run_id, metric_name, unit, value, recorded_at)
 SELECT run_id, 'throughput_rows_per_sec' AS metric_name, 'rows/s' AS unit, value,
        toDateTime('2026-07-09 00:20:00')
@@ -216,36 +256,85 @@ FROM
 (
   SELECT arrayJoin([
     -- (run_id, value)  head = pinned(100) * ratio
-    ('FIXTURE-P01-head',    90.0), ('FIXTURE-P01-pinned', 100.0),  -- ratio 0.90
-    ('FIXTURE-P02-head',   100.0), ('FIXTURE-P02-pinned', 100.0),  -- ratio 1.00
-    ('FIXTURE-P03-head',   110.0), ('FIXTURE-P03-pinned', 100.0),  -- ratio 1.10
-    ('FIXTURE-P04-head',   100.0),                                 -- P04 pinned: metric ABSENT => ratio NULL
-    ('FIXTURE-P05-head',   100.0), ('FIXTURE-P05-pinned',   0.0),  -- ratio: /0 => NULL (NO_DATA)
-    ('FIXTURE-P06-head',    90.0), ('FIXTURE-P06-pinned', 100.0),  -- ratio 0.90 but FLAGGED
-    ('FIXTURE-P07-head',   100.0),                                 -- P07 pinned absent => NULL but FLAGGED
-    ('FIXTURE-P08-head',   100.0), ('FIXTURE-P08-pinned',   0.0),  -- 0-denom but FLAGGED
-    ('FIXTURE-P09-head',   100.0), ('FIXTURE-P09-pinned', 100.0),  -- ratio 1.00 (in-band) but FLAGGED
-    ('FIXTURE-P10-head',   110.0), ('FIXTURE-P10-pinned', 100.0)   -- ratio 1.10 (above) but FLAGGED
+    ('FIXTURE-P01-head',    85.0), ('FIXTURE-P01-pinned', 100.0),  -- ratio 0.85 below
+    ('FIXTURE-P02-head',   100.0), ('FIXTURE-P02-pinned', 100.0),  -- ratio 1.00 in
+    ('FIXTURE-P03-head',   115.0), ('FIXTURE-P03-pinned', 100.0),  -- ratio 1.15 above
+    ('FIXTURE-P04-head',   100.0),                                 -- P04 pinned ABSENT => ratio NULL
+    ('FIXTURE-P05-head',   100.0), ('FIXTURE-P05-pinned',   0.0),  -- /0 => NULL (NO_DATA)
+    ('FIXTURE-P06-head',   108.0), ('FIXTURE-P06-pinned', 100.0),  -- ratio 1.08 near-edge INSIDE
+    ('FIXTURE-P07-head',   110.0), ('FIXTURE-P07-pinned', 100.0),  -- ratio 1.10 near-edge OUTSIDE
+    ('FIXTURE-P08-head',   100.0), ('FIXTURE-P08-pinned', 100.0),  -- ratio 1.00 in (tripwire-fired pair)
+    ('FIXTURE-P09-head',   100.0), ('FIXTURE-P09-pinned', 100.0),  -- ratio 1.00 in (tripwire-fired pair)
+    ('FIXTURE-P10-head',    85.0), ('FIXTURE-P10-pinned', 100.0),  -- 0.85 below but FLAGGED
+    ('FIXTURE-P11-head',   100.0),                                 -- P11 pinned absent => NULL but FLAGGED
+    ('FIXTURE-P12-head',   100.0), ('FIXTURE-P12-pinned',   0.0),  -- 0-denom but FLAGGED
+    ('FIXTURE-P13-head',   100.0), ('FIXTURE-P13-pinned', 100.0),  -- 1.00 in-band but FLAGGED
+    ('FIXTURE-P14-head',   115.0), ('FIXTURE-P14-pinned', 100.0),  -- 1.15 above but FLAGGED
+    ('FIXTURE-P15-head',   100.0), ('FIXTURE-P15-pinned', 100.0)   -- 1.00 in (tripwire ARMED) but FLAGGED
   ]) AS t, t.1 AS run_id, t.2 AS value
 );
 
--- Gated metric: parts_per_insert (lower_better). pinned baseline = 10.
---   head = 10 * ratio. Same NULL / 0-denominator construction as throughput.
+-- ---- Gated BANDED metric: cpu_seconds_per_Mrows (lower_better, ±6%) ----------
+-- pinned baseline = 10; head = 10 * ratio. In-band ∈ [0.94, 1.06].
+--   Replaces parts_per_insert as the LB banded exemplar. Same NULL / 0-denom
+--   construction. Below-ratio = 0.90 (<0.94 => IMPROVEMENT for LB);
+--   above-ratio = 1.10 (>1.06 => REGRESSION for LB).
+--   near-edge INSIDE = 1.05 (<1.06 => OK); near-edge OUTSIDE = 0.93 (<0.94 =>
+--   IMPROVEMENT, GOOD direction for LB).
+INSERT INTO perf.metrics (run_id, metric_name, unit, value, recorded_at)
+SELECT run_id, 'cpu_seconds_per_Mrows' AS metric_name, 's/Mrows' AS unit, value,
+       toDateTime('2026-07-09 00:20:00')
+FROM
+(
+  SELECT arrayJoin([
+    -- (run_id, value)  head = pinned(10) * ratio
+    ('FIXTURE-P01-head',     9.0), ('FIXTURE-P01-pinned', 10.0),  -- ratio 0.90 below => IMPROVEMENT (LB)
+    ('FIXTURE-P02-head',    10.0), ('FIXTURE-P02-pinned', 10.0),  -- ratio 1.00 in => OK
+    ('FIXTURE-P03-head',    11.0), ('FIXTURE-P03-pinned', 10.0),  -- ratio 1.10 above => REGRESSION (LB)
+    ('FIXTURE-P04-head',    10.0),                                -- P04 pinned absent => NULL
+    ('FIXTURE-P05-head',    10.0), ('FIXTURE-P05-pinned',  0.0),  -- 0-denom => NULL
+    ('FIXTURE-P06-head',    10.5), ('FIXTURE-P06-pinned', 10.0),  -- ratio 1.05 near-edge INSIDE => OK
+    ('FIXTURE-P07-head',     9.3), ('FIXTURE-P07-pinned', 10.0),  -- ratio 0.93 near-edge OUTSIDE => IMPROVEMENT
+    ('FIXTURE-P08-head',    10.0), ('FIXTURE-P08-pinned', 10.0),  -- ratio 1.00 in (tripwire-fired pair)
+    ('FIXTURE-P09-head',    10.0), ('FIXTURE-P09-pinned', 10.0),  -- ratio 1.00 in (tripwire-fired pair)
+    ('FIXTURE-P10-head',     9.0), ('FIXTURE-P10-pinned', 10.0),  -- 0.90 but FLAGGED
+    ('FIXTURE-P11-head',    10.0),                                -- P11 pinned absent => NULL but FLAGGED
+    ('FIXTURE-P12-head',    10.0), ('FIXTURE-P12-pinned',  0.0),  -- 0-denom but FLAGGED
+    ('FIXTURE-P13-head',    10.0), ('FIXTURE-P13-pinned', 10.0),  -- 1.00 in-band but FLAGGED
+    ('FIXTURE-P14-head',    11.0), ('FIXTURE-P14-pinned', 10.0),  -- 1.10 above but FLAGGED
+    ('FIXTURE-P15-head',    10.0), ('FIXTURE-P15-pinned', 10.0)   -- 1.00 in (tripwire ARMED) but FLAGGED
+  ]) AS t, t.1 AS run_id, t.2 AS value
+);
+
+-- ---- Gated TRIPWIRE metric: parts_per_insert (binary, HEAD absolute) --------
+-- NOT banded, NO ratio. The verdict keys on the HEAD arm's ABSOLUTE value:
+--   head == 1.0 => OK ; head != 1.0 => TRIPWIRE ; head ABSENT => NO_DATA.
+-- The pinned arm is a don't-care for this metric; where a pinned value is seeded
+-- it mirrors the head value purely for tidiness (the verdict never reads it).
+--   P04 / P11 (NULL cells): parts ABSENT on BOTH arms => NO_DATA.
+--   P08 (fired hi): head 1.05 => TRIPWIRE ; P09 (fired lo): head 0.95 => TRIPWIRE.
+--   P15 (flagged): head 1.05 ARMS the tripwire, but FLAGGED overrides => FLAGGED.
+--   all other pairs: head 1.0 => OK (or FLAGGED for 10/12/13/14).
 INSERT INTO perf.metrics (run_id, metric_name, unit, value, recorded_at)
 SELECT run_id, 'parts_per_insert' AS metric_name, 'ratio' AS unit, value,
        toDateTime('2026-07-09 00:20:00')
 FROM
 (
   SELECT arrayJoin([
-    ('FIXTURE-P01-head',     9.0), ('FIXTURE-P01-pinned', 10.0),  -- ratio 0.90
-    ('FIXTURE-P02-head',    10.0), ('FIXTURE-P02-pinned', 10.0),  -- ratio 1.00
-    ('FIXTURE-P03-head',    11.0), ('FIXTURE-P03-pinned', 10.0),  -- ratio 1.10
-    ('FIXTURE-P04-head',    10.0),                                -- P04 pinned absent => NULL
-    ('FIXTURE-P05-head',    10.0), ('FIXTURE-P05-pinned',  0.0),  -- 0-denom => NULL
-    ('FIXTURE-P06-head',     9.0), ('FIXTURE-P06-pinned', 10.0),  -- ratio 0.90 but FLAGGED
-    ('FIXTURE-P07-head',    10.0),                                -- P07 pinned absent => NULL but FLAGGED
-    ('FIXTURE-P08-head',    10.0), ('FIXTURE-P08-pinned',  0.0),  -- 0-denom but FLAGGED
-    ('FIXTURE-P09-head',    10.0), ('FIXTURE-P09-pinned', 10.0),  -- ratio 1.00 (in-band) but FLAGGED
-    ('FIXTURE-P10-head',    11.0), ('FIXTURE-P10-pinned', 10.0)   -- ratio 1.10 (above) but FLAGGED
+    ('FIXTURE-P01-head',   1.00), ('FIXTURE-P01-pinned', 1.00),  -- ==1.0 => OK
+    ('FIXTURE-P02-head',   1.00), ('FIXTURE-P02-pinned', 1.00),  -- ==1.0 => OK
+    ('FIXTURE-P03-head',   1.00), ('FIXTURE-P03-pinned', 1.00),  -- ==1.0 => OK
+    ('FIXTURE-P04-head',   1.00), ('FIXTURE-P04-pinned', 1.00),  -- ==1.0 => OK (parts ignores pinned)
+    ('FIXTURE-P05-head',   1.00), ('FIXTURE-P05-pinned', 1.00),  -- ==1.0 => OK
+    ('FIXTURE-P06-head',   1.00), ('FIXTURE-P06-pinned', 1.00),  -- ==1.0 => OK
+    ('FIXTURE-P07-head',   1.00), ('FIXTURE-P07-pinned', 1.00),  -- ==1.0 => OK
+    ('FIXTURE-P08-head',   1.05), ('FIXTURE-P08-pinned', 1.05),  -- !=1.0 => TRIPWIRE (fired hi)
+    ('FIXTURE-P09-head',   0.95), ('FIXTURE-P09-pinned', 0.95),  -- !=1.0 => TRIPWIRE (fired lo)
+    ('FIXTURE-P10-head',   1.00), ('FIXTURE-P10-pinned', 1.00),  -- ==1.0 but FLAGGED
+    ('FIXTURE-P11-head',   1.00), ('FIXTURE-P11-pinned', 1.00),  -- ==1.0 but FLAGGED
+    ('FIXTURE-P12-head',   1.00), ('FIXTURE-P12-pinned', 1.00),  -- ==1.0 but FLAGGED
+    ('FIXTURE-P13-head',   1.00), ('FIXTURE-P13-pinned', 1.00),  -- ==1.0 but FLAGGED
+    ('FIXTURE-P14-head',   1.00), ('FIXTURE-P14-pinned', 1.00),  -- ==1.0 but FLAGGED
+    ('FIXTURE-P15-head',   1.05), ('FIXTURE-P15-pinned', 1.05)   -- !=1.0 ARMED but FLAGGED => FLAGGED
   ]) AS t, t.1 AS run_id, t.2 AS value
 );

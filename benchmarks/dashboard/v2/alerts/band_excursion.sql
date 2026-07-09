@@ -1,26 +1,44 @@
 -- =============================================================================
--- ALERT: ratio band-excursion  ==>  REGRESSION
+-- ALERT: ratio band-excursion  ==>  REGRESSION   +   parts TRIPWIRE
 -- =============================================================================
 -- Shares the SQL semantics of the Tab 1 verdict tiles + Excursion-log table
 -- (charts "v2: Tier 0 verdict" 5694, "v2: Tier 1 verdict" 5696,
 --  "v2: Excursion log (ratio band-exits)" 5701), all on dataset v2_pair_ratios.
 --
--- Contract: docs/benchmark-v2-contract.md §3.3 — "Ratio band-exit => a REGRESSION
---   alert ... files an alert with the pair link. Band-exit tracking is on the
---   RATIO, not absolutes." Plan §6.2, §7 (Tab 1 excursion rules).
+-- Contract: docs/benchmark-v2-contract.md §3 (Amendment 2026-07-09b —
+--   CALIBRATED per-metric bands at 2x the measured noise floor; merge_amplification
+--   is WATCH-ONLY, not gated; parts_per_insert is a binary TRIPWIRE). "Ratio
+--   band-exit => a REGRESSION alert ... Band-exit tracking is on the RATIO, not
+--   absolutes." Plan §6.2, §7 (Tab 1 excursion rules).
 --
--- Trips when: a gated metric's H/P ratio leaves its tier band
---   (Tier 0 ±3%, Tier 1 ±5%). One output row per (pair, tier, metric) excursion.
+-- Trips when EITHER:
+--   (a) a BANDED gated metric's H/P ratio leaves its CALIBRATED band (below) in
+--       the BAD direction => REGRESSION; OR
+--   (b) the parts_per_insert TRIPWIRE fires: head arm's ABSOLUTE value != 1.0
+--       (parts is a constant-1.0 structural invariant, NOT a ratio) => TRIPWIRE.
+--   One output row per (pair, tier, metric) excursion/trip.
 --   FLAGGED runs are ALREADY excluded upstream (v2_pair_ratios only emits pairs
 --   whose BOTH arms are un-flagged, outcome!='failed', not integrity-failed), so
---   a row here is a genuine regression — never a flagged/non-comparable run.
+--   a row here is a genuine regression/tripwire — never a flagged/non-comparable
+--   run.
+--
+--   merge_amplification is WATCH-ONLY (contract §3): it is NOT gated and is
+--   EXCLUDED from this alert — single-pair excursions <25% are indistinguishable
+--   from merge-timing noise (12.7% within-arm floor, no pairing dividend), so
+--   alerting on it would manufacture false regressions. It remains a covariate.
 --
 -- Channel wiring is a FLAGGED follow-up (open decision 3) — see README.md.
 -- Non-empty result set == alert should fire; attach `pair_link` per row.
 --
--- Band constants (SINGLE SOURCE OF TRUTH — recalibrate here after ~20 pairs):
---     Tier 0 = 0.03  (±3%)
---     Tier 1 = 0.05  (±5%)
+-- CALIBRATED per-metric band map (SINGLE SOURCE OF TRUTH — contract §3 Amendment
+--   2026-07-09b; each = 2x the measured noise floor, SAME on both tiers, keyed on
+--   the metric name, NOT the tier. Recalibrates from trailing-20 stats at ~12
+--   pairs (~2026-07-21), then median±2*MAD per plan §6.2):
+--     throughput_rows_per_sec                         = 0.09   (±9%)
+--     null_rows_per_sec / null_drain / drain_rows/s   = 0.085  (±8.5%)
+--     cpu_seconds_per_Mrows / ch_insert_cpu_..._Mrows = 0.06   (±6%)
+--     serialize_seconds_per_Mrows                     = 0.085  (±8.5%)
+--     parts_per_insert                                = TRIPWIRE (== 1.0 exactly)
 --
 -- Run against: DWH connection dc93cd97, db 1, schema raw_connectors_load_testing.
 -- Empty today (no pairs). MUST NOT error on the empty dataset.
@@ -105,6 +123,32 @@ WITH
     FROM (SELECT * FROM metric_long WHERE arm = 'head')   AS h
     INNER JOIN (SELECT * FROM metric_long WHERE arm = 'pinned') AS pn
       ON h.pair_id = pn.pair_id AND h.tier = pn.tier AND h.metric = pn.metric
+  ),
+  -- Direction + CALIBRATED per-metric band + tripwire flag (contract §3
+  -- Amendment 2026-07-09b). merge_amplification is dropped here (WATCH-ONLY).
+  classified AS (
+    SELECT
+      pair_id, tier, metric, head_value, pinned_value, ratio,
+      multiIf(
+        metric IN ('throughput_rows_per_sec','null_rows_per_sec',
+                   'null_drain_rows_per_sec','drain_rows_per_sec'), 'higher_better',
+        metric IN ('cpu_seconds_per_Mrows','serialize_seconds_per_Mrows',
+                   'ch_insert_cpu_seconds_per_Mrows'), 'lower_better',
+        'tripwire'                                    -- parts_per_insert
+      ) AS direction,
+      (metric = 'parts_per_insert') AS is_tripwire,
+      -- CALIBRATED band (2x measured noise floor; SAME on both tiers; keyed on
+      -- metric name, NOT tier). Non-banded metrics get 0 (unused for them).
+      multiIf(
+        metric = 'throughput_rows_per_sec',                                    0.09,
+        metric IN ('null_rows_per_sec','null_drain_rows_per_sec',
+                   'drain_rows_per_sec'),                                       0.085,
+        metric IN ('cpu_seconds_per_Mrows','ch_insert_cpu_seconds_per_Mrows'),  0.06,
+        metric = 'serialize_seconds_per_Mrows',                                0.085,
+        0.0
+      ) AS band
+    FROM ratios
+    WHERE metric != 'merge_amplification'            -- WATCH-ONLY, not gated
   )
 SELECT
   pair_id,
@@ -112,15 +156,22 @@ SELECT
   metric,
   round(head_value, 4)          AS head_value,
   round(pinned_value, 4)        AS pinned_value,
-  round((ratio - 1) * 100, 2)   AS delta_pct,
-  if(tier = '0', '+-3%', '+-5%') AS band,
-  'REGRESSION'                  AS verdict,
+  -- delta_pct: for banded metrics the ratio excursion; for the tripwire, the
+  -- head arm's deviation from the 1.0 invariant.
+  if(is_tripwire, round((head_value - 1) * 100, 2), round((ratio - 1) * 100, 2)) AS delta_pct,
+  if(is_tripwire, 'TRIPWIRE(==1.0)', concat('+-', toString(band * 100), '%')) AS band_label,
+  if(is_tripwire, 'TRIPWIRE', 'REGRESSION')          AS verdict,
   -- pair link for the alert body (Superset dashboard 427, Tab 1):
   concat('https://superset.clickhouse-dev.com/superset/dashboard/427/?pair_id=', pair_id) AS pair_link
-FROM ratios
-WHERE ratio IS NOT NULL
-  AND (
-    (tier = '0' AND abs(ratio - 1) > 0.03) OR   -- Tier 0 band ±3%
-    (tier = '1' AND abs(ratio - 1) > 0.05)      -- Tier 1 band ±5%
-  )
+FROM classified
+WHERE
+  -- (b) parts TRIPWIRE: head arm's absolute value deviates from the 1.0 invariant.
+  (is_tripwire AND head_value != 1.0)
+  OR
+  -- (a) banded REGRESSION: ratio leaves the calibrated band in the BAD direction
+  --     ONLY (a GOOD-direction excursion is an IMPROVEMENT, reported not alarmed).
+  (NOT is_tripwire AND ratio IS NOT NULL AND band > 0 AND (
+      (direction = 'higher_better' AND ratio < 1 - band) OR   -- worse: slower/lower
+      (direction = 'lower_better'  AND ratio > 1 + band)      -- worse: more cost
+  ))
 ORDER BY pair_id DESC, tier, metric

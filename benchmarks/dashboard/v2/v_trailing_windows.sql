@@ -31,13 +31,24 @@
 --   contract metric renames coalesced so history is one series).
 --
 -- HARD REQUIREMENTS met:
---   * Gated ABSOLUTE metric set only (6 series-kinds), matching the Tab-1 gated set
---     — cardinality is (eligible rows) × 6, kept sane by never cross-joining:
+--   * ABSOLUTE metric set (6 series-kinds) — the deviation-band + noise-gauge
+--     surface. Cardinality is (eligible rows) × 6, kept sane by never cross-joining:
 --       Tier 0: null_rows_per_sec, cpu_seconds_per_Mrows, serialize_seconds_per_Mrows
 --       Tier 1: throughput_rows_per_sec, parts_per_insert, merge_amplification
 --     null_rows_per_sec is Tier-0-only and throughput_rows_per_sec Tier-1-only by
 --     construction; the two connector-cost ratios are emitted at whatever tier they
 --     were captured. A metric simply does not appear for a run that never emitted it.
+--     NOTE (contract §3, Amendment 2026-07-09b — gate composition): this dataset
+--     still materialises ALL SIX series, but they are no longer a homogeneous
+--     "gated set". As of the calibrated-band amendment the PAIR-LEVEL verdict gate
+--     is: Tier-1 = throughput (banded ±9%) + parts_per_insert (TRIPWIRE, ==1.0);
+--     Tier-0 = null_rows/cpu/serialize (banded). merge_amplification is WATCH-ONLY
+--     (NOT gated) and parts_per_insert is a TRIPWIRE (not banded). They are kept
+--     HERE deliberately: their trailing median/MAD/CoV are the covariate + noise
+--     surface AND the basis for the ~2026-07-21 (~12 pairs) band recalibration to
+--     the median±2*MAD design — so their statistics are computed exactly as
+--     before. This is a PROSE clarification only; the windows/statistics are
+--     UNCHANGED.
 --   * PER-ARM separation (design note): every window is partitioned by
 --     (arm, tier, metric) — head and pinned are SEPARATE series and never share a
 --     frame. This is deliberate and required:

@@ -13,23 +13,36 @@
 --   REAL dataset SQL (v_pair_ratios' ratio computation, copied verbatim below)
 --   maps ratios to verdicts exactly as the contract pins. It never feeds a chart.
 --
--- Contract reference: docs/benchmark-v2-contract.md §3 —
---   * BAND (PINNED, tier-aware): ±3% Tier 0 / ±5% Tier 1 => in-band ratio
---     ∈ [0.97, 1.03] for tier '0', [0.95, 1.05] for tier '1'. All current
---     fixture rows are Tier 1; the band is keyed on the tier column anyway
---     (see the classified CTE) so a future Tier-0 fixture is not mis-banded.
---   * DIRECTION (PINNED): throughput_rows_per_sec = higher_better,
---     parts_per_insert = lower_better.
---   * RATIO→VERDICT (PINNED), precedence FAIL > FLAG > {NO_DATA/IMPROVEMENT/
---     REGRESSION/OK}:
---       ratio NULL or 0-denominator  => NO_DATA
---       pair flagged                 => FLAGGED  (overrides band verdicts AND NO_DATA)
---       outside band, GOOD direction => IMPROVEMENT
---       outside band, BAD direction  => REGRESSION
---       else                         => OK
+-- Contract reference: docs/benchmark-v2-contract.md §3 (Amendment 2026-07-09b —
+--   CALIBRATED per-metric bands at 2x the measured noise floor; the flat
+--   ±3%/±5% rule is superseded; merge_amplification is WATCH-ONLY, not gated;
+--   parts_per_insert is a binary TRIPWIRE) —
+--   * BANDED metrics (PINNED calibrated bands, SAME on both tiers — a property of
+--     the metric's noise, not the tier):
+--         throughput_rows_per_sec (verified)               ±9%   => [0.91, 1.09]
+--         null_rows_per_sec / null_drain / drain_rows/s    ±8.5% => [0.915,1.085]
+--         ch_insert_cpu_seconds_per_Mrows / cpu_..._Mrows  ±6%   => [0.94, 1.06]
+--         serialize_seconds_per_Mrows                      ±8.5% => [0.915,1.085]
+--   * DIRECTION (PINNED): throughput_rows_per_sec / null_* / drain = higher_better;
+--     cpu_seconds_per_Mrows / ch_insert_cpu_..._Mrows / serialize_..._Mrows =
+--     lower_better.
+--   * TRIPWIRE (PINNED): parts_per_insert is NOT banded and NOT ratio-compared —
+--     a BINARY tripwire on the HEAD arm's ABSOLUTE value: head == 1.0 => OK,
+--     head != 1.0 => TRIPWIRE. (merge_amplification is WATCH-ONLY and is NOT
+--     asserted here — it is not gated.)
+--   * RATIO→VERDICT (PINNED), precedence FAIL > FLAG > {NO_DATA / TRIPWIRE /
+--     IMPROVEMENT / REGRESSION / OK}:
+--       pair flagged                     => FLAGGED  (overrides EVERYTHING below,
+--                                                     incl. an armed TRIPWIRE)
+--       (banded) ratio NULL/0-denominator=> NO_DATA
+--       (banded) outside band, GOOD dir  => IMPROVEMENT
+--       (banded) outside band, BAD dir   => REGRESSION
+--       (banded) else                    => OK
+--       (tripwire) head == 1.0           => OK
+--       (tripwire) head != 1.0           => TRIPWIRE
 --   (Integrity-FAIL precedence is not exercised here — all fixture rows pass
---    integrity by construction; the fixture targets the ratio→verdict map, the
---    layer this acceptance rule was written to protect.)
+--    integrity by construction; the fixture targets the ratio→verdict map + the
+--    tripwire, the layers this acceptance rule was written to protect.)
 --
 -- KEEP-IN-SYNC CONTRACT (read before editing):
 --   The `runs_scoped`/`metric_long`/ratio CTEs below are COPIED from
@@ -168,13 +181,16 @@ WITH
     GROUP BY e.pair_id, e.tier, e.arm, mm.metric_name, mm.value
   ),
   -- Ratio per (pair, tier, metric) — head LEFT JOIN pinned so a MISSING pinned
-  -- gated metric (the NULL cell, P04/P07) yields a NULL pinned_value and hence a
-  -- NULL ratio, and a pinned value of 0 (the 0-denominator cell, P05/P08) yields
+  -- gated metric (the NULL cell, P04/P11) yields a NULL pinned_value and hence a
+  -- NULL ratio, and a pinned value of 0 (the 0-denominator cell, P05/P12) yields
   -- ratio NULL via nullIf(pinned,0). v_pair_ratios uses INNER (it gates complete
   -- pairs); acceptance NEEDS the missing-metric arm to surface as NO_DATA, so we
   -- LEFT JOIN here and toNullable() the pinned side (join_use_nulls=0 would else
   -- fake pinned=0). The ratio expression itself is v_pair_ratios' verbatim
   -- head.value / nullIf(pinned.value, 0).
+  --
+  -- head_value is carried THROUGH for the TRIPWIRE verdict (parts_per_insert),
+  -- which reads the head ABSOLUTE value and IGNORES pinned/ratio entirely.
   ratios AS (
     SELECT
       h.pair_id                        AS pair_id,
@@ -191,27 +207,53 @@ WITH
     ) AS pn
       ON h.pair_id = pn.pair_id AND h.tier = pn.tier AND h.metric = pn.metric
   ),
-  -- Attach the PINNED direction per metric (contract §3 direction table) and the
-  -- tier-aware starting band (contract §3: ±3% Tier 0, ±5% Tier 1).
+  -- Attach the PINNED direction per metric (contract §3 direction table), the
+  -- CALIBRATED per-metric band (contract §3 Amendment 2026-07-09b — 2x the
+  -- measured noise floor, SAME on both tiers), and the tripwire flag.
   classified AS (
     SELECT
       pair_id, tier, metric, flagged, head_value, pinned_value, ratio,
       multiIf(
         metric IN ('throughput_rows_per_sec','null_rows_per_sec',
                    'null_drain_rows_per_sec','drain_rows_per_sec'), 'higher_better',
-        metric IN ('parts_per_insert','merge_amplification','cpu_seconds_per_Mrows',
-                   'serialize_seconds_per_Mrows','ch_insert_cpu_seconds_per_Mrows'), 'lower_better',
-        'unknown'
+        metric IN ('cpu_seconds_per_Mrows','serialize_seconds_per_Mrows',
+                   'ch_insert_cpu_seconds_per_Mrows'), 'lower_better',
+        'watch_or_tripwire'          -- parts_per_insert (tripwire), merge_amplification (watch-only)
       ) AS direction,
-      -- TIER-AWARE band (contract §3): ±3% for tier '0', ±5% for tier '1'. All
-      -- CURRENT fixture pairs are tier '1' (seed sets runtime['tier']='1'), so
-      -- today only the 0.95/1.05 arm fires — but a future Tier-0 fixture row
-      -- (tighter ±3% band) would be MIS-BANDED by a hardcoded ±5%; keying on the
-      -- tier column removes that trap. Any other tier value falls back to the
-      -- Tier-1 band (the contract defines bands only for tiers 0 and 1).
-      if(tier = '0', 0.97, 0.95) AS band_lo,
-      if(tier = '0', 1.03, 1.05) AS band_hi
+      -- TRIPWIRE metric flag: parts_per_insert is a binary tripwire, not banded.
+      (metric = 'parts_per_insert') AS is_tripwire,
+      -- CALIBRATED per-metric band (contract §3 Amendment 2026-07-09b). The band
+      -- is a property of the metric's noise floor (2x measured), NOT the tier, so
+      -- it is keyed on the metric name and is identical on Tier 0 and Tier 1.
+      -- Non-banded metrics (tripwire / watch-only) get band 0 — unused, since the
+      -- verdict for them never consults band_lo/band_hi.
+      multiIf(
+        metric = 'throughput_rows_per_sec',                                 0.09,
+        metric IN ('null_rows_per_sec','null_drain_rows_per_sec',
+                   'drain_rows_per_sec'),                                    0.085,
+        metric IN ('cpu_seconds_per_Mrows','ch_insert_cpu_seconds_per_Mrows'), 0.06,
+        metric = 'serialize_seconds_per_Mrows',                             0.085,
+        0.0
+      ) AS band,
+      1 - multiIf(
+        metric = 'throughput_rows_per_sec',                                 0.09,
+        metric IN ('null_rows_per_sec','null_drain_rows_per_sec',
+                   'drain_rows_per_sec'),                                    0.085,
+        metric IN ('cpu_seconds_per_Mrows','ch_insert_cpu_seconds_per_Mrows'), 0.06,
+        metric = 'serialize_seconds_per_Mrows',                             0.085,
+        0.0
+      ) AS band_lo,
+      1 + multiIf(
+        metric = 'throughput_rows_per_sec',                                 0.09,
+        metric IN ('null_rows_per_sec','null_drain_rows_per_sec',
+                   'drain_rows_per_sec'),                                    0.085,
+        metric IN ('cpu_seconds_per_Mrows','ch_insert_cpu_seconds_per_Mrows'), 0.06,
+        metric = 'serialize_seconds_per_Mrows',                             0.085,
+        0.0
+      ) AS band_hi
     FROM ratios
+    -- merge_amplification is WATCH-ONLY (contract §3, not gated) — never asserted.
+    WHERE metric != 'merge_amplification'
   )
 SELECT
   pair_id,
@@ -221,38 +263,54 @@ SELECT
   ratio,
   flagged,
   -- ACTUAL verdict via the PINNED ratio→verdict map, in precedence order:
-  --   FLAG > NO_DATA > (band excursion by direction) > OK.
-  -- (FLAG is placed ABOVE NO_DATA here to honour §3 precedence FLAG > NO_DATA —
-  --  a flagged pair is FLAGGED even when its ratio is NULL/0-denominator.)
+  --   FLAG > NO_DATA > (banded excursion by direction | tripwire) > OK.
+  -- (FLAG is placed ABOVE everything to honour §3 precedence FLAG > all — a
+  --  flagged pair is FLAGGED even when its ratio is NULL/0-denominator OR its
+  --  tripwire is ARMED, so the flagged branch must dominate both.)
   multiIf(
-    flagged,                                     'FLAGGED',
-    ratio IS NULL,                               'NO_DATA',
-    direction = 'higher_better' AND ratio > band_hi, 'IMPROVEMENT',
-    direction = 'higher_better' AND ratio < band_lo, 'REGRESSION',
-    direction = 'lower_better'  AND ratio < band_lo, 'IMPROVEMENT',
-    direction = 'lower_better'  AND ratio > band_hi, 'REGRESSION',
+    flagged,                                              'FLAGGED',
+    -- TRIPWIRE branch (parts_per_insert): head absolute value, NO ratio/band.
+    is_tripwire AND head_value = 1.0,                     'OK',
+    is_tripwire,                                          'TRIPWIRE',
+    -- BANDED branch: NO_DATA before band excursions.
+    ratio IS NULL,                                        'NO_DATA',
+    direction = 'higher_better' AND ratio > band_hi,      'IMPROVEMENT',
+    direction = 'higher_better' AND ratio < band_lo,      'REGRESSION',
+    direction = 'lower_better'  AND ratio < band_lo,      'IMPROVEMENT',
+    direction = 'lower_better'  AND ratio > band_hi,      'REGRESSION',
     'OK'
   )                                              AS actual_verdict,
   -- EXPECTED verdict hard-coded from the fixture matrix (the truth table the seed
   -- was built to realise). Keyed on (pair_id, metric); documented in the seed
   -- header. This is the INDEPENDENT oracle — actual must equal it.
   multiIf(
-    -- flagged pairs: always FLAGGED regardless of metric/ratio — 06 below-band,
-    -- 07 NULL, 08 0-denominator, 09 in-band, 10 above-band (09/10 close the
-    -- literal 20-cell contract product AND catch a precedence bug that hoists an
-    -- in-band=>OK or good-excursion=>IMPROVEMENT arm above the flag check).
-    pair_id IN ('FIXTURE-PAIR-06','FIXTURE-PAIR-07','FIXTURE-PAIR-08',
-                'FIXTURE-PAIR-09','FIXTURE-PAIR-10'), 'FLAGGED',
-    -- NULL / 0-denominator unflagged pairs: NO_DATA for both metrics
-    pair_id IN ('FIXTURE-PAIR-04','FIXTURE-PAIR-05'), 'NO_DATA',
-    -- below-band 0.90 (P01)
+    -- flagged pairs: always FLAGGED regardless of metric/ratio/tripwire — 10
+    -- below-band, 11 NULL, 12 0-denom, 13 in-band, 14 above-band, 15 tripwire
+    -- ARMED. 13/14/15 close the precedence product AND catch a bug that hoists an
+    -- in-band=>OK, good-excursion=>IMPROVEMENT, or armed-TRIPWIRE arm above the
+    -- flag check.
+    pair_id IN ('FIXTURE-PAIR-10','FIXTURE-PAIR-11','FIXTURE-PAIR-12',
+                'FIXTURE-PAIR-13','FIXTURE-PAIR-14','FIXTURE-PAIR-15'), 'FLAGGED',
+    -- TRIPWIRE metric (parts_per_insert), unflagged pairs:
+    metric = 'parts_per_insert' AND pair_id IN
+      ('FIXTURE-PAIR-08','FIXTURE-PAIR-09'),                            'TRIPWIRE',
+    metric = 'parts_per_insert',                                       'OK',  -- ==1.0 on 01-07
+    -- BANDED metrics, unflagged pairs:
+    -- NULL / 0-denominator => NO_DATA for both banded metrics (P04, P05)
+    pair_id IN ('FIXTURE-PAIR-04','FIXTURE-PAIR-05'),                  'NO_DATA',
+    -- below-band (P01): thr 0.85 REGRESSION (HB) / cpu 0.90 IMPROVEMENT (LB)
     pair_id = 'FIXTURE-PAIR-01' AND metric = 'throughput_rows_per_sec', 'REGRESSION',
-    pair_id = 'FIXTURE-PAIR-01' AND metric = 'parts_per_insert',        'IMPROVEMENT',
-    -- in-band 1.00 (P02)
-    pair_id = 'FIXTURE-PAIR-02', 'OK',
-    -- above-band 1.10 (P03)
+    pair_id = 'FIXTURE-PAIR-01' AND metric = 'cpu_seconds_per_Mrows',   'IMPROVEMENT',
+    -- in-band (P02) + tripwire-fired pairs' banded arms in-band (P08, P09)
+    pair_id IN ('FIXTURE-PAIR-02','FIXTURE-PAIR-08','FIXTURE-PAIR-09'), 'OK',
+    -- above-band (P03): thr 1.15 IMPROVEMENT (HB) / cpu 1.10 REGRESSION (LB)
     pair_id = 'FIXTURE-PAIR-03' AND metric = 'throughput_rows_per_sec', 'IMPROVEMENT',
-    pair_id = 'FIXTURE-PAIR-03' AND metric = 'parts_per_insert',        'REGRESSION',
+    pair_id = 'FIXTURE-PAIR-03' AND metric = 'cpu_seconds_per_Mrows',   'REGRESSION',
+    -- near-edge INSIDE (P06): thr 1.08 (<1.09) OK / cpu 1.05 (<1.06) OK
+    pair_id = 'FIXTURE-PAIR-06',                                        'OK',
+    -- near-edge OUTSIDE (P07): thr 1.10 (>1.09) IMPROVEMENT (HB) /
+    --                          cpu 0.93 (<0.94) IMPROVEMENT (LB, good dir)
+    pair_id = 'FIXTURE-PAIR-07',                                        'IMPROVEMENT',
     'UNEXPECTED-CELL'
   )                                              AS expected_verdict,
   (actual_verdict = expected_verdict)            AS pass
