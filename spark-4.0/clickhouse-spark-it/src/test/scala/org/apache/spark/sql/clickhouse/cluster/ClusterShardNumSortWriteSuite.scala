@@ -14,10 +14,14 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
+import com.clickhouse.spark.{ClickHouseTable, ClickHouseTableProvider}
 import com.clickhouse.spark.spec.{ClusterSpec, NodeSpec, ReplicaSpec, ShardSpec, ShardUtils}
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.clickhouse.TestUtils.om
+import org.apache.spark.sql.connector.catalog.{Identifier, TableCatalog}
+import org.apache.spark.sql.connector.expressions.Transform
 import org.apache.spark.sql.functions._
+import org.apache.spark.sql.util.CaseInsensitiveStringMap
 
 /**
  * Verifies that `convertLocal` writes sort rows by shard number, so each writer task issues
@@ -128,6 +132,62 @@ class ClusterShardNumSortWriteSuite extends SparkClickHouseClusterTest {
         totalInserts < distinctKeys / 4,
         s"expected far fewer INSERTs than the $distinctKeys distinct sharding key values, got $totalInserts"
       )
+    }
+  }
+
+  test("format() write with convertLocal falls back to the sharding-key sort") {
+    val numRows = 1000
+    val distinctKeys = 251
+    withSimpleDistTable("single_replica", "db_shard_num_sort_fmt", "t_dist") { (_, db, tbl_dist, tbl_local) =>
+      // catalog-loaded tables can resolve catalog functions at plan time
+      val catalogTable = spark.sessionState.catalogManager.catalog("clickhouse_s1r1")
+        .asInstanceOf[TableCatalog]
+        .loadTable(Identifier.of(Array(db), tbl_dist))
+        .asInstanceOf[ClickHouseTable]
+      assert(catalogTable.functionCatalogUsable)
+
+      // TableProvider-loaded tables cannot: their relations carry no catalog, so the provider
+      // stamps the table and `WriteJobDescription` falls back to the raw sharding-key sort
+      // (`WriteJobDescriptionSuite` pins the flag -> sort-order mapping)
+      val providerOptions = new java.util.HashMap[String, String]()
+      providerOptions.put("host", clickhouse_s1r1_host)
+      providerOptions.put("http_port", clickhouse_s1r1_http_port.toString)
+      providerOptions.put("protocol", "http")
+      providerOptions.put("user", "default")
+      providerOptions.put("password", "")
+      providerOptions.put("database", db)
+      providerOptions.put("table", tbl_dist)
+      val provider = new ClickHouseTableProvider
+      val providerSchema = provider.inferSchema(new CaseInsensitiveStringMap(providerOptions))
+      val providerTable = provider.getTable(providerSchema, Array.empty[Transform], providerOptions)
+        .asInstanceOf[ClickHouseTable]
+      assert(!providerTable.functionCatalogUsable)
+
+      // the fallback write plans (no unresolvable `clickhouse_shard_num` in the sort) and lands
+      // every row on the shard `ShardUtils.calcShard` predicts for its sharding key
+      val tblSchema = spark.table(s"$db.$tbl_dist").schema
+      val df = spark.range(1, numRows + 1).toDF("id")
+        .withColumn("create_time", lit(timestamp("2024-01-01T00:00:00Z")))
+        .withColumn("y", (col("id") % distinctKeys).cast("int"))
+        .withColumn("m", (col("id") % 3 + 1).cast("int"))
+        .withColumn("value", col("id").cast("string"))
+        .select("create_time", "y", "m", "id", "value")
+      spark.createDataFrame(df.rdd, tblSchema)
+        .write.format("clickhouse")
+        .options(providerOptions)
+        .mode("append")
+        .save()
+
+      val expectedIdsByShard = (1L to numRows)
+        .groupBy(id => ShardUtils.calcShard(singleReplicaClusterSpec, id % distinctKeys).num)
+        .map { case (shardNum, ids) => shardNum -> ids.toSet }
+      val localRowCounts = shardCatalogs.map { case (shardNum, catalog) =>
+        val localIds = spark.table(s"$catalog.$db.$tbl_local")
+          .select("id").collect().map(_.getLong(0)).toSet
+        assert(localIds === expectedIdsByShard.getOrElse(shardNum, Set.empty[Long]), s"shard $shardNum")
+        localIds.size
+      }
+      assert(localRowCounts.sum === numRows)
     }
   }
 }
