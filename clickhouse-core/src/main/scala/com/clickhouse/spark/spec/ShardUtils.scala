@@ -18,13 +18,13 @@ import java.lang.{Long => JLong}
 
 object ShardUtils {
 
+  // each shard in num order owns the slice of [0, totalWeight) below its cumulative-weight upper
+  // bound; a zero-weight shard owns an empty slice and is never selected
   def calcShard(cluster: ClusterSpec, hashVal: Long): ShardSpec = {
-    val shards = cluster.shards.sorted
-    val weights = shards.map(_.weight)
-    val lowerBounds = weights.indices.map(i => weights.slice(0, i).sum)
-    val upperBounds = weights.indices.map(i => weights.slice(0, i + 1).sum)
-    val ranges = (lowerBounds zip upperBounds).map { case (l, u) => l until u }
-    val rem = JLong.remainderUnsigned(hashVal, weights.sum)
-    (shards zip ranges).find(_._2 contains rem).map(_._1).get
+    val upperBounds = cluster.shardWeightUpperBounds
+    val rem = JLong.remainderUnsigned(hashVal, cluster.totalWeight)
+    var i = 0
+    while (rem >= upperBounds(i)) i += 1
+    cluster.sortedShards(i)
   }
 }
