@@ -132,28 +132,44 @@ object SchemaUtils extends SQLConfHelper with Logging {
       case _ => throw CHClientException(s"Unsupported type: $catalystType")
     }
 
+  /** Maps a ClickHouse schema to a Spark schema; unmappable columns become placeholder [[ClickHouseUnsupportedType]] fields. */
   def fromClickHouseSchema(chSchema: Seq[(String, String)]): StructType = {
-    val mapped = chSchema.map { case (name, maybeNullableType) =>
-      val field = ColumnUtils.tryParseColumn(name, maybeNullableType)
+    val fields = chSchema.map { case (name, maybeNullableType) =>
+      ColumnUtils.tryParseColumn(name, maybeNullableType)
         .flatMap(fromClickHouseType)
         .map { case (sparkType, nullable) => StructField(name, sparkType, nullable) }
-      (name, maybeNullableType, field)
+        .getOrElse(ClickHouseUnsupportedType.field(name, maybeNullableType))
     }
-    val skipped = mapped.collect { case (name, chType, None) => name -> chType }
-    if (skipped.nonEmpty) {
-      log.warn(s"Ignoring ${skipped.size} column(s) with unsupported ClickHouse type(s): " +
-        ColumnUtils.renderColumns(skipped) +
-        ". These columns are excluded from the Spark table schema and can not be queried or written.")
+    val schema = StructType(fields)
+    val unsupported = ClickHouseUnsupportedType.unsupportedColumns(schema)
+    if (unsupported.nonEmpty) {
+      log.warn(s"Found ${unsupported.size} column(s) with unsupported ClickHouse type(s): " +
+        ColumnUtils.renderColumns(unsupported) +
+        ". These columns are mapped to the placeholder `unsupported` Spark type; " +
+        "reading them (explicitly or via SELECT *) or writing to them fails.")
     }
-    StructType(mapped.collect { case (_, _, Some(field)) => field })
+    schema
   }
 
-  def toClickHouseSchema(catalystSchema: StructType): Seq[(String, String, String)] =
+  /** A schema used to create a ClickHouse table must not contain placeholder [[ClickHouseUnsupportedType]] columns. */
+  def validateCreateSchema(catalystSchema: StructType): Unit = {
+    val unsupported = ClickHouseUnsupportedType.unsupportedColumns(catalystSchema)
+    if (unsupported.nonEmpty) {
+      throw CHClientException(
+        s"Can not create columns with unsupported ClickHouse types: " +
+          s"${ColumnUtils.renderColumns(unsupported)}. Exclude these columns from the schema."
+      )
+    }
+  }
+
+  def toClickHouseSchema(catalystSchema: StructType): Seq[(String, String, String)] = {
+    validateCreateSchema(catalystSchema)
     catalystSchema.fields
       .map { field =>
         val chType = toClickHouseType(field.dataType, field.nullable)
         (field.name, chType, field.getComment().map(c => s" COMMENT '$c'").getOrElse(""))
       }
+  }
 
   private[clickhouse] def maybeNullable(chType: String, nullable: Boolean): String =
     if (nullable) wrapNullable(chType) else chType

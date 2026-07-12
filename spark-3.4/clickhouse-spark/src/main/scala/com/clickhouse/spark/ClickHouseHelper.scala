@@ -20,7 +20,7 @@ import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.CLIENT_QUERY_TIMEOUT
-import org.apache.spark.sql.clickhouse.SchemaUtils
+import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, SchemaUtils}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
@@ -248,14 +248,14 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
   }
 
   /**
-   * Returns the Spark schema of the table, plus the ClickHouse columns excluded from it
-   * because their types have no Spark mapping.
+   * Returns the Spark schema of the table. Columns whose ClickHouse types have no Spark
+   * mapping are represented with the placeholder [[ClickHouseUnsupportedType]].
    */
   def queryTableSchema(
     database: String,
     table: String,
     actionIfNoSuchTable: (String, String) => Unit = DEFAULT_ACTION_IF_NO_SUCH_TABLE
-  )(implicit nodeClient: NodeClient): (StructType, Seq[(String, String)]) = {
+  )(implicit nodeClient: NodeClient): StructType = {
     val columnOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  `database`,                -- String
@@ -282,14 +282,11 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     if (columnOutput.isEmpty) {
       actionIfNoSuchTable(database, table)
     }
-    val chColumns = columnOutput.records.map { row =>
+    SchemaUtils.fromClickHouseSchema(columnOutput.records.map { row =>
       val fieldName = row.get("name").asText
       val ckType = row.get("type").asText
       (fieldName, ckType)
-    }
-    val schema = SchemaUtils.fromClickHouseSchema(chColumns)
-    val supportedNames = schema.fieldNames.toSet
-    (schema, chColumns.filterNot { case (name, _) => supportedNames.contains(name) })
+    })
   }
 
   def queryPartitionSpec(
@@ -328,9 +325,12 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
   def getQueryOutputSchema(sql: String)(implicit nodeClient: NodeClient): StructType = {
     val namesAndTypes = nodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql).namesAndTypes
     val schema = SchemaUtils.fromClickHouseSchema(namesAndTypes.toSeq)
-    if (schema.length != namesAndTypes.size) {
+    val unsupported = ClickHouseUnsupportedType.unsupportedColumns(schema)
+    if (unsupported.nonEmpty) {
       // unlike a table schema, a query output must map in full - callers align it positionally with the select items
-      throw CHClientException(s"Query output contains unsupported types, sql: $sql")
+      throw CHClientException(
+        s"Query output contains unsupported types: ${ColumnUtils.renderColumns(unsupported)}, sql: $sql"
+      )
     }
     schema
   }

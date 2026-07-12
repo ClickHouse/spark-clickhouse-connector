@@ -22,7 +22,8 @@ import scala.collection.JavaConverters._
 
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
-import org.apache.spark.sql.clickhouse.{ExprUtils, ReadOptions, WriteOptions}
+import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, ExprUtils, ReadOptions, WriteOptions}
+import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.TableCapability._
@@ -106,15 +107,12 @@ case class ClickHouseTable(
       ACCEPT_ANY_SCHEMA // TODO check schema and handle extra columns before writing
     ).asJava
 
-  private lazy val schemaAndUnsupportedColumns: (StructType, Seq[(String, String)]) =
-    Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) {
-      implicit nodeClient =>
-        queryTableSchema(database, table)
-    }
+  override lazy val schema: StructType = Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) {
+    implicit nodeClient =>
+      queryTableSchema(database, table)
+  }
 
-  override lazy val schema: StructType = schemaAndUnsupportedColumns._1
-
-  private lazy val unsupportedColumns: Seq[(String, String)] = schemaAndUnsupportedColumns._2
+  private lazy val unsupportedColumns: Seq[(String, String)] = ClickHouseUnsupportedType.unsupportedColumns(schema)
 
   /**
    * Only support `MergeTree` and `Distributed` table engine, for reference
@@ -166,7 +164,21 @@ case class ClickHouseTable(
     new ClickHouseScanBuilder(scanJob, schema, metadataSchema, partTransforms)
   }
 
+  /** The written data must not target placeholder [[ClickHouseUnsupportedType]] columns. */
+  private def validateWriteSchema(dataSetSchema: StructType): Unit = {
+    val writtenTableColumns = StructType(schema.filter(field => dataSetSchema.fieldNames.contains(field.name)))
+    val writtenUnsupportedColumns = ClickHouseUnsupportedType.unsupportedColumns(writtenTableColumns)
+    if (writtenUnsupportedColumns.nonEmpty) {
+      throw CHClientException(
+        s"Can not write columns with unsupported ClickHouse types: " +
+          s"${ColumnUtils.renderColumns(writtenUnsupportedColumns)}. Exclude these columns from the written data."
+      )
+    }
+  }
+
   override def newWriteBuilder(info: LogicalWriteInfo): ClickHouseWriteBuilder = {
+    validateWriteSchema(info.schema)
+
     val writeOptions = new WriteOptions(info.options.asCaseSensitiveMap())
     val writeJob = WriteJobDescription(
       queryId = info.queryId,

@@ -232,24 +232,44 @@ class SchemaUtilsSuite extends AnyFunSuite {
     "client_id" -> "String"
   )
 
-  test("fromClickHouseSchema skips columns with unsupported types") {
+  test("fromClickHouseSchema maps columns with unsupported types to the placeholder type") {
     val actual = fromClickHouseSchema(mixedChSchema)
     val expected = StructType(
       StructField("customer_id", IntegerType, nullable = false) ::
+        ClickHouseUnsupportedType.field("agg_state", "AggregateFunction(sum, Int32)") ::
+        ClickHouseUnsupportedType.field("location", "Point") ::
         StructField("client_id", StringType, nullable = false) :: Nil
     )
     assert(actual === expected)
-  }
-
-  test("fromClickHouseSchema all columns unsupported yields empty schema") {
-    val allUnsupported = Seq(
+    assert(ClickHouseUnsupportedType.unsupportedColumns(actual) === Seq(
       "agg_state" -> "AggregateFunction(sum, Int32)",
       "location" -> "Point"
-    )
-    assert(fromClickHouseSchema(allUnsupported) === StructType(Nil))
+    ))
   }
 
-  test("fromClickHouseSchema skips columns the client can not parse") {
-    assert(fromClickHouseSchema(Seq("c" -> "SomeFutureType(42)")) === StructType(Nil))
+  test("fromClickHouseSchema keeps columns the client can not parse as the placeholder type") {
+    val actual = fromClickHouseSchema(Seq("c" -> "SomeFutureType(42)"))
+    assert(actual === StructType(ClickHouseUnsupportedType.field("c", "SomeFutureType(42)") :: Nil))
+    assert(ClickHouseUnsupportedType.unsupportedColumns(actual) === Seq("c" -> "SomeFutureType(42)"))
+  }
+
+  test("validateCreateSchema rejects schemas with placeholder columns") {
+    val e = intercept[Exception](toClickHouseSchema(fromClickHouseSchema(mixedChSchema)))
+    assert(e.getMessage.contains("`agg_state` AggregateFunction(sum, Int32)"))
+    assert(e.getMessage.contains("`location` Point"))
+    // a fully supported schema passes
+    assert(toClickHouseSchema(fromClickHouseSchema(Seq("id" -> "Int32"))).nonEmpty)
+  }
+
+  test("placeholder type serializes to schema JSON as void so non-JVM clients can parse it") {
+    val schema = fromClickHouseSchema(mixedChSchema)
+    // a JVM-only UDT in the schema JSON breaks schema parsing in PySpark / Spark Connect clients
+    assert(!schema.json.contains("udt"))
+    val restored = DataType.fromJson(schema.json).asInstanceOf[StructType]
+    assert(restored.fieldNames === schema.fieldNames)
+    val restoredField = restored("agg_state")
+    assert(restoredField.dataType === NullType)
+    assert(restoredField.metadata.getString(ClickHouseUnsupportedType.CLICKHOUSE_TYPE_METADATA_KEY)
+      === "AggregateFunction(sum, Int32)")
   }
 }
