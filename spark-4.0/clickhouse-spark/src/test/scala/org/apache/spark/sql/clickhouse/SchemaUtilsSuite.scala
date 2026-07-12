@@ -15,6 +15,7 @@
 package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.data.ClickHouseColumn
+import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.sql.clickhouse.SchemaUtils._
 import org.apache.spark.sql.types._
 import org.scalatest.funsuite.AnyFunSuite
@@ -205,5 +206,43 @@ class SchemaUtilsSuite extends AnyFunSuite {
       ("ingredient", "Array(Nullable(String))", ""),
       ("nutrient", "Map(String, Nullable(String))", "")
     ) == toClickHouseSchema(catalystSchema))
+  }
+
+  test("spark2ch - VariantType defaults to JSON") {
+    assert(toClickHouseType(VariantType, nullable = false) == "JSON")
+  }
+
+  test("spark2ch - VariantType with variant_types emits Variant(...)") {
+    assert(
+      toClickHouseType(VariantType, nullable = false, Some("String, Int64, JSON")) ==
+        "Variant(String, Int64, JSON)"
+    )
+  }
+
+  test("spark2ch - VariantType with json_hints emits JSON(...)") {
+    assert(
+      toClickHouseType(VariantType, nullable = false, None, Some("a.b UInt32, SKIP a.c, max_dynamic_paths=16")) ==
+        "JSON(a.b UInt32, SKIP a.c, max_dynamic_paths=16)"
+    )
+  }
+
+  test("spark2ch - variant_types and json_hints are mutually exclusive") {
+    intercept[CHClientException] {
+      toClickHouseType(VariantType, nullable = false, Some("String, Int64"), Some("a.b UInt32"))
+    }
+  }
+
+  test("spark2ch - json_hints flows through table properties") {
+    val catalystSchema = StructType(Seq(
+      StructField("id", IntegerType, nullable = false),
+      StructField("data", VariantType, nullable = false)
+    ))
+    assert(Seq(
+      ("id", "Int32", ""),
+      ("data", "JSON(a.b UInt32, max_dynamic_paths=16)", "")
+    ) == toClickHouseSchema(
+      catalystSchema,
+      Map("clickhouse.column.data.json_hints" -> "a.b UInt32, max_dynamic_paths=16")
+    ))
   }
 }
