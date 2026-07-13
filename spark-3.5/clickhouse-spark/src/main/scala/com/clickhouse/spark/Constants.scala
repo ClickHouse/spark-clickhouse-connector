@@ -31,6 +31,7 @@ object Constants {
   final val CATALOG_PROP_TZ             = "timezone" // server(default), client, UTC+3, Asia/Shanghai, etc.
   final val CATALOG_INFER_RUNTIME_ENV   = "infer_runtime_env"
   final val CATALOG_PROP_OPTION_PREFIX  = "option."
+  final val CATALOG_PROP_OPTION_TZ      = CATALOG_PROP_OPTION_PREFIX + USE_TIME_ZONE.getKey
   final val CATALOG_PROP_IGNORE_OPTIONS = Seq(
     DATABASE.getKey, COMPRESS.getKey, DECOMPRESS.getKey, FORMAT.getKey, RETRY.getKey,
     USE_SERVER_TIME_ZONE.getKey, USE_SERVER_TIME_ZONE_FOR_DATES.getKey, SERVER_TIME_ZONE.getKey, USE_TIME_ZONE.getKey,

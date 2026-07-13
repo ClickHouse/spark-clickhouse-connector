@@ -23,6 +23,12 @@ on:
     branches:
       - "branch-*"
       - "main"
+  schedule:
+    # Nightly run at 02:00 UTC
+    - cron: '0 2 * * *'
+
+permissions:
+  contents: read
 
 jobs:
   run-tpcds-sf1:

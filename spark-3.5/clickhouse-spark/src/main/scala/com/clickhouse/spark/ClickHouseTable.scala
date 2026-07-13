@@ -19,7 +19,7 @@ import com.clickhouse.spark.expr.{Expr, OrderExpr}
 import com.clickhouse.spark.func.FunctionRegistry
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_DISTRIBUTED_CONVERT_LOCAL, USE_NULLABLE_QUERY_SCHEMA}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.clickhouse.{ExprUtils, ReadOptions, WriteOptions}
 import org.apache.spark.sql.connector.catalog.TableCapability._
 import org.apache.spark.sql.connector.catalog._
@@ -79,11 +79,12 @@ case class ClickHouseTable(
 
   lazy val (localTableSpec, localTableEngineSpec): (Option[TableSpec], Option[MergeTreeFamilyEngineSpec]) =
     engineSpec match {
-      case distSpec: DistributedEngineSpec => Utils.tryWithResource(NodeClient(node)) { implicit nodeClient =>
-          val _localTableSpec = queryTableSpec(distSpec.local_db, distSpec.local_table)
-          val _localTableEngineSpec =
-            TableEngineUtils.resolveTableEngine(_localTableSpec).asInstanceOf[MergeTreeFamilyEngineSpec]
-          (Some(_localTableSpec), Some(_localTableEngineSpec))
+      case distSpec: DistributedEngineSpec => Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) {
+          implicit nodeClient =>
+            val _localTableSpec = queryTableSpec(distSpec.local_db, distSpec.local_table)
+            val _localTableEngineSpec =
+              TableEngineUtils.resolveTableEngine(_localTableSpec).asInstanceOf[MergeTreeFamilyEngineSpec]
+            (Some(_localTableSpec), Some(_localTableEngineSpec))
         }
       case _ => (None, None)
     }
@@ -107,9 +108,6 @@ case class ClickHouseTable(
 
   override def name: String = s"${wrapBackQuote(spec.database)}.${wrapBackQuote(spec.name)}"
 
-  // for SPARK-43390
-  def useNullableQuerySchema: Boolean = conf.getConf(USE_NULLABLE_QUERY_SCHEMA)
-
   override def capabilities(): util.Set[TableCapability] =
     Set(
       BATCH_READ,
@@ -119,8 +117,9 @@ case class ClickHouseTable(
       ACCEPT_ANY_SCHEMA // TODO check schema and handle extra columns before writing
     ).asJava
 
-  override lazy val schema: StructType = Utils.tryWithResource(NodeClient(node)) { implicit nodeClient =>
-    queryTableSchema(database, table)
+  override lazy val schema: StructType = Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) {
+    implicit nodeClient =>
+      queryTableSchema(database, table)
   }
 
   /**
@@ -163,7 +162,8 @@ case class ClickHouseTable(
       cluster = cluster,
       localTableSpec = localTableSpec,
       localTableEngineSpec = localTableEngineSpec,
-      readOptions = new ReadOptions(options.asCaseSensitiveMap())
+      readOptions = new ReadOptions(options.asCaseSensitiveMap()),
+      functionRegistry = functionRegistry
     )
     // TODO schema of partitions
     val partTransforms = Array[Transform]()
@@ -171,6 +171,7 @@ case class ClickHouseTable(
   }
 
   override def newWriteBuilder(info: LogicalWriteInfo): ClickHouseWriteBuilder = {
+    val writeOptions = new WriteOptions(info.options.asCaseSensitiveMap())
     val writeJob = write.WriteJobDescription(
       queryId = info.queryId,
       tableSchema = schema,
@@ -186,7 +187,8 @@ case class ClickHouseTable(
       shardingKey = shardingKey,
       partitionKey = partitionKey,
       sortingKey = sortingKey,
-      writeOptions = new WriteOptions(info.options.asCaseSensitiveMap()),
+      writeOptions = writeOptions,
+      writeSettings = writeOptions.settings,
       functionRegistry = functionRegistry
     )
 
@@ -209,7 +211,7 @@ case class ClickHouseTable(
       }
     }.mkString("(", ",", ")")
 
-    Utils.tryWithResource(NodeClient(node)) { implicit nodeClient =>
+    Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) { implicit nodeClient =>
       engineSpec match {
         case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
           dropPartition(local_db, local_table, partitionExpr, Some(cluster))
@@ -252,12 +254,13 @@ case class ClickHouseTable(
     val partitionSpecs: Seq[PartitionSpec] = engineSpec match {
       case DistributedEngineSpec(_, _, local_db, local_table, _, _) =>
         cluster.get.shards.flatMap { shardSpec =>
-          Utils.tryWithResource(NodeClient(shardSpec.nodes.head)) { implicit nodeClient: NodeClient =>
-            queryPartitionSpec(local_db, local_table)
+          Utils.tryWithResource(NodeClient(shardSpec.nodes.head, clientQueryTimeoutMs)) {
+            implicit nodeClient: NodeClient =>
+              queryPartitionSpec(local_db, local_table)
           }
         }
       case _ =>
-        Utils.tryWithResource(NodeClient(node)) { implicit nodeClient =>
+        Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) { implicit nodeClient =>
           queryPartitionSpec(database, table)
         }
     }
@@ -291,7 +294,7 @@ case class ClickHouseTable(
 
   override def deleteWhere(filters: Array[Filter]): Unit = {
     val deleteExpr = compileFilters(AlwaysTrue :: filters.toList)
-    Utils.tryWithResource(NodeClient(node)) { implicit nodeClient =>
+    Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) { implicit nodeClient =>
       engineSpec match {
         case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
           delete(local_db, local_table, deleteExpr, Some(cluster))
@@ -302,7 +305,7 @@ case class ClickHouseTable(
   }
 
   override def truncateTable(): Boolean =
-    Utils.tryWithResource(NodeClient(node)) { implicit nodeClient =>
+    Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) { implicit nodeClient =>
       engineSpec match {
         case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
           truncateTable(local_db, local_table, Some(cluster))

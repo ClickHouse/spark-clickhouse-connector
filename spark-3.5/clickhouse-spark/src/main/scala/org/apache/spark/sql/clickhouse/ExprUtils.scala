@@ -203,6 +203,44 @@ object ExprUtils extends SQLConfHelper with Serializable with Logging {
     case other: Transform => throw CHClientException(s"Unsupported transform: $other")
   }
 
+  def toClickHouseSortOrderOpt(
+    sortOrder: V2SortOrder,
+    functionRegistry: FunctionRegistry
+  ): Option[OrderExpr] = {
+    val asc = sortOrder.direction() == SortDirection.ASCENDING
+    val nullFirst = sortOrder.nullOrdering() == NullOrdering.NULLS_FIRST
+    sortOrder.expression() match {
+      // length == 1 restricts to top-level columns and to exclude nested paths.
+      case ref: NamedReference if ref.fieldNames().length == 1 =>
+        Some(OrderExpr(FieldRef(ref.fieldNames().head), asc, nullFirst))
+      case t: Transform =>
+        toClickHouseSortTransformOpt(t, functionRegistry).map(OrderExpr(_, asc, nullFirst))
+      case _ => None
+    }
+  }
+
+  private def toClickHouseSortTransformOpt(
+    transform: Transform,
+    functionRegistry: FunctionRegistry
+  ): Option[Expr] = transform match {
+    case IdentityTransform(FieldReference(Seq(col))) => Some(FieldRef(col))
+    case ApplyTransform(name, args) if functionRegistry.sparkToClickHouseFunc.contains(name) =>
+      val translatedArgs = args.toList.map(toClickHouseSortArgOpt(_, functionRegistry))
+      if (translatedArgs.exists(_.isEmpty)) None
+      else Some(FuncExpr(functionRegistry.sparkToClickHouseFunc(name), translatedArgs.flatten))
+    case _ => None
+  }
+
+  private def toClickHouseSortArgOpt(
+    arg: V2Expression,
+    functionRegistry: FunctionRegistry
+  ): Option[Expr] = arg match {
+    case ref: NamedReference if ref.fieldNames().length == 1 => Some(FieldRef(ref.fieldNames().head))
+    case t: Transform => toClickHouseSortTransformOpt(t, functionRegistry)
+    case lit: LiteralValue[_] => Some(SQLExpr(lit.describe))
+    case _ => None
+  }
+
   def inferTransformSchema(
     primarySchema: StructType,
     secondarySchema: StructType,

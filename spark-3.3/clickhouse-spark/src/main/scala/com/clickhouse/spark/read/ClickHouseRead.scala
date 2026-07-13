@@ -14,9 +14,10 @@
 
 package com.clickhouse.spark.read
 
-import org.apache.spark.sql.catalyst.InternalRow
+import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
+import org.apache.spark.sql.clickhouse.ExprUtils
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
-import org.apache.spark.sql.connector.expressions.{Expressions, NamedReference, Transform}
+import org.apache.spark.sql.connector.expressions.{Expressions, NamedReference, SortOrder => V2SortOrder, Transform}
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
 import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read._
@@ -26,6 +27,7 @@ import org.apache.spark.sql.types.StructType
 import com.clickhouse.spark._
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.exception.CHClientException
+import com.clickhouse.spark.expr.ExprRender
 import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
 import com.clickhouse.spark.spec._
 
@@ -38,12 +40,14 @@ class ClickHouseScanBuilder(
   metadataSchema: StructType,
   partitionTransforms: Array[Transform]
 ) extends ScanBuilder
+    with SupportsPushDownTopN
     with SupportsPushDownLimit
     with SupportsPushDownFilters
     with SupportsPushDownAggregates
     with SupportsPushDownRequiredColumns
     with ClickHouseHelper
     with SQLHelper
+    with SQLConfHelper
     with Logging {
 
   implicit private val tz: ZoneId = scanJob.tz
@@ -62,6 +66,25 @@ class ClickHouseScanBuilder(
     this._limit = Some(limit)
     true
   }
+
+  private var _orderByClause: Option[String] = None
+
+  override def pushTopN(orders: Array[V2SortOrder], limit: Int): Boolean = {
+    if (!conf.getConf(READ_PUSHDOWN_TOP_N)) return false
+
+    val translated = orders.map(o => ExprUtils.toClickHouseSortOrderOpt(o))
+    if (translated.exists(_.isEmpty)) return false
+
+    this._orderByClause =
+      Some(translated.flatten.map(ExprRender.renderOrder).mkString("ORDER BY ", ", ", ""))
+    this._limit = Some(limit)
+    true
+  }
+
+  // Each ClickHouse input partition runs its own `ORDER BY ... LIMIT n`, returning a local
+  // top-N. Spark must perform the final global merge across partitions, so we always
+  // report the pushdown as partial.
+  override def isPartiallyPushed: Boolean = true
 
   private var _pushedFilters = Array.empty[Filter]
 
@@ -97,7 +120,8 @@ class ClickHouseScanBuilder(
          |$groupByClause
          |""".stripMargin
     try {
-      _readSchema = Utils.tryWithResource(NodeClient(scanJob.node)) { implicit nodeClient: NodeClient =>
+      val queryTimeoutMs = scanJob.readOptions.clientQueryTimeout
+      _readSchema = Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
         val fields = (getQueryOutputSchema(aggQuery) zip compiledSelectItems)
           .map { case (structField, colExpr) => structField.copy(name = colExpr) }
         StructType(fields)
@@ -121,6 +145,7 @@ class ClickHouseScanBuilder(
     readSchema = _readSchema,
     filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
     groupByClause = _groupByClause,
+    orderByClause = _orderByClause,
     limit = _limit
   ))
 }
@@ -139,10 +164,12 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
   val database: String = scanJob.database
   val table: String = scanJob.table
 
+  private val queryTimeoutMs: Long = scanJob.readOptions.clientQueryTimeout
+
   lazy val inputPartitions: Array[ClickHouseInputPartition] = scanJob.tableEngineSpec match {
     case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
       scanJob.cluster.get.shards.flatMap { shardSpec =>
-        Utils.tryWithResource(NodeClient(shardSpec.nodes.head)) { implicit nodeClient: NodeClient =>
+        Utils.tryWithResource(NodeClient(shardSpec.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
           queryPartitionSpec(local_db, local_table).map { partitionSpec =>
             ClickHouseInputPartition(
               scanJob.localTableSpec.get,
@@ -166,7 +193,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
         scanJob.node
       ))
     case _: TableEngineSpec =>
-      Utils.tryWithResource(NodeClient(scanJob.node)) { implicit nodeClient: NodeClient =>
+      Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
         queryPartitionSpec(database, table).map { partitionSpec =>
           ClickHouseInputPartition(
             scanJob.tableSpec,

@@ -17,7 +17,9 @@ package com.clickhouse.spark
 import com.clickhouse.client.ClickHouseProtocol
 import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.sql.catalyst.analysis._
+import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.clickhouse.{ExprUtils, SchemaUtils}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.USE_NULLABLE_QUERY_SCHEMA
 import org.apache.spark.sql.connector.catalog._
 import org.apache.spark.sql.connector.catalog.functions.UnboundFunction
 import org.apache.spark.sql.connector.expressions.Transform
@@ -46,6 +48,7 @@ class ClickHouseCatalog extends TableCatalog
     with FunctionCatalog
     with ClickHouseHelper
     with SQLHelper
+    with SQLConfHelper
     with Logging {
 
   private var catalogName: String = _
@@ -75,11 +78,11 @@ class ClickHouseCatalog extends TableCatalog
     this.catalogName = name
     this.nodeSpec = buildNodeSpec(options)
     this.currentDb = nodeSpec.database
-    this.nodeClient = NodeClient(nodeSpec)
+    this.nodeClient = NodeClient(nodeSpec, clientQueryTimeoutMs)
 
     this.nodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT 1")
 
-    this.tz = options.get(CATALOG_PROP_TZ) match {
+    this.tz = catalogTimeZone(options) match {
       case tz if tz == null || tz.isEmpty || tz.toLowerCase == "server" =>
         val timezoneOutput = this.nodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT timezone() AS tz")
         assert(timezoneOutput.rows == 1)
@@ -105,6 +108,9 @@ class ClickHouseCatalog extends TableCatalog
   }
 
   override def name(): String = catalogName
+
+  // for SPARK-43390
+  override def useNullableQuerySchema: Boolean = conf.getConf(USE_NULLABLE_QUERY_SCHEMA)
 
   @throws[NoSuchNamespaceException]
   override def listTables(namespace: Array[String]): Array[Identifier] = namespace match {

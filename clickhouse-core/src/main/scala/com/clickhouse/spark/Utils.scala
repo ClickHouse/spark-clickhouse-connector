@@ -196,7 +196,10 @@ object Utils extends Logging {
         .orElse(RuntimeDetector.detectViaThreadNames())
 
     /**
-     * Examines the current stack trace and loaded classes for platform-specific signatures
+     * Examines the current stack trace and loaded classes for platform-specific signatures.
+     * Platforms are checked from most class-exclusive to least, with Databricks last because
+     * some of its class patterns (e.g. databricks.spark.*) leak into open-source libraries
+     * such as delta-spark and can produce false positives on other platforms.
      */
     def detectViaStackTrace(): Option[String] = {
       val stackTrace = Thread.currentThread().getStackTrace
@@ -204,14 +207,6 @@ object Utils extends Logging {
 
       // Check for platform-specific classes in stack
       if (
-        stackClasses.exists(c =>
-          c.contains("com.databricks.logging") ||
-            c.contains("databricks.spark") ||
-            c.contains("com.databricks.backend")
-        )
-      ) {
-        Some("Databricks")
-      } else if (
         stackClasses.exists { c =>
           c.contains("com.amazonaws.services.glue") ||
           c.contains("aws.glue") ||
@@ -240,29 +235,29 @@ object Utils extends Logging {
         )
       ) {
         Some("Synapse")
+      } else if (
+        stackClasses.exists(c =>
+          c.contains("com.databricks.backend")
+        )
+      ) {
+        Some("Databricks")
       } else {
         None
       }
     }
 
     /**
-     * More comprehensive check using ClassLoader to find platform-specific classes
+     * More comprehensive check using ClassLoader to find platform-specific classes.
+     * Only platform-internal classes are listed (not present in any public Maven artifact).
+     * Platforms are ordered from most class-exclusive to least, with Databricks last because
+     * open-source libraries (e.g. delta-spark) have historically leaked Databricks class names.
      */
-    def detectViaClassLoader(): Option[String] = {
-      val classLoader = Thread.currentThread().getContextClassLoader
-
+    def detectViaClassLoader(
+      classExists: String => Boolean = defaultClassExists
+    ): Option[String] = {
       case class PlatformSignature(name: String, classNames: Seq[String])
 
       val platformSignatures = Seq(
-        PlatformSignature(
-          "Databricks",
-          Seq(
-            "com.databricks.spark.util.DatabricksLogging",
-            "com.databricks.backend.daemon.driver.DriverLocal",
-            "com.databricks.dbutils_v1.DBUtilsHolder",
-            "com.databricks.spark.util.FrameProfiler"
-          )
-        ),
         PlatformSignature(
           "Glue",
           Seq(
@@ -275,16 +270,13 @@ object Utils extends Logging {
           "EMR",
           Seq(
             "com.amazon.ws.emr.hadoop.fs.EmrFileSystem",
-            "com.amazon.emr.kinesis.client.KinesisConnector",
             "com.amazon.emr.cloudwatch.CloudWatchSink"
           )
         ),
         PlatformSignature(
           "Dataproc",
           Seq(
-            "com.google.cloud.hadoop.fs.gcs.GoogleHadoopFileSystem",
-            "com.google.cloud.dataproc.DataprocHadoopConfiguration",
-            "com.google.cloud.spark.bigquery.BigQueryConnector"
+            "com.google.cloud.dataproc.DataprocHadoopConfiguration"
           )
         ),
         PlatformSignature(
@@ -297,23 +289,30 @@ object Utils extends Logging {
         PlatformSignature(
           "HDInsight",
           Seq(
-            "com.microsoft.azure.hdinsight.spark.common.SparkBatchJob",
-            "com.microsoft.hdinsight.spark.common.HttpFutureCallback"
+            "com.microsoft.azure.hdinsight.spark.common.SparkBatchJob"
+          )
+        ),
+        PlatformSignature(
+          "Databricks",
+          Seq(
+            "com.databricks.backend.daemon.driver.DriverLocal",
+            "com.databricks.spark.util.FrameProfiler"
           )
         )
       )
 
-      // Try to load platform-specific classes
-      def classExists(className: String): Boolean =
-        try {
-          Class.forName(className, false, classLoader)
-          true
-        } catch {
-          case _: ClassNotFoundException => false
-        }
-
       platformSignatures.collectFirst {
         case PlatformSignature(name, classes) if classes.exists(classExists) => name
+      }
+    }
+
+    private def defaultClassExists(className: String): Boolean = {
+      val classLoader = Thread.currentThread().getContextClassLoader
+      try {
+        Class.forName(className, false, classLoader)
+        true
+      } catch {
+        case _: ClassNotFoundException => false
       }
     }
 

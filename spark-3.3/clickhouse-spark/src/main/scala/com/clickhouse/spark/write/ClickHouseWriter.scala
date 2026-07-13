@@ -26,6 +26,7 @@ import org.apache.spark.sql.types._
 import com.clickhouse.spark.Metrics._
 import com.clickhouse.spark._
 import com.clickhouse.spark.client.{ClusterClient, NodeClient}
+import com.clickhouse.spark.client.WriteMetricsProjection.{flushes => projectedFlushes, _}
 import com.clickhouse.spark.exception._
 import com.clickhouse.spark.io.{ForwardingOutputStream, ObservableOutputStream}
 import com.clickhouse.spark.spec.{DistributedEngineSpec, ShardUtils}
@@ -76,6 +77,8 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     .filter(_ => writeJob.writeOptions.convertDistributedToLocal)
     .map(expr => SafeProjection.create(Seq(expr)))
 
+  private val queryTimeoutMs: Long = writeJob.writeOptions.clientQueryTimeout
+
   // put the node select strategy in executor side because we need to calculate shard and don't know the records
   // util DataWriter#write(InternalRow) invoked.
   protected lazy val client: Either[ClusterClient, NodeClient] =
@@ -85,11 +88,11 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
         val clusterSpec = writeJob.cluster.get
         log.info(s"Connect to cluster ${clusterSpec.name}, which has ${clusterSpec.shards.length} shards and " +
           s"${clusterSpec.nodes.length} nodes.")
-        Left(ClusterClient(clusterSpec))
+        Left(ClusterClient(clusterSpec, queryTimeoutMs))
       case _ =>
         val nodeSpec = writeJob.node
         log.info(s"Connect to single node: $nodeSpec")
-        Right(NodeClient(nodeSpec))
+        Right(NodeClient(nodeSpec, queryTimeoutMs))
     }
 
   def nodeClient(shardNum: Option[Int]): NodeClient = client match {
@@ -128,6 +131,23 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   def totalSerializeTime: Long = _totalSerializeTime.longValue
   val _totalWriteTime = new LongAdder
   def totalWriteTime: Long = _totalWriteTime.longValue
+  val _flushes = new LongAdder
+  def flushes: Long = _flushes.longValue
+  val _failedWriteAttempts = new LongAdder
+  def failedWriteAttempts: Long = _failedWriteAttempts.longValue
+  // rows in the smallest/largest batch flushed so far, 0 until the first flush
+  var _minBatchSize = 0L
+  var _maxBatchSize = 0L
+  // flushed batches per quarter-fill bucket of the configured batch size
+  val _batchFillBuckets = Array.fill(4)(new LongAdder)
+  private val flushBatchSize = writeJob.writeOptions.batchSize
+
+  private def recordFlush(rows: Long): Unit = {
+    _flushes.add(1)
+    _minBatchSize = minBatchSize(_minBatchSize, rows)
+    _maxBatchSize = maxBatchSize(_maxBatchSize, rows)
+    _batchFillBuckets(batchFillBucket(rows, flushBatchSize)).add(1)
+  }
 
   val serializedBuffer = new ByteArrayOutputStream(64 * 1024 * 1024)
 
@@ -166,11 +186,24 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   renewCompressedOutput()
 
+  private def BucketMetric(name: String, bucket: Int): TaskMetric =
+    TaskMetric(name, bucketedBatches(_batchFillBuckets(bucket).longValue, bucket, currentBufferedRows, flushBatchSize))
+
+  // buffered rows count as flushed: commit() writes them after Spark's final metrics snapshot
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
-    TaskMetric(RECORDS_WRITTEN, totalRecordsWritten),
+    TaskMetric(RECORDS_WRITTEN, recordsWritten(totalRecordsWritten, currentBufferedRows)),
     TaskMetric(BYTES_WRITTEN, totalSerializedBytesWritten),
     TaskMetric(SERIALIZE_TIME, totalSerializeTime),
-    TaskMetric(WRITE_TIME, totalWriteTime)
+    TaskMetric(WRITE_TIME, totalWriteTime),
+    TaskMetric(FLUSHES, projectedFlushes(flushes, currentBufferedRows)),
+    TaskMetric(CLIENTS, clients(flushes, currentBufferedRows, client)),
+    TaskMetric(FAILED_WRITE_ATTEMPTS, failedWriteAttempts),
+    TaskMetric(MIN_BATCH_SIZE, minBatchSize(_minBatchSize, currentBufferedRows)),
+    TaskMetric(MAX_BATCH_SIZE, maxBatchSize(_maxBatchSize, currentBufferedRows)),
+    BucketMetric(BATCH_FILL_0_25, 0),
+    BucketMetric(BATCH_FILL_25_50, 1),
+    BucketMetric(BATCH_FILL_50_75, 2),
+    BucketMetric(BATCH_FILL_75_100, 3)
   )
 
   def format: String
@@ -226,18 +259,28 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     ) {
       var startWriteTime = System.currentTimeMillis
       // , codec
-      client.syncInsertOutputJSONEachRow(database, table, format, new ByteArrayInputStream(data)) match {
+      client.syncInsertOutputJSONEachRow(
+        database,
+        table,
+        format,
+        new ByteArrayInputStream(data),
+        writeJob.writeSettings
+      ) match {
         case Right(_) =>
           writeTime = System.currentTimeMillis - startWriteTime
           _totalWriteTime.add(writeTime)
           _totalRecordsWritten.add(currentBufferedRows)
         case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.code) =>
+          _failedWriteAttempts.add(1)
           startWriteTime = System.currentTimeMillis
           throw RetryableCHException(retryable.code, retryable.reason, Some(client.nodeSpec))
-        case Left(rethrow) => throw rethrow
+        case Left(rethrow) =>
+          _failedWriteAttempts.add(1)
+          throw rethrow
       }
     } match {
       case Success(_) =>
+        recordFlush(currentBufferedRows)
         log.info(
           s"""Job[${writeJob.queryId}]: batch write completed
              |cluster: ${writeJob.cluster.map(_.name).getOrElse("none")}, shard: ${shardNum.getOrElse("none")}

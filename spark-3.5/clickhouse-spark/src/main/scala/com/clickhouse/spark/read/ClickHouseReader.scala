@@ -24,7 +24,6 @@ import org.apache.spark.sql.connector.metric.CustomTaskMetric
 import org.apache.spark.sql.connector.read.PartitionReader
 import org.apache.spark.sql.types._
 import com.clickhouse.spark.Metrics.{BLOCKS_READ, BYTES_READ}
-import com.clickhouse.client.ClickHouseResponse
 import com.clickhouse.client.api.query.QueryResponse
 
 abstract class ClickHouseReader[Record](
@@ -43,7 +42,7 @@ abstract class ClickHouseReader[Record](
   val table: String = part.table.name
   val readSchema: StructType = scanJob.readSchema
 
-  private lazy val nodesClient = NodesClient(part.candidateNodes)
+  private lazy val nodesClient = NodesClient(part.candidateNodes, scanJob.readOptions.clientQueryTimeout)
 
   def nodeClient: NodeClient = nodesClient.node
 
@@ -60,6 +59,7 @@ abstract class ClickHouseReader[Record](
        |FROM `$database`.`$table`
        |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
        |${scanJob.groupByClause.getOrElse("")}
+       |${scanJob.orderByClause.getOrElse("")}
        |${scanJob.limit.map(n => s"LIMIT $n").getOrElse("")}
        |${readSettings.map(settings => s"SETTINGS $settings").getOrElse("")}
        |""".stripMargin

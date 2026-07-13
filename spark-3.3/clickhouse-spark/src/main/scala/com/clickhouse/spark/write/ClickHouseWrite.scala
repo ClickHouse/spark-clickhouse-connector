@@ -14,7 +14,6 @@
 
 package com.clickhouse.spark.write
 
-import com.clickhouse.spark.{BytesWrittenMetric, RecordsWrittenMetric, SerializeTimeMetric, WriteTimeMetric}
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.write.format.{ClickHouseArrowStreamWriter, ClickHouseJsonEachRowWriter}
 import org.apache.spark.internal.Logging
@@ -77,7 +76,16 @@ class ClickHouseWrite(
     RecordsWrittenMetric(),
     BytesWrittenMetric(),
     SerializeTimeMetric(),
-    WriteTimeMetric()
+    WriteTimeMetric(),
+    FlushCountMetric(),
+    ClientsMetric(),
+    FailedWriteAttemptsMetric(),
+    MinBatchSizeMetric(),
+    MaxBatchSizeMetric(),
+    BatchFill0To25Metric(),
+    BatchFill25To50Metric(),
+    BatchFill50To75Metric(),
+    BatchFill75To100Metric()
   )
 }
 
@@ -100,7 +108,8 @@ class ClickHouseBatchWrite(
 
     log.info(s"Truncating table ${writeJob.targetDatabase(false)}.${writeJob.targetTable(false)} for overwrite mode")
 
-    Utils.tryWithResource(NodeClient(writeJob.node)) { implicit nodeClient =>
+    val queryTimeoutMs = writeJob.writeOptions.clientQueryTimeout
+    Utils.tryWithResource(NodeClient(writeJob.node, queryTimeoutMs)) { implicit nodeClient =>
       writeJob.tableEngineSpec match {
         case DistributedEngineSpec(_, cluster, local_db, local_table, _, _) =>
           val sql = s"TRUNCATE TABLE IF EXISTS `$local_db`.`$local_table` ON CLUSTER `$cluster`"

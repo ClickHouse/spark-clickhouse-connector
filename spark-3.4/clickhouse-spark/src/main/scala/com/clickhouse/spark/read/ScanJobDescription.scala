@@ -14,6 +14,7 @@
 
 package com.clickhouse.spark.read
 
+import com.clickhouse.spark.func.FunctionRegistry
 import org.apache.spark.sql.clickhouse.ReadOptions
 import org.apache.spark.sql.types.StructType
 import com.clickhouse.spark.spec._
@@ -29,12 +30,14 @@ case class ScanJobDescription(
   localTableSpec: Option[TableSpec],
   localTableEngineSpec: Option[TableEngineSpec],
   readOptions: ReadOptions,
+  functionRegistry: FunctionRegistry,
   // Below fields will be constructed in ScanBuilder.
   readSchema: StructType = new StructType,
   // We should pass compiled ClickHouse SQL snippets(or ClickHouse SQL AST data structure) instead of Spark Expression
   // into Scan tasks because the check happens in planing phase on driver side.
   filtersExpr: String = "1=1",
   groupByClause: Option[String] = None,
+  orderByClause: Option[String] = None,
   limit: Option[Int] = None
 ) {
 
