@@ -91,6 +91,9 @@ case class WriteJobDescription(
     )
   }
 
+  // needs shard-routing writes (convertLocal) and a FunctionCatalog to resolve `clickhouse_shard_num`
+  def sortByShardNum: Boolean = writeOptions.convertDistributedToLocal && functionCatalogUsable
+
   def sparkSortOrders: Array[SortOrder] = {
     val _partitionKey = if (writeOptions.localSortByPartition) {
       filterSupportedPartitionExprs(partitionKey)
@@ -98,14 +101,12 @@ case class WriteJobDescription(
       None
     }
     val _sortingKey = if (writeOptions.localSortByKey) sortingKey else None
-    // Sort by shard number only when the writer routes rows per shard (convertDistributedToLocal)
-    // and Spark can resolve the shard-num function at plan time (requires a FunctionCatalog).
-    val _cluster = if (writeOptions.convertDistributedToLocal && functionCatalogUsable) cluster else None
     ExprUtils.toSparkSortOrders(
       shardingKeyIgnoreRand,
       _partitionKey,
       _sortingKey,
-      _cluster,
+      cluster,
+      sortByShardNum,
       functionRegistry
     )
   }

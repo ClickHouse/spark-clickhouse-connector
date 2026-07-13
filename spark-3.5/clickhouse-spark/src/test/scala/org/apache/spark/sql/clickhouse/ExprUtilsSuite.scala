@@ -67,12 +67,13 @@ class ExprUtilsSuite extends AnyFunSuite {
     }
   }
 
-  test("toSparkSortOrders: sharding key sorts by shard num when cluster is given") {
+  test("toSparkSortOrders: sharding key sorts by shard num when enabled and cluster is given") {
     val orders = ExprUtils.toSparkSortOrders(
       shardingKeyIgnoreRand = Some(FieldRef("y")),
       partitionKey = Some(List(FieldRef("m"))),
       sortingKey = Some(List(OrderExpr(FieldRef("id"), asc = true, nullFirst = false))),
       cluster = Some(clusterSpec),
+      sortByShardNum = true,
       functionRegistry = StaticFunctionRegistry
     )
     assert(orders.length === 3)
@@ -92,10 +93,28 @@ class ExprUtilsSuite extends AnyFunSuite {
       partitionKey = Some(List(FieldRef("m"))),
       sortingKey = Some(List(OrderExpr(FieldRef("id"), asc = true, nullFirst = false))),
       cluster = None,
+      sortByShardNum = true,
       functionRegistry = StaticFunctionRegistry
     )
     assert(orders.length === 3)
     assert(orders(0).direction() === SortDirection.ASCENDING)
+    orders(0).expression() match {
+      case IdentityTransform(FieldReference(Seq("y"))) =>
+      case other => fail(s"Unexpected sharding sort expression: $other")
+    }
+    assertPartitionAndSortingSegments(orders)
+  }
+
+  test("toSparkSortOrders: sharding key sorts by raw key when sortByShardNum is disabled") {
+    val orders = ExprUtils.toSparkSortOrders(
+      shardingKeyIgnoreRand = Some(FieldRef("y")),
+      partitionKey = Some(List(FieldRef("m"))),
+      sortingKey = Some(List(OrderExpr(FieldRef("id"), asc = true, nullFirst = false))),
+      cluster = Some(clusterSpec),
+      sortByShardNum = false,
+      functionRegistry = StaticFunctionRegistry
+    )
+    assert(orders.length === 3)
     orders(0).expression() match {
       case IdentityTransform(FieldReference(Seq("y"))) =>
       case other => fail(s"Unexpected sharding sort expression: $other")
@@ -110,6 +129,7 @@ class ExprUtilsSuite extends AnyFunSuite {
       partitionKey = None,
       sortingKey = None,
       cluster = Some(clusterSpec),
+      sortByShardNum = true,
       functionRegistry = StaticFunctionRegistry
     )
     assert(orders.length === 1)

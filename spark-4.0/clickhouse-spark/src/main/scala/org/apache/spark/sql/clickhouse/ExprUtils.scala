@@ -57,18 +57,17 @@ object ExprUtils extends SQLConfHelper with Serializable with Logging {
     partitionKey: Option[List[Expr]],
     sortingKey: Option[List[OrderExpr]],
     cluster: Option[ClusterSpec],
+    sortByShardNum: Boolean,
     functionRegistry: FunctionRegistry
   ): Array[V2SortOrder] = {
-    // When a cluster is given, sort by the shard number derived from the sharding key instead of
-    // the key itself: consecutive key values alternate shards, so sorting by the raw key would
-    // force the shard-routing writer to flush a tiny batch at almost every distinct key boundary.
+    // consecutive key values map to different shards; sorting by shard number keeps writer batches full
     val shardingSortOrders = shardingKeyIgnoreRand.toSeq
       .flatMap(toSparkTransformOpt(_, functionRegistry))
       .map { transform =>
         val sortExpr = cluster match {
-          case Some(c) =>
+          case Some(c) if sortByShardNum =>
             Expressions.apply(ClickHouseShardNum.funcName, Expressions.literal(c.name), transform)
-          case None => transform
+          case _ => transform
         }
         Expressions.sort(sortExpr, SortDirection.ASCENDING)
       }
