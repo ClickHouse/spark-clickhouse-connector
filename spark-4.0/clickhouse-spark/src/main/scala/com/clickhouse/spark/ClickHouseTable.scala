@@ -199,8 +199,8 @@ case class ClickHouseTable(
     writeJob.validateDistributedTableSharding()
 
     if (writeOptions.convertDistributedToLocal && !functionCatalogUsable && writeJob.shardingKeyIgnoreRand.nonEmpty) {
-      log.warn(s"convertLocal write to ${spec.database}.${spec.name} via format(\"clickhouse\") cannot sort by " +
-        "shard number and may flush many small batches; register a Spark catalog for full batches.")
+      log.warn(s"""convertLocal write to ${spec.database}.${spec.name} via format("clickhouse") cannot sort """ +
+        "by shard number and may flush many small batches; register a Spark catalog for full batches.")
     }
 
     new ClickHouseWriteBuilder(writeJob)
