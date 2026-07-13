@@ -125,12 +125,7 @@ object SchemaUtils extends SQLConfHelper {
       case CharType(_) => maybeNullable("String", nullable) // TODO: maybe FixString?
       case VariantType =>
         (variantTypes, jsonHints) match {
-          case (Some(_), Some(_)) =>
-            throw CHClientException(
-              "Cannot specify both 'variant_types' and 'json_hints' for the same column; " +
-                "they map to mutually exclusive ClickHouse types (Variant(...) vs JSON(...))"
-            )
-          case (Some(types), None) => s"Variant($types)"
+          case (Some(types), _) => s"Variant($types)"
           case (None, Some(hints)) => maybeNullable(s"JSON($hints)", nullable)
           case (None, None) => maybeNullable("JSON", nullable)
         }
@@ -202,6 +197,12 @@ object SchemaUtils extends SQLConfHelper {
       .map { field =>
         val variantTypes = properties.get(s"clickhouse.column.${field.name}.variant_types")
         val jsonHints = properties.get(s"clickhouse.column.${field.name}.json_hints")
+        if (variantTypes.isDefined && jsonHints.isDefined) {
+          throw CHClientException(
+            s"Cannot specify both 'variant_types' and 'json_hints' for column '${field.name}'; " +
+              "they map to mutually exclusive ClickHouse types (Variant(...) vs JSON(...))"
+          )
+        }
         val chType = toClickHouseType(field.dataType, field.nullable, variantTypes, jsonHints)
         (field.name, chType, field.getComment().map(c => s" COMMENT '$c'").getOrElse(""))
       }

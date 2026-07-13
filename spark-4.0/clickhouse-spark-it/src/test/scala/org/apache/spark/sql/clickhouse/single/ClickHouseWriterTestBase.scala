@@ -1601,38 +1601,30 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
   // ============================================================================
 
   test("write VariantType with json_hints - typed paths round-trip") {
-    val db = "test_db"
-    val tbl = "test_variant_write_json_hints"
+    val schema = StructType(Seq(
+      StructField("id", IntegerType, nullable = false),
+      StructField("data", VariantType, nullable = false)
+    ))
 
-    try {
-      spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
-      spark.sql("SET allow_experimental_json_type = 1")
-      spark.sql(
-        s"""CREATE TABLE $db.$tbl (
-           |  id INT,
-           |  data VARIANT
-           |) USING clickhouse
-           |TBLPROPERTIES (
-           |  'clickhouse.column.data.json_hints' = 'a.b UInt32, max_dynamic_paths=16',
-           |  engine = 'MergeTree()',
-           |  order_by = 'id',
-           |  settings.allow_nullable_key = 1
-           |)
-           |""".stripMargin
-      )
-
+    spark.sql("SET allow_experimental_json_type = 1")
+    withTable(
+      "test_db",
+      "test_variant_write_json_hints",
+      schema,
+      tblProps = Map("clickhouse.column.data.json_hints" -> "a.b UInt32, max_dynamic_paths=16")
+    ) { (actualDb: String, actualTbl: String) =>
       // Verify the column was created with the JSON type hints
-      val createStmt = spark.sql(s"SHOW CREATE TABLE $db.$tbl").collect().head.getString(0)
+      val createStmt = spark.sql(s"SHOW CREATE TABLE $actualDb.$actualTbl").collect().head.getString(0)
       assert(createStmt.contains("JSON(") && createStmt.contains("a.b"))
 
       spark.sql(
-        s"""INSERT INTO $db.$tbl
+        s"""INSERT INTO $actualDb.$actualTbl
            |SELECT 1 as id, parse_json('{"a": {"b": 42}, "name": "Alice"}') as data
            |UNION ALL SELECT 2, parse_json('{"a": {"b": 7}, "name": "Bob"}')
            |""".stripMargin
       )
 
-      val df = spark.table(s"$db.$tbl").orderBy("id")
+      val df = spark.table(s"$actualDb.$actualTbl").orderBy("id")
       val result = df.collect()
       assert(result.length == 2)
       assert(df.schema.fields(1).dataType == VariantType)
@@ -1642,10 +1634,6 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
 
       val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
       assert(json2.contains("Bob"))
-
-    } finally {
-      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
-      spark.sql(s"DROP DATABASE IF EXISTS $db")
     }
   }
 

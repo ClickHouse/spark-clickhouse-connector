@@ -104,7 +104,8 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
     schema: StructType,
     engine: String = "MergeTree()",
     sortKeys: Seq[String] = "id" :: Nil,
-    partKeys: Seq[String] = Seq.empty
+    partKeys: Seq[String] = Seq.empty,
+    tblProps: Map[String, String] = Map.empty
   )(f: (String, String) => Unit): Unit = {
     val actualDb = if (useSuiteLevelDatabase) testDatabaseName else db
     try {
@@ -118,6 +119,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
            |) USING ClickHouse
            |${if (partKeys.isEmpty) "" else partKeys.mkString("PARTITIONED BY(", ", ", ")")}
            |TBLPROPERTIES (
+           |  ${tblProps.map { case (k, v) => s"'$k' = '$v'," }.mkString("\n  ")}
            |  ${if (sortKeys.isEmpty) "" else sortKeys.mkString("order_by = '", ", ", "',")}
            |  engine = '$engine'
            |)

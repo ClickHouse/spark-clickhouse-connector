@@ -227,9 +227,20 @@ class SchemaUtilsSuite extends AnyFunSuite {
   }
 
   test("spark2ch - variant_types and json_hints are mutually exclusive") {
-    intercept[CHClientException] {
-      toClickHouseType(VariantType, nullable = false, Some("String, Int64"), Some("a.b UInt32"))
+    val catalystSchema = StructType(Seq(
+      StructField("id", IntegerType, nullable = false),
+      StructField("data", VariantType, nullable = false)
+    ))
+    val ex = intercept[CHClientException] {
+      toClickHouseSchema(
+        catalystSchema,
+        Map(
+          "clickhouse.column.data.variant_types" -> "String, Int64",
+          "clickhouse.column.data.json_hints" -> "a.b UInt32"
+        )
+      )
     }
+    assert(ex.getMessage.contains("data"))
   }
 
   test("spark2ch - json_hints flows through table properties") {
