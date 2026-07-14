@@ -38,11 +38,18 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 
 import java.io.{ByteArrayInputStream, InputStream}
 import java.time.temporal.ChronoUnit
+import java.util
 import java.util.UUID
 import scala.util.{Failure, Success, Try}
 
 object NodeClient {
   val DEFAULT_QUERY_TIMEOUT_MS: Long = 60000L
+
+  // Option key the connector consumes itself to choose the http/https URL scheme.
+  private val SSL_OPTION: String = "ssl"
+
+  // Connector-only options to strip before forwarding to the clickhouse-java client.
+  private val CONNECTOR_CONSUMED_OPTIONS: Set[String] = Set(SSL_OPTION)
 
   def apply(node: NodeSpec, queryTimeoutMs: Long = DEFAULT_QUERY_TIMEOUT_MS): NodeClient =
     new NodeClient(node, queryTimeoutMs)
@@ -88,7 +95,7 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
     nodeSpec.infer_runtime_env.equalsIgnoreCase("true") || nodeSpec.infer_runtime_env == "1"
 
   private def createClickHouseURL(nodeSpec: NodeSpec): String = {
-    val ssl: Boolean = nodeSpec.options.getOrDefault("ssl", "false").toBoolean
+    val ssl: Boolean = nodeSpec.options.getOrDefault(NodeClient.SSL_OPTION, "false").toBoolean
     if (ssl) {
       s"https://${nodeSpec.host}:${nodeSpec.port}"
     } else {
@@ -96,11 +103,18 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
     }
   }
 
+  // The client options, minus connector-only keys. Copies so NodeSpec.options is never mutated.
+  private def clientOptions(nodeSpec: NodeSpec): util.Map[String, String] = {
+    val clientOpts = new util.HashMap[String, String](nodeSpec.options)
+    NodeClient.CONNECTOR_CONSUMED_OPTIONS.foreach(clientOpts.remove)
+    clientOpts
+  }
+
   private val client = new Client.Builder()
     .setUsername(nodeSpec.username)
     .setPassword(nodeSpec.password)
     .setDefaultDatabase(nodeSpec.database)
-    .setOptions(nodeSpec.options)
+    .setOptions(clientOptions(nodeSpec))
     .setClientName(userAgent)
     .addEndpoint(createClickHouseURL(nodeSpec))
     .build()

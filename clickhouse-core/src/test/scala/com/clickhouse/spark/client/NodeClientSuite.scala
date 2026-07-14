@@ -24,18 +24,16 @@ import java.util
 import scala.collection.mutable.ArrayBuffer
 
 /**
- * Reproduces https://github.com/ClickHouse/spark-clickhouse-connector/issues/557
+ * Unit tests for [[NodeClient]] that do not require a running ClickHouse server. Building a
+ * `NodeClient` does not open a connection, so these run offline.
  *
- * The connector consumes `option.ssl` itself (to choose the http/https URL scheme) but also forwards
- * the whole options map into the clickhouse-java v2 client via `Client.Builder.setOptions`. The v2
- * client validates option keys against `ClientConfigProperties` and logs a WARN for anything it does
- * not recognise. `ssl` is a connector-only option, so it ends up in the "Unknown and unmapped config
- * properties" bucket and gets logged on every client build.
- *
- * Building a `NodeClient` does not open a connection (the warning is emitted while `Client.build()`
- * parses the config map), so this reproduces without a running ClickHouse server.
+ * The option-forwarding tests cover issue #557: the connector consumes `option.ssl` itself (to
+ * choose the http/https URL scheme) but must not forward it to the clickhouse-java v2 client, which
+ * validates option keys against `ClientConfigProperties` and logs a WARN ("Unknown and unmapped
+ * config properties") for anything it does not recognise. The warning is emitted while
+ * `Client.build()` parses the config map, which is why no server is needed.
  */
-class NodeClientOptionLeakSuite extends AnyFunSuite {
+class NodeClientSuite extends AnyFunSuite {
 
   /** Collects log4j events so we can inspect what the clickhouse-java client logged. */
   private class CapturingAppender extends AppenderSkeleton {
@@ -62,29 +60,47 @@ class NodeClientOptionLeakSuite extends AnyFunSuite {
       .toSeq
   }
 
-  test("connector-only `ssl` option must not leak into the clickhouse-java client") {
-    val options = new util.HashMap[String, String]()
-    options.put("ssl", "true")
-
+  /** Builds a NodeClient with the given options and returns the WARN messages it produced. */
+  private def warningsForOptions(options: (String, String)*): Seq[String] = {
+    val optionMap = new util.HashMap[String, String]()
+    options.foreach { case (k, v) => optionMap.put(k, v) }
     val nodeSpec = NodeSpec(
       _host = "localhost",
       _http_port = Some(8443),
       protocol = HTTP,
-      options = options
+      options = optionMap
     )
-
-    val warnings = captureClientConfigWarnings {
+    captureClientConfigWarnings {
       val client = NodeClient(nodeSpec)
       client.close()
     }
+  }
 
-    val leaked = warnings.filter(msg =>
+  test("connector-only `ssl` option must not leak into the clickhouse-java client") {
+    val leaked = warningsForOptions("ssl" -> "true").filter(msg =>
       msg.contains("Unknown and unmapped config properties") && msg.contains("ssl")
     )
 
     assert(
       leaked.isEmpty,
       s"clickhouse-java client warned about connector-only options being forwarded: ${leaked.mkString("; ")}"
+    )
+  }
+
+  test("stripping is limited to connector-consumed keys; unknown client options still surface") {
+    // Guard against an over-broad fix: filtering out `ssl` must not suppress the client's own
+    // validation of genuinely-unknown option keys.
+    val unknownKey = "definitely_not_a_ch_client_option"
+    val unmapped = warningsForOptions("ssl" -> "true", unknownKey -> "x")
+      .filter(_.contains("Unknown and unmapped config properties"))
+
+    assert(
+      unmapped.forall(!_.contains("ssl=")),
+      s"connector-only `ssl` still leaked: ${unmapped.mkString("; ")}"
+    )
+    assert(
+      unmapped.exists(_.contains(unknownKey)),
+      s"expected the client to still warn about the unknown option `$unknownKey`, got: ${unmapped.mkString("; ")}"
     )
   }
 }
