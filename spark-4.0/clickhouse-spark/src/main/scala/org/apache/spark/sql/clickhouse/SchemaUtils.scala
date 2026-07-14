@@ -101,9 +101,17 @@ object SchemaUtils extends SQLConfHelper {
   }
 
   def toClickHouseType(catalystType: DataType, nullable: Boolean): String =
-    toClickHouseType(catalystType, nullable, None)
+    toClickHouseType(catalystType, nullable, None, None)
 
   def toClickHouseType(catalystType: DataType, nullable: Boolean, variantTypes: Option[String]): String =
+    toClickHouseType(catalystType, nullable, variantTypes, None)
+
+  def toClickHouseType(
+    catalystType: DataType,
+    nullable: Boolean,
+    variantTypes: Option[String],
+    jsonHints: Option[String]
+  ): String =
     catalystType match {
       case BooleanType => maybeNullable("Bool", nullable)
       case ByteType => maybeNullable("Int8", nullable)
@@ -116,20 +124,23 @@ object SchemaUtils extends SQLConfHelper {
       case VarcharType(_) => maybeNullable("String", nullable)
       case CharType(_) => maybeNullable("String", nullable) // TODO: maybe FixString?
       case VariantType =>
-        variantTypes match {
-          case Some(types) => s"Variant($types)"
-          case None => maybeNullable("JSON", nullable)
+        (variantTypes, jsonHints) match {
+          case (Some(types), _) => s"Variant($types)"
+          case (None, Some(hints)) => maybeNullable(s"JSON($hints)", nullable)
+          case (None, None) => maybeNullable("JSON", nullable)
         }
       case DateType => maybeNullable("Date", nullable)
       case TimestampType => maybeNullable("DateTime", nullable)
       case DecimalType.Fixed(p, s) => maybeNullable(s"Decimal($p, $s)", nullable)
-      case ArrayType(elemType, containsNull) => s"Array(${toClickHouseType(elemType, containsNull, variantTypes)})"
+      case ArrayType(elemType, containsNull) =>
+        s"Array(${toClickHouseType(elemType, containsNull, variantTypes, jsonHints)})"
       // TODO currently only support String as key
       case MapType(keyType, valueType, valueContainsNull) if keyType.isInstanceOf[StringType] =>
-        s"Map(${toClickHouseType(keyType, nullable = false, variantTypes)}, ${toClickHouseType(valueType, valueContainsNull, variantTypes)})"
+        s"Map(${toClickHouseType(keyType, nullable = false, variantTypes, jsonHints)}, " +
+          s"${toClickHouseType(valueType, valueContainsNull, variantTypes, jsonHints)})"
       case struct: StructType =>
         val fieldTypes = struct.fields.map { field =>
-          val fieldType = toClickHouseType(field.dataType, field.nullable, variantTypes)
+          val fieldType = toClickHouseType(field.dataType, field.nullable, variantTypes, jsonHints)
           s"${field.name} ${fieldType}"
         }.mkString(", ")
         s"Tuple($fieldTypes)"
@@ -164,12 +175,35 @@ object SchemaUtils extends SQLConfHelper {
    * }}}
    *
    * If no variant_types property is specified, VariantType defaults to ClickHouse's JSON type (schema-less).
+   *
+   * For VariantType columns that map to the JSON type, you can supply JSON type hints (typed paths,
+   * SKIP paths, parameters) via the json_hints property. The value is wrapped verbatim as
+   * `JSON(<hints>)` and validated by ClickHouse at CREATE TABLE time:
+   * {{{
+   * CREATE TABLE clickhouse.db.table (
+   *   id INT,
+   *   data VARIANT
+   * )
+   * TBLPROPERTIES (
+   *   'clickhouse.column.data.json_hints' = 'a.b UInt32, SKIP a.c, max_dynamic_paths=16'
+   * )
+   * }}}
+   *
+   * variant_types and json_hints are mutually exclusive for the same column (they map to the
+   * mutually exclusive ClickHouse types Variant(...) and JSON(...)); specifying both throws.
    */
   def toClickHouseSchema(catalystSchema: StructType, properties: Map[String, String]): Seq[(String, String, String)] =
     catalystSchema.fields
       .map { field =>
         val variantTypes = properties.get(s"clickhouse.column.${field.name}.variant_types")
-        val chType = toClickHouseType(field.dataType, field.nullable, variantTypes)
+        val jsonHints = properties.get(s"clickhouse.column.${field.name}.json_hints")
+        if (variantTypes.isDefined && jsonHints.isDefined) {
+          throw CHClientException(
+            s"Cannot specify both 'variant_types' and 'json_hints' for column '${field.name}'; " +
+              "they map to mutually exclusive ClickHouse types (Variant(...) vs JSON(...))"
+          )
+        }
+        val chType = toClickHouseType(field.dataType, field.nullable, variantTypes, jsonHints)
         (field.name, chType, field.getComment().map(c => s" COMMENT '$c'").getOrElse(""))
       }
 
