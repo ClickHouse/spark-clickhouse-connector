@@ -46,7 +46,10 @@ case class ClickHouseTable(
   implicit val tz: ZoneId,
   spec: TableSpec,
   engineSpec: TableEngineSpec,
-  functionRegistry: FunctionRegistry
+  functionRegistry: FunctionRegistry,
+  // whether Spark can resolve catalog functions at plan time; false for tables loaded via
+  // `format("clickhouse")`, whose relations carry no catalog
+  functionCatalogUsable: Boolean = true
 ) extends Table
     with SupportsRead
     with SupportsWrite
@@ -179,10 +182,16 @@ case class ClickHouseTable(
       sortingKey = sortingKey,
       writeOptions = writeOptions,
       writeSettings = writeOptions.settings,
-      functionRegistry = functionRegistry
+      functionRegistry = functionRegistry,
+      functionCatalogUsable = functionCatalogUsable
     )
 
     writeJob.validateDistributedTableSharding()
+
+    if (writeOptions.convertDistributedToLocal && !functionCatalogUsable && writeJob.shardingKeyIgnoreRand.nonEmpty) {
+      log.warn(s"""convertLocal write to ${spec.database}.${spec.name} via format("clickhouse") cannot sort """ +
+        "by shard number and may flush many small batches; register a Spark catalog for full batches.")
+    }
 
     new ClickHouseWriteBuilder(writeJob)
   }

@@ -31,7 +31,7 @@ import org.apache.spark.sql.types.{StructField, StructType}
 import com.clickhouse.spark.Logging
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.expr._
-import com.clickhouse.spark.func.FunctionRegistry
+import com.clickhouse.spark.func.{ClickHouseShardNum, FunctionRegistry}
 import com.clickhouse.spark.spec.ClusterSpec
 
 import scala.util.{Failure, Success, Try}
@@ -56,20 +56,32 @@ object ExprUtils extends SQLConfHelper with Serializable with Logging {
     partitionKey: Option[List[Expr]],
     sortingKey: Option[List[OrderExpr]],
     cluster: Option[ClusterSpec],
+    sortByShardNum: Boolean,
     functionRegistry: FunctionRegistry
-  ): Array[V2SortOrder] =
-    toSparkSplits(
-      shardingKeyIgnoreRand,
-      partitionKey,
-      functionRegistry
-    ).map(Expressions.sort(_, SortDirection.ASCENDING)) ++:
-      sortingKey.seq.flatten.flatten { case OrderExpr(expr, asc, nullFirst) =>
-        val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
-        val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
-        toSparkTransformOpt(expr, functionRegistry).map(trans =>
-          Expressions.sort(trans, direction, nullOrder)
-        )
-      }.toArray
+  ): Array[V2SortOrder] = {
+    // consecutive key values map to different shards; sorting by shard number keeps writer batches full
+    val shardingSortOrders = shardingKeyIgnoreRand.toSeq
+      .flatMap(toSparkTransformOpt(_, functionRegistry))
+      .map { transform =>
+        val sortExpr = cluster match {
+          case Some(c) if sortByShardNum =>
+            Expressions.apply(ClickHouseShardNum.funcName, Expressions.literal(c.name), transform)
+          case _ => transform
+        }
+        Expressions.sort(sortExpr, SortDirection.ASCENDING)
+      }
+    val partitionSortOrders = partitionKey.seq.flatten
+      .flatMap(toSparkTransformOpt(_, functionRegistry))
+      .map(Expressions.sort(_, SortDirection.ASCENDING))
+    val sortingKeySortOrders = sortingKey.seq.flatten.flatten { case OrderExpr(expr, asc, nullFirst) =>
+      val direction = if (asc) SortDirection.ASCENDING else SortDirection.DESCENDING
+      val nullOrder = if (nullFirst) NullOrdering.NULLS_FIRST else NullOrdering.NULLS_LAST
+      toSparkTransformOpt(expr, functionRegistry).map(trans =>
+        Expressions.sort(trans, direction, nullOrder)
+      )
+    }
+    (shardingSortOrders ++ partitionSortOrders ++ sortingKeySortOrders).toArray
+  }
 
   private def loadV2FunctionOpt(
     name: String,

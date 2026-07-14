@@ -15,14 +15,24 @@
 package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.spark.expr.{FieldRef, FuncExpr, OrderExpr, SQLExpr}
-import com.clickhouse.spark.func.{ClickHouseXxHash64, DynamicFunctionRegistry, StaticFunctionRegistry}
+import com.clickhouse.spark.func.{
+  ClickHouseShardNum,
+  ClickHouseXxHash64,
+  DynamicFunctionRegistry,
+  StaticFunctionRegistry
+}
 import com.clickhouse.spark.expr.ExprRender
+import com.clickhouse.spark.spec.{ClusterSpec, NodeSpec, ReplicaSpec, ShardSpec}
 import org.apache.spark.sql.connector.expressions.{
+  ApplyTransform,
   Expressions,
+  FieldReference,
   GeneralScalarExpression,
+  IdentityTransform,
   LiteralValue,
   NullOrdering,
-  SortDirection
+  SortDirection,
+  SortOrder
 }
 import org.apache.spark.sql.types.IntegerType
 import org.scalatest.funsuite.AnyFunSuite
@@ -33,6 +43,106 @@ class ExprUtilsSuite extends AnyFunSuite {
     val r = new DynamicFunctionRegistry
     r.register("ck_xx_hash64", ClickHouseXxHash64)
     r
+  }
+
+  private val clusterSpec = ClusterSpec(
+    "test_cluster",
+    Array(
+      ShardSpec(1, 1, Array(ReplicaSpec(1, NodeSpec("s1r1")))),
+      ShardSpec(2, 1, Array(ReplicaSpec(1, NodeSpec("s2r1"))))
+    )
+  )
+
+  private def assertPartitionAndSortingSegments(orders: Array[SortOrder]): Unit = {
+    assert(orders(1).direction() === SortDirection.ASCENDING)
+    orders(1).expression() match {
+      case IdentityTransform(FieldReference(Seq("m"))) =>
+      case other => fail(s"Unexpected partition sort expression: $other")
+    }
+    assert(orders(2).direction() === SortDirection.ASCENDING)
+    assert(orders(2).nullOrdering() === NullOrdering.NULLS_LAST)
+    orders(2).expression() match {
+      case IdentityTransform(FieldReference(Seq("id"))) =>
+      case other => fail(s"Unexpected sorting key sort expression: $other")
+    }
+  }
+
+  test("toSparkSortOrders: sharding key sorts by shard num when enabled and cluster is given") {
+    val orders = ExprUtils.toSparkSortOrders(
+      shardingKeyIgnoreRand = Some(FieldRef("y")),
+      partitionKey = Some(List(FieldRef("m"))),
+      sortingKey = Some(List(OrderExpr(FieldRef("id"), asc = true, nullFirst = false))),
+      cluster = Some(clusterSpec),
+      sortByShardNum = true,
+      functionRegistry = StaticFunctionRegistry
+    )
+    assert(orders.length === 3)
+    assert(orders(0).direction() === SortDirection.ASCENDING)
+    orders(0).expression() match {
+      case ApplyTransform(name, Seq(lit: LiteralValue[_], IdentityTransform(FieldReference(Seq("y"))))) =>
+        assert(name === ClickHouseShardNum.funcName)
+        assert(lit.value === "test_cluster")
+      case other => fail(s"Unexpected sharding sort expression: $other")
+    }
+    assertPartitionAndSortingSegments(orders)
+  }
+
+  test("toSparkSortOrders: sharding key sorts by raw key when cluster is absent") {
+    val orders = ExprUtils.toSparkSortOrders(
+      shardingKeyIgnoreRand = Some(FieldRef("y")),
+      partitionKey = Some(List(FieldRef("m"))),
+      sortingKey = Some(List(OrderExpr(FieldRef("id"), asc = true, nullFirst = false))),
+      cluster = None,
+      sortByShardNum = true,
+      functionRegistry = StaticFunctionRegistry
+    )
+    assert(orders.length === 3)
+    assert(orders(0).direction() === SortDirection.ASCENDING)
+    orders(0).expression() match {
+      case IdentityTransform(FieldReference(Seq("y"))) =>
+      case other => fail(s"Unexpected sharding sort expression: $other")
+    }
+    assertPartitionAndSortingSegments(orders)
+  }
+
+  test("toSparkSortOrders: sharding key sorts by raw key when sortByShardNum is disabled") {
+    val orders = ExprUtils.toSparkSortOrders(
+      shardingKeyIgnoreRand = Some(FieldRef("y")),
+      partitionKey = Some(List(FieldRef("m"))),
+      sortingKey = Some(List(OrderExpr(FieldRef("id"), asc = true, nullFirst = false))),
+      cluster = Some(clusterSpec),
+      sortByShardNum = false,
+      functionRegistry = StaticFunctionRegistry
+    )
+    assert(orders.length === 3)
+    orders(0).expression() match {
+      case IdentityTransform(FieldReference(Seq("y"))) =>
+      case other => fail(s"Unexpected sharding sort expression: $other")
+    }
+    assertPartitionAndSortingSegments(orders)
+  }
+
+  test("toSparkSortOrders: hash function sharding key is wrapped in shard num") {
+    val sparkHashName = StaticFunctionRegistry.clickHouseToSparkFunc("xxHash64")
+    val orders = ExprUtils.toSparkSortOrders(
+      shardingKeyIgnoreRand = Some(FuncExpr("xxHash64", List(FieldRef("s")))),
+      partitionKey = None,
+      sortingKey = None,
+      cluster = Some(clusterSpec),
+      sortByShardNum = true,
+      functionRegistry = StaticFunctionRegistry
+    )
+    assert(orders.length === 1)
+    orders(0).expression() match {
+      case ApplyTransform(
+            name,
+            Seq(lit: LiteralValue[_], ApplyTransform(hashName, Seq(IdentityTransform(FieldReference(Seq("s"))))))
+          ) =>
+        assert(name === ClickHouseShardNum.funcName)
+        assert(lit.value === "test_cluster")
+        assert(hashName === sparkHashName)
+      case other => fail(s"Unexpected sharding sort expression: $other")
+    }
   }
 
   test("toClickHouseSortOrderOpt: ASC NULLS FIRST on bare field") {

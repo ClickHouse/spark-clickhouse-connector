@@ -41,7 +41,10 @@ case class WriteJobDescription(
   sortingKey: Option[List[OrderExpr]],
   writeOptions: WriteOptions,
   writeSettings: Map[String, String],
-  functionRegistry: FunctionRegistry
+  functionRegistry: FunctionRegistry,
+  // whether the write plan is resolved with a FunctionCatalog available, i.e. the write goes
+  // through a registered catalog rather than the format-based `TableProvider` path
+  functionCatalogUsable: Boolean = true
 ) {
 
   def targetDatabase(convert2Local: Boolean): String = tableEngineSpec match {
@@ -88,6 +91,9 @@ case class WriteJobDescription(
     )
   }
 
+  // needs shard-routing writes (convertLocal) and a FunctionCatalog to resolve `clickhouse_shard_num`
+  def sortByShardNum: Boolean = writeOptions.convertDistributedToLocal && functionCatalogUsable
+
   def sparkSortOrders: Array[SortOrder] = {
     val _partitionKey = if (writeOptions.localSortByPartition) {
       filterSupportedPartitionExprs(partitionKey)
@@ -100,6 +106,7 @@ case class WriteJobDescription(
       _partitionKey,
       _sortingKey,
       cluster,
+      sortByShardNum,
       functionRegistry
     )
   }

@@ -98,4 +98,11 @@ case class ClusterSpec(
   override def toString: String = s"cluster: $name, shards: [${shards.mkString(", ")}]"
 
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = shards.sorted.flatMap(_.nodes)
+
+  // shard routing tables for `ShardUtils.calcShard`, precomputed once per instance because it runs
+  // per row on the write path and per comparison when sorting by shard number
+  @JsonIgnore @transient private[spec] lazy val sortedShards: Array[ShardSpec] = shards.sorted
+  @JsonIgnore @transient private[spec] lazy val shardWeightUpperBounds: Array[Int] =
+    sortedShards.scanLeft(0)(_ + _.weight).tail
+  @JsonIgnore @transient private[spec] lazy val totalWeight: Int = shards.map(_.weight).sum
 }
