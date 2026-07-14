@@ -84,9 +84,8 @@ abstract class SslConnectivitySuite extends AnyFunSuite with ClickHouseProvider 
           s"SELECT count() AS cnt FROM `$db`.`$table`"
         )
         assert(readBack.records.head.get("cnt").asInt === 2)
-      } finally {
+      } finally
         client.syncQueryAndCheckOutputJSONEachRow(s"DROP TABLE IF EXISTS `$db`.`$table`")
-      }
     }
   }
 }
