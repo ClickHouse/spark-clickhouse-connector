@@ -191,14 +191,12 @@ class SchemaUtilsSuite extends AnyFunSuite {
   assertNegative("fixedString(5)")
 
   assertUnsupported(
-    "Point",
-    "Polygon",
     "AggregateFunction(sum, Int32)",
     "SimpleAggregateFunction(sum, Int64)",
     "Decimal256(5)",
-    "Array(Point)",
-    "Map(String, Point)",
-    "Tuple(Int32, Point)"
+    "Array(AggregateFunction(sum, Int32))",
+    "Map(String, AggregateFunction(sum, Int32))",
+    "Tuple(Int32, AggregateFunction(sum, Int32))"
   )
 
   test("spark2ch") {
