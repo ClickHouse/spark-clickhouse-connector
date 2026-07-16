@@ -229,7 +229,7 @@ class SchemaUtilsSuite extends AnyFunSuite {
   private val mixedChSchema = Seq(
     "customer_id" -> "Int32",
     "agg_state" -> "AggregateFunction(sum, Int32)",
-    "location" -> "Point",
+    "avg_state" -> "AggregateFunction(avg, Float64)",
     "client_id" -> "String"
   )
 
@@ -238,13 +238,13 @@ class SchemaUtilsSuite extends AnyFunSuite {
     val expected = StructType(
       StructField("customer_id", IntegerType, nullable = false) ::
         ClickHouseUnsupportedType.field("agg_state", "AggregateFunction(sum, Int32)") ::
-        ClickHouseUnsupportedType.field("location", "Point") ::
+        ClickHouseUnsupportedType.field("avg_state", "AggregateFunction(avg, Float64)") ::
         StructField("client_id", StringType, nullable = false) :: Nil
     )
     assert(actual === expected)
     assert(ClickHouseUnsupportedType.unsupportedColumns(actual) === Seq(
       "agg_state" -> "AggregateFunction(sum, Int32)",
-      "location" -> "Point"
+      "avg_state" -> "AggregateFunction(avg, Float64)"
     ))
   }
 
@@ -257,7 +257,7 @@ class SchemaUtilsSuite extends AnyFunSuite {
   test("validateCreateSchema rejects schemas with placeholder columns") {
     val e = intercept[Exception](toClickHouseSchema(fromClickHouseSchema(mixedChSchema)))
     assert(e.getMessage.contains("`agg_state` AggregateFunction(sum, Int32)"))
-    assert(e.getMessage.contains("`location` Point"))
+    assert(e.getMessage.contains("`avg_state` AggregateFunction(avg, Float64)"))
     // a fully supported schema passes
     assert(toClickHouseSchema(fromClickHouseSchema(Seq("id" -> "Int32"))).nonEmpty)
   }
