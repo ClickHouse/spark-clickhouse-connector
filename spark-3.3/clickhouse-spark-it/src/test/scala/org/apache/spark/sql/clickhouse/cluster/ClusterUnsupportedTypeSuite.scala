@@ -32,7 +32,7 @@ class ClusterUnsupportedTypeSuite extends SparkClickHouseClusterTest {
            |  customer_id Int32,
            |  client_id   String,
            |  agg_state   AggregateFunction(sum, Int32),
-           |  location    Point
+           |  avg_state   AggregateFunction(avg, Float64)
            |) ENGINE = MergeTree()
            |ORDER BY customer_id
            |""".stripMargin
@@ -42,7 +42,7 @@ class ClusterUnsupportedTypeSuite extends SparkClickHouseClusterTest {
            |  customer_id Int32,
            |  client_id   String,
            |  agg_state   AggregateFunction(sum, Int32),
-           |  location    Point
+           |  avg_state   AggregateFunction(avg, Float64)
            |) ENGINE = Distributed('$cluster', '$db', '$tbl_local', customer_id)
            |""".stripMargin
       )
@@ -56,10 +56,10 @@ class ClusterUnsupportedTypeSuite extends SparkClickHouseClusterTest {
   test("unsupported columns of a distributed table stay in the schema with the placeholder type") {
     withUnsupportedTypeDistTable("issue_457_cluster_schema_db") { (db, tbl) =>
       val schema = spark.table(s"$db.$tbl").schema
-      assert(schema.fieldNames === Array("customer_id", "client_id", "agg_state", "location"))
+      assert(schema.fieldNames === Array("customer_id", "client_id", "agg_state", "avg_state"))
       assert(ClickHouseUnsupportedType.unsupportedColumns(schema) === Seq(
         "agg_state" -> "AggregateFunction(sum, Int32)",
-        "location" -> "Point"
+        "avg_state" -> "AggregateFunction(avg, Float64)"
       ))
     }
   }
@@ -112,7 +112,7 @@ class ClusterUnsupportedTypeSuite extends SparkClickHouseClusterTest {
         spark.sql(s"SELECT * FROM $db.$tbl").collect()
       }
       assert(e.getMessage.contains("`agg_state` AggregateFunction(sum, Int32)"))
-      assert(e.getMessage.contains("`location` Point"))
+      assert(e.getMessage.contains("`avg_state` AggregateFunction(avg, Float64)"))
     }
   }
 }

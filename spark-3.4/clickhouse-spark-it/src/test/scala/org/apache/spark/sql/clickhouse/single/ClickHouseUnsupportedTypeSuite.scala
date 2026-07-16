@@ -47,7 +47,7 @@ abstract class ClickHouseUnsupportedTypeSuite extends SparkClickHouseSingleTest 
            |  customer_id Int32,
            |  client_id   String,
            |  agg_state   AggregateFunction(sum, Int32),
-           |  location    Point
+           |  avg_state   AggregateFunction(avg, Float64)
            |) ENGINE = MergeTree()
            |ORDER BY customer_id
            |""".stripMargin
@@ -67,10 +67,10 @@ abstract class ClickHouseUnsupportedTypeSuite extends SparkClickHouseSingleTest 
   test("unsupported columns stay in the schema with the placeholder type") {
     withUnsupportedTypeTable { (db, tbl) =>
       val schema = spark.table(s"`$db`.`$tbl`").schema
-      assert(schema.fieldNames === Array("customer_id", "client_id", "agg_state", "location"))
+      assert(schema.fieldNames === Array("customer_id", "client_id", "agg_state", "avg_state"))
       assert(ClickHouseUnsupportedType.unsupportedColumns(schema) === Seq(
         "agg_state" -> "AggregateFunction(sum, Int32)",
-        "location" -> "Point"
+        "avg_state" -> "AggregateFunction(avg, Float64)"
       ))
     }
   }
@@ -123,7 +123,7 @@ abstract class ClickHouseUnsupportedTypeSuite extends SparkClickHouseSingleTest 
         spark.sql(s"SELECT * FROM `$db`.`$tbl`").collect()
       }
       assert(e.getMessage.contains("`agg_state` AggregateFunction(sum, Int32)"))
-      assert(e.getMessage.contains("`location` Point"))
+      assert(e.getMessage.contains("`avg_state` AggregateFunction(avg, Float64)"))
     }
   }
 
@@ -133,7 +133,7 @@ abstract class ClickHouseUnsupportedTypeSuite extends SparkClickHouseSingleTest 
         spark.sql(s"SELECT agg_state FROM `$db`.`$tbl`").collect()
       }
       assert(e.getMessage.contains("`agg_state` AggregateFunction(sum, Int32)"))
-      assert(!e.getMessage.contains("`location`"))
+      assert(!e.getMessage.contains("`avg_state`"))
     }
   }
 
@@ -148,9 +148,9 @@ abstract class ClickHouseUnsupportedTypeSuite extends SparkClickHouseSingleTest 
       // max accepts any orderable type, so it reaches the connector: the pushdown probe is
       // declined and the fallback in-Spark aggregate hits the read guard on the column
       val e2 = intercept[CHClientException] {
-        spark.sql(s"SELECT max(location) FROM `$db`.`$tbl`").collect()
+        spark.sql(s"SELECT max(avg_state) FROM `$db`.`$tbl`").collect()
       }
-      assert(e2.getMessage.contains("`location` Point"))
+      assert(e2.getMessage.contains("`avg_state` AggregateFunction(avg, Float64)"))
     }
   }
 
@@ -186,7 +186,7 @@ abstract class ClickHouseUnsupportedTypeSuite extends SparkClickHouseSingleTest 
         Nil
       )
       checkAnswer(
-        spark.sql(s"SELECT customer_id FROM `$db`.`$tbl` WHERE location IS NOT NULL ORDER BY customer_id"),
+        spark.sql(s"SELECT customer_id FROM `$db`.`$tbl` WHERE avg_state IS NOT NULL ORDER BY customer_id"),
         Row(1) :: Row(2) :: Nil
       )
     }
@@ -217,9 +217,9 @@ abstract class ClickHouseUnsupportedTypeSuite extends SparkClickHouseSingleTest 
       assert(e1.getMessage.contains("`agg_state` AggregateFunction(sum, Int32)"))
       // plain sort (no pushdown): Spark itself needs the column
       val e2 = intercept[CHClientException] {
-        spark.sql(s"SELECT customer_id FROM `$db`.`$tbl` ORDER BY location").collect()
+        spark.sql(s"SELECT customer_id FROM `$db`.`$tbl` ORDER BY avg_state").collect()
       }
-      assert(e2.getMessage.contains("`location` Point"))
+      assert(e2.getMessage.contains("`avg_state` AggregateFunction(avg, Float64)"))
     }
   }
 
@@ -243,7 +243,7 @@ abstract class ClickHouseUnsupportedTypeSuite extends SparkClickHouseSingleTest 
     withUnsupportedTypeTable { (db, tbl) =>
       // the remedy the read-guard error message suggests
       checkAnswer(
-        spark.table(s"`$db`.`$tbl`").drop("agg_state", "location").orderBy("customer_id"),
+        spark.table(s"`$db`.`$tbl`").drop("agg_state", "avg_state").orderBy("customer_id"),
         Row(1, "a") :: Row(2, "b") :: Nil
       )
     }
@@ -257,7 +257,7 @@ abstract class ClickHouseUnsupportedTypeSuite extends SparkClickHouseSingleTest 
         .toMap
       assert(columnTypes("customer_id") === "int")
       assert(columnTypes("agg_state") === "unsupported")
-      assert(columnTypes("location") === "unsupported")
+      assert(columnTypes("avg_state") === "unsupported")
     }
   }
 
@@ -267,7 +267,9 @@ abstract class ClickHouseUnsupportedTypeSuite extends SparkClickHouseSingleTest 
         .collect()
         .map(row => row.getString(0) -> row.getString(1))
         .toMap
-      assert(props("unsupported.columns") === "`agg_state` AggregateFunction(sum, Int32), `location` Point")
+      assert(props(
+        "unsupported.columns"
+      ) === "`agg_state` AggregateFunction(sum, Int32), `avg_state` AggregateFunction(avg, Float64)")
     }
   }
 

@@ -62,6 +62,10 @@ class ClickHouseUnsupportedType extends UserDefinedType[ClickHouseUnsupportedVal
 
 object ClickHouseUnsupportedType {
 
+  /** Dedicated flag marking a field as an unsupported placeholder - the sole test for [[isUnsupportedColumn]]. */
+  val UNSUPPORTED_MARKER_KEY = "clickhouse.unsupported"
+
+  /** Payload holding the original ClickHouse type string of a placeholder column. */
   val CLICKHOUSE_TYPE_METADATA_KEY = "clickhouse.type"
 
   val INSTANCE = new ClickHouseUnsupportedType
@@ -71,10 +75,16 @@ object ClickHouseUnsupportedType {
       name,
       INSTANCE,
       nullable = true,
-      metadata = new MetadataBuilder().putString(CLICKHOUSE_TYPE_METADATA_KEY, chType).build()
+      metadata = new MetadataBuilder()
+        .putBoolean(UNSUPPORTED_MARKER_KEY, value = true)
+        .putString(CLICKHOUSE_TYPE_METADATA_KEY, chType)
+        .build()
     )
 
-  def isUnsupportedColumn(field: StructField): Boolean = field.dataType.isInstanceOf[ClickHouseUnsupportedType]
+  // The in-memory UDT, or its round-tripped form flagged by the dedicated marker (not the type payload).
+  def isUnsupportedColumn(field: StructField): Boolean =
+    field.dataType.isInstanceOf[ClickHouseUnsupportedType] ||
+      (field.metadata.contains(UNSUPPORTED_MARKER_KEY) && field.metadata.getBoolean(UNSUPPORTED_MARKER_KEY))
 
   /** Returns the `(name, original ClickHouse type)` of the unsupported columns in the schema. */
   def unsupportedColumns(schema: StructType): Seq[(String, String)] =

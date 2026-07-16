@@ -274,6 +274,20 @@ class SchemaUtilsSuite extends AnyFunSuite {
       === "AggregateFunction(sum, Int32)")
   }
 
+  test("unsupported columns are still detected after a schema JSON round-trip") {
+    // Detection must survive a schema JSON round-trip (PySpark / Spark Connect flattens the UDT to void).
+    val schema = fromClickHouseSchema(mixedChSchema)
+    val restored = DataType.fromJson(schema.json).asInstanceOf[StructType]
+
+    assert(ClickHouseUnsupportedType.unsupportedColumns(restored) === Seq(
+      "agg_state" -> "AggregateFunction(sum, Int32)",
+      "avg_state" -> "AggregateFunction(avg, Float64)"
+    ))
+    val e = intercept[CHClientException](toClickHouseSchema(restored))
+    assert(e.getMessage.contains("`agg_state` AggregateFunction(sum, Int32)"))
+    assert(e.getMessage.contains("`avg_state` AggregateFunction(avg, Float64)"))
+  }
+
   test("spark2ch - VariantType defaults to JSON") {
     assert(toClickHouseType(VariantType, nullable = false) == "JSON")
   }
