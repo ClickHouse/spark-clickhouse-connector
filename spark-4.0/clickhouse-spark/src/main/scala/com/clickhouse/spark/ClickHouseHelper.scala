@@ -15,13 +15,13 @@
 package com.clickhouse.spark
 
 import com.clickhouse.client.ClickHouseProtocol
-import com.clickhouse.spark.exception.CHException
+import com.clickhouse.spark.exception.{CHClientException, CHException}
 import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.CLIENT_QUERY_TIMEOUT
-import org.apache.spark.sql.clickhouse.SchemaUtils
+import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, SchemaUtils}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
@@ -257,6 +257,10 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     )
   }
 
+  /**
+   * Returns the Spark schema of the table. Columns whose ClickHouse types have no Spark
+   * mapping are represented with the placeholder [[ClickHouseUnsupportedType]].
+   */
   def queryTableSchema(
     database: String,
     table: String,
@@ -330,7 +334,15 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
    */
   def getQueryOutputSchema(sql: String)(implicit nodeClient: NodeClient): StructType = {
     val namesAndTypes = nodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql).namesAndTypes
-    SchemaUtils.fromClickHouseSchema(namesAndTypes.toSeq)
+    val schema = SchemaUtils.fromClickHouseSchema(namesAndTypes.toSeq)
+    val unsupported = ClickHouseUnsupportedType.unsupportedColumns(schema)
+    if (unsupported.nonEmpty) {
+      // unlike a table schema, a query output must map in full - callers align it positionally with the select items
+      throw CHClientException(
+        s"Query output contains unsupported types: ${ColumnUtils.renderColumns(unsupported)}, sql: $sql"
+      )
+    }
+    schema
   }
 
   def dropPartition(
