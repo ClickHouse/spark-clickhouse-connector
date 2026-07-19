@@ -1,0 +1,489 @@
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+name: "ClickBench Load Test"
+
+on:
+  schedule:
+    - cron: '0 6 * * 1'   # placeholder schedule, replace once cadence is decided
+  workflow_dispatch:
+    inputs:
+      input_parquet_glob:
+        description: "Override input glob (default = full 100 files)"
+        required: false
+        default: "s3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet"
+      connector:
+        description: "Connector under test (tags the run)"
+        required: false
+        default: "spark"
+      run_profile:
+        description: "Cluster spec profile (drives EMR sizing; recorded on the run)"
+        required: false
+        default: "small"
+        type: choice
+        options:
+          - small
+          - large
+
+concurrency:
+  group: clickbench-load-test
+  cancel-in-progress: false
+
+jobs:
+  load-test:
+    runs-on: ubuntu-22.04
+    permissions:
+      id-token: write
+      contents: read
+    env:
+      AWS_REGION: us-east-1
+      # EMR 7.13.0 ships Spark 3.5.6 + Scala 2.12. As of mid-2026 no EMR 7.x
+      # release bundles Spark 4, so the connector jar must be built for
+      # 3.5_2.12 to match. Bump this if a Spark-4 EMR release appears.
+      EMR_RELEASE_LABEL: emr-7.13.0
+      # EMR_INSTANCE_TYPE / EMR_CORE_COUNT are derived from RUN_PROFILE by the
+      # "Resolve cluster specs from run profile" step below.
+      CH_DATABASE: clickbench
+      CH_TABLE: hits
+      CH_SECRET_ID: clickbench-load-test/target-ch-password
+      # --- Tier 0 (Null-engine connector ceiling, plan §3) --------------------
+      # REDESIGNED 2026-07-07: Tier 0 now ingests into an ENGINE=Null table on the
+      # SAME Cloud target as Tier 1 (clickbench.hits_null), mirroring the Kafka
+      # pipeline's Cloud-hosted Null design. The Docker-on-master instrument is
+      # gone, so the former TIER0_CH_VERSION and METRICS_SECRET_ID env vars are
+      # DELETED: there is no pinned Docker version (the Cloud version drifts,
+      # tracked by clickhouse_version + the mandatory ch_insert_cpu_share_tier0
+      # parse-watch, contract §1.4) and no on-master Secrets Manager read. See
+      # contract §1.1 (Cloud-hosted Null branch) and benchmarks/tier0/README.md.
+      INPUT_PARQUET_GLOB: ${{ inputs.input_parquet_glob || 's3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet' }}
+      # --- Connector operating config UNDER TEST (plan §4, §6.9) ---------------
+      # These live in version control and are echoed into perf.runs.runtime (see
+      # "Insert run record"), so the config under test is auditable per run and
+      # the dashboard config filter can slice on them. This repo is the SINGLE
+      # SOURCE OF TRUTH: the diverged S3 orchestrator copy that used to carry
+      # batchSize (~line 95 there) is retired — the workflow uploads
+      # benchmarks/clickbench_ingest.py fresh every run (see "Upload jar and
+      # script to S3" + emr_submit.sh SCRIPT_S3_URI), so these values reach EMR
+      # from the repo, not from S3. Contract §1.4 key spellings.
+      BATCH_SIZE: "100000"          # spark.clickhouse.write.batchSize (rows/batch); known operating point
+      ASYNC_INSERT: "0"             # server async_insert mode OFF at the operating point
+      # write_parallelism is RECORD-ONLY: nothing forces it (a repartition would
+      # inject a full shuffle of the dataset inside the timed window — a
+      # trend-breaking workload change). The write stage runs at its natural
+      # input-split partition count (task concurrency is then bounded by
+      # executor slots); the ingest job reports the OBSERVED count via an S3
+      # sidecar (WRITE_PARALLELISM_META_S3_URI, see "Compute run id and S3
+      # paths") and "Insert run record" echoes it into
+      # runtime['write_parallelism']. A forcing knob may return with the
+      # parallelism-sweep campaign (plan §4 / task #22) as a deliberate,
+      # annotated config change — do not reintroduce it silently here.
+      PARTITION_SCHEME: "toYYYYMM(EventDate)"  # target DDL (benchmarks/sql/clickbench/02_create_hits.sql); switched from toYear 2026-07-07 (plan §9 step 4) — ~12 real partitions exercise the partition-aware write path; recorded in runtime['partition_scheme'] (contract §1.4) so the change is an annotated event on all absolute charts
+      DATASET: "hits"               # logical dataset shape (contract §1.4)
+      # --- Pinned reference build, arm P (plan §2, open decision 1) -----------
+      # The two-arm protocol runs HEAD (arm H) and a PINNED reference (arm P) on
+      # the same cluster/hour/server so environment noise cancels in the H/P
+      # ratio. Arm P MUST be a FETCHED FROZEN ARTIFACT, never rebuilt from a
+      # pinned sha (toolchain drift would make P non-constant and reintroduce
+      # the noise it exists to cancel).
+      #
+      # RELEASE-vs-FROZEN-S3 OUTCOME: a compatible published release EXISTS on
+      # Maven Central for this pipeline's build (spark 3.5 / scala 2.12), so we
+      # pin the Maven Central release jar directly — no S3 freeze channel is
+      # needed. Decision 1 resolved to "last tagged release": v0.10.0.
+      #
+      # PIN-BUMP PROCEDURE (deliberate, annotated event):
+      #   1. Pick the new released version published to Maven Central for
+      #      g=com.clickhouse.spark a=clickhouse-spark-runtime-3.5_2.12.
+      #   2. Download the jar, compute sha256 (shasum -a 256).
+      #   3. Update PINNED_CONNECTOR_VERSION + PINNED_JAR_SHA256 + PINNED_GIT_SHA
+      #      (git rev-parse v<version>) here, in ONE annotated commit. The commit
+      #      is the dashboard "pin bump" event (v_env_annotations, plan §7).
+      # A bump is the ONLY thing that moves arm P; between bumps P is constant.
+      PINNED_CONNECTOR_VERSION: "0.10.0"
+      # Maven Central coordinates of the frozen arm-P artifact. Group/artifact are
+      # fixed by the build (settings.gradle: clickhouse-spark-runtime-3.5_2.12);
+      # version is the pin above.
+      PINNED_MAVEN_COORDS: "com.clickhouse.spark:clickhouse-spark-runtime-3.5_2.12:0.10.0"
+      # sha256 of the fetched jar, verified in the "Fetch pinned reference jar"
+      # step. A mismatch FAILS the run (the artifact is not what we pinned).
+      PINNED_JAR_SHA256: "6769056dcfe2e798e9027b7a2d29fac4b23cf16f113c500df2fcf138737f6665"
+      # git sha of tag v0.10.0 — per-arm provenance recorded on the pinned run
+      # (task #13 puts arm/connector_version/git_sha into runtime).
+      PINNED_GIT_SHA: "269ac1a33235b507e715912b53a9397450c7f45b"
+      # --- Mandatory scope keys on every perf.runs row (contract §1.1) --------
+      ENVIRONMENT_CLASS: "production"  # the Spark target is a production Cloud service
+      # TARGET_REGION: Cloud region of the TARGET ClickHouse service. Set from
+      # repo config, never hardcoded per run (contract §1.1). us-east-2 —
+      # confirmed by the user 2026-07-07 (task #9 closed): the benchmark is
+      # CROSS-REGION (EMR us-east-1 -> target us-east-2); move-vs-accept is an
+      # annotated step-change decision tracked outside the repo (plan §6.8).
+      TARGET_REGION: "us-east-2"
+      # COMPUTE_REGION: Cloud region of the LOAD GENERATOR (EMR) — mandatory
+      # runtime key (contract §1.1, amendment 2026-07-07): when it differs from
+      # target_region the connector->server path is cross-region, a structural
+      # bias comparisons must be able to compute. Matches AWS_REGION /
+      # provisioning above. Target region confirmed us-east-2 (task #9), so the
+      # Spark connector->server path IS cross-region by design until the
+      # move-vs-accept decision says otherwise.
+      COMPUTE_REGION: "us-east-1"
+      # Run dimensions recorded on perf.runs (and exported to the DWH).
+      CONNECTOR: ${{ inputs.connector || 'spark' }}
+      RUN_PROFILE: ${{ inputs.run_profile || 'small' }}
+      # Integrity-check source ground truth (plan §6.1, contract §2.1). When the
+      # run's INPUT_PARQUET_GLOB equals DEFAULT_INPUT_PARQUET_GLOB, these pinned
+      # constants ARE rows_expected / unique_expected; run_metrics_sql.py
+      # re-derives them via s3() ONLY for non-default (smoke/override) globs —
+      # per-run uniqExact over the full ~100M-row source would be a full WatchID
+      # scan with GB-scale hash state every run. Both values were derived once
+      # with `clickhouse local` over the public glob (count(): 4.8s;
+      # uniqExact(WatchID): 73s). NOTE: the source has exactly 4 duplicate
+      # WatchIDs (…497 rows vs …493 distinct), which is why duplicate detection
+      # is a target-vs-source delta, never count()-uniqExact() on the target.
+      # Re-derive both constants if the dataset or default glob changes.
+      DEFAULT_INPUT_PARQUET_GLOB: "s3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet"
+      SOURCE_ROWS_EXPECTED: "99997497"
+      SOURCE_UNIQUE_EXPECTED: "99997493"
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install ClickHouse client (clickhouse-connect) + boto3
+        run: pip install --quiet clickhouse-connect boto3
+
+      - uses: actions/setup-java@v4
+        with:
+          distribution: zulu
+          java-version: "17"
+          cache: gradle
+
+      - name: Configure AWS credentials
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          role-to-assume: ${{ secrets.CLICKBENCH_AWS_ROLE_ARN }}
+          aws-region: us-east-1
+
+      - name: Build connector runtime jar
+        run: |
+          ./gradlew -Dspark_binary_version=3.5 -Dscala_binary_version=2.12 \
+            :clickhouse-spark-runtime-3.5_2.12:shadowJar --no-daemon
+
+      - name: Fetch pinned reference jar (arm P)
+        # Two-arm protocol (plan §2): fetch the FROZEN pinned reference artifact
+        # from Maven Central alongside HEAD's shadowJar, so both jars exist in
+        # one workflow run with provenance recorded. This step is deliberately
+        # INDEPENDENT of the ingest loop (task #13 restructures the loop and
+        # consumes this jar via PINNED_JAR_LOCAL / provenance env). It only
+        # fetches + verifies; it does not run anything.
+        #
+        # If a future pin points at a version not on Maven Central (e.g. the
+        # pipeline moves to spark-4.0, which has no published release), replace
+        # the Maven URL below with a PINNED_JAR_S3_URI fetch from the CI bucket
+        # (secrets.CLICKBENCH_S3_BUCKET) — a one-time human upload with a
+        # version-stamped immutable key — keeping the sha256 verification.
+        run: |
+          set -euo pipefail
+          MVN_BASE="https://repo1.maven.org/maven2/com/clickhouse/spark/clickhouse-spark-runtime-3.5_2.12/${PINNED_CONNECTOR_VERSION}"
+          MVN_JAR="${MVN_BASE}/clickhouse-spark-runtime-3.5_2.12-${PINNED_CONNECTOR_VERSION}.jar"
+          DEST="$RUNNER_TEMP/clickhouse-spark-runtime-pinned.jar"
+          echo "fetching pinned arm P jar: $MVN_JAR"
+          curl -fsSL -o "$DEST" "$MVN_JAR"
+          GOT=$(shasum -a 256 "$DEST" | awk '{print $1}')
+          if [ "$GOT" != "$PINNED_JAR_SHA256" ]; then
+            echo "PINNED JAR SHA256 MISMATCH — refusing to proceed."
+            echo "  expected: $PINNED_JAR_SHA256"
+            echo "  got:      $GOT"
+            echo "The fetched artifact is not the pinned reference. Either Maven"
+            echo "Central returned a different/corrupt file, or the pin metadata"
+            echo "in the workflow env is stale. Fix via the PIN-BUMP PROCEDURE."
+            exit 1
+          fi
+          echo "pinned jar verified: sha256=$GOT ($PINNED_MAVEN_COORDS)"
+          echo "PINNED_JAR_LOCAL=$DEST" >> "$GITHUB_ENV"
+
+      - name: Compute run id and S3 paths
+        run: |
+          source benchmarks/scripts/lib_runid.sh
+          # RUN_ID is the PAIR id (contract §1.2): both arms of tonight's pair
+          # share it as runtime['pair_id']; each arm's per-row run_id is
+          # <pair_id>-<arm>-t1 (set inside the run-arm action). The two-arm
+          # protocol MUST NOT emit a '…-nogit' id (contract §1.2) — fail early.
+          case "$RUN_ID" in
+            *-nogit) echo "RUN_ID is '$RUN_ID' — refusing to run a pair whose id does not pin the commit under test (contract §1.2)."; exit 1 ;;
+          esac
+          echo "RUN_ID=$RUN_ID" >> "$GITHUB_ENV"
+          echo "RUN_START=$RUN_START" >> "$GITHUB_ENV"
+          # Pair-level identity (never overwritten by the arm-scoped RUN_ID/
+          # RUN_START the run-arm action writes): PAIR_ID tags both runs' rows;
+          # PAIR_RUN_START anchors the once-per-pair run_cost_usd window.
+          echo "PAIR_ID=$RUN_ID" >> "$GITHUB_ENV"
+          echo "PAIR_RUN_START=$RUN_START" >> "$GITHUB_ENV"
+          # EVENT_LOG_DIR_SPARK / EVENT_LOG_URI / WRITE_PARALLELISM_META_S3_URI
+          # are ARM-scoped (per-arm prefixes) and are set inside the run-arm
+          # action's first step — not here.
+          echo "JAR_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/jars/$RUN_ID/clickhouse-spark-runtime.jar" >> "$GITHUB_ENV"
+          # Pinned reference (arm P) jar rides the same per-run jars/ path with a
+          # distinct key so both arms' artifacts are colocated for the run.
+          echo "PINNED_JAR_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/jars/$RUN_ID/clickhouse-spark-runtime-pinned.jar" >> "$GITHUB_ENV"
+          echo "SCRIPT_S3_URI=s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/scripts/$RUN_ID/clickbench_ingest.py" >> "$GITHUB_ENV"
+
+      - name: Resolve arm order
+        # Two-arm protocol (plan §2): both arms run on the SAME cluster/hour, so
+        # order is the only within-pair confound left. Alternate it by day-of-year
+        # parity so neither arm systematically owns the warmer/colder slot. DOY
+        # (not day-of-month) avoids month-boundary parity repeats. The first-run
+        # arm (ARM_1) is also the row the once-per-pair run_cost_usd is charged
+        # to (see "Record pair run_cost_usd" after teardown).
+        run: |
+          set -euo pipefail
+          DOY=$(date -u +%j)
+          if [ $((10#$DOY % 2)) -eq 0 ]; then ARM_ORDER="pinned head"; else ARM_ORDER="head pinned"; fi
+          ARM_1=${ARM_ORDER%% *}
+          ARM_2=${ARM_ORDER##* }
+          echo "ARM_1=$ARM_1" >> "$GITHUB_ENV"
+          echo "ARM_2=$ARM_2" >> "$GITHUB_ENV"
+          echo "day-of-year=$DOY -> arm order: $ARM_1 then $ARM_2"
+
+      - name: Upload jar and script to S3
+        run: |
+          # The runtime build/libs may also hold thin -empty/-sources/-javadoc
+          # jars; the shaded fat jar is the one we need. Exclude those classifiers
+          # and pick the largest (the fat jar dwarfs them) to avoid uploading the
+          # wrong artifact.
+          JAR=$(ls -S spark-3.5/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-3.5_2.12-*.jar \
+                | grep -Ev '(sources|javadoc|empty)\.jar$' | head -1)
+          aws s3 cp "$JAR" "$JAR_S3_URI"
+          # Pinned reference (arm P) jar, fetched + sha256-verified above.
+          aws s3 cp "$PINNED_JAR_LOCAL" "$PINNED_JAR_S3_URI"
+          aws s3 cp benchmarks/clickbench_ingest.py "$SCRIPT_S3_URI"
+          # (redesign 2026-07-07): no Tier-0 asset staging — the Docker instrument
+          # (bootstrap script, on-master capture, server-side SQL) is deleted. The
+          # Null table (clickbench.hits_null) is created by the bootstrap-schema
+          # step on the Cloud target, and t0 capture is a normal remoteSecure read.
+
+      - name: Bootstrap schema (idempotent CREATE IF NOT EXISTS)
+        # clickbench.hits (MergeTree, Tier 1) AND clickbench.hits_null (ENGINE=Null,
+        # Tier 0) both live on the target service (redesign 2026-07-07); perf.{runs,
+        # metrics,ch_inserts} live on the separate metrics service.
+        env:
+          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+        run: python benchmarks/scripts/bootstrap_schema.py
+
+      # NOTE (task #13): the pre-run covariates capture and the pre-ingest
+      # truncate are now PER-ARM and live inside .github/actions/run-arm — under
+      # two arms sharing one cluster, each arm truncates + reads covariates on its
+      # own inherited state (the covariate read moved post-truncate so
+      # pre_run_active_parts stays a valid ~0 cleanliness verifier for both arms).
+
+      - name: Resolve cluster specs from run profile
+        # To add a "bigger ClickHouse" tier, extend with a per-profile
+        # target-CH secret. Chosen specs are recorded on the run (see the
+        # runtime map in "Insert run record").
+        run: |
+          case "$RUN_PROFILE" in
+            small) IT=m6i.2xlarge; CC=4 ;;
+            large) IT=m6i.4xlarge; CC=8 ;;
+            *)     echo "unknown run_profile '$RUN_PROFILE', defaulting to small"; IT=m6i.2xlarge; CC=4 ;;
+          esac
+          echo "EMR_INSTANCE_TYPE=$IT" >> "$GITHUB_ENV"
+          echo "EMR_CORE_COUNT=$CC"   >> "$GITHUB_ENV"
+          echo "run_profile=$RUN_PROFILE -> ${CC} x ${IT}"
+
+      - name: Provision EMR
+        id: provision
+        env:
+          EMR_LOG_URI: s3://${{ secrets.CLICKBENCH_S3_BUCKET }}/emr-logs/
+          EMR_SUBNET_ID: ${{ secrets.CLICKBENCH_EMR_SUBNET_ID }}
+          EMR_EC2_KEY_NAME: ${{ secrets.CLICKBENCH_EMR_KEY_NAME }}
+          EMR_SERVICE_ROLE: ${{ secrets.CLICKBENCH_EMR_SERVICE_ROLE }}
+          EMR_INSTANCE_PROFILE: ${{ secrets.CLICKBENCH_EMR_INSTANCE_PROFILE }}
+        run: |
+          CLUSTER_ID=$(benchmarks/scripts/emr_provision.sh)
+          echo "CLUSTER_ID=$CLUSTER_ID" >> "$GITHUB_ENV"
+
+      - name: Ensure CH password in Secrets Manager
+        id: ch_secret
+        env:
+          CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+        run: |
+          if aws secretsmanager describe-secret --secret-id "$CH_SECRET_ID" >/dev/null 2>&1; then
+            echo "Secrets Manager secret $CH_SECRET_ID already exists; leaving it"
+          else
+            aws secretsmanager create-secret --name "$CH_SECRET_ID" \
+              --secret-string "$CH_PASSWORD" >/dev/null
+            echo "created Secrets Manager secret $CH_SECRET_ID"
+          fi
+
+      - name: Run arm 1 tier 0 (${{ env.ARM_1 }})
+        # TIER 0, first arm (spec Q2: t0-before-t1 within an arm). Redesign
+        # 2026-07-07: t0 now ingests into clickbench.hits_null on the SAME Cloud
+        # target as t1, so the t0 call is UNCONDITIONAL — gated ONLY on the shared
+        # per-pair prerequisites (provision + CH secret), byte-identical to the t1
+        # gate. No TIER0_AVAILABLE, no master IP, no Docker bring-up. A t0 submit
+        # failure is a failed-class t0 artifact (marked) and never touches t1
+        # (different run_id).
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
+        uses: ./.github/actions/run-arm
+        with:
+          skip_truncate: ${{ vars.SKIP_TRUNCATE || '0' }}
+          arm: ${{ env.ARM_1 }}
+          tier: "0"
+          target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
+          target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          target_ch_password: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          metrics_ch_host: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          metrics_ch_user: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          metrics_ch_password: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          dwh_role_arn: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
+          s3_bucket: ${{ secrets.CLICKBENCH_S3_BUCKET }}
+
+      - name: Run arm 1 tier 1 (${{ env.ARM_1 }})
+        # TIER 1, first arm of tonight's pair (byte-identical to today). Both arms
+        # are gated on the shared per-pair prerequisites (provision + CH secret)
+        # and on NOTHING arm-specific — arm 2 runs regardless of arm 1's outcome
+        # (failure isolation, task #13): unpaired rows are fine, v_pair_ratios
+        # skips incomplete pairs. The once-per-pair run_cost_usd is recorded
+        # top-level after teardown, on this first-run arm's row (contract §2.1).
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
+        uses: ./.github/actions/run-arm
+        with:
+          skip_truncate: ${{ vars.SKIP_TRUNCATE || '0' }}
+          arm: ${{ env.ARM_1 }}
+          tier: "1"
+          target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
+          target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          target_ch_password: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          metrics_ch_host: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          metrics_ch_user: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          metrics_ch_password: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          dwh_role_arn: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
+          s3_bucket: ${{ secrets.CLICKBENCH_S3_BUCKET }}
+
+      - name: Run arm 2 tier 0 (${{ env.ARM_2 }})
+        # TIER 0, second arm (t0-before-t1 within the arm, spec Q2). Redesign
+        # 2026-07-07: UNCONDITIONAL, gated only on the shared per-pair prerequisites
+        # (same as t1). Independent of arm 1.
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
+        uses: ./.github/actions/run-arm
+        with:
+          skip_truncate: ${{ vars.SKIP_TRUNCATE || '0' }}
+          arm: ${{ env.ARM_2 }}
+          tier: "0"
+          target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
+          target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          target_ch_password: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          metrics_ch_host: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          metrics_ch_user: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          metrics_ch_password: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          dwh_role_arn: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
+          s3_bucket: ${{ secrets.CLICKBENCH_S3_BUCKET }}
+
+      - name: Run arm 2 tier 1 (${{ env.ARM_2 }})
+        # TIER 1, second arm, same cluster. Independent of arm 1 (gated only on
+        # the shared per-pair prerequisites) so a failed arm 1 never robs arm 2.
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' && steps.ch_secret.outcome == 'success' }}
+        uses: ./.github/actions/run-arm
+        with:
+          skip_truncate: ${{ vars.SKIP_TRUNCATE || '0' }}
+          arm: ${{ env.ARM_2 }}
+          tier: "1"
+          target_ch_host: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          target_ch_port: ${{ secrets.CLICKBENCH_TARGET_CH_PORT }}
+          target_ch_user: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          target_ch_password: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          metrics_ch_host: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          metrics_ch_user: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          metrics_ch_password: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+          dwh_role_arn: ${{ secrets.CLICKBENCH_DWH_ROLE_ARN }}
+          s3_bucket: ${{ secrets.CLICKBENCH_S3_BUCKET }}
+
+      - name: Teardown EMR
+        # Once-per-pair: the cluster is shared by both arms, so tear it down only
+        # after arm 2. always() so a mid-pair failure never leaks the cluster.
+        if: always()
+        run: benchmarks/scripts/emr_teardown.sh
+
+      - name: Record pair run_cost_usd (full provisioned window, first-run arm's row)
+        # run_cost_usd is a PAIR-level metric (contract §2.1 amendment 2026-07-07):
+        # the shared infrastructure is provisioned once per pair, so the FULL pair
+        # cost is charged ONCE, on the FIRST-run arm's row; the other arm's row
+        # omits the metric (per-pair sums stay correct; per-arm cost is undefined
+        # by design). Window = PAIR_RUN_START..now — build + provision + both
+        # arms + teardown initiation — which is why this runs top-level AFTER
+        # "Teardown EMR", not inside an arm.
+        #
+        # Best-effort (continue-on-error) and guarded against ORPHANING: a metric
+        # row must never exist without its owning perf.runs row (the rollback
+        # step wipes a failed arm's rows), so this only inserts when the
+        # candidate arm's run row exists — first-run arm preferred, second arm as
+        # fallback, else skip with a log line.
+        if: ${{ !cancelled() && steps.provision.outcome == 'success' }}
+        continue-on-error: true
+        env:
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+        run: |
+          set -euo pipefail
+          # compute_run_cost.py is env-driven; at this point GITHUB_ENV still
+          # holds ARM 2's RUN_ID/RUN_START/RUN_END, so override all three with
+          # the pair-level window + the chosen row's run_id.
+          export RUN_START="$PAIR_RUN_START"
+          export RUN_END="$(date -u +%Y-%m-%dT%H:%M:%S)"
+          # Point-query helper: does a perf.runs row exist for this run_id?
+          # (YAML strips this block's common indent, so the python lines below
+          # reach the shell flush-left — valid top-level python.)
+          CHECK_PY='
+          import sys
+          sys.path.insert(0, "benchmarks/scripts")
+          import ch_common
+          client = ch_common.get_client("METRICS_CH_HOST", "METRICS_CH_USER", "METRICS_CH_PASSWORD")
+          print(client.command("SELECT count() FROM perf.runs WHERE run_id = {rid:String}",
+                               parameters={"rid": sys.argv[1]}))
+          '
+          COST_RUN_ID=""
+          for CAND_ARM in "$ARM_1" "$ARM_2"; do
+            CAND="${PAIR_ID}-${CAND_ARM}-t1"
+            EXISTS=$(python3 -c "$CHECK_PY" "$CAND")
+            if [ "${EXISTS:-0}" -ge 1 ]; then COST_RUN_ID="$CAND"; break; fi
+          done
+          if [ -z "$COST_RUN_ID" ]; then
+            echo "no surviving perf.runs row for either arm of pair $PAIR_ID (rolled back or never recorded); skipping run_cost_usd"
+            exit 0
+          fi
+          if [ "$COST_RUN_ID" != "${PAIR_ID}-${ARM_1}-t1" ]; then
+            echo "first-run arm's row is gone (rolled back); charging pair cost to the surviving arm's row $COST_RUN_ID instead"
+          fi
+          echo "run_cost_usd: pair window ${RUN_START}..${RUN_END} -> row ${COST_RUN_ID}"
+          RUN_ID="$COST_RUN_ID" python benchmarks/scripts/compute_run_cost.py
+
+      - name: Truncate target table (cleanup at end of pair)
+        # Once-per-pair cleanup AFTER both arms' write + settle + metrics capture:
+        # metrics are read from ClickHouse's system.*_log, not the hits table, so
+        # they are unaffected. Leaves the table empty so the next pair starts clean.
+        if: ${{ !cancelled() }}
+        env:
+          TARGET_CH_HOST: ${{ secrets.CLICKBENCH_TARGET_CH_HOST }}
+          TARGET_CH_USER: ${{ secrets.CLICKBENCH_TARGET_CH_USER }}
+          TARGET_CH_PASSWORD: ${{ secrets.CLICKBENCH_TARGET_CH_PASSWORD }}
+          CH_DATABASE: clickbench
+          CH_TABLE: hits
+          SKIP_TRUNCATE: ${{ vars.SKIP_TRUNCATE || '0' }}
+        run: python benchmarks/scripts/truncate_target.py
