@@ -1663,4 +1663,45 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
     }
   }
 
+  // ============================================================================
+  // VariantType Write Tests with json_hints option (typed JSON paths)
+  // ============================================================================
+
+  test("write VariantType with json_hints - typed paths round-trip") {
+    val schema = StructType(Seq(
+      StructField("id", IntegerType, nullable = false),
+      StructField("data", VariantType, nullable = false)
+    ))
+
+    spark.sql("SET allow_experimental_json_type = 1")
+    withTable(
+      "test_db",
+      "test_variant_write_json_hints",
+      schema,
+      extraProperties = Map("clickhouse.column.data.json_hints" -> "a.b UInt32, max_dynamic_paths=16")
+    ) { (actualDb: String, actualTbl: String) =>
+      // Verify the column was created with the JSON type hints
+      val createStmt = spark.sql(s"SHOW CREATE TABLE $actualDb.$actualTbl").collect().head.getString(0)
+      assert(createStmt.contains("JSON(") && createStmt.contains("a.b"))
+
+      spark.sql(
+        s"""INSERT INTO $actualDb.$actualTbl
+           |SELECT 1 as id, parse_json('{"a": {"b": 42}, "name": "Alice"}') as data
+           |UNION ALL SELECT 2, parse_json('{"a": {"b": 7}, "name": "Bob"}')
+           |""".stripMargin
+      )
+
+      val df = spark.table(s"$actualDb.$actualTbl").orderBy("id")
+      val result = df.collect()
+      assert(result.length == 2)
+      assert(df.schema.fields(1).dataType == VariantType)
+
+      val json1 = variantToJson(result(0).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json1.contains("42") && json1.contains("Alice"))
+
+      val json2 = variantToJson(result(1).get(1).asInstanceOf[org.apache.spark.unsafe.types.VariantVal])
+      assert(json2.contains("Bob"))
+    }
+  }
+
 }
