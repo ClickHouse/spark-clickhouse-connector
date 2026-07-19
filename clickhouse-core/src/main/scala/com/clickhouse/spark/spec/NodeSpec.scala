@@ -32,6 +32,7 @@ case class NodeSpec(
   @JsonIgnore private val _http_port: Option[Int] = None,
   @JsonIgnore private val _tcp_port: Option[Int] = None,
   @JsonProperty("protocol") protocol: ClickHouseProtocol = HTTP,
+  @JsonProperty("ssl") ssl: Boolean = false,
   @JsonProperty("username") username: String = "default",
   @JsonProperty("password") password: String = "",
   @JsonProperty("database") database: String = "default",

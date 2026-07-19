@@ -66,10 +66,13 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       .getOrElse("server")
 
   def buildNodeSpec(options: CaseInsensitiveStringMap): NodeSpec = {
-    val clientOpts = options.asScala
+    val optionsWithPrefix = options.asScala
       .filterKeys(_.startsWith(CATALOG_PROP_OPTION_PREFIX))
       .map { case (k, v) => k.substring(CATALOG_PROP_OPTION_PREFIX.length) -> v }
       .toMap
+    // Capture ssl as a first-class field before CATALOG_PROP_IGNORE_OPTIONS drops it from options.
+    val ssl = optionsWithPrefix.getOrElse(CATALOG_PROP_SSL, "false").toBoolean
+    val clientOpts = optionsWithPrefix
       .filterKeys { key =>
         val ignore = CATALOG_PROP_IGNORE_OPTIONS.contains(key)
         if (ignore) {
@@ -83,6 +86,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       _tcp_port = Some(options.getInt(CATALOG_PROP_TCP_PORT, 9000)),
       _http_port = Some(options.getInt(CATALOG_PROP_HTTP_PORT, 8123)),
       protocol = ClickHouseProtocol.fromUriScheme(options.getOrDefault(CATALOG_PROP_PROTOCOL, "http")),
+      ssl = ssl,
       username = options.getOrDefault(CATALOG_PROP_USER, "default"),
       password = options.getOrDefault(CATALOG_PROP_PASSWORD, ""),
       database = options.getOrDefault(CATALOG_PROP_DATABASE, "default"),

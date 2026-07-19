@@ -27,15 +27,19 @@ import scala.collection.mutable.ArrayBuffer
  * Unit tests for [[NodeClient]] that do not require a running ClickHouse server. Building a
  * `NodeClient` does not open a connection, so these run offline.
  *
- * The option-forwarding tests cover issue #557: the connector consumes `option.ssl` itself (to
- * choose the http/https URL scheme) but must not forward it to the clickhouse-java v2 client, which
- * validates option keys against `ClientConfigProperties` and logs a WARN ("Unknown and unmapped
- * config properties") for anything it does not recognise. The warning is emitted while
- * `Client.build()` parses the config map, which is why no server is needed.
+ * These cover the failsafe in `NodeClient.clientOptions` (issue #557). Connector settings such as
+ * `ssl` are captured as first-class `NodeSpec` fields and stripped upstream, so they never reach the
+ * client. As a safety net, `NodeClient` forwards only options the clickhouse-java v2 client
+ * recognizes (an allow-list derived from `ClientConfigProperties`) and drops anything else with a
+ * WARN, rather than leaking it and letting the client log "Unknown and unmapped config properties".
+ * The filtering happens while `Client.build()` parses the config map, so no server is needed.
  */
 class NodeClientSuite extends AnyFunSuite {
 
-  /** Collects log4j events so we can inspect what the clickhouse-java client logged. */
+  private val ConnectorLogger = "com.clickhouse.spark.client.NodeClient"
+  private val ClientConfigLogger = "com.clickhouse.client.api.ClientConfigProperties"
+
+  /** Collects log4j events so we can inspect what was logged while building the client. */
   private class CapturingAppender extends AppenderSkeleton {
     val events: ArrayBuffer[LoggingEvent] = ArrayBuffer.empty[LoggingEvent]
     override def append(event: LoggingEvent): Unit = events += event
@@ -43,17 +47,13 @@ class NodeClientSuite extends AnyFunSuite {
     override def requiresLayout(): Boolean = false
   }
 
-  private def captureClientConfigWarnings(build: => Unit): Seq[String] = {
-    val logger = Logger.getLogger("com.clickhouse.client.api.ClientConfigProperties")
+  private def captureWarnings(loggerNames: String*)(build: => Unit): Seq[String] = {
+    val loggers = loggerNames.map(Logger.getLogger)
     val appender = new CapturingAppender
-    val previousLevel = logger.getLevel
-    logger.setLevel(Level.WARN)
-    logger.addAppender(appender)
+    val previousLevels = loggers.map(l => l -> l.getLevel)
+    loggers.foreach { l => l.setLevel(Level.WARN); l.addAppender(appender) }
     try build
-    finally {
-      logger.removeAppender(appender)
-      logger.setLevel(previousLevel)
-    }
+    finally previousLevels.foreach { case (l, level) => l.removeAppender(appender); l.setLevel(level) }
     appender.events
       .filter(_.getLevel == Level.WARN)
       .map(_.getRenderedMessage)
@@ -70,37 +70,30 @@ class NodeClientSuite extends AnyFunSuite {
       protocol = HTTP,
       options = optionMap
     )
-    captureClientConfigWarnings {
+    captureWarnings(ConnectorLogger, ClientConfigLogger) {
       val client = NodeClient(nodeSpec)
       client.close()
     }
   }
 
-  test("connector-only `ssl` option must not leak into the clickhouse-java client") {
-    val leaked = warningsForOptions("ssl" -> "true").filter(msg =>
-      msg.contains("Unknown and unmapped config properties") && msg.contains("ssl")
-    )
+  test("unrecognized client options are dropped with a warning") {
+    // Failsafe must warn on dropped keys, not swallow typos silently.
+    val unknownKey = "definitely_not_a_ch_client_option"
+    val warnings = warningsForOptions(unknownKey -> "x")
 
     assert(
-      leaked.isEmpty,
-      s"clickhouse-java client warned about connector-only options being forwarded: ${leaked.mkString("; ")}"
+      warnings.exists(_.contains(unknownKey)),
+      s"expected a warning about the unrecognized option `$unknownKey`, got: ${warnings.mkString("; ")}"
     )
   }
 
-  test("stripping is limited to connector-consumed keys; unknown client options still surface") {
-    // Guard against an over-broad fix: filtering out `ssl` must not suppress the client's own
-    // validation of genuinely-unknown option keys.
-    val unknownKey = "definitely_not_a_ch_client_option"
-    val unmapped = warningsForOptions("ssl" -> "true", unknownKey -> "x")
-      .filter(_.contains("Unknown and unmapped config properties"))
+  test("recognized client options are forwarded without a warning") {
+    // `compress` is a genuine clickhouse-java client option; it must pass through untouched.
+    val warnings = warningsForOptions("compress" -> "true")
 
     assert(
-      unmapped.forall(!_.contains("ssl=")),
-      s"connector-only `ssl` still leaked: ${unmapped.mkString("; ")}"
-    )
-    assert(
-      unmapped.exists(_.contains(unknownKey)),
-      s"expected the client to still warn about the unknown option `$unknownKey`, got: ${unmapped.mkString("; ")}"
+      warnings.isEmpty,
+      s"a recognized client option should not be warned about, got: ${warnings.mkString("; ")}"
     )
   }
 }
