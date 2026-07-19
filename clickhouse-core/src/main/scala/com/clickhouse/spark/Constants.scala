@@ -37,7 +37,7 @@ object Constants {
   final val CATALOG_PROP_IGNORE_OPTIONS = Seq(
     DATABASE.getKey, COMPRESS.getKey, DECOMPRESS.getKey, FORMAT.getKey, RETRY.getKey,
     USE_SERVER_TIME_ZONE.getKey, USE_SERVER_TIME_ZONE_FOR_DATES.getKey, SERVER_TIME_ZONE.getKey, USE_TIME_ZONE.getKey,
-    CATALOG_INFER_RUNTIME_ENV, CATALOG_PROP_SSL)
+    CATALOG_INFER_RUNTIME_ENV)
 
   //////////////////////////////////////////////////////////
   ////////// clickhouse datasource table properties ////////

@@ -60,9 +60,9 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       .filterKeys(_.startsWith(CATALOG_PROP_OPTION_PREFIX))
       .map { case (k, v) => k.substring(CATALOG_PROP_OPTION_PREFIX.length) -> v }
       .toMap
-    // Capture ssl as a first-class field before CATALOG_PROP_IGNORE_OPTIONS drops it from options.
+    // ssl selects the URL scheme; capture it as NodeSpec.ssl and drop it from forwarded options.
     val ssl = optionsWithPrefix.getOrElse(CATALOG_PROP_SSL, "false").toBoolean
-    val clientOpts = optionsWithPrefix
+    val clientOpts = (optionsWithPrefix - CATALOG_PROP_SSL)
       .filterKeys { key =>
         val ignore = CATALOG_PROP_IGNORE_OPTIONS.contains(key)
         if (ignore) {
