@@ -69,11 +69,18 @@ broken**.
 
 ### Tier 0 — Connector ceiling (`ENGINE=Null`) — nightly; the regression gate for Q-A
 
-- Target: **self-hosted ClickHouse in Docker on the EMR master**, version pinned in
-  the repo. A fully version-controlled instrument: zero Cloud drift, ~zero extra cost.
-- Table: identical schema to `hits`, `ENGINE=Null`. Server parses the insert and
-  discards it — no parts, no merges, no storage, no memory pressure, near-zero
-  variance.
+> **REDESIGNED 2026-07-07 (contract Amendment 2026-07-07c).** Tier 0 originally
+> targeted a self-hosted ClickHouse in Docker on the EMR master. That instrument was
+> dropped in favour of an `ENGINE=Null` table on the **same Cloud target as Tier 1**
+> (`clickbench.hits_null`): zero extra infra, and the H/P ratio still cancels Cloud
+> drift because both arms hit the same table in the same hour. The paragraphs below
+> describe the shipped design; the former Docker-teardown capture-ordering problem is
+> moot (see the resolved open decision #4).
+
+- Target: an `ENGINE=Null` table (`clickbench.hits_null`, identical schema to `hits`)
+  on the **same 3 vCPU / 12 GiB Cloud service as Tier 1**. The server parses each
+  insert and discards it — no parts, no merges, no storage, no memory pressure,
+  near-zero variance.
 - What it DOES exercise (answering the "is this a correct client test?" question):
   the full client and network path — serialization, compression, HTTPS connection
   setup, keep-alive/pooling, block send, server parse, ack wait (`wait_end_of_query`
@@ -81,16 +88,15 @@ broken**.
   noise source. What it does NOT test: client behavior under server pushback
   (throttling, delayed inserts, slow acks) — that remains Tier 1's job (and the
   deferred Tier 2's).
-- Caveats: (a) parse still costs server CPU, so Tier 0 must run against a CH with
-  headroom (the EMR master has idle cores; parse will not be the ceiling);
+- Caveats: (a) parse still costs server CPU, and the shared 3 vCPU target has less
+  headroom than a dedicated box, so `ch_insert_cpu_share_tier0` is captured every run
+  and charted with a threshold (Tab 3) — if it camps near 100%, Tier 0 has become a
+  server benchmark and the decision is revisited (fallback: a pinned CH pod);
   (b) Tier 0 complements — does not replace — the per-row CPU metrics, which are
   gated as well since they are free.
-- Operational note (the only real workflow-ordering change v2 forces): the Docker CH
-  dies at EMR teardown, but today's metrics capture runs after teardown. Tier 0's
-  server-side capture must either (i) run before teardown, (ii) ship the Docker CH's
-  query_log/metric_log extract to S3 as part of the EMR step, or (iii) settle for
-  event-log-only metrics (covers most of the Tier 0 gated set). Decide during task
-  breakdown.
+- Because Tier 0 runs on the Cloud target (not a Docker CH that dies at EMR teardown),
+  its server-side capture reuses Tier 1's post-ingest capture path — there is no
+  capture-before-teardown ordering constraint.
 
 ### Tier 1 — Realistic ingest (current run, kept) — nightly; the gate for Q-B
 
@@ -156,7 +162,7 @@ tall/narrow `perf.metrics`, tagged via `runtime['tier']` and `runtime['arm']`.
 | `peak_jvm_heap_bytes` / `offheap` [E] | bytes | StageExecutorMetrics | Client memory footprint; buffer-management regressions |
 | `connections_per_insert` [E] | ratio | server metric_log | Pool/keep-alive health with zero server confounders |
 | `jvm_gc_time_share` [N, derived from E] | % | jvm_gc_time_total / cpu | Allocation-pressure regressions (classic serializer failure mode) |
-| `ch_insert_cpu_share_tier0` [N] | % | Docker CH query_log CPU / wall | Instrument-health watch: if the Null target ever becomes parse-bound (CPU share camping near 100%), Tier 0 is measuring the server, not the connector — resize or investigate |
+| `ch_insert_cpu_share_tier0` [N] | % | Null-target query_log CPU / wall | Instrument-health watch: if the Null target ever becomes parse-bound (CPU share camping near 100%), Tier 0 is measuring the server, not the connector — resize or investigate |
 
 Statistics / learnings:
 - **H/P ratio on `cpu_seconds_per_Mrows`** — the most sensitive regression detector
@@ -384,7 +390,7 @@ absorbs everything:
 |------|------|----------------|-----------------|
 | 1 | Hygiene items (integrity check, covariates, config into repo, event-log fix, settle flag) | integrity + covariates present on a green nightly run | none — additive |
 | 2 | Add arm P to the nightly workflow; build v_pair_ratios + Tab 1 + Tab 3 | first pair visible on Tab 1 with a computed ratio | none — H arm identical to today |
-| 3 | Add Tier 0 (Docker CH + Null table on EMR master, capture-before-teardown) | Tier 0 CoV (trailing runs) measurably below Tier 1 CoV — the instrument is quieter than the thing it de-noises | none — separate metrics |
+| 3 | Add Tier 0 (`ENGINE=Null` table on the same Cloud target as Tier 1) | Tier 0 CoV (trailing runs) measurably below Tier 1 CoV — the instrument is quieter than the thing it de-noises | none — separate metrics |
 | 4 | toYYYYMM partition switch | per-partition parts_per_insert captured; annotation on all absolute charts | annotated: changes Tier 1 absolutes; ratio view (step 2) is immune — which is why step 2 comes first |
 | 5 | Parallelism x batch grid campaign (one-time) -> possibly new operating config | sweep report with >=5 interleaved runs per cell; operating config re-frozen | annotated config change |
 | 6 | Weekly alternate dataset (PyPI sample) | first weekly run lands with shape tag in runtime map | additive |
@@ -399,8 +405,9 @@ absorbs everything:
 2. **Gate placement**: dashboard/alert only, or additionally a CI check on connector
    PRs (Tier 0 is cheap enough to run per-PR eventually).
 3. **Alert channel**: GitHub issue vs Slack.
-4. **Tier 0 capture mode**: before-teardown capture vs S3 log-shipping vs
-   event-log-only (section 3).
+4. ~~**Tier 0 capture mode**~~ — RESOLVED by the 2026-07-07 redesign: Tier 0 runs on
+   the Cloud target, so it reuses Tier 1's post-ingest capture path (there is no
+   Docker-on-master teardown to race).
 5. **PyPI sample size** for the weekly shape run (suggest ~200M rows to keep runtime
    comparable to hits).
 6. **Band recalibration policy**: who/when adjusts +-3%/+-5% after the first ~20 pairs.

@@ -14,8 +14,10 @@
 -- TIER 0 (benchmark-v2-plan §3 / §5) event-log capture — the Null-engine
 -- connector-ceiling variant of benchmarks/sql/perf/10_insert_from_event_log.sql.
 -- Parses the SAME Spark event log (the ingest workload is byte-identical to
--- Tier 1; only the target differs — a Docker ClickHouse with ENGINE=Null on the
--- EMR master) into perf.metrics via run_metrics_sql.py, tagged with the Tier 0
+-- Tier 1; only the target differs — an ENGINE=Null table (clickbench.hits_null)
+-- on the SAME Cloud target as Tier 1, redesigned 2026-07-07 from the original
+-- Docker-on-EMR-master instrument) into perf.metrics via run_metrics_sql.py,
+-- tagged with the Tier 0
 -- run_id (<pair_id>-<arm>-t0).  Parameters ({name:Type}) are bound by
 -- run_metrics_sql.py.
 --
