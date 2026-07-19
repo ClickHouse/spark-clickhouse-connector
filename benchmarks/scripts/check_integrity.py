@@ -55,7 +55,11 @@ def main() -> None:
           f"| unique delivered={uniq_delivered} expected={uniq_expected} "
           f"| duplicate_rows={dups} integrity_ok={m['integrity_ok']}")
 
-    if m["integrity_ok"] != 1.0:
+    # Fail-closed: integrity_ok is toFloat64(bool) — exactly 1.0 on pass, 0.0 on any
+    # mismatch. Treat anything not clearly "pass" as a failure rather than relying on
+    # exact float equality, so future drift in how the column is written can't slip a
+    # non-1.0 value through the gate.
+    if float(m["integrity_ok"]) < 0.5:
         print(
             f"ERROR: integrity check FAILED for {run_id} "
             f"(rows delivered={delivered}/expected={expected}, "

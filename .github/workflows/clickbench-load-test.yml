@@ -43,6 +43,10 @@ concurrency:
 jobs:
   load-test:
     runs-on: ubuntu-22.04
+    # Safety cap: a full run is EMR provision + 4 ingest arms + settle-waits + CH
+    # capture (well under this in practice). Without it, a hung EMR step or settle
+    # would burn the runner's default 6h and leak an EMR cluster until teardown.
+    timeout-minutes: 240
     permissions:
       id-token: write
       contents: read

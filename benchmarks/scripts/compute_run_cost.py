@@ -65,6 +65,13 @@ def main() -> None:
     ec2_rate, emr_rate = PRICES[instance_type]
 
     hours = (parse_ts("RUN_END") - parse_ts("RUN_START")).total_seconds() / 3600.0
+    if hours < 0:
+        # RUN_END < RUN_START (clock skew, swapped env, or a bad timestamp pair). A
+        # negative cost would corrupt the 30-day cost SUM on the dashboard headline,
+        # so clamp to 0 and warn rather than poison the aggregate.
+        print(f"WARNING: RUN_END < RUN_START (hours={hours:.3f}); clamping cost to 0.",
+              file=sys.stderr)
+        hours = 0.0
     total_instances = core_count + 1  # + master
     cost = total_instances * hours * (ec2_rate + emr_rate)
 
