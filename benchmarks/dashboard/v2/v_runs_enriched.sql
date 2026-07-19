@@ -55,8 +55,8 @@
 --   * DWH mirror schema: perf.runs -> raw_connectors_load_testing.runs,
 --     perf.metrics -> raw_connectors_load_testing.metrics (ClickPipe).
 --   * A metric_name may be re-captured within a run (rollback/retry); we take the
---     latest by recorded_at via argMax, matching the drill_metrics_for_run
---     convention in the legacy build_superset.py.
+--     latest by recorded_at via argMax (the same convention used across the
+--     capture SQL when a metric_name is re-captured within a run).
 --   * Map value access on a missing key yields '' in ClickHouse, so nullIf(...,'')
 --     turns "key absent" into NULL before COALESCE applies the contract default.
 --
