@@ -104,16 +104,6 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
     }
   }
 
-  // Regression test for an empty *nested* Array/Map producing a 0-byte Arrow list-offsets buffer.
-  // When a whole write batch's outer arrays are empty, the inner List vector has zero elements and
-  // Apache Arrow Java (< 19.0.0, bundled by Spark) serializes it with a 0-byte offsets buffer.
-  // ClickHouse's Arrow reader rejects that with:
-  //   Code: 117 INCORRECT_DATA: Arrow (IPC) list offsets buffer too small: 0 bytes available, 4 required
-  // The related flat String/Binary case was fixed in ClickHouse #107764; the nested List/Map path
-  // is still affected. See https://github.com/ClickHouse/ClickHouse/issues/110365
-  // This test is EXPECTED TO FAIL for the Arrow write format until that issue is fixed (it passes
-  // for the JSONEachRow format, which is unaffected). `spark.master = local[2]` guarantees the
-  // empty-outer-array rows land in a batch on their own, which is what triggers the 0-byte buffer.
   test("write ArrayType - empty nested arrays") {
     val schema = StructType(Seq(
       StructField("id", IntegerType, nullable = false),
@@ -126,9 +116,9 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
 
     withTable("test_db", "test_write_nested_empty_array", schema) { (actualDb: String, actualTbl: String) =>
       val data = Seq(
-        Row(1, Seq[Seq[Int]]()), // empty outer array
+        Row(1, Seq[Seq[Int]]()),
         Row(2, Seq(Seq(1, 2))),
-        Row(3, Seq[Seq[Int]]()) // empty outer array
+        Row(3, Seq[Seq[Int]]())
       )
       val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
       df.write.mode(SaveMode.Append).saveAsTable(s"$actualDb.test_write_nested_empty_array")
