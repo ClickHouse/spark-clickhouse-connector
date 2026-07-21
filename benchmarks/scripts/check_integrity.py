@@ -37,7 +37,8 @@ def main() -> None:
         "SELECT metric_name, value FROM perf.metrics "
         "WHERE run_id = {run_id:String} "
         "AND metric_name IN ('integrity_ok', 'rows_delivered', 'rows_expected', "
-        "'unique_delivered', 'unique_expected', 'duplicate_rows')",
+        "'unique_delivered', 'unique_expected', 'duplicate_rows', "
+        "'content_checksum_delivered', 'content_checksum_expected', 'content_checksum_ok')",
         parameters={"run_id": run_id},
     ).result_rows
     m = {name: value for name, value in rows}
@@ -51,9 +52,18 @@ def main() -> None:
     uniq_delivered = m.get("unique_delivered")
     uniq_expected = m.get("unique_expected")
     dups = m.get("duplicate_rows")
+    # Content checksum: enforced inside integrity_ok only once SOURCE_CONTENT_CHECKSUM
+    # is pinned; content_checksum_ok is 1 (no-op) until then. Surfaced for diagnostics.
+    ck_ok = m.get("content_checksum_ok")
+    ck_del = m.get("content_checksum_delivered")
+    ck_exp = m.get("content_checksum_expected")
+    ck_state = ("disabled (no source constant pinned)"
+                if ck_exp is None or float(ck_exp) <= 0
+                else f"delivered={ck_del} expected={ck_exp} ok={ck_ok}")
     print(f"integrity for {run_id}: rows delivered={delivered} expected={expected} "
           f"| unique delivered={uniq_delivered} expected={uniq_expected} "
-          f"| duplicate_rows={dups} integrity_ok={m['integrity_ok']}")
+          f"| duplicate_rows={dups} | content_checksum: {ck_state} "
+          f"| integrity_ok={m['integrity_ok']}")
 
     # Fail-closed: integrity_ok is toFloat64(bool) — exactly 1.0 on pass, 0.0 on any
     # mismatch. Treat anything not clearly "pass" as a failure rather than relying on

@@ -208,7 +208,13 @@ Statistics / learnings:
    vs source; recorded as metrics; mismatch fails the run. No unverified throughput.
    (Motivation: the historical batch sweep showed write_rows of 89.6M-96.9M for a
    fixed ~100M-row dataset — either loss or event-log miscounting; both unacceptable
-   to leave unmeasured.)
+   to leave unmeasured.) A third check — an order-independent **content checksum**
+   (`sum(cityHash64(...))` over high-entropy columns, target vs source) — closes the
+   blind spot where an equal number of rows lost and duplicated on non-unique
+   WatchIDs leaves both totals unchanged, and also catches a mangled non-key column.
+   It is captured every run and folds into `integrity_ok` once the source constant
+   (`SOURCE_CONTENT_CHECKSUM`) is measured on a clean load and pinned (staged so a
+   representation mismatch can't fail runs before it is validated).
 2. **Deviation bands + alerting**: band excursions and integrity failures file an
    alert (GitHub issue or Slack) with the pair link. The benchmark stops relying on a
    human looking at charts.
