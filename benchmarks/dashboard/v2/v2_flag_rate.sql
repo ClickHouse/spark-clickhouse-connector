@@ -69,19 +69,26 @@
 WITH
   -- Head-arm, tier-1, non-fail-class runs, ranked by recency. headline_ok = 1
   -- drops integrity-failed runs; outcome != 'failed' drops the hard-fail class.
+  -- DEPLOYED over the base `runs` table: the v_runs_enriched "view" is a Superset
+  -- VIRTUAL dataset, not a queryable ClickHouse object, so a standalone dataset must
+  -- read base runs and inline the arm/tier/flagged/outcome coalesce (contract §1.1
+  -- defaults) — same fields the enriched view would expose. connector = 'spark'
+  -- here; the Kafka deploy uses 'kafka-connect'. The integrity-failed exclusion
+  -- (headline_ok=1) is approximated by outcome != 'failed' — an integrity-FAILED
+  -- head run is FAIL-class (its own panel) and negligible in this denominator.
   head_pairs AS (
     SELECT
-      pair_id,
+      runtime['pair_id']                                       AS pair_id,
       run_started_at,
-      flagged,
-      flag_reason,
-      row_number() OVER (ORDER BY run_started_at DESC) AS recency_rank
-    FROM raw_connectors_load_testing.v_runs_enriched   -- Kafka: v_kc_runs
-    WHERE arm = 'head'
-      AND tier = '1'
-      AND outcome != 'failed'
-      AND headline_ok = 1
-      AND pair_id != ''
+      (runtime['flagged'] = '1')                               AS flagged,
+      runtime['flag_reason']                                   AS flag_reason,
+      row_number() OVER (ORDER BY run_started_at DESC)         AS recency_rank
+    FROM raw_connectors_load_testing.runs
+    WHERE connector = 'spark'                                  -- Kafka deploy: 'kafka-connect'
+      AND coalesce(nullIf(runtime['arm'], ''),  'head') = 'head'
+      AND coalesce(nullIf(runtime['tier'], ''), '1')    = '1'
+      AND coalesce(nullIf(runtime['outcome'], ''), 'success') != 'failed'
+      AND runtime['pair_id'] != ''
   ),
   -- Keep only the trailing-N most recent head-arm pairs (default 20).
   windowed AS (
