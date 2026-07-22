@@ -15,7 +15,7 @@
 package com.clickhouse.spark.client
 
 import com.clickhouse.client._
-import com.clickhouse.client.api.{Client, ServerException}
+import com.clickhouse.client.api.{Client, ClientConfigProperties, ServerException}
 import com.clickhouse.client.api.enums.Protocol
 import com.clickhouse.client.api.insert.{InsertResponse, InsertSettings}
 import com.clickhouse.client.api.query.{QueryResponse, QuerySettings}
@@ -38,11 +38,20 @@ import com.fasterxml.jackson.databind.node.ObjectNode
 
 import java.io.{ByteArrayInputStream, InputStream}
 import java.time.temporal.ChronoUnit
+import java.util
 import java.util.UUID
+import scala.collection.JavaConverters._
 import scala.util.{Failure, Success, Try}
 
 object NodeClient {
   val DEFAULT_QUERY_TIMEOUT_MS: Long = 60000L
+
+  // Option keys the clickhouse-java client recognizes; anything else is dropped (see clientOptions).
+  private val ALLOWED_OPTION_KEYS: Set[String] =
+    ClientConfigProperties.values().map(_.getKey).toSet
+
+  private val ALLOWED_OPTION_PREFIXES: Seq[String] =
+    Seq(ClientConfigProperties.HTTP_HEADER_PREFIX, ClientConfigProperties.SERVER_SETTING_PREFIX)
 
   def apply(node: NodeSpec, queryTimeoutMs: Long = DEFAULT_QUERY_TIMEOUT_MS): NodeClient =
     new NodeClient(node, queryTimeoutMs)
@@ -87,20 +96,29 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
   private def shouldInferRuntime(): Boolean =
     nodeSpec.infer_runtime_env.equalsIgnoreCase("true") || nodeSpec.infer_runtime_env == "1"
 
-  private def createClickHouseURL(nodeSpec: NodeSpec): String = {
-    val ssl: Boolean = nodeSpec.options.getOrDefault("ssl", "false").toBoolean
-    if (ssl) {
+  private def createClickHouseURL(nodeSpec: NodeSpec): String =
+    if (nodeSpec.ssl) {
       s"https://${nodeSpec.host}:${nodeSpec.port}"
     } else {
       s"http://${nodeSpec.host}:${nodeSpec.port}"
     }
+
+  // Failsafe: forward only client-recognized options, warn on the rest; copies so options is intact.
+  private def clientOptions(nodeSpec: NodeSpec): util.Map[String, String] = {
+    val (kept, dropped) = nodeSpec.options.asScala.partition { case (key, _) =>
+      NodeClient.ALLOWED_OPTION_KEYS.contains(key) ||
+      NodeClient.ALLOWED_OPTION_PREFIXES.exists(key.startsWith)
+    }
+    if (dropped.nonEmpty)
+      log.warn(s"Ignoring unrecognized ClickHouse client options: ${dropped.keys.toSeq.sorted.mkString(", ")}")
+    new util.HashMap[String, String](kept.asJava)
   }
 
   private val client = new Client.Builder()
     .setUsername(nodeSpec.username)
     .setPassword(nodeSpec.password)
     .setDefaultDatabase(nodeSpec.database)
-    .setOptions(nodeSpec.options)
+    .setOptions(clientOptions(nodeSpec))
     .setClientName(userAgent)
     .addEndpoint(createClickHouseURL(nodeSpec))
     .build()

@@ -35,7 +35,8 @@ class ClickHouseHelperSuite extends AnyFunSuite with ClickHouseHelper {
     )
     assert(nodeSpec.database === "testing")
     assert(!nodeSpec.options.containsKey("use_time_zone"))
-    assert(nodeSpec.options.get("ssl") === "true")
+    assert(nodeSpec.ssl)
+    assert(!nodeSpec.options.containsKey("ssl"))
   }
 
   test("catalog timezone uses ClickHouse client option as fallback") {
