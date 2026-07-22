@@ -15,6 +15,15 @@
 # Nightly early-warning run against the latest ClickHouse Java client. The client is built from
 # source (default: the main branch) and the connector test suite runs against it unchanged, so that
 # breaking changes in the Java client are detected before an official release. See issue #550.
+#
+# How to run:
+#   - Automatically every night at 04:00 UTC against clickhouse-java 'main'.
+#   - Manually via the Actions UI ("Run workflow") or the CLI, pinning any ref:
+#       gh workflow run nightly-java-client.yml                                  # main
+#       gh workflow run nightly-java-client.yml -f clickhouse_java_ref=v0.9.8    # a tag
+#       gh workflow run nightly-java-client.yml -f clickhouse_java_ref=a3ccce4   # a commit (short OK)
+#     'clickhouse_java_ref' accepts a branch, tag, or commit SHA; short SHAs are expanded via the
+#     GitHub API (see the build step). The build log prints the exact commit under test.
 name: "Nightly Java Client SNAPSHOT"
 on:
   schedule:
