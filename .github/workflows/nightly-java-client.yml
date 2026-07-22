@@ -17,10 +17,6 @@
 # breaking changes in the Java client are detected before an official release. See issue #550.
 name: "Nightly Java Client SNAPSHOT"
 on:
-  # TEMP (remove before merge): lets us exercise all ref modes on the branch before
-  # workflow_dispatch is available (dispatch only works once this file is on the default branch).
-  push:
-    branches: [nightly-java-snapshot]
   schedule:
     # Nightly run at 04:00 UTC, offset from the stable build-and-test run at 02:00 UTC.
     - cron: '0 4 * * *'
@@ -37,20 +33,10 @@ permissions:
 jobs:
   test-java-snapshot:
     runs-on: ubuntu-22.04
-    # TEMP (remove before merge): fan out over every ref mode so one push validates them all.
-    strategy:
-      fail-fast: false
-      matrix:
-        java_ref:
-          - main                                        # branch
-          - v0.9.8                                      # tag
-          - a3ccce456964f288690121f5d4fdfe6dc42a91b5    # full commit SHA
-          - a3ccce4                                     # short commit SHA (API-expanded)
     env:
       CLICKHOUSE_IMAGE: clickhouse/clickhouse-server:latest
       DOCKER_MIN_API_VERSION: "1.24"
-      # TEMP: 'matrix.java_ref ||' prefix — remove with the matrix before merge.
-      CH_JAVA_REF: ${{ matrix.java_ref || github.event.inputs.clickhouse_java_ref || 'main' }}
+      CH_JAVA_REF: ${{ github.event.inputs.clickhouse_java_ref || 'main' }}
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-java@v4
