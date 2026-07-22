@@ -25,14 +25,19 @@
 -- Integrity UNKNOWN (integrity_ok NULL, legacy rows) is headline_ok = 1 and is
 -- NOT a failure — it does not appear here. Empty result = good.
 --
+-- WHY IT FAILED (fail_reason): a derived column states the reason in words so the
+-- panel answers "why", not just "which". It is deployed as a Superset CALCULATED
+-- COLUMN (`fail_reason`) on the runs-enriched dataset (same multiIf as below);
+-- this file is the source of truth for that expression. The integrity classes are
+-- self-explanatory from the numbers; a hard failure (outcome='failed') can only
+-- say "see run logs" until the pipeline captures an error class into runtime['fail_reason']
+-- (scoped follow-up — the Tier-2 failure-mode split).
+--
 -- DEPLOYMENT: rendered as a `table` (raw records) viz over the runs-enriched
--- Superset dataset, NOT a standalone view — the connectors' datasets already
--- carry headline_ok/outcome. This file is the versioned definition of that
--- panel's projection + filter so the dashboard cannot silently drift from the
--- repo. It backs the panel on BOTH connectors:
+-- Superset dataset. Backs the panel on BOTH connectors (identical projection/
+-- filter; only the dataset name differs):
 --   * Spark  dashboard #427 — dataset v_runs_enriched  (deployed v2_runs_enriched)
 --   * Kafka  dashboard #432 — dataset v_kc_runs
--- (WHERE clause + column list are identical; only the dataset name differs.)
 --
 -- SOURCE: raw_connectors_load_testing.* (ClickPipe DWH mirror of perf.*).
 
@@ -44,8 +49,19 @@ SELECT
   tier,
   outcome,
   integrity_ok,
+  -- Derived reason (deployed as the `fail_reason` calculated column):
+  multiIf(
+    outcome = 'failed',                                          'ingest step failed — see run logs',
+    integrity_ok = 0 AND rows_delivered < rows_expected,         concat('rows LOST: ', toString(toInt64(rows_delivered)), ' of ', toString(toInt64(rows_expected)), ' delivered'),
+    integrity_ok = 0 AND duplicate_rows > 0,                     concat('extra rows / duplicates: +', toString(toInt64(duplicate_rows))),
+    integrity_ok = 0 AND unique_delivered != unique_expected,    concat('unique WatchID mismatch: ', toString(toInt64(unique_delivered)), ' vs ', toString(toInt64(unique_expected))),
+    integrity_ok = 0,                                            'integrity mismatch (content checksum or other)',
+    'excluded — see columns'
+  ) AS fail_reason,
   rows_delivered,
   rows_expected,
+  unique_delivered,
+  unique_expected,
   duplicate_rows,
   flag_reason
 FROM raw_connectors_load_testing.v_runs_enriched   -- Kafka: v_kc_runs
