@@ -1,0 +1,110 @@
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Pipeline freshness watchdog (board task #39). Answers "did the expected nightly
+# pair actually land?" — the one thing the dashboards cannot show, because a run
+# that never happened leaves no row to look at. Runs benchmarks/scripts/
+# check_freshness.py against perf.runs and, if the pipeline is ABSENT / STALE /
+# HALF_PAIR, files (or comments on) a GitHub issue and fails the job.
+#
+# DEPENDENCIES / TUNING:
+#   * Meaningful only once the two-arm nightly is actually scheduled — a schedule
+#     cron fires only from the default branch, so this is inert until merged to
+#     main (it will not spam from a PR branch).
+#   * FRESHNESS_SLA_HOURS must match the real cadence (default 36h = daily + slack).
+#   * The GitHub issue is the zero-dependency alert channel; swap/augment with
+#     Slack once open decision #3 (alert channel) is settled.
+
+name: "Benchmark freshness watchdog"
+
+on:
+  schedule:
+    # Daily, a few hours after the nightly window. Tune with the real cadence.
+    - cron: '0 12 * * *'
+  workflow_dispatch:
+    inputs:
+      connector:
+        description: "Connector to check (tags perf.runs)"
+        required: false
+        default: "spark"
+      sla_hours:
+        description: "Freshness SLA in hours (alert if the newest run is older)"
+        required: false
+        default: "36"
+
+concurrency:
+  group: benchmark-freshness-${{ github.event.inputs.connector || 'spark' }}
+  cancel-in-progress: false
+
+jobs:
+  freshness:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+      issues: write
+    env:
+      FRESHNESS_CONNECTOR: ${{ github.event.inputs.connector || 'spark' }}
+      FRESHNESS_SLA_HOURS: ${{ github.event.inputs.sla_hours || '36' }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ClickHouse client (clickhouse-connect)
+        run: pip install --quiet clickhouse-connect
+
+      - name: Check pipeline freshness
+        id: check
+        env:
+          METRICS_CH_HOST: ${{ secrets.CLICKBENCH_METRICS_CH_HOST }}
+          METRICS_CH_USER: ${{ secrets.CLICKBENCH_METRICS_CH_USER }}
+          METRICS_CH_PASSWORD: ${{ secrets.CLICKBENCH_METRICS_CH_PASSWORD }}
+        run: |
+          set +e
+          python benchmarks/scripts/check_freshness.py > freshness.log 2>&1
+          code=$?
+          cat freshness.log
+          echo "code=$code" >> "$GITHUB_OUTPUT"
+          exit 0
+
+      - name: File / update freshness alert issue
+        if: steps.check.outputs.code != '0'
+        env:
+          GH_TOKEN: ${{ github.token }}
+          CONNECTOR: ${{ env.FRESHNESS_CONNECTOR }}
+        run: |
+          set -euo pipefail
+          TITLE="⚠️ Benchmark freshness alert (${CONNECTOR})"
+          LABEL="benchmark-freshness"
+          # Ensure the label exists (idempotent).
+          gh label create "$LABEL" --color B60205 \
+            --description "Benchmark pipeline freshness watchdog (#39)" 2>/dev/null || true
+          BODY="$(printf 'The freshness watchdog reported a problem for **%s** (run %s):\n\n```\n%s\n```\n\n_Automated by benchmark-freshness.yml (#39). Resolve the pipeline, then close this issue._' \
+            "$CONNECTOR" "${GITHUB_RUN_ID}" "$(cat freshness.log)")"
+          EXISTING="$(gh issue list --label "$LABEL" --state open --search "in:title ${TITLE}" --json number --jq '.[0].number // empty')"
+          if [ -n "$EXISTING" ]; then
+            echo "updating existing issue #$EXISTING"
+            gh issue comment "$EXISTING" --body "$BODY"
+          else
+            echo "opening new freshness issue"
+            gh issue create --title "$TITLE" --label "$LABEL" --body "$BODY"
+          fi
+
+      - name: Fail the job if freshness check did not pass
+        if: steps.check.outputs.code != '0'
+        run: |
+          echo "freshness check exited ${{ steps.check.outputs.code }} — see the alert issue."
+          exit 1

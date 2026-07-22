@@ -17,8 +17,13 @@
 --       for it (INNER JOIN drops half-pairs). This is the exact blind spot #39
 --       must cover: a missing arm looks identical to "no regression" on Tab 1.
 --
--- Channel wiring is a FLAGGED follow-up (open decision 3) — see README.md.
--- Tracked with board task #39.
+-- RUNNER (board task #39, implemented): the scheduled watchdog is
+-- benchmarks/scripts/check_freshness.py + .github/workflows/benchmark-freshness.yml,
+-- which run the SAME two conditions against perf.runs on the metrics service (CI
+-- has those creds; the DWH connection below is per-user Superset auth CI can't
+-- use) and file a GitHub issue on a miss. THIS file stays the Superset/DWH
+-- variant for a dashboard-native alert; keep the two conditions in step.
+-- Channel wiring beyond the GitHub issue is a follow-up (open decision 3) — see README.md.
 --
 -- Run against: DWH connection dc93cd97, db 1, schema raw_connectors_load_testing.
 -- TODAY: condition (A) will fire if the newest run is >36h old; condition (B) is
