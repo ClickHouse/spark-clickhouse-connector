@@ -215,6 +215,11 @@ Statistics / learnings:
    It is captured every run and folds into `integrity_ok` once the source constant
    (`SOURCE_CONTENT_CHECKSUM`) is measured on a clean load and pinned (staged so a
    representation mismatch can't fail runs before it is validated).
+   **Implemented-reality note (2026-07-22):** the checksum is computed today but the
+   gate is **DORMANT** — `SOURCE_CONTENT_CHECKSUM` is unset, so
+   `content_checksum_expected <= 0` and the checksum clause is a no-op. Only the
+   `count()` + `uniqExact(WatchID)` equalities gate today; the checksum stays
+   captured-but-non-gating until the constant is measured and pinned (contract §3).
 2. **Deviation bands + alerting**: band excursions and integrity failures file an
    alert (GitHub issue or Slack) with the pair link. The benchmark stops relying on a
    human looking at charts.
@@ -237,6 +242,15 @@ Statistics / learnings:
     FLAGGED so it is excluded from bands/ratios by default: `task_failed_count > 0`
     (retried work pollutes throughput), `settle_timed_out`, integrity mismatch
     already fails outright. Flagged runs still capture and export fully.
+    **Implemented-reality note (2026-07-22):** of the shared `flag_reason`
+    vocabulary (contract §1.3), the Spark pipeline (run-arm) EMITS only
+    `task_retries` (`task_failed_count > 0`) and `settle_timeout`
+    (`settle_timed_out`). `rebalance`/`drain_incomplete` are Kafka-only;
+    `task_restart` and `instrument_shift` are unimplemented on Spark;
+    `integrity_unverified` is a STATE handled via `outcome='failed'`, not an
+    emitted token; `instrument_resize` is DERIVED in the SQL layer from the
+    `emr_*` instrument-truth keys (contract §1.3, `v_instrument_annotations.sql`);
+    `duplicate_rows` is a diagnostic readout equal to the volume check, not a gate.
 
 ---
 

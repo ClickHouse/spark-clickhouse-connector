@@ -139,18 +139,23 @@ different keys and **MUST NOT** be conflated.
 | `flag_reason` | fixed vocabulary (below) | Token — or `\|`-joined tokens when several guards trip — naming the guard(s). Present iff `flagged='1'`. |
 
 **`flag_reason` FIXED token vocabulary (PINNED — MUST NOT extend without a
-contract change):**
+contract change).** This is the SHARED vocabulary across both pipelines; the
+"Status" column states each token's true applicability so the contract matches
+implemented reality (Amendment 2026-07-22). A token being inert or unimplemented
+in one pipeline is NOT a contract violation — the vocabulary is deliberately a
+superset so both pipelines spell the same concept the same way when it lands.
 
-| Token | Trips when |
-|-------|-----------|
-| `task_retries` | `task_failed_count > 0` — retried work pollutes throughput/volume accounting (plan §6.4, §6.10). |
-| `settle_timeout` | `settle_timed_out = 1` — settle right-censored at the 1800s cap; `settle_seconds` is a floor, not the true value. |
-| `rebalance` | (Kafka) a consumer-group rebalance occurred mid-run, making the drain non-comparable. |
-| `task_restart` | a worker/task process restarted mid-run (Spark executor loss / Kafka worker restart). |
-| `drain_incomplete` | (Kafka) the sink did not fully drain the topic within the run window. |
-| `integrity_unverified` | integrity verification could not be computed (capture failed / source glob unavailable) — distinct from an integrity **mismatch**, which FAILS the run (§3). |
-| `instrument_resize` | (Amendment 2026-07-09c) the measurement harness's **compute resources changed** (node/instance type, worker pod CPU/memory requests or limits). Runs so flagged are **excluded from band calibration and trend baselines**; band calibration **restarts at the first pair on the new instrument**. |
-| `instrument_shift` | (Amendment 2026-07-09d) an **instrument regime shift observed without a config change**: the harness-saturation guard dropped SYMMETRICALLY on both arms (e.g. Kafka `kafka_worker_cpu_share` < ~0.85 on both) — the pair is non-comparable and investigated. Distinct from `instrument_resize` (deliberate resource change) and from an ASYMMETRIC departure, which is a real connector signal and MUST NOT be flagged. |
+| Token | Trips when | Status |
+|-------|-----------|--------|
+| `task_retries` | `task_failed_count > 0` — retried work pollutes throughput/volume accounting (plan §6.4, §6.10). | **Implemented & emitted (Spark).** run-arm sets it when `TASK_FAILED_COUNT > 0`. |
+| `settle_timeout` | `settle_timed_out = 1` — settle right-censored at the 1800s cap; `settle_seconds` is a floor, not the true value. | **Implemented & emitted (Spark).** run-arm sets it when `SETTLE_TIMED_OUT != 0`. |
+| `duplicate_rows` | (diagnostic) the delivered-vs-expected row delta is non-zero. | **Diagnostic readout, NOT an independent gate.** It is algebraically identical to the integrity volume check `rows_delivered != rows_expected` (§2.1, §3) — a non-zero delta already FAILS the run via that check, so this token adds no gating power beyond it. It is surfaced as a readout on the failed-run panel, not emitted as a distinct `flag_reason` token by the Spark pipeline. |
+| `rebalance` | (Kafka) a consumer-group rebalance occurred mid-run, making the drain non-comparable. | **Kafka-only.** A Connect consumer-group concept; correctly inert in Spark (no consumer group). Vocabulary only for Spark. |
+| `task_restart` | a worker/task process restarted mid-run (Spark executor loss / Kafka worker restart). | **NOT implemented in Spark** (would require executor-loss detection the harness does not yet do). Kept as shared vocabulary; the Spark pipeline never emits it today. |
+| `drain_incomplete` | (Kafka) the sink did not fully drain the topic within the run window. | **Kafka-only.** A Connect drain concept; correctly inert in Spark (Spark writes are bounded, not a continuous drain). Vocabulary only for Spark. |
+| `integrity_unverified` | integrity verification could not be computed (capture failed / source glob unavailable) — distinct from an integrity **mismatch**, which FAILS the run (§3). | **A STATE, not an emitted flag token.** In the Spark pipeline this condition is handled via `outcome='failed'` (the capture/verification did not complete), NOT by emitting an `integrity_unverified` `flag_reason` token. Consumers detect it by `outcome`, not by scanning `flag_reason`. |
+| `instrument_resize` | (Amendment 2026-07-09c) the measurement harness's **compute resources changed** (node/instance type, worker pod CPU/memory requests or limits). Runs so flagged are **excluded from band calibration and trend baselines**; band calibration **restarts at the first pair on the new instrument**. | **Implemented in the SQL layer (Amendment 2026-07-22).** Detected additively as a derived annotation/flag from the `emr_instance_type`/`emr_core_count` instrument-truth keys (Spark) — a change vs the previous pair surfaces `instrument_resize`. Not emitted into `runtime['flag_reason']` by run-arm; derived downstream (see `benchmarks/dashboard/v2/v_instrument_annotations.sql`). |
+| `instrument_shift` | (Amendment 2026-07-09d) an **instrument regime shift observed without a config change**: the harness-saturation guard dropped SYMMETRICALLY on both arms (e.g. Kafka `kafka_worker_cpu_share` < ~0.85 on both) — the pair is non-comparable and investigated. Distinct from `instrument_resize` (deliberate resource change) and from an ASYMMETRIC departure, which is a real connector signal and MUST NOT be flagged. | **Deferred/unimplemented (Spark).** Spark emits no harness-saturation-share metric (no analogue to Kafka's `kafka_worker_cpu_share`), so there is nothing to trip it on the Spark side. Kept as shared vocabulary for when a Spark saturation metric lands. |
 
 A run MAY trip more than one guard; when it does, `flag_reason` **MUST** list the
 tokens separated by a single `|` (pipe), e.g. `task_retries|settle_timeout`. No
@@ -282,11 +287,28 @@ Three outcomes, applied identically by both pipelines:
    OR `duplicate_rows != 0`, the run **FAILS**: it produces **no headline
    number** and **MUST NOT** contribute a throughput/cost figure to any trend,
    band, or ratio. (Integrity that could not be *computed* is a different case:
-   flagged `integrity_unverified`, §1.3 — the run is non-comparable, not failed.)
+   it is recorded as `outcome='failed'` (§1.3) — the verification did not
+   complete — NOT as an emitted `integrity_unverified` `flag_reason` token in
+   the Spark pipeline.)
+
+   **Content-checksum gate — STAGED/DORMANT (implemented-reality note,
+   Amendment 2026-07-22).** The integrity oracle additionally *computes* an
+   order-independent content checksum every run (`content_checksum_delivered`,
+   §2.1 / `20_insert_integrity.sql`) that would close the count()+uniqExact blind
+   spot (an equal number of rows lost and duplicated on non-unique WatchIDs). The
+   checksum **does NOT gate today**: the source ground-truth constant
+   `SOURCE_CONTENT_CHECKSUM` is **unset**, so `content_checksum_expected <= 0` and
+   the checksum clause in `integrity_ok` is a **no-op** (captured for visibility,
+   never fails a run). It **stays dormant** until `SOURCE_CONTENT_CHECKSUM` is
+   measured once on a KNOWN-GOOD full load (read back `content_checksum_delivered`
+   from a green run and pin it); once pinned it gates automatically. This staged
+   rollout is deliberate — it prevents a source-vs-target representation mismatch
+   from failing good runs before the constant is validated.
 
 2. **Validity-guard trip ⇒ the run is FLAGGED.** A guard condition (§1.3
-   vocabulary: task retries, settle timeout, rebalance, task restart, drain
-   incomplete) does **not** fail the run and is **not** a regression. The run is
+   vocabulary; the Spark pipeline emits only `task_retries` and `settle_timeout`
+   today — the other tokens are Kafka-only, unimplemented, or derived, per §1.3)
+   does **not** fail the run and is **not** a regression. The run is
    **FLAGGED** (`flagged='1'`, `flag_reason=<token[|token…]>`) and is **excluded
    from bands and ratios by default**. Flagged runs are still **fully captured
    and exported** — the most informative runs are often the least clean.
@@ -518,7 +540,7 @@ commit onward.
 | `pair_id` | `= RUN_ID` = `YYYY-MM-DDTHH-MM-SSZ-<shortsha>` |
 | `run_id` | `<pair_id>-<arm>-t<tier>` (recommended form; MUST be distinct per (arm, tier) row) |
 | rows per night (both tiers) | 4 `perf.runs` rows, one `pair_id` |
-| `flag_reason` tokens | `task_retries`, `settle_timeout`, `rebalance`, `task_restart`, `drain_incomplete`, `integrity_unverified`, `instrument_resize`, `instrument_shift` (join multiples with `|`) |
+| `flag_reason` tokens | `task_retries`, `settle_timeout`, `rebalance`, `task_restart`, `drain_incomplete`, `integrity_unverified`, `instrument_resize`, `instrument_shift` (join multiples with `|`). Spark EMITS only `task_retries`, `settle_timeout`; `rebalance`/`drain_incomplete` Kafka-only; `task_restart`/`instrument_shift` unimplemented (Spark); `integrity_unverified` = a state via `outcome='failed'`; `instrument_resize` derived in SQL; `duplicate_rows` a diagnostic readout, not a gate (= the volume check). See §1.3. |
 | mandatory scope keys | `target_region`, `environment_class` (`staging`\|`production`) |
 | shared config keys | `batch_size`, `write_parallelism`, `async_insert`, `partition_scheme`, `dataset` |
 | Tab-5 server-cost name | `ch_insert_cpu_seconds_per_Mrows` (NOT `server_cpu_per_Mrows`) |
