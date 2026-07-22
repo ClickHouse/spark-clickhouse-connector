@@ -68,8 +68,9 @@ jobs:
           git remote add origin https://github.com/ClickHouse/clickhouse-java.git
           if ! git fetch --depth 1 origin "$CH_JAVA_REF"; then
             # The remote protocol can't fetch an abbreviated SHA; expand it to the full 40-char SHA
-            # via the GitHub API, then fetch that.
-            if [[ "$CH_JAVA_REF" =~ ^[0-9a-fA-F]{4,39}$ ]]; then
+            # via the GitHub API, then fetch that. Require >=7 hex chars so a mistyped branch/tag
+            # doesn't get silently reinterpreted as a commit prefix.
+            if [[ "$CH_JAVA_REF" =~ ^[0-9a-fA-F]{7,40}$ ]]; then
               echo "Ref '$CH_JAVA_REF' not directly fetchable; expanding as a short SHA via the GitHub API..."
               FULL_SHA="$(gh api "repos/ClickHouse/clickhouse-java/commits/$CH_JAVA_REF" --jq '.sha')"
               echo "Expanded to $FULL_SHA"
@@ -87,6 +88,10 @@ jobs:
           VERSION="$(mvn -q -DforceStdout help:evaluate -Dexpression=project.version)"
           if [[ "$VERSION" == *'${'* || -z "$VERSION" ]]; then
             VERSION="$(mvn -q -DforceStdout help:evaluate -Dexpression=revision)"
+          fi
+          if [[ -z "$VERSION" || "$VERSION" == *'${'* ]]; then
+            echo "Could not resolve a usable clickhouse-java version (got: '$VERSION')." >&2
+            exit 1
           fi
           echo "Built clickhouse-java version: $VERSION"
           echo "version=$VERSION" >> "$GITHUB_OUTPUT"
