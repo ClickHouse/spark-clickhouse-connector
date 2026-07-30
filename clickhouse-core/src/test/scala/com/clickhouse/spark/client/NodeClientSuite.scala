@@ -27,12 +27,10 @@ import scala.collection.mutable.ArrayBuffer
  * Unit tests for [[NodeClient]] that do not require a running ClickHouse server. Building a
  * `NodeClient` does not open a connection, so these run offline.
  *
- * These cover the failsafe in `NodeClient.clientOptions` (issue #557). Connector settings such as
- * `ssl` are captured as first-class `NodeSpec` fields and stripped upstream, so they never reach the
- * client. As a safety net, `NodeClient` forwards only options the clickhouse-java v2 client
- * recognizes (an allow-list derived from `ClientConfigProperties`) and drops anything else with a
- * WARN, rather than leaking it and letting the client log "Unknown and unmapped config properties".
- * The filtering happens while `Client.build()` parses the config map, so no server is needed.
+ * Options are handed to clickhouse-java untouched: it knows its own option keys and warns about and
+ * drops the rest, which is what this asserts (issue #557). That connector settings never reach the
+ * client in the first place is covered by `ClickHouseHelperSuite`. The validation happens while
+ * `Client.build()` parses the config map, so no server is needed.
  */
 class NodeClientSuite extends AnyFunSuite {
 
@@ -76,24 +74,17 @@ class NodeClientSuite extends AnyFunSuite {
     }
   }
 
+  private val UnknownKey = "definitely_not_a_ch_client_option"
+
   test("unrecognized client options are dropped with a warning") {
-    // Failsafe must warn on dropped keys, not swallow typos silently.
-    val unknownKey = "definitely_not_a_ch_client_option"
-    val warnings = warningsForOptions(unknownKey -> "x")
+    // A typo must be reported, not swallowed. Deliberately ungated: from clickhouse-java 0.9.7 on the
+    // client throws here instead, and this test must fail until `ignore_unknown_config_key=true` is
+    // passed in `NodeClient`.
+    val warnings = warningsForOptions(UnknownKey -> "x")
 
     assert(
-      warnings.exists(_.contains(unknownKey)),
-      s"expected a warning about the unrecognized option `$unknownKey`, got: ${warnings.mkString("; ")}"
-    )
-  }
-
-  test("recognized client options are forwarded without a warning") {
-    // `compress` is a genuine clickhouse-java client option; it must pass through untouched.
-    val warnings = warningsForOptions("compress" -> "true")
-
-    assert(
-      warnings.isEmpty,
-      s"a recognized client option should not be warned about, got: ${warnings.mkString("; ")}"
+      warnings.exists(_.contains(UnknownKey)),
+      s"expected a warning about the unrecognized option `$UnknownKey`, got: ${warnings.mkString("; ")}"
     )
   }
 }

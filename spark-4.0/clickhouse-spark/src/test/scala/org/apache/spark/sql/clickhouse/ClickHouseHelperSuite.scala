@@ -14,7 +14,9 @@
 
 package org.apache.spark.sql.clickhouse
 
-import com.clickhouse.spark.ClickHouseHelper
+import com.clickhouse.spark.{ClickHouseHelper, Utils}
+import com.clickhouse.spark.Constants._
+import com.clickhouse.spark.client.NodeClient
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.CLIENT_QUERY_TIMEOUT
 import org.apache.spark.sql.internal.SQLConf
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
@@ -37,6 +39,40 @@ class ClickHouseHelperSuite extends AnyFunSuite with ClickHouseHelper {
     assert(!nodeSpec.options.containsKey("use_time_zone"))
     assert(nodeSpec.ssl)
     assert(!nodeSpec.options.containsKey("ssl"))
+  }
+
+  test("no known catalog property is forwarded to the ClickHouse client") {
+    // Connector properties the client knows nothing about must be consumed here, or the client warns
+    // about them (issue #557). Keep this list in step with the catalog properties in `Constants`.
+    val catalogProps = Seq(
+      CATALOG_PROP_HOST -> "localhost",
+      CATALOG_PROP_TCP_PORT -> "9000",
+      CATALOG_PROP_HTTP_PORT -> "8123",
+      CATALOG_PROP_PROTOCOL -> "http",
+      CATALOG_PROP_USER -> "default",
+      CATALOG_PROP_PASSWORD -> "",
+      CATALOG_PROP_DATABASE -> "default",
+      CATALOG_PROP_TZ -> "server",
+      CATALOG_INFER_RUNTIME_ENV -> "false",
+      CATALOG_PROP_SSL -> "true",
+      CATALOG_PROP_OPTION_PREFIX + CATALOG_PROP_SSL -> "true"
+    )
+    val nodeSpec = buildNodeSpec(new CaseInsensitiveStringMap(catalogProps.toMap.asJava))
+
+    assert(
+      nodeSpec.options.isEmpty,
+      s"these catalog properties would reach the client: ${nodeSpec.options.keySet().asScala.toSeq.sorted}"
+    )
+    // Building the client parses the config map, so an unusable option would fail here.
+    Utils.tryWithResource(NodeClient(nodeSpec))(_ => ())
+  }
+
+  test("catalog properties the connector ignores are not forwarded either") {
+    val ignored = CATALOG_PROP_IGNORE_OPTIONS.map(key => CATALOG_PROP_OPTION_PREFIX + key -> "1")
+    val nodeSpec = buildNodeSpec(new CaseInsensitiveStringMap(ignored.toMap.asJava))
+
+    assert(nodeSpec.options.isEmpty)
+    Utils.tryWithResource(NodeClient(nodeSpec))(_ => ())
   }
 
   test("catalog timezone uses ClickHouse client option as fallback") {

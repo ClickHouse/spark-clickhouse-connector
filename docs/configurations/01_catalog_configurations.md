@@ -42,7 +42,7 @@ spark.sql.catalog.clickhouse.database             default
 spark.sql.catalog.clickhouse.option.ssl                 false
 spark.sql.catalog.clickhouse.option.async               false
 spark.sql.catalog.clickhouse.option.client_name         spark
-spark.sql.catalog.clickhouse.option.custom_http_params  async_insert=1,wait_for_async_insert=1
+spark.sql.catalog.clickhouse.option.clickhouse_setting_async_insert  1
 ```
 
 Then you can access ClickHouse table `<ck_db>.<ck_table>` from Spark SQL by using `clickhouse.<ck_db>.<ck_table>`.
