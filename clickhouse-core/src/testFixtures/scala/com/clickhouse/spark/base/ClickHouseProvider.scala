@@ -40,10 +40,11 @@ trait ClickHouseProvider {
         Some(clickhouseHttpPort),
         Some(clickhouseTcpPort),
         protocol,
+        ssl = isSslEnabled,
         username = clickhouseUser,
         database = clickhouseDatabase,
         password = clickhousePassword,
-        options = Map("ssl" -> isSslEnabled.toString).asJava
+        options = Map.empty[String, String].asJava
       ))
     } {
       client => block(client)
