@@ -15,6 +15,7 @@
 package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.data.ClickHouseColumn
+import com.clickhouse.spark.exception.CHClientException
 import org.apache.spark.sql.clickhouse.SchemaUtils._
 import org.apache.spark.sql.types._
 import org.scalatest.funsuite.AnyFunSuite
@@ -28,7 +29,7 @@ class SchemaUtilsSuite extends AnyFunSuite {
       test(s"ch2spark - $chTypeStr") {
         val chCols = ClickHouseColumn.parse(s"`col` $chTypeStr")
         assert(chCols.size == 1)
-        val (actualSparkType, actualNullable) = fromClickHouseType(chCols.get(0))
+        val (actualSparkType, actualNullable) = fromClickHouseType(chCols.get(0)).get
         assert(actualSparkType === expectedSparkType)
         assert(actualNullable === expectedNullable)
       }
@@ -42,6 +43,14 @@ class SchemaUtilsSuite extends AnyFunSuite {
         assert(chCols.size == 1)
         fromClickHouseType(chCols.get(0))
       }
+    }
+  }
+
+  private def assertUnsupported(unsupported: String*): Unit = unsupported.foreach { chTypeStr =>
+    test(s"ch2spark - $chTypeStr") {
+      val chCols = ClickHouseColumn.parse(s"`col` $chTypeStr")
+      assert(chCols.size == 1)
+      assert(fromClickHouseType(chCols.get(0)).isEmpty)
     }
   }
 
@@ -147,7 +156,6 @@ class SchemaUtilsSuite extends AnyFunSuite {
 
   assertNegative(
     "Decimal", // overflow
-    "Decimal256(5)", // overflow
     "Decimal(String"
     // "Decimal32(5"
   )
@@ -182,6 +190,15 @@ class SchemaUtilsSuite extends AnyFunSuite {
 
   assertNegative("fixedString(5)")
 
+  assertUnsupported(
+    "AggregateFunction(sum, Int32)",
+    "SimpleAggregateFunction(sum, Int64)",
+    "Decimal256(5)",
+    "Array(AggregateFunction(sum, Int32))",
+    "Map(String, AggregateFunction(sum, Int32))",
+    "Tuple(Int32, AggregateFunction(sum, Int32))"
+  )
+
   test("spark2ch") {
     val catalystSchema = StructType.fromString(
       """{
@@ -205,5 +222,66 @@ class SchemaUtilsSuite extends AnyFunSuite {
       ("ingredient", "Array(Nullable(String))", ""),
       ("nutrient", "Map(String, Nullable(String))", "")
     ) == toClickHouseSchema(catalystSchema))
+  }
+
+  private val mixedChSchema = Seq(
+    "customer_id" -> "Int32",
+    "agg_state" -> "AggregateFunction(sum, Int32)",
+    "avg_state" -> "AggregateFunction(avg, Float64)",
+    "client_id" -> "String"
+  )
+
+  test("fromClickHouseSchema maps columns with unsupported types to the placeholder type") {
+    val actual = fromClickHouseSchema(mixedChSchema)
+    val expected = StructType(
+      StructField("customer_id", IntegerType, nullable = false) ::
+        ClickHouseUnsupportedType.field("agg_state", "AggregateFunction(sum, Int32)") ::
+        ClickHouseUnsupportedType.field("avg_state", "AggregateFunction(avg, Float64)") ::
+        StructField("client_id", StringType, nullable = false) :: Nil
+    )
+    assert(actual === expected)
+    assert(ClickHouseUnsupportedType.unsupportedColumns(actual) === Seq(
+      "agg_state" -> "AggregateFunction(sum, Int32)",
+      "avg_state" -> "AggregateFunction(avg, Float64)"
+    ))
+  }
+
+  test("fromClickHouseSchema keeps columns the client can not parse as the placeholder type") {
+    val actual = fromClickHouseSchema(Seq("c" -> "SomeFutureType(42)"))
+    assert(actual === StructType(ClickHouseUnsupportedType.field("c", "SomeFutureType(42)") :: Nil))
+    assert(ClickHouseUnsupportedType.unsupportedColumns(actual) === Seq("c" -> "SomeFutureType(42)"))
+  }
+
+  test("validateCreateSchema rejects schemas with placeholder columns") {
+    val e = intercept[Exception](toClickHouseSchema(fromClickHouseSchema(mixedChSchema)))
+    assert(e.getMessage.contains("`agg_state` AggregateFunction(sum, Int32)"))
+    assert(e.getMessage.contains("`avg_state` AggregateFunction(avg, Float64)"))
+    // a fully supported schema passes
+    assert(toClickHouseSchema(fromClickHouseSchema(Seq("id" -> "Int32"))).nonEmpty)
+  }
+
+  test("placeholder type serializes to schema JSON as void so non-JVM clients can parse it") {
+    val schema = fromClickHouseSchema(mixedChSchema)
+    // a JVM-only UDT in the schema JSON breaks schema parsing in PySpark / Spark Connect clients
+    assert(!schema.json.contains("udt"))
+    val restored = DataType.fromJson(schema.json).asInstanceOf[StructType]
+    assert(restored.fieldNames === schema.fieldNames)
+    val restoredField = restored("agg_state")
+    assert(restoredField.dataType === NullType)
+    assert(restoredField.metadata.getString(ClickHouseUnsupportedType.CLICKHOUSE_TYPE_METADATA_KEY)
+      === "AggregateFunction(sum, Int32)")
+  }
+
+  test("unsupported columns are still detected after a schema JSON round-trip") {
+    // Detection must survive a schema JSON round-trip (PySpark / Spark Connect flattens the UDT to void).
+    val schema = fromClickHouseSchema(mixedChSchema)
+    val restored = DataType.fromJson(schema.json).asInstanceOf[StructType]
+    assert(ClickHouseUnsupportedType.unsupportedColumns(restored) === Seq(
+      "agg_state" -> "AggregateFunction(sum, Int32)",
+      "avg_state" -> "AggregateFunction(avg, Float64)"
+    ))
+    val e = intercept[CHClientException](toClickHouseSchema(restored))
+    assert(e.getMessage.contains("`agg_state` AggregateFunction(sum, Int32)"))
+    assert(e.getMessage.contains("`avg_state` AggregateFunction(avg, Float64)"))
   }
 }

@@ -15,7 +15,7 @@
 package com.clickhouse.spark.read
 
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
-import org.apache.spark.sql.clickhouse.ExprUtils
+import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, ExprUtils}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.expressions.{Expressions, NamedReference, SortOrder => V2SortOrder, Transform}
 import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
@@ -99,7 +99,17 @@ class ClickHouseScanBuilder(
   private var _pushedGroupByCols: Option[Array[String]] = None
   private var _groupByClause: Option[String] = None
 
+  /** Such aggregations must be declined - pushing them fails Spark's output-schema assertion. */
+  private def referencesUnsupportedColumn(aggregation: Aggregation): Boolean = {
+    val unsupportedColumnNames = ClickHouseUnsupportedType.unsupportedColumns(physicalSchema).map(_._1).toSet
+    (aggregation.aggregateExpressions ++ aggregation.groupByExpressions)
+      .flatMap(_.references.map(_.fieldNames.head))
+      .exists(unsupportedColumnNames.contains)
+  }
+
   override def pushAggregation(aggregation: Aggregation): Boolean = {
+    if (referencesUnsupportedColumn(aggregation)) return false
+
     val compiledAggs = aggregation.aggregateExpressions.flatMap(compileAggregate)
     if (compiledAggs.length != aggregation.aggregateExpressions.length) return false
 
@@ -141,13 +151,28 @@ class ClickHouseScanBuilder(
     this._readSchema = StructType(_readSchema.filter(field => requiredCols.contains(field.name)))
   }
 
-  override def build(): Scan = new ClickHouseBatchScan(scanJob.copy(
-    readSchema = _readSchema,
-    filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
-    groupByClause = _groupByClause,
-    orderByClause = _orderByClause,
-    limit = _limit
-  ))
+  /** The pruned read schema must not contain placeholder [[ClickHouseUnsupportedType]] columns. */
+  private def validateReadSchema(): Unit = {
+    val unsupportedColumns = ClickHouseUnsupportedType.unsupportedColumns(_readSchema)
+    if (unsupportedColumns.nonEmpty) {
+      throw CHClientException(
+        s"Can not read columns with unsupported ClickHouse types: " +
+          s"${ColumnUtils.renderColumns(unsupportedColumns)}. " +
+          "Select only the supported columns explicitly instead of referencing these columns (e.g. via SELECT *)."
+      )
+    }
+  }
+
+  override def build(): Scan = {
+    validateReadSchema()
+    new ClickHouseBatchScan(scanJob.copy(
+      readSchema = _readSchema,
+      filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
+      groupByClause = _groupByClause,
+      orderByClause = _orderByClause,
+      limit = _limit
+    ))
+  }
 }
 
 class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch

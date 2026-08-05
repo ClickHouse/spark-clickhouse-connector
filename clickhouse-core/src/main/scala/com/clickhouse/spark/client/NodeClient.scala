@@ -14,9 +14,7 @@
 
 package com.clickhouse.spark.client
 
-import com.clickhouse.client._
 import com.clickhouse.client.api.{Client, ServerException}
-import com.clickhouse.client.api.enums.Protocol
 import com.clickhouse.client.api.insert.{InsertResponse, InsertSettings}
 import com.clickhouse.client.api.query.{QueryResponse, QuerySettings}
 import com.clickhouse.data.ClickHouseFormat
@@ -37,7 +35,6 @@ import com.fasterxml.jackson.databind.JsonNode
 import com.fasterxml.jackson.databind.node.ObjectNode
 
 import java.io.{ByteArrayInputStream, InputStream}
-import java.time.temporal.ChronoUnit
 import java.util.UUID
 import scala.util.{Failure, Success, Try}
 
@@ -87,19 +84,19 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
   private def shouldInferRuntime(): Boolean =
     nodeSpec.infer_runtime_env.equalsIgnoreCase("true") || nodeSpec.infer_runtime_env == "1"
 
-  private def createClickHouseURL(nodeSpec: NodeSpec): String = {
-    val ssl: Boolean = nodeSpec.options.getOrDefault("ssl", "false").toBoolean
-    if (ssl) {
+  private def createClickHouseURL(nodeSpec: NodeSpec): String =
+    if (nodeSpec.ssl) {
       s"https://${nodeSpec.host}:${nodeSpec.port}"
     } else {
       s"http://${nodeSpec.host}:${nodeSpec.port}"
     }
-  }
 
   private val client = new Client.Builder()
     .setUsername(nodeSpec.username)
     .setPassword(nodeSpec.password)
     .setDefaultDatabase(nodeSpec.database)
+    // The client validates these and warns about the ones it does not recognize. From clickhouse-java
+    // 0.9.7 on it throws instead, so that bump needs `ignore_unknown_config_key=true` added here.
     .setOptions(nodeSpec.options)
     .setClientName(userAgent)
     .addEndpoint(createClickHouseURL(nodeSpec))

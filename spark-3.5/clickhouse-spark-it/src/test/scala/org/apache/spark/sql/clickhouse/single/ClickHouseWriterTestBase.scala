@@ -103,6 +103,37 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
     }
   }
 
+  test("write ArrayType - empty nested arrays") {
+    val schema = StructType(Seq(
+      StructField("id", IntegerType, nullable = false),
+      StructField(
+        "value",
+        ArrayType(ArrayType(IntegerType, containsNull = false), containsNull = false),
+        nullable = false
+      )
+    ))
+
+    withTable("test_db", "test_write_nested_empty_array", schema) { (actualDb: String, actualTbl: String) =>
+      val data = Seq(
+        Row(1, Seq[Seq[Int]]()),
+        Row(2, Seq(Seq(1, 2))),
+        Row(3, Seq[Seq[Int]]())
+      )
+      val df = spark.createDataFrame(spark.sparkContext.parallelize(data), schema)
+      df.write.mode(SaveMode.Append).saveAsTable(s"$actualDb.test_write_nested_empty_array")
+
+      val result = spark.table(s"$actualDb.test_write_nested_empty_array").orderBy("id").collect()
+      assert(result.length == 3)
+      // Convert to List for Scala 2.12/2.13 compatibility
+      val row0 = result(0).getAs[scala.collection.Seq[scala.collection.Seq[Int]]](1).map(_.toList).toList
+      val row1 = result(1).getAs[scala.collection.Seq[scala.collection.Seq[Int]]](1).map(_.toList).toList
+      val row2 = result(2).getAs[scala.collection.Seq[scala.collection.Seq[Int]]](1).map(_.toList).toList
+      assert(row0.isEmpty)
+      assert(row1 == Seq(Seq(1, 2)))
+      assert(row2.isEmpty)
+    }
+  }
+
   test("write ArrayType - with nullable elements") {
     val schema = StructType(Seq(
       StructField("id", IntegerType, nullable = false),

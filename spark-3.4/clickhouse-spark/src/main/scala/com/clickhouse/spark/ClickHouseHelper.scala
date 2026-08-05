@@ -20,14 +20,14 @@ import com.fasterxml.jackson.databind.node.NullNode
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.CLIENT_QUERY_TIMEOUT
-import org.apache.spark.sql.clickhouse.SchemaUtils
+import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, SchemaUtils}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import com.clickhouse.spark.Constants._
 import com.clickhouse.spark.Utils.dateTimeFmt
 import com.clickhouse.spark.client.NodeClient
-import com.clickhouse.spark.exception.CHException
+import com.clickhouse.spark.exception.{CHClientException, CHException}
 import com.clickhouse.spark.spec._
 
 import java.time.{LocalDateTime, ZoneId}
@@ -56,10 +56,13 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       .getOrElse("server")
 
   def buildNodeSpec(options: CaseInsensitiveStringMap): NodeSpec = {
-    val clientOpts = options.asScala
+    val optionsWithPrefix = options.asScala
       .filterKeys(_.startsWith(CATALOG_PROP_OPTION_PREFIX))
       .map { case (k, v) => k.substring(CATALOG_PROP_OPTION_PREFIX.length) -> v }
       .toMap
+    // ssl selects the URL scheme; capture it as NodeSpec.ssl and drop it from forwarded options.
+    val ssl = optionsWithPrefix.getOrElse(CATALOG_PROP_SSL, "false").toBoolean
+    val clientOpts = (optionsWithPrefix - CATALOG_PROP_SSL)
       .filterKeys { key =>
         val ignore = CATALOG_PROP_IGNORE_OPTIONS.contains(key)
         if (ignore) {
@@ -73,6 +76,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       _tcp_port = Some(options.getInt(CATALOG_PROP_TCP_PORT, 9000)),
       _http_port = Some(options.getInt(CATALOG_PROP_HTTP_PORT, 8123)),
       protocol = ClickHouseProtocol.fromUriScheme(options.getOrDefault(CATALOG_PROP_PROTOCOL, "http")),
+      ssl = ssl,
       username = options.getOrDefault(CATALOG_PROP_USER, "default"),
       password = options.getOrDefault(CATALOG_PROP_PASSWORD, ""),
       database = options.getOrDefault(CATALOG_PROP_DATABASE, "default"),
@@ -247,6 +251,10 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     )
   }
 
+  /**
+   * Returns the Spark schema of the table. Columns whose ClickHouse types have no Spark
+   * mapping are represented with the placeholder [[ClickHouseUnsupportedType]].
+   */
   def queryTableSchema(
     database: String,
     table: String,
@@ -320,7 +328,15 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
    */
   def getQueryOutputSchema(sql: String)(implicit nodeClient: NodeClient): StructType = {
     val namesAndTypes = nodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(sql).namesAndTypes
-    SchemaUtils.fromClickHouseSchema(namesAndTypes.toSeq)
+    val schema = SchemaUtils.fromClickHouseSchema(namesAndTypes.toSeq)
+    val unsupported = ClickHouseUnsupportedType.unsupportedColumns(schema)
+    if (unsupported.nonEmpty) {
+      // unlike a table schema, a query output must map in full - callers align it positionally with the select items
+      throw CHClientException(
+        s"Query output contains unsupported types: ${ColumnUtils.renderColumns(unsupported)}, sql: $sql"
+      )
+    }
+    schema
   }
 
   def dropPartition(
