@@ -32,6 +32,8 @@ class ClusterShardNumSortWriteSuite extends SparkClickHouseClusterTest {
   private val numSparkPartitions = 2
 
   override protected def sparkConf: SparkConf = super.sparkConf
+    // keep the write task count deterministic for the INSERT-count assertions
+    .set("spark.sql.adaptive.enabled", "false")
     .set("spark.sql.shuffle.partitions", numSparkPartitions.toString)
     .set("spark.clickhouse.write.batchSize", "100000")
     .set("spark.clickhouse.write.distributed.useClusterNodes", "true")
@@ -73,6 +75,8 @@ class ClusterShardNumSortWriteSuite extends SparkClickHouseClusterTest {
   }
 
   private def resetQueryLog(nodeOptions: Map[String, String]): Unit = {
+    // let in-flight queries finish logging so their entries don't land after the truncate
+    Thread.sleep(1000)
     runClickHouseSQL("SYSTEM FLUSH LOGS", nodeOptions)
     runClickHouseSQL("TRUNCATE TABLE IF EXISTS system.query_log", nodeOptions)
   }
