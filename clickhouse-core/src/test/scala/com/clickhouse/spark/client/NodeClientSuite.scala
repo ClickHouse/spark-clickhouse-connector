@@ -45,10 +45,11 @@ class NodeClientSuite extends AnyFunSuite with LogCaptureHelper {
       protocol = HTTP,
       options = optionMap
     )
-    captureWarnings(ConnectorLogger, ClientConfigLogger) {
+    val (_, warnings) = captureWarnings(ConnectorLogger, ClientConfigLogger) {
       val client = NodeClient(nodeSpec)
       client.close()
     }
+    warnings
   }
 
   private val UnknownKey = "definitely_not_a_ch_client_option"

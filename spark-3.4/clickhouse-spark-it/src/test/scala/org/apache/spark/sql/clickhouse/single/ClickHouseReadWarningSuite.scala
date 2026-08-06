@@ -36,14 +36,10 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
 
   test("reading a view does not warn about unknown table engine") {
     withKVTable("db_read_warning", "tbl_view_src", valueColDef = "String") { (db, tbl) =>
-      runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES (1, 'a'), (2, 'b')")
+      insertKV(db, tbl, 1 -> "a", 2 -> "b")
       withView(db, s"${tbl}_v", s"SELECT key, value FROM `$db`.`$tbl`") { view =>
-        val warnings = captureWarnings(engineUtilsLogger) {
-          checkAnswer(
-            spark.sql(s"SELECT key, value FROM `$db`.`$view` ORDER BY key"),
-            Row(1, "a") :: Row(2, "b") :: Nil
-          )
-        }
+        val (rows, warnings) = captureWarnings(engineUtilsLogger)(readSortedByKey(db, view))
+        assert(rows === Seq(Row(1, "a"), Row(2, "b")))
         assert(!warnings.exists(_.contains("Unknown table engine")))
       }
     }
@@ -51,35 +47,33 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
 
   test("reading a view warns about single partition read") {
     withKVTable("db_read_warning", "tbl_view_single_part_src", valueColDef = "String") { (db, tbl) =>
-      runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES (1, 'a')")
+      insertKV(db, tbl, 1 -> "a")
       withView(db, s"${tbl}_v", s"SELECT key, value FROM `$db`.`$tbl`") { view =>
-        val warnings = captureWarnings(batchScanLogger) {
-          assert(spark.sql(s"SELECT key, value FROM `$db`.`$view`").count() === 1)
-        }
-        assert(warnings.exists(_.contains(s"Reading $db.$view as a single partition")))
+        val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, view))
+        assert(rowCount === 1)
+        assert(warnings.exists(_.contains(singlePartitionWarning(db, view))))
       }
     }
   }
 
   test("reading an unpartitioned table warns about single partition read") {
     withKVTable("db_read_warning", "tbl_single_part", valueColDef = "String") { (db, tbl) =>
-      runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES (1, 'a'), (2, 'b')")
-      val warnings = captureWarnings(batchScanLogger) {
-        assert(spark.table(s"$db.$tbl").count() === 2)
-      }
-      assert(warnings.exists(_.contains(s"Reading $db.$tbl as a single partition")))
+      insertKV(db, tbl, 1 -> "a", 2 -> "b")
+      val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, tbl))
+      assert(rowCount === 2)
+      assert(warnings.exists(_.contains(singlePartitionWarning(db, tbl))))
     }
   }
 
   test("reading a table with multiple partitions does not warn about single partition read") {
     withSimpleTable("db_read_warning", "tbl_multi_part", writeData = true) { (db, tbl) =>
-      val warnings = captureWarnings(batchScanLogger) {
-        assert(spark.table(s"$db.$tbl").count() === 2)
-      }
+      val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, tbl))
+      assert(rowCount === 2)
       assert(!warnings.exists(_.contains("as a single partition")))
     }
   }
 
+  /** Creates a ClickHouse view over `select` for the duration of `f`. */
   private def withView(db: String, view: String, select: String)(f: String => Unit): Unit = {
     runClickHouseSQL(s"CREATE VIEW `$db`.`$view` AS $select")
     if (isCloud) Thread.sleep(1000)
@@ -87,7 +81,23 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
     finally runClickHouseSQL(s"DROP VIEW IF EXISTS `$db`.`$view`")
   }
 
-  private def captureWarnings(loggerName: String)(f: => Unit): Seq[String] = {
+  private def insertKV(db: String, tbl: String, rows: (Int, String)*): Unit =
+    runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES " +
+      rows.map { case (k, v) => s"($k, '$v')" }.mkString(", "))
+
+  /** Reads the table through the connector and returns the row count. */
+  private def readRowCount(db: String, tbl: String): Long =
+    spark.table(s"$db.$tbl").count()
+
+  /** Reads the KV table through the connector and returns its rows ordered by key. */
+  private def readSortedByKey(db: String, tbl: String): Seq[Row] =
+    spark.sql(s"SELECT key, value FROM `$db`.`$tbl` ORDER BY key").collect().toSeq
+
+  private def singlePartitionWarning(db: String, tbl: String): String =
+    s"Reading $db.$tbl as a single partition"
+
+  /** Runs `f` and returns its result with the WARN messages the logger emitted while it ran. */
+  private def captureWarnings[A](loggerName: String)(f: => A): (A, Seq[String]) = {
     val warnings = ArrayBuffer.empty[String]
     val appender: AbstractAppender =
       new AbstractAppender("read-warning-capture", null, null, false, Property.EMPTY_ARRAY) {
@@ -97,11 +107,12 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
     appender.start()
     val logger = LogManager.getLogger(loggerName).asInstanceOf[org.apache.logging.log4j.core.Logger]
     logger.addAppender(appender)
-    try f
-    finally {
-      logger.removeAppender(appender)
-      appender.stop()
-    }
-    warnings.toSeq
+    val result =
+      try f
+      finally {
+        logger.removeAppender(appender)
+        appender.stop()
+      }
+    (result, warnings.toSeq)
   }
 }

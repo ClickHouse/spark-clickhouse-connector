@@ -33,13 +33,13 @@ class ClickHouseBatchScanSuite extends AnyFunSuite {
 
   test("planning a single input partition warns about read performance") {
     val scan = new ClickHouseBatchScan(scanJob())
-    val warnings = captureWarnings {
-      assert(scan.inputPartitions.length === 1)
-    }
+    val (partitions, warnings) = captureWarnings(scan.inputPartitions)
+    assert(partitions.length === 1)
     assert(warnings.exists(_.contains("Reading db.dist as a single partition")))
   }
 
-  private def captureWarnings(f: => Unit): Seq[String] = {
+  /** Runs `f` and returns its result with the WARN messages the scan logger emitted while it ran. */
+  private def captureWarnings[A](f: => A): (A, Seq[String]) = {
     val warnings = ArrayBuffer.empty[String]
     val appender: AbstractAppender =
       new AbstractAppender("batch-scan-warning-capture", null, null, false, Property.EMPTY_ARRAY) {
@@ -50,12 +50,13 @@ class ClickHouseBatchScanSuite extends AnyFunSuite {
     val logger = LogManager.getLogger(classOf[ClickHouseBatchScan].getName)
       .asInstanceOf[org.apache.logging.log4j.core.Logger]
     logger.addAppender(appender)
-    try f
-    finally {
-      logger.removeAppender(appender)
-      appender.stop()
-    }
-    warnings.toSeq
+    val result =
+      try f
+      finally {
+        logger.removeAppender(appender)
+        appender.stop()
+      }
+    (result, warnings.toSeq)
   }
 
   // a Distributed table scan without convertDistributedToLocal plans exactly one partition without any I/O

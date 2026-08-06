@@ -29,17 +29,19 @@ trait LogCaptureHelper {
     override def requiresLayout(): Boolean = false
   }
 
-  /** Returns the WARN messages the given loggers produced while running `f`. */
-  def captureWarnings(loggerNames: String*)(f: => Unit): Seq[String] = {
+  /** Runs `f` and returns its result with the WARN messages the given loggers produced while it ran. */
+  def captureWarnings[A](loggerNames: String*)(f: => A): (A, Seq[String]) = {
     val loggers = loggerNames.map(Logger.getLogger)
     val appender = new CapturingAppender
     val previousLevels = loggers.map(l => l -> l.getLevel)
     loggers.foreach { l => l.setLevel(Level.WARN); l.addAppender(appender) }
-    try f
-    finally previousLevels.foreach { case (l, level) => l.removeAppender(appender); l.setLevel(level) }
-    appender.events
+    val result =
+      try f
+      finally previousLevels.foreach { case (l, level) => l.removeAppender(appender); l.setLevel(level) }
+    val warnings = appender.events
       .filter(_.getLevel == Level.WARN)
       .map(_.getRenderedMessage)
       .toSeq
+    (result, warnings)
   }
 }
