@@ -21,11 +21,16 @@ import com.clickhouse.spark.parse.{ParseException, ParseUtils}
 object TableEngineUtils extends Logging {
 
   def resolveTableEngine(tableSpec: TableSpec): TableEngineSpec = synchronized {
-    try ParseUtils.parser.parseEngineClause(tableSpec.engine_full)
-    catch {
-      case cause: ParseException =>
-        log.warn(s"Unknown table engine for table ${tableSpec.database}.${tableSpec.name}: ${tableSpec.engine_full}")
-        UnknownTableEngineSpec(tableSpec.engine_full)
+    if (tableSpec.isView) {
+      // a view has no engine clause to parse; its engine_full is empty
+      UnknownTableEngineSpec(tableSpec.engine_full)
+    } else {
+      try ParseUtils.parser.parseEngineClause(tableSpec.engine_full)
+      catch {
+        case _: ParseException =>
+          log.warn(s"Unknown table engine for table ${tableSpec.database}.${tableSpec.name}: ${tableSpec.engine_full}")
+          UnknownTableEngineSpec(tableSpec.engine_full)
+      }
     }
   }
 

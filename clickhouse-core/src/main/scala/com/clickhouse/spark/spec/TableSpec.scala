@@ -43,6 +43,8 @@ case class TableSpec(
   lifetime_rows: Option[Long],
   lifetime_bytes: Option[Long]
 ) extends ToJson {
+  def isView: Boolean = engine == "View"
+
   def toMap: Map[String, String] = Map(
     "database" -> database,
     "name" -> name,

@@ -14,9 +14,14 @@
 
 package com.clickhouse.spark.spec
 
+import com.clickhouse.spark.LogCaptureHelper
 import org.scalatest.funsuite.AnyFunSuite
 
-class TableEngineUtilsSuite extends AnyFunSuite with NodeSpecHelper {
+import java.time.LocalDateTime
+
+class TableEngineUtilsSuite extends AnyFunSuite with NodeSpecHelper with LogCaptureHelper {
+
+  private val engineUtilsLogger = TableEngineUtils.getClass.getName.stripSuffix("$")
 
   test("test resolve table cluster by macro") {
     val distributeSpec = DistributedEngineSpec(
@@ -31,4 +36,45 @@ class TableEngineUtilsSuite extends AnyFunSuite with NodeSpecHelper {
 
     assert(clusterName.name === cluster_name)
   }
+
+  test("resolving a view does not warn about unknown table engine") {
+    val warnings = captureWarnings(engineUtilsLogger) {
+      val engineSpec = TableEngineUtils.resolveTableEngine(tableSpec(engine = "View"))
+      assert(engineSpec === UnknownTableEngineSpec(""))
+    }
+    assert(warnings.isEmpty)
+  }
+
+  test("resolving an unparseable engine of a non-view table warns about unknown table engine") {
+    val warnings = captureWarnings(engineUtilsLogger) {
+      val engineSpec = TableEngineUtils.resolveTableEngine(tableSpec(engine = "Memory"))
+      assert(engineSpec === UnknownTableEngineSpec(""))
+    }
+    assert(warnings.exists(_.contains("Unknown table engine for table db.tbl")))
+  }
+
+  // a View reports an empty engine_full, which is unparseable
+  private def tableSpec(engine: String, engineFull: String = ""): TableSpec = TableSpec(
+    database = "db",
+    name = "tbl",
+    uuid = "",
+    engine = engine,
+    is_temporary = false,
+    data_paths = Nil,
+    metadata_path = "",
+    metadata_modification_time = LocalDateTime.of(2026, 1, 1, 0, 0),
+    dependencies_database = Nil,
+    dependencies_table = Nil,
+    create_table_query = "",
+    engine_full = engineFull,
+    partition_key = "",
+    sorting_key = "",
+    primary_key = "",
+    sampling_key = "",
+    storage_policy = "",
+    total_rows = None,
+    total_bytes = None,
+    lifetime_rows = None,
+    lifetime_bytes = None
+  )
 }
