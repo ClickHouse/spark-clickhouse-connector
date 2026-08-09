@@ -41,20 +41,24 @@ class ClickHouseBatchScanSuite extends AnyFunSuite {
 
   /** Runs `f` and returns its result with the WARN messages the scan logger emitted while it ran. */
   private def captureWarnings[A](f: => A): (A, Seq[String]) = {
+    val loggerName = classOf[ClickHouseBatchScan].getName
     val warnings = ArrayBuffer.empty[String]
     val appender: AbstractAppender =
       new AbstractAppender("batch-scan-warning-capture", null, null, false, Property.EMPTY_ARRAY) {
         override def append(event: LogEvent): Unit =
-          if (event.getLevel == Level.WARN) warnings += event.getMessage.getFormattedMessage
+          if (event.getLevel == Level.WARN && event.getLoggerName == loggerName)
+            warnings += event.getMessage.getFormattedMessage
       }
     appender.start()
-    val logger = LogManager.getLogger(classOf[ClickHouseBatchScan].getName)
-      .asInstanceOf[org.apache.logging.log4j.core.Logger]
-    logger.addAppender(appender)
+    // attach to the nearest configured LoggerConfig: Logger.addAppender would register a permanent
+    // config for the scan logger that black-holes its logging once the appender is removed
+    val loggerConfig = LogManager.getLogger(loggerName).asInstanceOf[org.apache.logging.log4j.core.Logger]
+      .getContext.getConfiguration.getLoggerConfig(loggerName)
+    loggerConfig.addAppender(appender, Level.WARN, null)
     val result =
       try f
       finally {
-        logger.removeAppender(appender)
+        loggerConfig.removeAppender(appender.getName)
         appender.stop()
       }
     (result, warnings.toSeq)

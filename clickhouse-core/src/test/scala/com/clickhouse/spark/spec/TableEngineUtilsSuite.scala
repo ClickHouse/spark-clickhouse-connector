@@ -45,8 +45,9 @@ class TableEngineUtilsSuite extends AnyFunSuite with NodeSpecHelper with LogCapt
   }
 
   test("resolving an unparseable engine of a non-view table warns about unknown table engine") {
-    val (engineSpec, warnings) =
-      captureWarnings(engineUtilsLogger)(TableEngineUtils.resolveTableEngine(tableSpec(engine = "Memory")))
+    val (engineSpec, warnings) = captureWarnings(engineUtilsLogger) {
+      TableEngineUtils.resolveTableEngine(tableSpec(engine = "Memory", engineFull = ""))
+    }
     assert(engineSpec === UnknownTableEngineSpec(""))
     assert(warnings.exists(_.contains("Unknown table engine for table db.tbl")))
   }
