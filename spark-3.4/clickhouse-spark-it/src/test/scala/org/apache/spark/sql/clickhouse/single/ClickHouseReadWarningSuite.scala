@@ -54,6 +54,31 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
     }
   }
 
+  // a materialized view is deliberately not folded into the view special-case: its empty
+  // engine_full is unparseable, so reading it must keep emitting the unknown-engine warning
+  test("reading a materialized view warns about unknown table engine") {
+    withKVTable("db_read_warning", "tbl_mv_src", valueColDef = "String") { (db, tbl) =>
+      withMaterializedView(db, s"${tbl}_mv", s"SELECT key, value FROM `$db`.`$tbl`") { mv =>
+        eventuallyOnCloud {
+          val (rowCount, warnings) = captureWarnings(engineUtilsLogger)(readRowCount(db, mv))
+          assert(rowCount === 0)
+          assert(warnings.exists(_.contains(s"Unknown table engine for table $db.$mv")))
+        }
+      }
+    }
+  }
+
+  test("reading a table with a supported engine does not warn about unknown table engine") {
+    withKVTable("db_read_warning", "tbl_supported_engine", valueColDef = "String") { (db, tbl) =>
+      insertKV(db, tbl, 1 -> "a", 2 -> "b")
+      eventuallyOnCloud {
+        val (rowCount, warnings) = captureWarnings(engineUtilsLogger)(readRowCount(db, tbl))
+        assert(rowCount === 2)
+        assert(!warnings.exists(_.contains("Unknown table engine")))
+      }
+    }
+  }
+
   test("reading a view warns about single partition read") {
     withKVTable("db_read_warning", "tbl_view_single_part_src", valueColDef = "String") { (db, tbl) =>
       insertKV(db, tbl, 1 -> "a")
@@ -93,6 +118,13 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
     runClickHouseSQL(s"CREATE VIEW `$db`.`$view` AS $select")
     try f(view)
     finally runClickHouseSQL(s"DROP VIEW IF EXISTS `$db`.`$view`")
+  }
+
+  /** Creates a ClickHouse materialized view over `select` for the duration of `f`. */
+  private def withMaterializedView(db: String, mv: String, select: String)(f: String => Unit): Unit = {
+    runClickHouseSQL(s"CREATE MATERIALIZED VIEW `$db`.`$mv` ENGINE = MergeTree() ORDER BY key AS $select")
+    try f(mv)
+    finally runClickHouseSQL(s"DROP VIEW IF EXISTS `$db`.`$mv`")
   }
 
   private def insertKV(db: String, tbl: String, rows: (Int, String)*): Unit =
