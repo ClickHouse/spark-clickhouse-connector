@@ -89,6 +89,7 @@ class ClickHouseCatalog extends TableCatalog
     val xxHash64ShardFunc = new ClickHouseXxHash64Shard(clusterSpecs)
     dynamicFunctionRegistry.register("ck_xx_hash64_shard", xxHash64ShardFunc) // for compatible
     dynamicFunctionRegistry.register("clickhouse_shard_xxHash64", xxHash64ShardFunc)
+    dynamicFunctionRegistry.register(ClickHouseShardNum.funcName, new ClickHouseShardNum(clusterSpecs))
     this.functionRegistry = new CompositeFunctionRegistry(Array(StaticFunctionRegistry, dynamicFunctionRegistry))
 
     log.info(s"Detect ${clusterSpecs.size} ClickHouse clusters: ${clusterSpecs.map(_.name).mkString(",")}")
@@ -301,7 +302,7 @@ class ClickHouseCatalog extends TableCatalog
       }
     tableOpt match {
       case None => false
-      case Some(ClickHouseTable(_, cluster, _, tableSpec, _, _)) =>
+      case Some(ClickHouseTable(_, cluster, _, tableSpec, _, _, _)) =>
         val (db, tbl) = (tableSpec.database, tableSpec.name)
         val isAtomic = loadNamespaceMetadata(Array(db)).get("engine").equalsIgnoreCase("atomic")
         val syncClause = if (isAtomic) "SYNC" else ""

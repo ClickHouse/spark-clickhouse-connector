@@ -29,4 +29,23 @@ class ShardUtilsSuite extends AnyFunSuite with NodeSpecHelper {
     assert(ShardUtils.calcShard(cluster, 7).num === 2)
     assert(ShardUtils.calcShard(cluster, 8).num === 2)
   }
+
+  test("test calculate shard treats hash value as unsigned") {
+    // total weight is 3; -1 as unsigned is 2^64 - 1 ≡ 0 (mod 3), -2 is 2^64 - 2 ≡ 2 (mod 3)
+    assert(ShardUtils.calcShard(cluster, -1).num === 1)
+    assert(ShardUtils.calcShard(cluster, -2).num === 2)
+  }
+
+  test("test calculate shard never selects zero-weight shards") {
+    val weighted = ClusterSpec(
+      name = "cluster-zero-weight",
+      shards = Array(
+        ShardSpec(num = 1, weight = 0, replicas = Array(replica_s1r1)),
+        ShardSpec(num = 2, weight = 2, replicas = Array(replica_s2r1))
+      )
+    )
+    (0 to 3).foreach { hash =>
+      assert(ShardUtils.calcShard(weighted, hash.toLong).num === 2)
+    }
+  }
 }
