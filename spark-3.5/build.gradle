@@ -24,6 +24,7 @@ project(":clickhouse-spark-${spark_binary_version}_$scala_binary_version") {
 
         compileOnly "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
 
+        testImplementation(testFixtures(project(":clickhouse-core")))
         testImplementation "org.apache.spark:spark-sql_$scala_binary_version:$spark_version"
         testImplementation "org.scalatest:scalatest_$scala_binary_version:$scalatest_version"
         testRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"

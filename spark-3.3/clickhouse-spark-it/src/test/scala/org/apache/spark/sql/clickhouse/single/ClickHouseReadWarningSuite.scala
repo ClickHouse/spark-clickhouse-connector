@@ -14,42 +14,28 @@
 
 package org.apache.spark.sql.clickhouse.single
 
+import com.clickhouse.spark.Log4j2CaptureHelper
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
-import org.apache.logging.log4j.{Level, LogManager}
-import org.apache.logging.log4j.core.LogEvent
-import org.apache.logging.log4j.core.appender.AbstractAppender
-import org.apache.logging.log4j.core.config.Property
 import org.apache.spark.sql.Row
-import org.scalatest.concurrent.Eventually._
 import org.scalatest.tags.Cloud
-import org.scalatest.time.SpanSugar._
-
-import scala.collection.mutable.ArrayBuffer
 
 @Cloud
 class ClickHouseCloudReadWarningSuite extends ClickHouseReadWarningSuite with ClickHouseCloudMixIn
 
 class ClickHouseSingleReadWarningSuite extends ClickHouseReadWarningSuite with ClickHouseSingleMixIn
 
-abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
+abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest with Log4j2CaptureHelper {
 
   private val engineUtilsLogger = "com.clickhouse.spark.spec.TableEngineUtils"
   private val batchScanLogger = "com.clickhouse.spark.read.ClickHouseBatchScan"
-
-  // Cloud's multi-replica compute can serve reads from a replica whose part / metadata cache
-  // has not yet caught up with a recent write or DDL. Retry the assertion until reads converge.
-  private def eventuallyOnCloud(body: => Unit): Unit =
-    if (isCloud) eventually(timeout(15.seconds), interval(500.millis))(body) else body
 
   test("reading a view does not warn about unknown table engine") {
     withKVTable("db_read_warning", "tbl_view_src", valueColDef = "String") { (db, tbl) =>
       insertKV(db, tbl, 1 -> "a", 2 -> "b")
       withView(db, s"${tbl}_v", s"SELECT key, value FROM `$db`.`$tbl`") { view =>
-        eventuallyOnCloud {
-          val (rows, warnings) = captureWarnings(engineUtilsLogger)(readSortedByKey(db, view))
-          assert(rows === Seq(Row(1, "a"), Row(2, "b")))
-          assert(!warnings.exists(_.contains("Unknown table engine")))
-        }
+        val (rows, warnings) = captureWarnings(engineUtilsLogger)(readSortedByKey(db, view))
+        assert(rows === Seq(Row(1, "a"), Row(2, "b")))
+        assert(!warnings.exists(_.contains("Unknown table engine")))
       }
     }
   }
@@ -59,11 +45,9 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
   test("reading a materialized view warns about unknown table engine") {
     withKVTable("db_read_warning", "tbl_mv_src", valueColDef = "String") { (db, tbl) =>
       withMaterializedView(db, s"${tbl}_mv", s"SELECT key, value FROM `$db`.`$tbl`") { mv =>
-        eventuallyOnCloud {
-          val (rowCount, warnings) = captureWarnings(engineUtilsLogger)(readRowCount(db, mv))
-          assert(rowCount === 0)
-          assert(warnings.exists(_.contains(s"Unknown table engine for table $db.$mv")))
-        }
+        val (rowCount, warnings) = captureWarnings(engineUtilsLogger)(readRowCount(db, mv))
+        assert(rowCount === 0)
+        assert(warnings.exists(_.contains(s"Unknown table engine for table $db.$mv")))
       }
     }
   }
@@ -71,11 +55,9 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
   test("reading a table with a supported engine does not warn about unknown table engine") {
     withKVTable("db_read_warning", "tbl_supported_engine", valueColDef = "String") { (db, tbl) =>
       insertKV(db, tbl, 1 -> "a", 2 -> "b")
-      eventuallyOnCloud {
-        val (rowCount, warnings) = captureWarnings(engineUtilsLogger)(readRowCount(db, tbl))
-        assert(rowCount === 2)
-        assert(!warnings.exists(_.contains("Unknown table engine")))
-      }
+      val (rowCount, warnings) = captureWarnings(engineUtilsLogger)(readRowCount(db, tbl))
+      assert(rowCount === 2)
+      assert(!warnings.exists(_.contains("Unknown table engine")))
     }
   }
 
@@ -83,11 +65,9 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
     withKVTable("db_read_warning", "tbl_view_single_part_src", valueColDef = "String") { (db, tbl) =>
       insertKV(db, tbl, 1 -> "a")
       withView(db, s"${tbl}_v", s"SELECT key, value FROM `$db`.`$tbl`") { view =>
-        eventuallyOnCloud {
-          val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, view))
-          assert(rowCount === 1)
-          assert(warnings.exists(_.contains(singlePartitionWarning(db, view))))
-        }
+        val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, view))
+        assert(rowCount === 1)
+        assert(warnings.exists(_.contains(singlePartitionWarning(db, view))))
       }
     }
   }
@@ -95,27 +75,24 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
   test("reading an unpartitioned table warns about single partition read") {
     withKVTable("db_read_warning", "tbl_single_part", valueColDef = "String") { (db, tbl) =>
       insertKV(db, tbl, 1 -> "a", 2 -> "b")
-      eventuallyOnCloud {
-        val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, tbl))
-        assert(rowCount === 2)
-        assert(warnings.exists(_.contains(singlePartitionWarning(db, tbl))))
-      }
+      val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, tbl))
+      assert(rowCount === 2)
+      assert(warnings.exists(_.contains(singlePartitionWarning(db, tbl))))
     }
   }
 
   test("reading a table with multiple partitions does not warn about single partition read") {
     withSimpleTable("db_read_warning", "tbl_multi_part", writeData = true) { (db, tbl) =>
-      eventuallyOnCloud {
-        val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, tbl))
-        assert(rowCount === 2)
-        assert(!warnings.exists(_.contains("as a single partition")))
-      }
+      val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, tbl))
+      assert(rowCount === 2)
+      assert(!warnings.exists(_.contains("as a single partition")))
     }
   }
 
   /** Creates a ClickHouse view over `select` for the duration of `f`. */
   private def withView(db: String, view: String, select: String)(f: String => Unit): Unit = {
     runClickHouseSQL(s"CREATE VIEW `$db`.`$view` AS $select")
+    if (isCloud) Thread.sleep(1000)
     try f(view)
     finally runClickHouseSQL(s"DROP VIEW IF EXISTS `$db`.`$view`")
   }
@@ -123,6 +100,7 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
   /** Creates a ClickHouse materialized view over `select` for the duration of `f`. */
   private def withMaterializedView(db: String, mv: String, select: String)(f: String => Unit): Unit = {
     runClickHouseSQL(s"CREATE MATERIALIZED VIEW `$db`.`$mv` ENGINE = MergeTree() ORDER BY key AS $select")
+    if (isCloud) Thread.sleep(1000)
     try f(mv)
     finally runClickHouseSQL(s"DROP VIEW IF EXISTS `$db`.`$mv`")
   }
@@ -141,28 +119,4 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest {
 
   private def singlePartitionWarning(db: String, tbl: String): String =
     s"Reading $db.$tbl as a single partition"
-
-  /** Runs `f` and returns its result with the WARN messages the logger emitted while it ran. */
-  private def captureWarnings[A](loggerName: String)(f: => A): (A, Seq[String]) = {
-    val warnings = ArrayBuffer.empty[String]
-    val appender: AbstractAppender =
-      new AbstractAppender("read-warning-capture", null, null, false, Property.EMPTY_ARRAY) {
-        override def append(event: LogEvent): Unit =
-          if (event.getLevel == Level.WARN && event.getLoggerName == loggerName)
-            warnings += event.getMessage.getFormattedMessage
-      }
-    appender.start()
-    // attach to the nearest configured LoggerConfig: Logger.addAppender would register a permanent
-    // config for `loggerName` that black-holes its logging once the appender is removed
-    val loggerConfig = LogManager.getLogger(loggerName).asInstanceOf[org.apache.logging.log4j.core.Logger]
-      .getContext.getConfiguration.getLoggerConfig(loggerName)
-    loggerConfig.addAppender(appender, Level.WARN, null)
-    val result =
-      try f
-      finally {
-        loggerConfig.removeAppender(appender.getName)
-        appender.stop()
-      }
-    (result, warnings.toSeq)
-  }
 }

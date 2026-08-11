@@ -14,11 +14,8 @@
 
 package com.clickhouse.spark.read
 
+import com.clickhouse.spark.Log4j2CaptureHelper
 import com.clickhouse.spark.spec.{DistributedEngineSpec, NodeSpec, TableSpec}
-import org.apache.logging.log4j.{Level, LogManager}
-import org.apache.logging.log4j.core.LogEvent
-import org.apache.logging.log4j.core.appender.AbstractAppender
-import org.apache.logging.log4j.core.config.Property
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
   READ_DISTRIBUTED_CONVERT_LOCAL,
   READ_DISTRIBUTED_USE_CLUSTER_NODES
@@ -27,40 +24,15 @@ import org.apache.spark.sql.clickhouse.ReadOptions
 import org.scalatest.funsuite.AnyFunSuite
 
 import java.time.{LocalDateTime, ZoneId}
-import scala.collection.mutable.ArrayBuffer
 
-class ClickHouseBatchScanSuite extends AnyFunSuite {
+class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
 
   test("planning a single input partition warns about read performance") {
     val scan = new ClickHouseBatchScan(scanJob())
-    val (partitions, warnings) = captureWarnings(scan.inputPartitions)
+    val (partitions, warnings) =
+      captureWarnings(classOf[ClickHouseBatchScan].getName)(scan.inputPartitions)
     assert(partitions.length === 1)
     assert(warnings.exists(_.contains("Reading db.dist as a single partition")))
-  }
-
-  /** Runs `f` and returns its result with the WARN messages the scan logger emitted while it ran. */
-  private def captureWarnings[A](f: => A): (A, Seq[String]) = {
-    val loggerName = classOf[ClickHouseBatchScan].getName
-    val warnings = ArrayBuffer.empty[String]
-    val appender: AbstractAppender =
-      new AbstractAppender("batch-scan-warning-capture", null, null, false, Property.EMPTY_ARRAY) {
-        override def append(event: LogEvent): Unit =
-          if (event.getLevel == Level.WARN && event.getLoggerName == loggerName)
-            warnings += event.getMessage.getFormattedMessage
-      }
-    appender.start()
-    // attach to the nearest configured LoggerConfig: Logger.addAppender would register a permanent
-    // config for the scan logger that black-holes its logging once the appender is removed
-    val loggerConfig = LogManager.getLogger(loggerName).asInstanceOf[org.apache.logging.log4j.core.Logger]
-      .getContext.getConfiguration.getLoggerConfig(loggerName)
-    loggerConfig.addAppender(appender, Level.WARN, null)
-    val result =
-      try f
-      finally {
-        loggerConfig.removeAppender(appender.getName)
-        appender.stop()
-      }
-    (result, warnings.toSeq)
   }
 
   // a Distributed table scan without convertDistributedToLocal plans exactly one partition without any I/O
