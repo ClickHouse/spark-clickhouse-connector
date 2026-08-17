@@ -257,6 +257,11 @@ project(':clickhouse-core') {
         testFixturesRuntimeOnly "com.vladsch.flexmark:flexmark-all:$flexmark_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-scalatest_$scala_binary_version:$testcontainers_scala_version"
         testFixturesApi "com.dimafeng:testcontainers-scala-clickhouse_$scala_binary_version:$testcontainers_scala_version"
+        // log capture helpers compile against both logging implementations: this module's own tests
+        // use log4j 1.x, the spark modules log4j2; each consumer provides its own at runtime
+        testFixturesCompileOnly "org.slf4j:slf4j-log4j12:$slf4j_version"
+        // 2.17.2 = Spark 3.3's log4j2, the oldest supported; compiling against it links on every profile
+        testFixturesCompileOnly "org.apache.logging.log4j:log4j-core:2.17.2"
 
         testImplementation "org.slf4j:slf4j-log4j12:$slf4j_version"
     }

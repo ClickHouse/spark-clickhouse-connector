@@ -15,13 +15,11 @@
 package com.clickhouse.spark.client
 
 import com.clickhouse.client.ClickHouseProtocol.HTTP
+import com.clickhouse.spark.LogCaptureHelper
 import com.clickhouse.spark.spec.NodeSpec
-import org.apache.log4j.spi.LoggingEvent
-import org.apache.log4j.{AppenderSkeleton, Level, Logger}
 import org.scalatest.funsuite.AnyFunSuite
 
 import java.util
-import scala.collection.mutable.ArrayBuffer
 
 /**
  * Unit tests for [[NodeClient]] that do not require a running ClickHouse server. Building a
@@ -32,31 +30,10 @@ import scala.collection.mutable.ArrayBuffer
  * client in the first place is covered by `ClickHouseHelperSuite`. The validation happens while
  * `Client.build()` parses the config map, so no server is needed.
  */
-class NodeClientSuite extends AnyFunSuite {
+class NodeClientSuite extends AnyFunSuite with LogCaptureHelper {
 
   private val ConnectorLogger = "com.clickhouse.spark.client.NodeClient"
   private val ClientConfigLogger = "com.clickhouse.client.api.ClientConfigProperties"
-
-  /** Collects log4j events so we can inspect what was logged while building the client. */
-  private class CapturingAppender extends AppenderSkeleton {
-    val events: ArrayBuffer[LoggingEvent] = ArrayBuffer.empty[LoggingEvent]
-    override def append(event: LoggingEvent): Unit = events += event
-    override def close(): Unit = ()
-    override def requiresLayout(): Boolean = false
-  }
-
-  private def captureWarnings(loggerNames: String*)(build: => Unit): Seq[String] = {
-    val loggers = loggerNames.map(Logger.getLogger)
-    val appender = new CapturingAppender
-    val previousLevels = loggers.map(l => l -> l.getLevel)
-    loggers.foreach { l => l.setLevel(Level.WARN); l.addAppender(appender) }
-    try build
-    finally previousLevels.foreach { case (l, level) => l.removeAppender(appender); l.setLevel(level) }
-    appender.events
-      .filter(_.getLevel == Level.WARN)
-      .map(_.getRenderedMessage)
-      .toSeq
-  }
 
   /** Builds a NodeClient with the given options and returns the WARN messages it produced. */
   private def warningsForOptions(options: (String, String)*): Seq[String] = {
@@ -68,10 +45,11 @@ class NodeClientSuite extends AnyFunSuite {
       protocol = HTTP,
       options = optionMap
     )
-    captureWarnings(ConnectorLogger, ClientConfigLogger) {
+    val (_, warnings) = captureWarnings(ConnectorLogger, ClientConfigLogger) {
       val client = NodeClient(nodeSpec)
       client.close()
     }
+    warnings
   }
 
   private val UnknownKey = "definitely_not_a_ch_client_option"

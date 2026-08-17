@@ -191,43 +191,49 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
 
   private val queryTimeoutMs: Long = scanJob.readOptions.clientQueryTimeout
 
-  lazy val inputPartitions: Array[ClickHouseInputPartition] = scanJob.tableEngineSpec match {
-    case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
-      scanJob.cluster.get.shards.flatMap { shardSpec =>
-        Utils.tryWithResource(NodeClient(shardSpec.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-          queryPartitionSpec(local_db, local_table).map { partitionSpec =>
-            ClickHouseInputPartition(
-              scanJob.localTableSpec.get,
-              partitionSpec,
-              scanJob.readOptions.splitByPartitionId,
-              shardSpec // TODO pickup preferred
-            )
+  lazy val inputPartitions: Array[ClickHouseInputPartition] = {
+    val partitions = scanJob.tableEngineSpec match {
+      case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
+        scanJob.cluster.get.shards.flatMap { shardSpec =>
+          Utils.tryWithResource(NodeClient(shardSpec.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
+            queryPartitionSpec(local_db, local_table).map { partitionSpec =>
+              ClickHouseInputPartition(
+                scanJob.localTableSpec.get,
+                partitionSpec,
+                scanJob.readOptions.splitByPartitionId,
+                shardSpec // TODO pickup preferred
+              )
+            }
           }
         }
-      }
-    case _: DistributedEngineSpec if scanJob.readOptions.useClusterNodesForDistributed =>
-      throw CHClientException(
-        s"${READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
-      )
-    case _: DistributedEngineSpec =>
-      // we can not collect all partitions from single node, thus should treat table as no partitioned table
-      Array(ClickHouseInputPartition(
-        scanJob.tableSpec,
-        NoPartitionSpec,
-        scanJob.readOptions.splitByPartitionId,
-        scanJob.node
-      ))
-    case _: TableEngineSpec =>
-      Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-        queryPartitionSpec(database, table).map { partitionSpec =>
-          ClickHouseInputPartition(
-            scanJob.tableSpec,
-            partitionSpec,
-            scanJob.readOptions.splitByPartitionId,
-            scanJob.node // TODO pickup preferred
-          )
-        }
-      }.toArray
+      case _: DistributedEngineSpec if scanJob.readOptions.useClusterNodesForDistributed =>
+        throw CHClientException(
+          s"${READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
+        )
+      case _: DistributedEngineSpec =>
+        // we can not collect all partitions from single node, thus should treat table as no partitioned table
+        Array(ClickHouseInputPartition(
+          scanJob.tableSpec,
+          NoPartitionSpec,
+          scanJob.readOptions.splitByPartitionId,
+          scanJob.node
+        ))
+      case _: TableEngineSpec =>
+        Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
+          queryPartitionSpec(database, table).map { partitionSpec =>
+            ClickHouseInputPartition(
+              scanJob.tableSpec,
+              partitionSpec,
+              scanJob.readOptions.splitByPartitionId,
+              scanJob.node // TODO pickup preferred
+            )
+          }
+        }.toArray
+    }
+    if (partitions.length == 1) {
+      log.warn(s"Reading $database.$table as a single partition, which may impact read performance")
+    }
+    partitions
   }
 
   override def toBatch: Batch = this
