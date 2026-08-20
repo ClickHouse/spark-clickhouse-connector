@@ -96,4 +96,41 @@ class ScarfTelemetrySuite extends AnyFunSuite {
     } finally
       server.stop(0)
   }
+
+  test("reportJobRun returns immediately even when the endpoint hangs for 30 seconds") {
+    val requestReceived = new CountDownLatch(1)
+    val releaseResponse = new CountDownLatch(1)
+
+    val server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
+    server.createContext(
+      "/spark-connector",
+      new HttpHandler {
+        override def handle(exchange: HttpExchange): Unit = {
+          requestReceived.countDown()
+          releaseResponse.await(30, TimeUnit.SECONDS) // hang the response for 30 seconds
+          exchange.sendResponseHeaders(200, -1)
+          exchange.close()
+        }
+      }
+    )
+    server.start()
+    try {
+      val endpoint = s"http://127.0.0.1:${server.getAddress.getPort}/spark-connector"
+
+      // 10 events against the hanging endpoint also fill the send queue and hit the discard
+      // path; a blocking implementation would need the 3s read timeout per event (30s total)
+      val startNanos = System.nanoTime()
+      (1 to 10).foreach { _ =>
+        ScarfTelemetry.reportJobRun(ScarfTelemetry.EVENT_READ, "3.5.4", enabledByConf = true, endpoint, noEnv)
+      }
+      val elapsedMs = (System.nanoTime() - startNanos) / 1000000L
+
+      assert(elapsedMs < 2000, s"reportJobRun blocked the caller for ${elapsedMs}ms")
+      // the events really were sent to the hanging endpoint, not skipped
+      assert(requestReceived.await(10, TimeUnit.SECONDS))
+    } finally {
+      releaseResponse.countDown() // unblock the handler so shutdown does not wait 30 seconds
+      server.stop(0)
+    }
+  }
 }
