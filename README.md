@@ -11,6 +11,14 @@ Build on Apache Spark DataSourceV2 API.
 
 See the [documentation](https://clickhouse.com/docs/en/integrations/apache-spark) for how to use this connector.
 
+## Usage Telemetry
+
+The connector sends one anonymous usage event to ClickHouse's telemetry endpoint ([Scarf](https://about.scarf.sh))
+each time a Spark job reads from or writes to ClickHouse. The event contains only the connector, Spark, Scala,
+Java, and OS versions — never data, table names, or other identifying information. To opt out, set
+`spark.clickhouse.telemetry.enabled=false` in your Spark configuration, or set the `SCARF_NO_ANALYTICS=true`
+or `DO_NOT_TRACK=true` environment variable on the Spark driver.
+
 ## Requirements
 
 - Java 8 or 17

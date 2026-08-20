@@ -278,4 +278,15 @@ object ClickHouseSQLConf {
       .checkValue(_ > 0, "`spark.clickhouse.client.queryTimeout` should be positive.")
       .createWithDefaultString("60s")
 
+  val TELEMETRY_ENABLED: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.telemetry.enabled")
+      .doc("Whether to send an anonymous usage event to ClickHouse's telemetry endpoint (Scarf) " +
+        "when a Spark job reads from or writes to ClickHouse. The event contains only the " +
+        "connector, Spark, Scala, Java, and OS versions; it never includes data, table names, " +
+        "or other identifying information. Telemetry is also disabled when the `SCARF_NO_ANALYTICS` " +
+        "or `DO_NOT_TRACK` environment variable is set to `true` or `1`.")
+      .version("0.10.1")
+      .booleanConf
+      .createWithDefault(true)
+
 }
