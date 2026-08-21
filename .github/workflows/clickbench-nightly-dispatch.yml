@@ -1,0 +1,44 @@
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+# Nightly dispatcher for the ClickBench load-test benchmark.
+#
+# GitHub only evaluates `schedule` triggers on the default branch, and the
+# benchmark workflow deliberately lives on the long-running
+# `clickbench-load-test` branch (its CI OIDC role trust is pinned to that
+# ref). This shim is the only benchmark piece that needs to live on the
+# default branch: it fires a workflow_dispatch at the branch workflow every
+# night and does nothing else. Delete it if/when the benchmark workflow
+# merges to the default branch and can carry its own schedule.
+
+name: "ClickBench nightly dispatch"
+
+on:
+  schedule:
+    - cron: '0 2 * * *'   # 02:00 UTC nightly
+  workflow_dispatch: {}    # manual test of the dispatcher itself
+
+permissions:
+  actions: write
+
+jobs:
+  dispatch:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Dispatch clickbench-load-test on its branch
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run clickbench-load-test.yml \
+            --repo "${{ github.repository }}" \
+            --ref clickbench-load-test
