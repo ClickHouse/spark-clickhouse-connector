@@ -30,6 +30,10 @@ private[spark] object ScarfTelemetry extends Logging {
   private val DEFAULT_ENDPOINT = "https://clickhouse.gateway.scarf.sh/spark-connector"
   private val TIMEOUT_MS = 3000
 
+  // `reportJobRun` defaults re-read these on every call, so tests can redirect the production call sites
+  @volatile private[spark] var defaultEndpoint: String = DEFAULT_ENDPOINT
+  @volatile private[spark] var defaultEnv: String => Option[String] = key => sys.env.get(key)
+
   // single daemon thread; a full queue silently drops events so a slow or unreachable
   // endpoint never blocks the driver nor piles up work
   private lazy val executor: ThreadPoolExecutor = {
@@ -67,22 +71,23 @@ private[spark] object ScarfTelemetry extends Logging {
   def reportJobRun(
     event: => ScarfTelemetryEvent,
     enabledByConf: => Boolean,
-    endpoint: String = DEFAULT_ENDPOINT,
-    env: String => Option[String] = k => sys.env.get(k)
+    endpoint: String = defaultEndpoint,
+    env: String => Option[String] = defaultEnv
   ): Unit =
     try
       if (enabledByConf && !disabledByEnv(env)) {
-        val url = buildUrl(event, endpoint)
-        executor.execute(() => send(url))
+        val builtEvent = event
+        executor.execute(() => send(builtEvent, endpoint))
       }
     catch {
-      // Throwable, not NonFatal: a LinkageError (e.g. from runtime-detection class probing) must not reach the caller
-      case e: Throwable => log.debug(s"Skipped Scarf telemetry event: ${e.getMessage}")
+      // Throwable, not NonFatal: a LinkageError while building the event must not reach the caller
+      case e: Throwable => log.debug(s"Skipped Scarf telemetry event: $e")
     }
 
-  private def send(url: String): Unit =
+  // builds the URL here too: its query params include the runtime detection, which stays off the caller thread
+  private def send(event: ScarfTelemetryEvent, endpoint: String): Unit =
     try {
-      val connection = new URL(url).openConnection().asInstanceOf[HttpURLConnection]
+      val connection = new URL(buildUrl(event, endpoint)).openConnection().asInstanceOf[HttpURLConnection]
       connection.setConnectTimeout(TIMEOUT_MS)
       connection.setReadTimeout(TIMEOUT_MS)
       connection.setRequestMethod("GET")
@@ -93,6 +98,9 @@ private[spark] object ScarfTelemetry extends Logging {
       try connection.getResponseCode
       finally connection.disconnect()
     } catch {
-      case e: Throwable => log.debug(s"Failed to send Scarf telemetry event: ${e.getMessage}")
+      case e: InterruptedException =>
+        Thread.currentThread().interrupt()
+        log.debug(s"Failed to send Scarf telemetry event: $e")
+      case e: Throwable => log.debug(s"Failed to send Scarf telemetry event: $e")
     }
 }
