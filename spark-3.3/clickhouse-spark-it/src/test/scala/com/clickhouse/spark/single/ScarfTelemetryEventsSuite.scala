@@ -108,7 +108,7 @@ abstract class ScarfTelemetryEventsSuite extends SparkClickHouseSingleTest {
       assert(readEvent.convertLocal.toString === spark.conf.get("spark.clickhouse.read.distributed.convertLocal"))
       assert(writeEvent.convertLocal.toString === spark.conf.get("spark.clickhouse.write.distributed.convertLocal"))
 
-      // and over the wire: both real events land with the real metadata and share one run_id
+      // and over the wire: both real events land with the real metadata
       val queries = new ConcurrentLinkedQueue[String]()
       val latch = new CountDownLatch(2)
       val server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
@@ -140,7 +140,6 @@ abstract class ScarfTelemetryEventsSuite extends SparkClickHouseSingleTest {
           assert(params("deployment") === expectedDeployment)
           assert(params("spark_version") === SPARK_VERSION)
         }
-        assert(paramMaps.map(_("run_id")).toSet.size === 1)
       } finally
         server.stop(0)
     }

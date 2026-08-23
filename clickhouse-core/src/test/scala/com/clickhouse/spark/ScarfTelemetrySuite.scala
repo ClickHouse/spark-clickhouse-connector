@@ -86,7 +86,6 @@ class ScarfTelemetrySuite extends AnyFunSuite {
     assert(params("event") === "read")
     assert(params("spark_version") === "3.5.4")
     assert(params("scala_version") === scala.util.Properties.versionNumberString)
-    assert(params("run_id").length === 36)
     assert(params("deployment") === "self_managed")
     assert(params("format") === "json")
     assert(params("engine") === "MergeTree")
@@ -103,7 +102,6 @@ class ScarfTelemetrySuite extends AnyFunSuite {
         "java_version",
         "os",
         "arch",
-        "run_id",
         "deployment",
         "format",
         "engine",
@@ -119,12 +117,6 @@ class ScarfTelemetrySuite extends AnyFunSuite {
       ScarfTelemetry.buildUrl(minimal, "https://example.com/x").split('?')(1).split('&').map(_.split("=", 2)(0)).toSet
     assert(!minimalParams.contains("app_name_hash"))
     assert(!minimalParams.contains("table_id"))
-  }
-
-  test("run_id is stable within the JVM") {
-    val params1 = sampleEvent().toQueryParams.toMap
-    val params2 = sampleEvent(event = ScarfTelemetryEvent.EVENT_WRITE).toQueryParams.toMap
-    assert(params1("run_id") === params2("run_id"))
   }
 
   test("reportJobRun sends a GET only when enabled by conf and env") {

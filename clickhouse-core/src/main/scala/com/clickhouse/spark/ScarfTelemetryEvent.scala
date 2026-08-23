@@ -18,7 +18,6 @@ import com.clickhouse.client.api.Client
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.util.UUID
 
 /**
  * The metadata carried by one Scarf usage event: what happened (read/write), the versions
@@ -47,7 +46,6 @@ case class ScarfTelemetryEvent(
       "java_version" -> sys.props.getOrElse("java.version", "unknown"),
       "os" -> sys.props.getOrElse("os.name", "unknown"),
       "arch" -> sys.props.getOrElse("os.arch", "unknown"),
-      "run_id" -> runId,
       "deployment" -> deployment,
       "format" -> format,
       "engine" -> engine,
@@ -67,9 +65,6 @@ object ScarfTelemetryEvent {
   // tables in legacy `Ordinary` databases carry the zero UUID, which identifies nothing
   private val ZERO_UUID = "00000000-0000-0000-0000-000000000000"
   private val CLOUD_HOST_SUFFIX = ".clickhouse.cloud"
-
-  /** One random ID per driver JVM, correlating the events of a single run; never persisted. */
-  private lazy val runId: String = UUID.randomUUID().toString
 
   // `Implementation-Version` is `<spark>_<scala>_<connector>`; it and `getPackage` itself are absent on class dirs
   private[spark] lazy val connectorVersion: String =

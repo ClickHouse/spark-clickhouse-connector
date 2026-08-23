@@ -16,7 +16,7 @@ See the [documentation](https://clickhouse.com/docs/en/integrations/apache-spark
 The connector sends one anonymous usage event to ClickHouse's telemetry endpoint ([Scarf](https://about.scarf.sh))
 each time a Spark job reads from or writes to ClickHouse. The event carries only versions (connector, Spark,
 Scala, Java, ClickHouse client, OS), coarse runtime facts (platform, table engine, wire format,
-ClickHouse Cloud vs self-managed), a random per-run ID, a one-way hash of the Spark application name
+ClickHouse Cloud vs self-managed), a one-way hash of the Spark application name
 (generic names such as `pyspark-shell` hash to shared values), and a truncated random table UUID — never data,
 names, hostnames, or credentials. To opt out, set `spark.clickhouse.telemetry.enabled=false` in your Spark
 configuration, or set the `SCARF_NO_ANALYTICS=true` or `DO_NOT_TRACK=true` environment variable on the Spark
