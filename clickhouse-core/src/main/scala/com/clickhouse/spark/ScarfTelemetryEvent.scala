@@ -71,15 +71,15 @@ object ScarfTelemetryEvent {
   /** One random ID per driver JVM, correlating the events of a single run; never persisted. */
   private lazy val runId: String = UUID.randomUUID().toString
 
-  // `Implementation-Version` is `<spark>_<scala>_<connector>`, absent when running from class dirs
+  // `Implementation-Version` is `<spark>_<scala>_<connector>`; it and `getPackage` itself are absent on class dirs
   private[spark] lazy val connectorVersion: String =
-    Option(getClass.getPackage.getImplementationVersion)
+    Option(getClass.getPackage).flatMap(p => Option(p.getImplementationVersion))
       .map(_.split("_"))
       .collect { case Array(_, _, connector, _*) => connector }
       .getOrElse("unknown")
 
   private lazy val clientVersion: String =
-    Option(classOf[Client].getPackage.getImplementationVersion).getOrElse("unknown")
+    Option(classOf[Client].getPackage).flatMap(p => Option(p.getImplementationVersion)).getOrElse("unknown")
 
   // detection walks the stack and class loaders; do it once per JVM
   private lazy val runtime: Option[String] = Utils.RuntimeDetector.detectRuntime().map(_.toLowerCase)

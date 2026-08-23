@@ -206,4 +206,26 @@ class ScarfTelemetrySuite extends AnyFunSuite {
       server.stop(0)
     }
   }
+
+  test("reportJobRun swallows exceptions thrown while resolving the conf") {
+    var evaluated = false
+    ScarfTelemetry.reportJobRun(
+      sampleEvent(),
+      enabledByConf = { evaluated = true; throw new IllegalArgumentException("not a boolean") },
+      "http://127.0.0.1:1/spark-connector",
+      noEnv
+    )
+    assert(evaluated)
+  }
+
+  test("reportJobRun swallows LinkageErrors raised while building the event") {
+    var evaluated = false
+    ScarfTelemetry.reportJobRun(
+      { evaluated = true; throw new NoClassDefFoundError("com/example/PlatformProbeParent") },
+      enabledByConf = true,
+      "http://127.0.0.1:1/spark-connector",
+      noEnv
+    )
+    assert(evaluated)
+  }
 }

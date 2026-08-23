@@ -16,7 +16,6 @@ package com.clickhouse.spark
 
 import java.net.{HttpURLConnection, URL, URLEncoder}
 import java.util.concurrent.{LinkedBlockingQueue, ThreadFactory, ThreadPoolExecutor, TimeUnit}
-import scala.util.control.NonFatal
 
 /**
  * Delivers [[ScarfTelemetryEvent]]s to ClickHouse's Scarf (https://about.scarf.sh) gateway:
@@ -64,10 +63,10 @@ private[spark] object ScarfTelemetry extends Logging {
       .map { case (key, value) => s"$key=${URLEncoder.encode(value, "UTF-8")}" }
       .mkString(s"$endpoint?", "&", "")
 
-  /** Fire-and-forget; never throws. `event` is by-name so no metadata is built when disabled. */
+  /** Fire-and-forget; never throws. `event` and `enabledByConf` are by-name so they only run inside the guard. */
   def reportJobRun(
     event: => ScarfTelemetryEvent,
-    enabledByConf: Boolean,
+    enabledByConf: => Boolean,
     endpoint: String = DEFAULT_ENDPOINT,
     env: String => Option[String] = k => sys.env.get(k)
   ): Unit =
@@ -77,7 +76,8 @@ private[spark] object ScarfTelemetry extends Logging {
         executor.execute(() => send(url))
       }
     catch {
-      case NonFatal(e) => log.debug(s"Skipped Scarf telemetry event: ${e.getMessage}")
+      // Throwable, not NonFatal: a LinkageError (e.g. from runtime-detection class probing) must not reach the caller
+      case e: Throwable => log.debug(s"Skipped Scarf telemetry event: ${e.getMessage}")
     }
 
   private def send(url: String): Unit =
@@ -93,6 +93,6 @@ private[spark] object ScarfTelemetry extends Logging {
       try connection.getResponseCode
       finally connection.disconnect()
     } catch {
-      case NonFatal(e) => log.debug(s"Failed to send Scarf telemetry event: ${e.getMessage}")
+      case e: Throwable => log.debug(s"Failed to send Scarf telemetry event: ${e.getMessage}")
     }
 }
