@@ -12,27 +12,18 @@
  * limitations under the License.
  */
 
+// under `com.clickhouse.spark` (unlike the sibling suites) to reach `private[spark]` ScarfTelemetry
 package com.clickhouse.spark.single
 
-import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
-import com.clickhouse.spark.client.NodeClient
-import com.clickhouse.spark.read.ScanJobDescription
-import com.clickhouse.spark.write.WriteJobDescription
-import com.clickhouse.spark.{ClickHouseCatalog, ClickHouseTable, ScarfTelemetry, ScarfTelemetryEvents, Utils}
-import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
+import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn, ScarfTelemetryCapture}
+import com.clickhouse.spark.{ScarfTelemetry, ScarfTelemetryEvent}
 import org.apache.spark.SPARK_VERSION
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.SEND_ANONYMOUS_USAGE_STATS
 import org.apache.spark.sql.clickhouse.single.SparkClickHouseSingleTest
-import org.apache.spark.sql.clickhouse.{ReadOptions, WriteOptions}
-import org.apache.spark.sql.connector.catalog.Identifier
-import org.apache.spark.sql.types.StructType
-import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.scalatest.tags.Cloud
 
-import java.net.InetSocketAddress
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
-import java.util.UUID
-import java.util.concurrent.{ConcurrentLinkedQueue, CountDownLatch, TimeUnit}
 
 @Cloud
 class ClickHouseCloudScarfTelemetryEventsSuite extends ScarfTelemetryEventsSuite with ClickHouseCloudMixIn
@@ -49,108 +40,96 @@ abstract class ScarfTelemetryEventsSuite extends SparkClickHouseSingleTest {
 
   private def expectedTableId(uuid: String): String = uuid.toLowerCase.replace("-", "").take(16)
 
-  test("read and write events carry the actual job metadata") {
-    withSimpleTable("scarf_tel_db", "scarf_tel_tbl", writeData = true) { (db, tbl) =>
-      spark.sql(s"SELECT * FROM `$db`.`$tbl`").collect() // a real read through the connector
-
-      val table = loadClickHouseTable(db, tbl)
-
-      // ground truth fetched from the live server, independently of the catalog metadata
-      val row = Utils.tryWithResource(NodeClient(table.node)) { client =>
-        client.syncQueryAndCheckOutputJSONEachRow(
-          s"SELECT uuid, engine FROM system.tables WHERE database = '$db' AND name = '$tbl'"
-        ).records.head
-      }
-      val (uuid, engine) = (row.get("uuid").asText, row.get("engine").asText)
-      assert(table.spec.uuid === uuid)
-      val expectedDeployment = if (isCloud) "cloud" else "self_managed"
-
-      val readEvent = ScarfTelemetryEvents.readEvent(ScanJobDescription(
-        node = table.node,
-        tz = table.tz,
-        tableSpec = table.spec,
-        tableEngineSpec = table.engineSpec,
-        cluster = table.cluster,
-        localTableSpec = table.localTableSpec,
-        localTableEngineSpec = table.localTableEngineSpec,
-        readOptions = new ReadOptions(java.util.Collections.emptyMap())
-      ))
-      val writeEvent = ScarfTelemetryEvents.writeEvent(WriteJobDescription(
-        queryId = UUID.randomUUID().toString,
-        tableSchema = table.schema,
-        metadataSchema = new StructType(),
-        dataSetSchema = table.schema,
-        node = table.node,
-        tz = table.tz,
-        tableSpec = table.spec,
-        tableEngineSpec = table.engineSpec,
-        cluster = table.cluster,
-        localTableSpec = table.localTableSpec,
-        localTableEngineSpec = table.localTableEngineSpec,
-        shardingKey = table.shardingKey,
-        partitionKey = table.partitionKey,
-        sortingKey = table.sortingKey,
-        writeOptions = new WriteOptions(java.util.Collections.emptyMap()),
-        writeSettings = Map.empty
-      ))
-
-      assert(readEvent.event === "read")
-      assert(writeEvent.event === "write")
-      Seq(readEvent, writeEvent).foreach { event =>
-        assert(event.sparkVersion === SPARK_VERSION)
-        assert(event.appNameHash === Some(expectedSha256Hex16(spark.sparkContext.appName)))
-        assert(event.tableId === Some(expectedTableId(uuid)))
-        assert(event.engine === engine)
-        assert(event.deployment === expectedDeployment)
-      }
-      assert(readEvent.format === spark.conf.get("spark.clickhouse.read.format"))
-      assert(writeEvent.format === spark.conf.get("spark.clickhouse.write.format"))
-      assert(readEvent.convertLocal.toString === spark.conf.get("spark.clickhouse.read.distributed.convertLocal"))
-      assert(writeEvent.convertLocal.toString === spark.conf.get("spark.clickhouse.write.distributed.convertLocal"))
-
-      // and over the wire: both real events land with the real metadata
-      val queries = new ConcurrentLinkedQueue[String]()
-      val latch = new CountDownLatch(2)
-      val server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
-      server.createContext(
-        "/spark-connector",
-        new HttpHandler {
-          override def handle(exchange: HttpExchange): Unit = {
-            queries.add(exchange.getRequestURI.getQuery)
-            exchange.sendResponseHeaders(200, -1)
-            exchange.close()
-            latch.countDown()
-          }
-        }
-      )
-      server.start()
-      try {
-        val endpoint = s"http://127.0.0.1:${server.getAddress.getPort}/spark-connector"
-        ScarfTelemetry.reportJobRun(readEvent, enabledByConf = true, endpoint, _ => None)
-        ScarfTelemetry.reportJobRun(writeEvent, enabledByConf = true, endpoint, _ => None)
-        assert(latch.await(30, TimeUnit.SECONDS))
-
-        val paramMaps = queries.toArray(Array.empty[String]).toSeq
-          .map(_.split('&').map(_.split("=", 2)).map(kv => kv(0) -> kv(1)).toMap)
-        assert(paramMaps.map(_("event")).toSet === Set("read", "write"))
-        paramMaps.foreach { params =>
-          assert(params("table_id") === expectedTableId(uuid))
-          assert(params("app_name_hash") === expectedSha256Hex16(spark.sparkContext.appName))
-          assert(params("engine") === engine)
-          assert(params("deployment") === expectedDeployment)
-          assert(params("spark_version") === SPARK_VERSION)
-        }
-      } finally
-        server.stop(0)
+  /** Routes the production call sites' telemetry to `capture`, bypassing the test JVM's `SCARF_NO_ANALYTICS`. */
+  private def withCapturedTelemetry(capture: ScarfTelemetryCapture)(f: => Unit): Unit = {
+    val (endpointBefore, envBefore) = (ScarfTelemetry.defaultEndpoint, ScarfTelemetry.defaultEnv)
+    ScarfTelemetry.defaultEndpoint = capture.endpoint
+    ScarfTelemetry.defaultEnv = _ => None
+    try f
+    finally {
+      // reverse order of the setup: re-arm the env opt-out before the endpoint goes back to production
+      ScarfTelemetry.defaultEnv = envBefore
+      ScarfTelemetry.defaultEndpoint = endpointBefore
     }
   }
 
-  /** Loads the table through the production catalog path: `initialize` + `loadTable`. */
-  private def loadClickHouseTable(db: String, tbl: String): ClickHouseTable = {
-    val catalogOptions = new java.util.HashMap[String, String]()
-    cmdRunnerOptions.foreach { case (key, value) => catalogOptions.put(key, value) }
-    val catalog = new ClickHouseCatalog()
-    catalog.initialize("clickhouse", new CaseInsensitiveStringMap(catalogOptions))
-    catalog.loadTable(Identifier.of(Array(db), tbl)).asInstanceOf[ClickHouseTable]
+  /** The telemetry thread is FIFO: once the `done` event arrives, everything real jobs enqueued has arrived too. */
+  private def reportDone(): Unit =
+    ScarfTelemetry.reportJobRun(
+      ScarfTelemetryEvent(
+        event = "done",
+        sparkVersion = SPARK_VERSION,
+        appNameHash = None,
+        tableId = None,
+        deployment = "self_managed",
+        format = "json",
+        engine = "MergeTree",
+        convertLocal = false
+      ),
+      enabledByConf = true
+    )
+
+  /** Ground truth fetched from the live server, independently of the catalog metadata. */
+  private def tableUuidAndEngine(db: String, tbl: String): (String, String) = {
+    var uuidAndEngine: (String, String) = null
+    withNodeClient() { client =>
+      val row = client.syncQueryAndCheckOutputJSONEachRow(
+        s"SELECT uuid, engine FROM system.tables WHERE database = '$db' AND name = '$tbl'"
+      ).records.head
+      uuidAndEngine = (row.get("uuid").asText, row.get("engine").asText)
+    }
+    uuidAndEngine
+  }
+
+  test("a real write and a real read job each send one event carrying the job's metadata") {
+    ScarfTelemetryCapture.withCapture { capture =>
+      withCapturedTelemetry(capture) {
+        withSimpleTable("scarf_tel_db", "scarf_tel_tbl", writeData = true) { (db, tbl) => // a real write
+          spark.sql(s"SELECT * FROM `$db`.`$tbl`").collect() // a real read
+          reportDone()
+
+          val events = capture.awaitEvents(3)
+          assert(events.map(_.params("event")) === Seq("write", "read", "done"))
+
+          val (uuid, engine) = tableUuidAndEngine(db, tbl)
+          val writeParams = events(0).params
+          val readParams = events(1).params
+          Seq(writeParams, readParams).foreach { params =>
+            assert(params("spark_version") === SPARK_VERSION)
+            assert(params("app_name_hash") === expectedSha256Hex16(spark.sparkContext.appName))
+            assert(params("table_id") === expectedTableId(uuid))
+            assert(params("engine") === engine)
+            assert(params("deployment") === (if (isCloud) "cloud" else "self_managed"))
+            // this suite runs against the fat runtime jar: versions must survive its composite
+            // `<spark>_<scala>_<connector>` manifest, so no `_` may leak through
+            assert(params("version") !== "unknown")
+            assert(!params("version").contains("_"))
+            assert(!params("client_version").contains("_"))
+            assert(params("client_version").matches("""\d+\.\d+.*"""))
+          }
+          assert(readParams("format") === spark.conf.get("spark.clickhouse.read.format"))
+          assert(writeParams("format") === spark.conf.get("spark.clickhouse.write.format"))
+          assert(readParams("convert_local") === spark.conf.get("spark.clickhouse.read.distributed.convertLocal"))
+          assert(writeParams("convert_local") === spark.conf.get("spark.clickhouse.write.distributed.convertLocal"))
+        }
+      }
+    }
+  }
+
+  test("spark.clickhouse.sendAnonymousUsageStats=false suppresses events from real jobs") {
+    ScarfTelemetryCapture.withCapture { capture =>
+      withCapturedTelemetry(capture) {
+        spark.conf.set(SEND_ANONYMOUS_USAGE_STATS.key, "false")
+        try
+          withSimpleTable("scarf_tel_db", "scarf_tel_opt_out", writeData = true) { (db, tbl) =>
+            spark.sql(s"SELECT * FROM `$db`.`$tbl`").collect()
+          }
+        finally spark.conf.unset(SEND_ANONYMOUS_USAGE_STATS.key)
+        reportDone()
+
+        val events = capture.awaitEvents(1)
+        assert(events.map(_.params("event")) === Seq("done"))
+      }
+    }
   }
 }

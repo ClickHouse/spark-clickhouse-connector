@@ -14,11 +14,11 @@
 
 package com.clickhouse.spark
 
+import com.clickhouse.spark.base.ScarfTelemetryCapture
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
 import org.scalatest.funsuite.AnyFunSuite
 
 import java.net.InetSocketAddress
-import java.util.concurrent.atomic.AtomicInteger
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
 class ScarfTelemetrySuite extends AnyFunSuite {
@@ -79,6 +79,20 @@ class ScarfTelemetrySuite extends AnyFunSuite {
     assert(ScarfTelemetryEvent.deployment(null) === "self_managed")
   }
 
+  test("parseConnectorVersion - composite runtime-jar version yields the connector part") {
+    assert(ScarfTelemetryEvent.parseConnectorVersion("3.5_2.13_0.10.0") === "0.10.0")
+    assert(ScarfTelemetryEvent.parseConnectorVersion("4.0_2.13_0.10.1-SNAPSHOT") === "0.10.1-SNAPSHOT")
+  }
+
+  test("parseConnectorVersion - plain core-jar version is kept as is") {
+    assert(ScarfTelemetryEvent.parseConnectorVersion("0.10.1") === "0.10.1")
+    assert(ScarfTelemetryEvent.parseConnectorVersion("0.10.1-SNAPSHOT") === "0.10.1-SNAPSHOT")
+  }
+
+  test("clientVersion is the client-v2 runtime version") {
+    assert(ScarfTelemetryEvent.clientVersion.matches("""\d+\.\d+\.\d+.*"""))
+  }
+
   test("buildUrl carries the expected params and omits absent ones") {
     val url = ScarfTelemetry.buildUrl(sampleEvent(), "https://example.com/spark-connector")
     assert(url.startsWith("https://example.com/spark-connector?"))
@@ -120,46 +134,41 @@ class ScarfTelemetrySuite extends AnyFunSuite {
   }
 
   test("reportJobRun sends a GET only when enabled by conf and env") {
-    val requestCount = new AtomicInteger(0)
-    val latch = new CountDownLatch(1)
-    @volatile var query: String = null
-    @volatile var userAgent: String = null
-
-    val server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
-    server.createContext(
-      "/spark-connector",
-      new HttpHandler {
-        override def handle(exchange: HttpExchange): Unit = {
-          requestCount.incrementAndGet()
-          query = exchange.getRequestURI.getQuery
-          userAgent = exchange.getRequestHeaders.getFirst("User-Agent")
-          exchange.sendResponseHeaders(200, -1)
-          exchange.close()
-          latch.countDown()
-        }
-      }
-    )
-    server.start()
-    try {
-      val endpoint = s"http://127.0.0.1:${server.getAddress.getPort}/spark-connector"
+    ScarfTelemetryCapture.withCapture { capture =>
       // dropped: disabled by conf, then disabled by env
-      ScarfTelemetry.reportJobRun(sampleEvent(), enabledByConf = false, endpoint, noEnv)
-      ScarfTelemetry.reportJobRun(sampleEvent(), enabledByConf = true, endpoint, Map("DO_NOT_TRACK" -> "1").get)
+      ScarfTelemetry.reportJobRun(sampleEvent(), enabledByConf = false, capture.endpoint, noEnv)
+      ScarfTelemetry.reportJobRun(sampleEvent(), enabledByConf = true, capture.endpoint, Map("DO_NOT_TRACK" -> "1").get)
       // sent; the telemetry thread is FIFO, so had either dropped event been enqueued it would arrive first
       ScarfTelemetry.reportJobRun(
         sampleEvent(event = ScarfTelemetryEvent.EVENT_WRITE, sparkVersion = "4.0.1"),
         enabledByConf = true,
-        endpoint,
+        capture.endpoint,
         noEnv
       )
 
-      assert(latch.await(30, TimeUnit.SECONDS))
-      assert(requestCount.get === 1)
-      assert(query.contains("event=write"))
-      assert(query.contains("spark_version=4.0.1"))
-      assert(userAgent.startsWith("spark-clickhouse-connector/"))
-    } finally
-      server.stop(0)
+      val events = capture.awaitEvents(1)
+      assert(events.size === 1)
+      assert(events.head.params("event") === "write")
+      assert(events.head.params("spark_version") === "4.0.1")
+      assert(events.head.userAgent.startsWith("spark-clickhouse-connector/"))
+    }
+  }
+
+  test("reportJobRun resolves the default endpoint and env at call time") {
+    ScarfTelemetryCapture.withCapture { capture =>
+      val (endpointBefore, envBefore) = (ScarfTelemetry.defaultEndpoint, ScarfTelemetry.defaultEnv)
+      ScarfTelemetry.defaultEndpoint = capture.endpoint
+      ScarfTelemetry.defaultEnv = noEnv
+      try ScarfTelemetry.reportJobRun(sampleEvent(), enabledByConf = true)
+      finally {
+        ScarfTelemetry.defaultEnv = envBefore
+        ScarfTelemetry.defaultEndpoint = endpointBefore
+      }
+
+      val events = capture.awaitEvents(1)
+      assert(events.size === 1)
+      assert(events.head.params("event") === "read")
+    }
   }
 
   test("reportJobRun returns immediately even when the endpoint hangs for 30 seconds") {
