@@ -66,15 +66,23 @@ object ScarfTelemetryEvent {
   private val ZERO_UUID = "00000000-0000-0000-0000-000000000000"
   private val CLOUD_HOST_SUFFIX = ".clickhouse.cloud"
 
-  // `Implementation-Version` is `<spark>_<scala>_<connector>`; it and `getPackage` itself are absent on class dirs
+  // `getPackage` and `Implementation-Version` are absent on class dirs
   private[spark] lazy val connectorVersion: String =
     Option(getClass.getPackage).flatMap(p => Option(p.getImplementationVersion))
-      .map(_.split("_"))
-      .collect { case Array(_, _, connector, _*) => connector }
+      .map(parseConnectorVersion)
       .getOrElse("unknown")
 
-  private lazy val clientVersion: String =
-    Option(classOf[Client].getPackage).flatMap(p => Option(p.getImplementationVersion)).getOrElse("unknown")
+  /** `Implementation-Version` is `<spark>_<scala>_<connector>` on the runtime jar, plain on the core jar. */
+  private[spark] def parseConnectorVersion(implementationVersion: String): String =
+    implementationVersion.split("_") match {
+      case Array(_, _, connector, _*) => connector
+      case _ => implementationVersion
+    }
+
+  // from the client's runtime version field, not the manifest: in the fat runtime jar every
+  // package reports the connector's `Implementation-Version`
+  private[spark] lazy val clientVersion: String =
+    Option(Client.clientVersion).filter(_.nonEmpty).getOrElse("unknown")
 
   // detection walks the stack and class loaders; do it once per JVM
   private lazy val runtime: Option[String] = Utils.RuntimeDetector.detectRuntime().map(_.toLowerCase)

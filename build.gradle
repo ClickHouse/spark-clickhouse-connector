@@ -242,6 +242,16 @@ project(':clickhouse-core') {
         dependsOn generateGrammarSource
     }
 
+    // ScarfTelemetryEvent reads the connector version from this jar's manifest in thin deployments
+    jar {
+        manifest {
+            attributes(
+                    'Implementation-Title': 'Spark-ClickHouse-Connector',
+                    'Implementation-Version': getProjectVersion()
+            )
+        }
+    }
+
     dependencies {
         api "org.scala-lang:scala-library:$scala_version"
 
