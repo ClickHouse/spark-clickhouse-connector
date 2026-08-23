@@ -33,8 +33,8 @@ trait SparkOptions extends SQLConfHelper with Serializable {
   def clientQueryTimeout: Long =
     eval(CLIENT_QUERY_TIMEOUT.key, CLIENT_QUERY_TIMEOUT)
 
-  def telemetryEnabled: Boolean =
-    eval(TELEMETRY_ENABLED.key, TELEMETRY_ENABLED)
+  def sendAnonymousUsageStats: Boolean =
+    eval(SEND_ANONYMOUS_USAGE_STATS.key, SEND_ANONYMOUS_USAGE_STATS)
 }
 
 class ReadOptions(_options: JMap[String, String]) extends SparkOptions {

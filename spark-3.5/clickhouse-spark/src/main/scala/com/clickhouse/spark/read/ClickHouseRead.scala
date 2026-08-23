@@ -187,7 +187,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
 
   implicit private val tz: ZoneId = scanJob.tz
 
-  private val telemetryReported = new AtomicBoolean(false)
+  private val usageStatsReported = new AtomicBoolean(false)
 
   private var runtimeFilters: Array[Filter] = Array.empty
 
@@ -253,8 +253,8 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
 
   override def createReaderFactory: PartitionReaderFactory = {
     // may run more than once per scan (e.g. AQE reuse); report at most one read event per scan
-    if (!telemetryReported.getAndSet(true)) {
-      ScarfTelemetry.reportJobRun(ScarfTelemetryEvents.readEvent(scanJob), scanJob.readOptions.telemetryEnabled)
+    if (!usageStatsReported.getAndSet(true)) {
+      ScarfTelemetry.reportJobRun(ScarfTelemetryEvents.readEvent(scanJob), scanJob.readOptions.sendAnonymousUsageStats)
     }
     this
   }

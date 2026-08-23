@@ -165,7 +165,7 @@ subprojects {
         jvmArgs += extraJvmArgs
         maxParallelForks = 1
         environment("ROOT_PROJECT_DIR", rootProject.projectDir)
-        // tests must never send Scarf usage telemetry
+        // tests must never send anonymous usage stats
         environment("SCARF_NO_ANALYTICS", "true")
         tags {
             exclude 'org.scalatest.tags.Slow'
@@ -177,7 +177,7 @@ subprojects {
         jvmArgs += extraJvmArgs
         maxParallelForks = 1
         environment("ROOT_PROJECT_DIR", rootProject.projectDir)
-        // tests must never send Scarf usage telemetry
+        // tests must never send anonymous usage stats
         environment("SCARF_NO_ANALYTICS", "true")
         tags {
             include 'org.scalatest.tags.Slow'
@@ -188,7 +188,7 @@ subprojects {
         jvmArgs += extraJvmArgs
         maxParallelForks = 1
         environment("ROOT_PROJECT_DIR", rootProject.projectDir)
-        // tests must never send Scarf usage telemetry
+        // tests must never send anonymous usage stats
         environment("SCARF_NO_ANALYTICS", "true")
         tags {
             include 'org.scalatest.tags.Cloud'

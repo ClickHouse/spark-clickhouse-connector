@@ -95,7 +95,10 @@ class ClickHouseBatchWrite(
 ) extends BatchWrite with DataWriterFactory with Logging {
 
   override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory = {
-    ScarfTelemetry.reportJobRun(ScarfTelemetryEvents.writeEvent(writeJob), writeJob.writeOptions.telemetryEnabled)
+    ScarfTelemetry.reportJobRun(
+      ScarfTelemetryEvents.writeEvent(writeJob),
+      writeJob.writeOptions.sendAnonymousUsageStats
+    )
     // Truncate table before writing if overwrite mode is enabled
     if (isOverwrite) {
       truncateTable()

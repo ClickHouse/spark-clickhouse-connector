@@ -22,7 +22,7 @@ import java.util.concurrent.{LinkedBlockingQueue, ThreadFactory, ThreadPoolExecu
  * gates on the user's opt-outs, then fires one asynchronous, best-effort GET per event.
  * Failures are swallowed and can never fail or slow down the job.
  *
- * Disabled by `spark.clickhouse.telemetry.enabled=false`, or by setting the `SCARF_NO_ANALYTICS`
+ * Disabled by `spark.clickhouse.sendAnonymousUsageStats=false`, or by setting the `SCARF_NO_ANALYTICS`
  * or `DO_NOT_TRACK` environment variable to `true` or `1`.
  */
 private[spark] object ScarfTelemetry extends Logging {
