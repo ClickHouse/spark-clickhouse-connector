@@ -85,6 +85,14 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
     .set("spark.clickhouse.write.write.repartitionNum", "0")
     .set("spark.clickhouse.read.format", "json")
     .set("spark.clickhouse.write.format", "json")
+    .setAll(cloudReadSettings)
+
+  /**
+   * On Cloud a read may be routed to a replica that has not yet caught up with a just-committed
+   * insert, silently returning an empty table. Only replicated engines honour the setting.
+   */
+  private def cloudReadSettings: Iterable[(String, String)] =
+    if (isCloud) Seq("spark.clickhouse.read.settings" -> "select_sequential_consistency=1") else Nil
 
   override def cmdRunnerOptions: Map[String, String] = Map(
     "host" -> clickhouseHost,
