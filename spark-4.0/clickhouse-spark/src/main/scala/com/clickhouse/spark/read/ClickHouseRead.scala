@@ -19,7 +19,6 @@ import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
 import com.clickhouse.spark.spec.{DistributedEngineSpec, NoPartitionSpec, TableEngineSpec}
 import com.clickhouse.spark.{BlocksReadMetric, BytesReadMetric, ClickHouseHelper, Logging, SQLHelper, Utils}
-import org.apache.spark.SPARK_VERSION
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, ExprUtils}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
@@ -255,7 +254,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
   override def createReaderFactory: PartitionReaderFactory = {
     // may run more than once per scan (e.g. AQE reuse); report at most one read event per scan
     if (!telemetryReported.getAndSet(true)) {
-      ScarfTelemetry.reportJobRun(ScarfTelemetry.EVENT_READ, SPARK_VERSION, scanJob.readOptions.telemetryEnabled)
+      ScarfTelemetry.reportJobRun(ScarfTelemetryEvents.readEvent(scanJob), scanJob.readOptions.telemetryEnabled)
     }
     this
   }

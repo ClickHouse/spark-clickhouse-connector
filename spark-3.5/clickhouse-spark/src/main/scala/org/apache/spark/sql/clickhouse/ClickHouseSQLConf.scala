@@ -268,10 +268,12 @@ object ClickHouseSQLConf {
   val TELEMETRY_ENABLED: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.telemetry.enabled")
       .doc("Whether to send an anonymous usage event to ClickHouse's telemetry endpoint (Scarf) " +
-        "when a Spark job reads from or writes to ClickHouse. The event contains only the " +
-        "connector, Spark, Scala, Java, and OS versions; it never includes data, table names, " +
-        "or other identifying information. Telemetry is also disabled when the `SCARF_NO_ANALYTICS` " +
-        "or `DO_NOT_TRACK` environment variable is set to `true` or `1`.")
+        "when a Spark job reads from or writes to ClickHouse. The event carries only versions " +
+        "(connector, Spark, Scala, Java, ClickHouse client, OS), coarse runtime facts (platform, " +
+        "table engine, wire format, ClickHouse Cloud vs self-managed), a random " +
+        "per-run ID, a one-way hash of the Spark application name, and a truncated random table " +
+        "UUID; it never includes data, names, hostnames, or credentials. Telemetry is also disabled " +
+        "when the `SCARF_NO_ANALYTICS` or `DO_NOT_TRACK` environment variable is set to `true` or `1`.")
       .version("0.10.1")
       .booleanConf
       .createWithDefault(true)

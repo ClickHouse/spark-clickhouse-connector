@@ -16,7 +16,6 @@ package com.clickhouse.spark.write
 
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.write.format.{ClickHouseArrowStreamWriter, ClickHouseJsonEachRowWriter}
-import org.apache.spark.SPARK_VERSION
 import org.apache.spark.internal.Logging
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
@@ -96,7 +95,7 @@ class ClickHouseBatchWrite(
 ) extends BatchWrite with DataWriterFactory with Logging {
 
   override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory = {
-    ScarfTelemetry.reportJobRun(ScarfTelemetry.EVENT_WRITE, SPARK_VERSION, writeJob.writeOptions.telemetryEnabled)
+    ScarfTelemetry.reportJobRun(ScarfTelemetryEvents.writeEvent(writeJob), writeJob.writeOptions.telemetryEnabled)
     // Truncate table before writing if overwrite mode is enabled
     if (isOverwrite) {
       truncateTable()

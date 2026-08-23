@@ -19,20 +19,14 @@ import java.util.concurrent.{LinkedBlockingQueue, ThreadFactory, ThreadPoolExecu
 import scala.util.control.NonFatal
 
 /**
- * Reports anonymous usage events to ClickHouse's Scarf (https://about.scarf.sh) gateway.
- *
- * One event is sent per executed Spark read or write job, carrying only the connector, Spark,
- * Scala, Java, and OS versions - never data, table names, or other identifying information.
- * Events are sent asynchronously and best-effort: failures are swallowed and can never fail
- * or slow down the job.
+ * Delivers [[ScarfTelemetryEvent]]s to ClickHouse's Scarf (https://about.scarf.sh) gateway:
+ * gates on the user's opt-outs, then fires one asynchronous, best-effort GET per event.
+ * Failures are swallowed and can never fail or slow down the job.
  *
  * Disabled by `spark.clickhouse.telemetry.enabled=false`, or by setting the `SCARF_NO_ANALYTICS`
  * or `DO_NOT_TRACK` environment variable to `true` or `1`.
  */
 private[spark] object ScarfTelemetry extends Logging {
-
-  val EVENT_READ: String = "read"
-  val EVENT_WRITE: String = "write"
 
   private val DEFAULT_ENDPOINT = "https://clickhouse.gateway.scarf.sh/spark-connector"
   private val TIMEOUT_MS = 3000
@@ -60,41 +54,26 @@ private[spark] object ScarfTelemetry extends Logging {
     pool
   }
 
-  // `Implementation-Version` is `<spark>_<scala>_<connector>`, absent when running from class dirs
-  private lazy val connectorVersion: String =
-    Option(getClass.getPackage.getImplementationVersion)
-      .map(_.split("_"))
-      .collect { case Array(_, _, connector, _*) => connector }
-      .getOrElse("unknown")
-
   private[spark] def disabledByEnv(env: String => Option[String] = k => sys.env.get(k)): Boolean = {
     def truthy(key: String): Boolean = env(key).exists(v => v.equalsIgnoreCase("true") || v == "1")
     truthy("SCARF_NO_ANALYTICS") || truthy("DO_NOT_TRACK")
   }
 
-  private[spark] def buildUrl(event: String, sparkVersion: String, endpoint: String): String =
-    Seq(
-      "event" -> event,
-      "version" -> connectorVersion,
-      "spark_version" -> sparkVersion,
-      "scala_version" -> scala.util.Properties.versionNumberString,
-      "java_version" -> sys.props.getOrElse("java.version", "unknown"),
-      "os" -> sys.props.getOrElse("os.name", "unknown"),
-      "arch" -> sys.props.getOrElse("os.arch", "unknown")
-    ).map { case (key, value) => s"$key=${URLEncoder.encode(value, "UTF-8")}" }
+  private[spark] def buildUrl(event: ScarfTelemetryEvent, endpoint: String): String =
+    event.toQueryParams
+      .map { case (key, value) => s"$key=${URLEncoder.encode(value, "UTF-8")}" }
       .mkString(s"$endpoint?", "&", "")
 
-  /** Fire-and-forget; never throws. */
+  /** Fire-and-forget; never throws. `event` is by-name so no metadata is built when disabled. */
   def reportJobRun(
-    event: String,
-    sparkVersion: String,
+    event: => ScarfTelemetryEvent,
     enabledByConf: Boolean,
     endpoint: String = DEFAULT_ENDPOINT,
     env: String => Option[String] = k => sys.env.get(k)
   ): Unit =
     try
       if (enabledByConf && !disabledByEnv(env)) {
-        val url = buildUrl(event, sparkVersion, endpoint)
+        val url = buildUrl(event, endpoint)
         executor.execute(() => send(url))
       }
     catch {
@@ -107,7 +86,10 @@ private[spark] object ScarfTelemetry extends Logging {
       connection.setConnectTimeout(TIMEOUT_MS)
       connection.setReadTimeout(TIMEOUT_MS)
       connection.setRequestMethod("GET")
-      connection.setRequestProperty("User-Agent", s"spark-clickhouse-connector/$connectorVersion")
+      connection.setRequestProperty(
+        "User-Agent",
+        s"spark-clickhouse-connector/${ScarfTelemetryEvent.connectorVersion}"
+      )
       try connection.getResponseCode
       finally connection.disconnect()
     } catch {
