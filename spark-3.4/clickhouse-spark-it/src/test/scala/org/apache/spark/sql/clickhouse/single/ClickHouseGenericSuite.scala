@@ -94,7 +94,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         )
       }
 
-      spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
+      eventuallyOnCloud {
+        spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
+      }
       eventuallyOnCloud {
         checkAnswer(
           spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
@@ -102,7 +104,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         )
       }
 
-      spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 1) PURGE")
+      eventuallyOnCloud {
+        spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 1) PURGE")
+      }
       eventuallyOnCloud {
         checkAnswer(
           spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
@@ -126,7 +130,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         )
       }
 
-      spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
+      eventuallyOnCloud {
+        spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
+      }
       eventuallyOnCloud {
         checkAnswer(
           spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
@@ -134,7 +140,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         )
       }
 
-      spark.sql(s"TRUNCATE TABLE $actualDb.$actualTbl PARTITION(m = 1)")
+      eventuallyOnCloud {
+        spark.sql(s"TRUNCATE TABLE $actualDb.$actualTbl PARTITION(m = 1)")
+      }
       eventuallyOnCloud {
         checkAnswer(
           spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
@@ -175,15 +183,17 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           Row(22L, date("2022-04-22")) :: Nil
       )
 
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq(
-          Row("date=2022-04-11"),
-          Row("date=2022-04-12"),
-          Row("date=2022-04-21"),
-          Row("date=2022-04-22")
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq(
+            Row("date=2022-04-11"),
+            Row("date=2022-04-12"),
+            Row("date=2022-04-21"),
+            Row("date=2022-04-22")
+          )
         )
-      )
+      }
     }
   }
 
@@ -221,15 +231,17 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           Row(22L, "two_two", "2", 2) :: Nil
       )
 
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq(
-          Row("part_1=1/part_2=1"),
-          Row("part_1=1/part_2=2"),
-          Row("part_1=2/part_2=1"),
-          Row("part_1=2/part_2=2")
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq(
+            Row("part_1=1/part_2=1"),
+            Row("part_1=1/part_2=2"),
+            Row("part_1=2/part_2=1"),
+            Row("part_1=2/part_2=2")
+          )
         )
-      )
+      }
     }
   }
 
@@ -264,15 +276,17 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           Row(22L, date("2022-04-22"), 2) :: Nil
       )
 
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq(
-          Row("part_1=2022-04-11/part_2=1"),
-          Row("part_1=2022-04-12/part_2=2"),
-          Row("part_1=2022-04-21/part_2=1"),
-          Row("part_1=2022-04-22/part_2=2")
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq(
+            Row("part_1=2022-04-11/part_2=1"),
+            Row("part_1=2022-04-12/part_2=2"),
+            Row("part_1=2022-04-21/part_2=1"),
+            Row("part_1=2022-04-22/part_2=2")
+          )
         )
-      )
+      }
     }
   }
 
@@ -296,13 +310,15 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         (2L, "2022-06-07")
       )).toDF("id", "dt")
         .writeTo(s"$db.$tbl").append
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
-        Seq(
-          Row("dt=20220606"),
-          Row("dt=20220607")
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+          Seq(
+            Row("dt=20220606"),
+            Row("dt=20220607")
+          )
         )
-      )
+      }
       checkAnswer(
         spark.table(s"$db.$tbl").orderBy($"id"),
         Seq(
