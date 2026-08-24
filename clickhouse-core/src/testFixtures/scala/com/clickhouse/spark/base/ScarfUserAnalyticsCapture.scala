@@ -21,11 +21,11 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.collection.JavaConverters._
 
 /**
- * Local HTTP server capturing the Scarf telemetry GETs sent to [[endpoint]]. The telemetry
+ * Local HTTP server capturing the Scarf usage-analytics GETs sent to [[endpoint]]. The delivery
  * thread is FIFO, so suites can prove nothing else was enqueued with a trailing marker event.
  */
-class ScarfTelemetryCapture private (server: HttpServer) {
-  import ScarfTelemetryCapture._
+class ScarfUserAnalyticsCapture private (server: HttpServer) {
+  import ScarfUserAnalyticsCapture._
 
   private val captured = new ConcurrentLinkedQueue[CapturedEvent]
 
@@ -41,13 +41,13 @@ class ScarfTelemetryCapture private (server: HttpServer) {
   }
 }
 
-object ScarfTelemetryCapture {
+object ScarfUserAnalyticsCapture {
 
   case class CapturedEvent(params: Map[String, String], userAgent: String)
 
-  def withCapture[T](f: ScarfTelemetryCapture => T): T = {
+  def withCapture[T](f: ScarfUserAnalyticsCapture => T): T = {
     val server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
-    val capture = new ScarfTelemetryCapture(server)
+    val capture = new ScarfUserAnalyticsCapture(server)
     server.createContext(
       "/spark-connector",
       new HttpHandler {

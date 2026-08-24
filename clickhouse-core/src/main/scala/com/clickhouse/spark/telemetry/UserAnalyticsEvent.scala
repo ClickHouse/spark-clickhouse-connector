@@ -12,20 +12,21 @@
  * limitations under the License.
  */
 
-package com.clickhouse.spark
+package com.clickhouse.spark.telemetry
 
 import com.clickhouse.client.api.Client
+import com.clickhouse.spark.Utils
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
 
 /**
- * The metadata carried by one Scarf usage event: what happened (read/write), the versions
+ * The metadata carried by one anonymous usage event: what happened (read/write), the versions
  * involved, and coarse, non-identifying runtime facts. Identity-adjacent inputs never leave
  * the driver raw: the Spark application name is one-way hashed and the ClickHouse table UUID
- * (random by construction) is truncated. Delivery is owned by [[ScarfTelemetry]].
+ * (random by construction) is truncated. Delivery is owned by the [[UserAnalytics]] sink.
  */
-case class ScarfTelemetryEvent(
+case class UserAnalyticsEvent(
   event: String,
   sparkVersion: String,
   appNameHash: Option[String],
@@ -35,9 +36,9 @@ case class ScarfTelemetryEvent(
   engine: String,
   convertLocal: Boolean
 ) {
-  import ScarfTelemetryEvent._
+  import UserAnalyticsEvent._
 
-  def toQueryParams: Seq[(String, String)] =
+  def toParams: Seq[(String, String)] =
     Seq(
       "event" -> event,
       "version" -> connectorVersion,
@@ -57,7 +58,7 @@ case class ScarfTelemetryEvent(
       runtime.map("runtime" -> _)
 }
 
-object ScarfTelemetryEvent {
+object UserAnalyticsEvent {
 
   val EVENT_READ: String = "read"
   val EVENT_WRITE: String = "write"

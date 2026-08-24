@@ -15,6 +15,7 @@
 package com.clickhouse.spark.read
 
 import com.clickhouse.spark.Log4j2CaptureHelper
+import com.clickhouse.spark.telemetry.UserAnalyticsFactory
 import com.clickhouse.spark.func.StaticFunctionRegistry
 import com.clickhouse.spark.spec.{DistributedEngineSpec, NodeSpec, TableSpec}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
@@ -29,7 +30,7 @@ import java.time.{LocalDateTime, ZoneId}
 class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
 
   test("planning a single input partition warns about read performance") {
-    val scan = new ClickHouseBatchScan(scanJob())
+    val scan = new ClickHouseBatchScan(scanJob(), UserAnalyticsFactory.createCapture())
     val (partitions, warnings) =
       captureWarnings(classOf[ClickHouseBatchScan].getName)(scan.inputPartitions)
     assert(partitions.length === 1)

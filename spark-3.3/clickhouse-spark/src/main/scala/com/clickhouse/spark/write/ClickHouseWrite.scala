@@ -25,6 +25,7 @@ import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.write._
 import org.apache.spark.sql.sources.Filter
 import com.clickhouse.spark._
+import com.clickhouse.spark.telemetry.{UserAnalytics, UserAnalyticsEvents, UserAnalyticsFactory}
 import com.clickhouse.spark.spec.DistributedEngineSpec
 import org.apache.spark.sql.sources.AlwaysTrue
 
@@ -70,7 +71,7 @@ class ClickHouseWrite(
 
   override def requiredOrdering(): Array[SortOrder] = writeJob.sparkSortOrders
 
-  override def toBatch: BatchWrite = new ClickHouseBatchWrite(writeJob, isOverwrite)
+  override def toBatch: BatchWrite = new ClickHouseBatchWrite(writeJob, isOverwrite, UserAnalyticsFactory.create())
 
   override def supportedCustomMetrics(): Array[CustomMetric] = Array(
     RecordsWrittenMetric(),
@@ -91,13 +92,14 @@ class ClickHouseWrite(
 
 class ClickHouseBatchWrite(
   writeJob: WriteJobDescription,
-  isOverwrite: Boolean = false
+  isOverwrite: Boolean,
+  @transient private val userAnalytics: UserAnalytics
 ) extends BatchWrite with DataWriterFactory with Logging {
 
   override def createBatchWriterFactory(info: PhysicalWriteInfo): DataWriterFactory = {
-    ScarfTelemetry.reportJobRun(
-      ScarfTelemetryEvents.writeEvent(writeJob),
-      writeJob.writeOptions.sendAnonymousUsageStats
+    // never runs on executors, where the @transient sink would be null; Option is just-in-case
+    Option(userAnalytics).foreach(
+      _.reportJobRun(UserAnalyticsEvents.writeEvent(writeJob), writeJob.writeOptions.sendAnonymousUsageStats)
     )
     // Truncate table before writing if overwrite mode is enabled
     if (isOverwrite) {

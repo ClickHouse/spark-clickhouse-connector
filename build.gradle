@@ -242,7 +242,7 @@ project(':clickhouse-core') {
         dependsOn generateGrammarSource
     }
 
-    // ScarfTelemetryEvent reads the connector version from this jar's manifest in thin deployments
+    // UserAnalyticsEvent reads the connector version from this jar's manifest in thin deployments
     jar {
         manifest {
             attributes(

@@ -25,6 +25,7 @@ import org.apache.spark.sql.connector.read.partitioning.{Partitioning, UnknownPa
 import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types.StructType
 import com.clickhouse.spark._
+import com.clickhouse.spark.telemetry.{UserAnalytics, UserAnalyticsEvents, UserAnalyticsFactory}
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.expr.ExprRender
@@ -166,17 +167,21 @@ class ClickHouseScanBuilder(
 
   override def build(): Scan = {
     validateReadSchema()
-    new ClickHouseBatchScan(scanJob.copy(
-      readSchema = _readSchema,
-      filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
-      groupByClause = _groupByClause,
-      orderByClause = _orderByClause,
-      limit = _limit
-    ))
+    new ClickHouseBatchScan(
+      scanJob.copy(
+        readSchema = _readSchema,
+        filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
+        groupByClause = _groupByClause,
+        orderByClause = _orderByClause,
+        limit = _limit
+      ),
+      UserAnalyticsFactory.create()
+    )
   }
 }
 
-class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
+class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val userAnalytics: UserAnalytics)
+    extends Scan with Batch
     with SupportsReportPartitioning
     with SupportsRuntimeFiltering
     with PartitionReaderFactory
@@ -252,7 +257,10 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
   override def createReaderFactory: PartitionReaderFactory = {
     // may run more than once per scan (e.g. AQE reuse); report at most one read event per scan
     if (!usageStatsReported.getAndSet(true)) {
-      ScarfTelemetry.reportJobRun(ScarfTelemetryEvents.readEvent(scanJob), scanJob.readOptions.sendAnonymousUsageStats)
+      // never runs on executors, where the @transient sink would be null; Option is just-in-case
+      Option(userAnalytics).foreach(
+        _.reportJobRun(UserAnalyticsEvents.readEvent(scanJob), scanJob.readOptions.sendAnonymousUsageStats)
+      )
     }
     this
   }

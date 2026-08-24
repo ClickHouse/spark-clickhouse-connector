@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-package com.clickhouse.spark
+package com.clickhouse.spark.telemetry
 
 import com.clickhouse.spark.read.ScanJobDescription
 import com.clickhouse.spark.write.WriteJobDescription
@@ -21,12 +21,12 @@ import org.apache.spark.sql.SparkSession
 
 import scala.util.Try
 
-/** Extracts [[ScarfTelemetryEvent]] metadata from Spark and the connector's job descriptions. */
-object ScarfTelemetryEvents {
+/** Extracts [[UserAnalyticsEvent]] metadata from Spark and the connector's job descriptions. */
+object UserAnalyticsEvents {
 
-  def readEvent(scanJob: ScanJobDescription): ScarfTelemetryEvent =
+  def readEvent(scanJob: ScanJobDescription): UserAnalyticsEvent =
     event(
-      ScarfTelemetryEvent.EVENT_READ,
+      UserAnalyticsEvent.EVENT_READ,
       scanJob.node.host,
       scanJob.tableSpec.uuid,
       scanJob.tableSpec.engine,
@@ -34,9 +34,9 @@ object ScarfTelemetryEvents {
       scanJob.readOptions.convertDistributedToLocal
     )
 
-  def writeEvent(writeJob: WriteJobDescription): ScarfTelemetryEvent =
+  def writeEvent(writeJob: WriteJobDescription): UserAnalyticsEvent =
     event(
-      ScarfTelemetryEvent.EVENT_WRITE,
+      UserAnalyticsEvent.EVENT_WRITE,
       writeJob.node.host,
       writeJob.tableSpec.uuid,
       writeJob.tableSpec.engine,
@@ -51,13 +51,13 @@ object ScarfTelemetryEvents {
     engine: String,
     format: String,
     convertLocal: Boolean
-  ): ScarfTelemetryEvent =
-    ScarfTelemetryEvent(
+  ): UserAnalyticsEvent =
+    UserAnalyticsEvent(
       event = eventType,
       sparkVersion = SPARK_VERSION,
-      appNameHash = Try(SparkSession.active.sparkContext.appName).toOption.map(ScarfTelemetryEvent.sha256Hex16),
-      tableId = ScarfTelemetryEvent.tableId(tableUuid),
-      deployment = ScarfTelemetryEvent.deployment(host),
+      appNameHash = Try(SparkSession.active.sparkContext.appName).toOption.map(UserAnalyticsEvent.sha256Hex16),
+      tableId = UserAnalyticsEvent.tableId(tableUuid),
+      deployment = UserAnalyticsEvent.deployment(host),
       format = format,
       engine = engine,
       convertLocal = convertLocal
