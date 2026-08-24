@@ -122,15 +122,16 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
       val (uuid, engine) = tableUuidAndEngine(db, tbl)
       assert(table.spec.uuid === uuid)
 
+      val enabled = options(SEND_ANONYMOUS_USAGE_STATS.key -> "true") // the shared IT conf turns reporting off
       val readCapture = UserAnalyticsFactory.createCapture()
-      val scan = new ClickHouseBatchScan(scanJob(table, new ReadOptions(options())), readCapture)
+      val scan = new ClickHouseBatchScan(scanJob(table, new ReadOptions(enabled)), readCapture)
       scan.createReaderFactory
       scan.createReaderFactory // e.g. AQE stage reuse: still at most one event per scan
       assert(readCapture.events.map(_.event) === Seq("read"))
 
       val writeCapture = UserAnalyticsFactory.createCapture()
       val write =
-        new ClickHouseBatchWrite(writeJob(table, new WriteOptions(options())), isOverwrite = false, writeCapture)
+        new ClickHouseBatchWrite(writeJob(table, new WriteOptions(enabled)), isOverwrite = false, writeCapture)
       write.createBatchWriterFactory(onePartition)
       assert(writeCapture.events.map(_.event) === Seq("write"))
 
