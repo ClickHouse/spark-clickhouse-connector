@@ -29,7 +29,10 @@ case class ClickHouseInputPartition(
   partition: PartitionSpec,
   filterByPartitionId: Boolean,
   candidateNodes: Nodes, // try to use them only when preferredNode unavailable
-  preferredNode: Option[NodeSpec] = None // TODO assigned by ScanBuilder in Spark Driver side
+  preferredNode: Option[NodeSpec] = None, // TODO assigned by ScanBuilder in Spark Driver side
+  // When non-empty this input partition covers every partition *absent* from these ids, so that an
+  // incomplete partition listing can not silently drop rows. See ClickHouseBatchScan#withComplement.
+  complementOf: Seq[String] = Nil
 ) extends InputPartition {
 
   override def preferredLocations(): Array[String] = preferredNode match {
@@ -37,7 +40,9 @@ case class ClickHouseInputPartition(
     case None => candidateNodes.nodes.map(_.host)
   }
 
-  def partFilterExpr: String = partition match {
+  def partFilterExpr: String = if (complementOf.nonEmpty) {
+    complementOf.map(id => s"'$id'").mkString("_partition_id NOT IN (", ", ", ")")
+  } else partition match {
     case NoPartitionSpec => "1=1"
     case PartitionSpec(_, partitionId, _, _) if filterByPartitionId =>
       s"_partition_id = '$partitionId'"
