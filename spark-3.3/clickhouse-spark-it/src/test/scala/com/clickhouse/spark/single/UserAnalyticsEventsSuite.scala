@@ -143,18 +143,14 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
         assert(event.engine === engine)
         assert(event.deployment === (if (isCloud) "cloud" else "self_managed"))
 
-        // this suite runs against the fat runtime jar: versions must survive its composite
+        // this suite runs against the fat runtime jar: the version must survive its composite
         // `<spark>_<scala>_<connector>` manifest, so no `_` may leak through
         val params = event.toParams.toMap
         assert(params("version") !== "unknown")
         assert(!params("version").contains("_"))
-        assert(!params("client_version").contains("_"))
-        assert(params("client_version").matches("""\d+\.\d+.*"""))
       }
       assert(readEvent.format === spark.conf.get("spark.clickhouse.read.format"))
       assert(writeEvent.format === spark.conf.get("spark.clickhouse.write.format"))
-      assert(readEvent.convertLocal.toString === spark.conf.get("spark.clickhouse.read.distributed.convertLocal"))
-      assert(writeEvent.convertLocal.toString === spark.conf.get("spark.clickhouse.write.distributed.convertLocal"))
     }
   }
 

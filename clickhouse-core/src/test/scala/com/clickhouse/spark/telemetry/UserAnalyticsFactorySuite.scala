@@ -26,8 +26,7 @@ class UserAnalyticsFactorySuite extends AnyFunSuite {
       tableId = None,
       deployment = "self_managed",
       format = "json",
-      engine = "MergeTree",
-      convertLocal = false
+      engine = "MergeTree"
     )
 
   test("create returns the shipped default: Scarf") {

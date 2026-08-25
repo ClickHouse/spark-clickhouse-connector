@@ -14,7 +14,6 @@
 
 package com.clickhouse.spark.telemetry
 
-import com.clickhouse.client.api.Client
 import com.clickhouse.spark.Utils
 
 import java.nio.charset.StandardCharsets
@@ -33,8 +32,7 @@ case class UserAnalyticsEvent(
   tableId: Option[String],
   deployment: String,
   format: String,
-  engine: String,
-  convertLocal: Boolean
+  engine: String
 ) {
   import UserAnalyticsEvent._
 
@@ -46,15 +44,10 @@ case class UserAnalyticsEvent(
       "event" -> event,
       "version" -> connectorVersion,
       "spark_version" -> sparkVersion,
-      "scala_version" -> scala.util.Properties.versionNumberString,
-      "java_version" -> sys.props.getOrElse("java.version", "unknown"),
       "os" -> sys.props.getOrElse("os.name", "unknown"),
-      "arch" -> sys.props.getOrElse("os.arch", "unknown"),
       "deployment" -> deployment,
       "format" -> format,
-      "engine" -> engine,
-      "convert_local" -> convertLocal.toString,
-      "client_version" -> clientVersion
+      "engine" -> engine
     ) ++
       appNameHash.map("app_name_hash" -> _) ++
       tableId.map("table_id" -> _) ++
@@ -82,11 +75,6 @@ object UserAnalyticsEvent {
       case Array(_, _, connector, _*) => connector
       case _ => implementationVersion
     }
-
-  // from the client's runtime version field, not the manifest: in the fat runtime jar every
-  // package reports the connector's `Implementation-Version`
-  private[spark] lazy val clientVersion: String =
-    Option(Client.clientVersion).filter(_.nonEmpty).getOrElse("unknown")
 
   // walks class loaders and every thread name, so it stays off the reporting thread; once per JVM
   private lazy val runtimeFromEnvironment: Option[String] =

@@ -48,8 +48,4 @@ class UserAnalyticsEventSuite extends AnyFunSuite {
     assert(UserAnalyticsEvent.parseConnectorVersion("0.10.1") === "0.10.1")
     assert(UserAnalyticsEvent.parseConnectorVersion("0.10.1-SNAPSHOT") === "0.10.1-SNAPSHOT")
   }
-
-  test("clientVersion is the client-v2 runtime version") {
-    assert(UserAnalyticsEvent.clientVersion.matches("""\d+\.\d+\.\d+.*"""))
-  }
 }

@@ -30,8 +30,7 @@ object UserAnalyticsEvents {
       scanJob.node.host,
       scanJob.tableSpec.uuid,
       scanJob.tableSpec.engine,
-      scanJob.readOptions.format,
-      scanJob.readOptions.convertDistributedToLocal
+      scanJob.readOptions.format
     )
 
   def writeEvent(writeJob: WriteJobDescription): UserAnalyticsEvent =
@@ -40,8 +39,7 @@ object UserAnalyticsEvents {
       writeJob.node.host,
       writeJob.tableSpec.uuid,
       writeJob.tableSpec.engine,
-      writeJob.writeOptions.format,
-      writeJob.writeOptions.convertDistributedToLocal
+      writeJob.writeOptions.format
     )
 
   private def event(
@@ -49,8 +47,7 @@ object UserAnalyticsEvents {
     host: String,
     tableUuid: String,
     engine: String,
-    format: String,
-    convertLocal: Boolean
+    format: String
   ): UserAnalyticsEvent =
     UserAnalyticsEvent(
       event = eventType,
@@ -59,7 +56,6 @@ object UserAnalyticsEvents {
       tableId = UserAnalyticsEvent.tableId(tableUuid),
       deployment = UserAnalyticsEvent.deployment(host),
       format = format,
-      engine = engine,
-      convertLocal = convertLocal
+      engine = engine
     )
 }

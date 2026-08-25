@@ -62,8 +62,7 @@ private object UserAnalyticsRuntimeSuite {
         tableId = None,
         deployment = "self_managed",
         format = "json",
-        engine = "MergeTree",
-        convertLocal = false
+        engine = "MergeTree"
       )
   }
 }

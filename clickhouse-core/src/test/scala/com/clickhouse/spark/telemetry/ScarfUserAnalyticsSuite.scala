@@ -36,8 +36,7 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
       tableId = UserAnalyticsEvent.tableId("12345678-90ab-cdef-1234-567890abcdef"),
       deployment = UserAnalyticsEvent.deployment("ch.internal.corp"),
       format = "json",
-      engine = "MergeTree",
-      convertLocal = false
+      engine = "MergeTree"
     )
 
   test("disabledByEnv - not disabled by default") {
@@ -64,11 +63,9 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
     val params = url.split('?')(1).split('&').map(_.split("=", 2)).map(kv => kv(0) -> kv(1)).toMap
     assert(params("event") === "read")
     assert(params("spark_version") === "3.5.4")
-    assert(params("scala_version") === scala.util.Properties.versionNumberString)
     assert(params("deployment") === "self_managed")
     assert(params("format") === "json")
     assert(params("engine") === "MergeTree")
-    assert(params("convert_local") === "false")
     assert(params("app_name_hash") === UserAnalyticsEvent.sha256Hex16("nightly_sales_load"))
     assert(params("table_id") === "1234567890abcdef")
     // `runtime` is present only when a managed platform is detected
@@ -77,15 +74,10 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
         "event",
         "version",
         "spark_version",
-        "scala_version",
-        "java_version",
         "os",
-        "arch",
         "deployment",
         "format",
         "engine",
-        "convert_local",
-        "client_version",
         "app_name_hash",
         "table_id"
       )
