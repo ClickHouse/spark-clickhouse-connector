@@ -38,6 +38,9 @@ case class UserAnalyticsEvent(
 ) {
   import UserAnalyticsEvent._
 
+  // per event, not cached: only the reporting thread's stack shows the platform driving the job
+  private val runtimeFromStack: Option[String] = Utils.RuntimeDetector.detectViaStackTrace()
+
   def toParams: Seq[(String, String)] =
     Seq(
       "event" -> event,
@@ -55,7 +58,7 @@ case class UserAnalyticsEvent(
     ) ++
       appNameHash.map("app_name_hash" -> _) ++
       tableId.map("table_id" -> _) ++
-      runtime.map("runtime" -> _)
+      (runtimeFromStack orElse runtimeFromEnvironment).map(r => "runtime" -> r.toLowerCase)
 }
 
 object UserAnalyticsEvent {
@@ -85,8 +88,9 @@ object UserAnalyticsEvent {
   private[spark] lazy val clientVersion: String =
     Option(Client.clientVersion).filter(_.nonEmpty).getOrElse("unknown")
 
-  // detection walks the stack and class loaders; do it once per JVM
-  private lazy val runtime: Option[String] = Utils.RuntimeDetector.detectRuntime().map(_.toLowerCase)
+  // walks class loaders and every thread name, so it stays off the reporting thread; once per JVM
+  private lazy val runtimeFromEnvironment: Option[String] =
+    Utils.RuntimeDetector.detectViaClassLoader().orElse(Utils.RuntimeDetector.detectViaThreadNames())
 
   /** First 16 hex chars of SHA-256; the raw value never leaves the driver. */
   private[spark] def sha256Hex16(value: String): String =

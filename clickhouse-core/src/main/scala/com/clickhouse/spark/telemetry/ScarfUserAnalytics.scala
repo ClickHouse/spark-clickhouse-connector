@@ -44,7 +44,7 @@ private[spark] class ScarfUserAnalytics(
       case e: Throwable => log.debug(s"Skipped Scarf usage analytics event: $e")
     }
 
-  // builds the URL here too: its params include the runtime detection, which stays off the caller thread
+  // builds the URL here too: its costlier params, like the class loader probing, stay off the caller thread
   private def send(event: UserAnalyticsEvent): Unit =
     try {
       val connection = new URL(buildUrl(event, endpoint)).openConnection().asInstanceOf[HttpURLConnection]

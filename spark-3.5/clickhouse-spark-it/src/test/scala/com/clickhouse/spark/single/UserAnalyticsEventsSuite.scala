@@ -25,6 +25,7 @@ import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.SEND_ANONYMOUS_USAGE_ST
 import org.apache.spark.sql.clickhouse.single.SparkClickHouseSingleTest
 import org.apache.spark.sql.clickhouse.{ReadOptions, WriteOptions}
 import org.apache.spark.sql.connector.catalog.Identifier
+import org.apache.spark.sql.connector.read.PartitionReaderFactory
 import org.apache.spark.sql.connector.write.PhysicalWriteInfo
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
@@ -175,4 +176,23 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
       assert(writeCapture.events.isEmpty)
     }
   }
+
+  test("the reported runtime comes from the stack of the thread the hook runs on") {
+    withSimpleTable("usage_stats_db", "usage_stats_runtime", writeData = false) { (db, tbl) =>
+      val table = loadClickHouseTable(db, tbl)
+      val enabled = options(SEND_ANONYMOUS_USAGE_STATS.key -> "true")
+
+      val capture = UserAnalyticsFactory.createCapture()
+      val scan = new ClickHouseBatchScan(scanJob(table, new ReadOptions(enabled)), capture)
+      new DataprocCaller().reportRead(scan)
+
+      assert(capture.events.head.toParams.toMap.get("runtime") === Some("dataproc"))
+    }
+  }
+}
+
+/** Stands in for a managed platform: its name puts a `dataproc` frame on the reporting thread. */
+private class DataprocCaller {
+  // calls the hook directly; a closure hosted here would plant the frame on the wrong stack
+  def reportRead(scan: ClickHouseBatchScan): PartitionReaderFactory = scan.createReaderFactory
 }
