@@ -50,6 +50,10 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
 
   private def expectedTableId(uuid: String): String = uuid.toLowerCase.replace("-", "").take(16)
 
+  // from the configured host, not isCloud: the CI Cloud service is not under *.clickhouse.cloud
+  private def expectedDeployment: String =
+    if (clickhouseHost.toLowerCase.endsWith(".clickhouse.cloud")) "cloud" else "self_managed"
+
   /** Loads the table through the production catalog path: `initialize` + `loadTable`. */
   private def loadClickHouseTable(db: String, tbl: String): ClickHouseTable = {
     val catalogOptions = new java.util.HashMap[String, String]()
@@ -143,7 +147,7 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
         assert(event.appNameHash === Some(expectedSha256Hex16(spark.sparkContext.appName)))
         assert(event.tableId === Some(expectedTableId(uuid)))
         assert(event.engine === engine)
-        assert(event.deployment === (if (isCloud) "cloud" else "self_managed"))
+        assert(event.deployment === expectedDeployment)
 
         // this suite runs against the fat runtime jar: the version must survive its composite
         // `<spark>_<scala>_<connector>` manifest, so no `_` may leak through
