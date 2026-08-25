@@ -268,12 +268,11 @@ object ClickHouseSQLConf {
   val SEND_ANONYMOUS_USAGE_STATS: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.sendAnonymousUsageStats")
       .doc("Whether to send anonymous usage statistics to ClickHouse (via Scarf) when a Spark job " +
-        "reads from or writes to ClickHouse. The event carries only versions (connector, Spark, " +
-        "Scala, Java, ClickHouse client, OS), coarse runtime facts (platform, table engine, wire " +
-        "format, ClickHouse Cloud vs self-managed), a one-way hash of the Spark application name, " +
-        "and a truncated random table UUID; it never includes data, names, hostnames, or " +
-        "credentials. Collection is also disabled when the `SCARF_NO_ANALYTICS` or `DO_NOT_TRACK` " +
-        "environment variable is set to `true` or `1`.")
+        "reads from or writes to ClickHouse. The event carries only the connector and Spark " +
+        "versions, the OS name, coarse runtime facts (platform, table engine, wire format, " +
+        "ClickHouse Cloud vs self-managed), a one-way hash of the Spark application name, and a " +
+        "truncated random table UUID; never data, names, hostnames, or credentials. Also disabled " +
+        "when the `SCARF_NO_ANALYTICS` or `DO_NOT_TRACK` environment variable is set to `true` or `1`.")
       .version("0.10.1")
       .booleanConf
       .createWithDefault(true)
