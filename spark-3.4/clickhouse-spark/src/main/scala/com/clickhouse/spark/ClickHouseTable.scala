@@ -63,6 +63,33 @@ case class ClickHouseTable(
     with SQLHelper
     with Logging {
 
+  /**
+   * Runtime statistics are not part of a table's identity. `total_rows`, `total_bytes` and the
+   * `lifetime_*` counters move as data commits, so letting them into equality makes two catalog
+   * loads of the same table unequal. Spark compares plans to find cached data, and a
+   * DataSourceV2Relation carries this Table, so a shifting identity silently defeats plan reuse
+   * (CACHE TABLE, reused exchanges, self-join detection). They stay in `properties()`; only
+   * equality ignores them.
+   */
+  private def identityKey =
+    (
+      node,
+      cluster,
+      tz,
+      spec.copy(total_rows = None, total_bytes = None, lifetime_rows = None, lifetime_bytes = None),
+      engineSpec,
+      // `functionRegistry` is one instance per catalog, already implied by node/cluster;
+      // `functionCatalogUsable` genuinely separates catalog tables from format("clickhouse") ones
+      functionCatalogUsable
+    )
+
+  override def equals(other: Any): Boolean = other match {
+    case that: ClickHouseTable => identityKey == that.identityKey
+    case _ => false
+  }
+
+  override def hashCode(): Int = identityKey.hashCode()
+
   def database: String = spec.database
 
   def table: String = spec.name
