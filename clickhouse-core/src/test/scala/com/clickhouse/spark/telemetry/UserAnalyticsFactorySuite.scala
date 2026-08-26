@@ -40,4 +40,11 @@ class UserAnalyticsFactorySuite extends AnyFunSuite {
     capture.reportJobRun(sampleEvent("write"), enabledByConf = true)
     assert(capture.events.map(_.event) === Seq("read", "write"))
   }
+
+  test("createCapture swallows conf and event failures instead of throwing") {
+    val capture = UserAnalyticsFactory.createCapture()
+    capture.reportJobRun(sampleEvent("read"), enabledByConf = throw new IllegalArgumentException("not a boolean"))
+    capture.reportJobRun(throw new NoClassDefFoundError("com/example/PlatformProbeParent"), enabledByConf = true)
+    assert(capture.events.isEmpty)
+  }
 }

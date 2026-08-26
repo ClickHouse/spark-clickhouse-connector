@@ -14,16 +14,22 @@
 
 package com.clickhouse.spark.telemetry
 
+import com.clickhouse.spark.Logging
+
 import java.util.concurrent.ConcurrentLinkedQueue
 import scala.collection.JavaConverters._
 
 /** [[UserAnalytics]] recording conf-enabled events in memory; created via [[UserAnalyticsFactory.createCapture]]. */
-private[spark] class CaptureUserAnalytics extends UserAnalytics {
+private[spark] class CaptureUserAnalytics extends UserAnalytics with Logging {
 
   private val captured = new ConcurrentLinkedQueue[UserAnalyticsEvent]
 
   override def reportJobRun(event: => UserAnalyticsEvent, enabledByConf: => Boolean): Unit =
-    if (enabledByConf) captured.add(event)
+    try if (enabledByConf) captured.add(event)
+    catch {
+      // Throwable, not NonFatal: per the trait contract, reporting must never reach the caller
+      case e: Throwable => log.warn("Skipped captured usage analytics event", e)
+    }
 
   def events: Seq[UserAnalyticsEvent] = captured.asScala.toList
 }
