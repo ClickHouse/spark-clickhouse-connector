@@ -24,7 +24,6 @@ class UserAnalyticsFactorySuite extends AnyFunSuite {
       sparkVersion = "3.5.4",
       appNameHash = None,
       tableId = None,
-      deployment = "self_managed",
       format = "json",
       engine = "MergeTree"
     )

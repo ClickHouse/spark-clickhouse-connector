@@ -31,14 +31,6 @@ class UserAnalyticsEventSuite extends AnyFunSuite {
     assert(UserAnalyticsEvent.tableId(null) === None)
   }
 
-  test("deployment - derived from hostname suffix only") {
-    assert(UserAnalyticsEvent.deployment("abc123.us-east-1.aws.clickhouse.cloud") === "cloud")
-    assert(UserAnalyticsEvent.deployment("ABC.CLICKHOUSE.CLOUD") === "cloud")
-    assert(UserAnalyticsEvent.deployment("ch.prod.internal.corp") === "self_managed")
-    assert(UserAnalyticsEvent.deployment("10.1.2.3") === "self_managed")
-    assert(UserAnalyticsEvent.deployment(null) === "self_managed")
-  }
-
   test("parseConnectorVersion - composite runtime-jar version yields the connector part") {
     assert(UserAnalyticsEvent.parseConnectorVersion("3.5_2.13_0.10.0") === "0.10.0")
     assert(UserAnalyticsEvent.parseConnectorVersion("4.0_2.13_0.10.1-SNAPSHOT") === "0.10.1-SNAPSHOT")

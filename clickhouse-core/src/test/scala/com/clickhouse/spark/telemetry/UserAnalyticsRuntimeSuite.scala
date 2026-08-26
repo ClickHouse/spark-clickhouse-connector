@@ -60,7 +60,6 @@ private object UserAnalyticsRuntimeSuite {
         sparkVersion = "4.0.1",
         appNameHash = None,
         tableId = None,
-        deployment = "self_managed",
         format = "json",
         engine = "MergeTree"
       )

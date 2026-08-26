@@ -30,7 +30,6 @@ case class UserAnalyticsEvent(
   sparkVersion: String,
   appNameHash: Option[String],
   tableId: Option[String],
-  deployment: String,
   format: String,
   engine: String
 ) {
@@ -45,7 +44,6 @@ case class UserAnalyticsEvent(
       "version" -> connectorVersion,
       "spark_version" -> sparkVersion,
       "os" -> sys.props.getOrElse("os.name", "unknown"),
-      "deployment" -> deployment,
       "format" -> format,
       "engine" -> engine
     ) ++
@@ -61,7 +59,6 @@ object UserAnalyticsEvent {
 
   // tables in legacy `Ordinary` databases carry the zero UUID, which identifies nothing
   private val ZERO_UUID = "00000000-0000-0000-0000-000000000000"
-  private val CLOUD_HOST_SUFFIX = ".clickhouse.cloud"
 
   // `getPackage` and `Implementation-Version` are absent on class dirs
   private[spark] lazy val connectorVersion: String =
@@ -91,8 +88,4 @@ object UserAnalyticsEvent {
     Option(tableUuid).map(_.trim.toLowerCase)
       .filter(uuid => uuid.nonEmpty && uuid != ZERO_UUID)
       .map(_.replace("-", "").take(16))
-
-  /** Derived flag only; the hostname itself never leaves the driver. */
-  private[spark] def deployment(host: String): String =
-    if (Option(host).exists(_.toLowerCase.endsWith(CLOUD_HOST_SUFFIX))) "cloud" else "self_managed"
 }

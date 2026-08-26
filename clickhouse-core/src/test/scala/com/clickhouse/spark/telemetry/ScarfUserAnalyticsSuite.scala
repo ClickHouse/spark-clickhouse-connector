@@ -34,7 +34,6 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
       sparkVersion = sparkVersion,
       appNameHash = Some(UserAnalyticsEvent.sha256Hex16("nightly_sales_load")),
       tableId = UserAnalyticsEvent.tableId("12345678-90ab-cdef-1234-567890abcdef"),
-      deployment = UserAnalyticsEvent.deployment("ch.internal.corp"),
       format = "json",
       engine = "MergeTree"
     )
@@ -63,7 +62,6 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
     val params = url.split('?')(1).split('&').map(_.split("=", 2)).map(kv => kv(0) -> kv(1)).toMap
     assert(params("event") === "read")
     assert(params("spark_version") === "3.5.4")
-    assert(params("deployment") === "self_managed")
     assert(params("format") === "json")
     assert(params("engine") === "MergeTree")
     assert(params("app_name_hash") === UserAnalyticsEvent.sha256Hex16("nightly_sales_load"))
@@ -75,7 +73,6 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
         "version",
         "spark_version",
         "os",
-        "deployment",
         "format",
         "engine",
         "app_name_hash",

@@ -27,7 +27,6 @@ object UserAnalyticsEvents {
   def readEvent(scanJob: ScanJobDescription): UserAnalyticsEvent =
     event(
       UserAnalyticsEvent.EVENT_READ,
-      scanJob.node.host,
       scanJob.tableSpec.uuid,
       scanJob.tableSpec.engine,
       scanJob.readOptions.format
@@ -36,7 +35,6 @@ object UserAnalyticsEvents {
   def writeEvent(writeJob: WriteJobDescription): UserAnalyticsEvent =
     event(
       UserAnalyticsEvent.EVENT_WRITE,
-      writeJob.node.host,
       writeJob.tableSpec.uuid,
       writeJob.tableSpec.engine,
       writeJob.writeOptions.format
@@ -44,7 +42,6 @@ object UserAnalyticsEvents {
 
   private def event(
     eventType: String,
-    host: String,
     tableUuid: String,
     engine: String,
     format: String
@@ -54,7 +51,6 @@ object UserAnalyticsEvents {
       sparkVersion = SPARK_VERSION,
       appNameHash = Try(SparkSession.active.sparkContext.appName).toOption.map(UserAnalyticsEvent.sha256Hex16),
       tableId = UserAnalyticsEvent.tableId(tableUuid),
-      deployment = UserAnalyticsEvent.deployment(host),
       format = format,
       engine = engine
     )
