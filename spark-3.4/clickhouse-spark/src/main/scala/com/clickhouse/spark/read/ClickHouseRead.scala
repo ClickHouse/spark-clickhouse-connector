@@ -233,7 +233,29 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     if (partitions.length == 1) {
       log.warn(s"Reading $database.$table as a single partition, which may impact read performance")
     }
-    partitions
+    withComplement(partitions.toSeq).toArray
+  }
+
+  /**
+   * Appends one input partition covering every partition absent from `parts`. The partition listing
+   * comes from `system.parts`, which is only eventually consistent on ClickHouse Cloud: a listing
+   * that misses a partition would otherwise prune it away and silently return incomplete results.
+   * The complement makes the task predicates exhaustive, so a stale listing costs read parallelism
+   * instead of rows.
+   *
+   * Skipped unless splitting by `_partition_id` (the partition-value predicates have known bugs and
+   * ill-defined NOT IN semantics), and skipped when the listing collapsed to [[NoPartitionSpec]],
+   * which already scans the whole table.
+   */
+  private def withComplement(parts: Seq[ClickHouseInputPartition]): Seq[ClickHouseInputPartition] = {
+    // NoPartitionSpec already yields a `1=1` predicate covering the whole table, so complementing it
+    // would plan a second whole-table scan and read every row twice
+    val readsWholeTable = parts.exists(_.partition == NoPartitionSpec)
+    if (!scanJob.readOptions.splitByPartitionId || parts.isEmpty || readsWholeTable) {
+      parts
+    } else {
+      parts :+ parts.head.copy(partition = NoPartitionSpec, complementOf = Some(parts.map(_.partition.partition_id)))
+    }
   }
 
   override def toBatch: Batch = this

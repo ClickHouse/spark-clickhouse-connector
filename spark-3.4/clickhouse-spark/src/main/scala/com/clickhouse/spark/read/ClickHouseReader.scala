@@ -38,6 +38,15 @@ abstract class ClickHouseReader[Record](
   val readDistributedConvertLocal: Boolean = conf.getConf(READ_DISTRIBUTED_CONVERT_LOCAL)
   private val readSettings: Option[String] = conf.getConf(READ_SETTINGS)
 
+  /**
+   * A complement partition matches nothing whenever the partition listing was complete. That reads
+   * as zero rows normally and for a GROUP BY aggregation, but a pushed-down aggregation without
+   * GROUP BY still returns one row holding the aggregate of the empty set (`min` of no rows is 0),
+   * which would corrupt the value Spark combines across partitions. Drop that row.
+   */
+  private val emptyAggregateGuard: String =
+    if (part.complementOf.isDefined && scanJob.groupByClause.isDefined) "HAVING count() > 0" else ""
+
   val database: String = part.table.database
   val table: String = part.table.name
 //  val codec: ClickHouseCompression = scanJob.readOptions.compressionCodec
@@ -60,6 +69,7 @@ abstract class ClickHouseReader[Record](
        |FROM `$database`.`$table`
        |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
        |${scanJob.groupByClause.getOrElse("")}
+       |$emptyAggregateGuard
        |${scanJob.orderByClause.getOrElse("")}
        |${scanJob.limit.map(n => s"LIMIT $n").getOrElse("")}
        |${readSettings.map(settings => s"SETTINGS $settings").getOrElse("")}
