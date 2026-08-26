@@ -20,6 +20,8 @@ import org.apache.spark.sql.clickhouse.SparkTest
 import org.apache.spark.sql.functions.month
 import org.apache.spark.sql.types.StructType
 import org.scalatest.BeforeAndAfterAll
+import org.scalatest.concurrent.Eventually._
+import org.scalatest.time.SpanSugar._
 
 import java.util.UUID
 import scala.util.{Failure, Success, Try}
@@ -36,6 +38,14 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider
   }
 
   protected def useSuiteLevelDatabase: Boolean = isCloud
+
+  /**
+   * Cloud's multi-replica compute can serve a read from a replica whose part or mutation cache has
+   * not yet caught up with a recent write or DELETE. Retries `body` until reads converge, and runs
+   * it once unchanged when not on Cloud.
+   */
+  protected def eventuallyOnCloud(body: => Unit): Unit =
+    if (isCloud) eventually(timeout(15.seconds), interval(500.millis))(body) else body
 
   override def beforeAll(): Unit = {
     super.beforeAll()

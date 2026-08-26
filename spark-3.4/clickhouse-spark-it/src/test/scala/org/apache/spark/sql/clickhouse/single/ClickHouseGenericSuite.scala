@@ -19,9 +19,7 @@ import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 import org.apache.spark.sql.types._
-import org.scalatest.concurrent.Eventually._
 import org.scalatest.tags.Cloud
-import org.scalatest.time.SpanSugar._
 
 @Cloud
 class ClickHouseCloudGenericSuite extends ClickHouseGenericSuite with ClickHouseCloudMixIn
@@ -31,11 +29,6 @@ class ClickHouseSingleGenericSuite extends ClickHouseGenericSuite with ClickHous
 abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
   import testImplicits._
-
-  // Cloud's multi-replica compute can serve reads from a replica whose part / mutation cache
-  // has not yet caught up with a recent write or DELETE. Retry the assertion until reads converge.
-  private def eventuallyOnCloud(body: => Unit): Unit =
-    if (isCloud) eventually(timeout(15.seconds), interval(500.millis))(body) else body
 
   test("clickhouse command runner") {
     // Pin the JSON formatting of UInt64 (visibleWidth returns UInt64). ClickHouse
