@@ -1308,8 +1308,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
 
       // Disable CH's default integer-quoting in JSON output so VariantBuilder.parseJson
       // round-trips integer paths as Int, not ShortString.
-      spark.conf.set("spark.clickhouse.read.settings", "output_format_json_quote_64bit_integers=0")
-      try {
+      withSQLConf(READ_SETTINGS_KEY -> readSettingsWith("output_format_json_quote_64bit_integers=0")) {
         val df = spark.table(s"$actualDb.$actualTbl").orderBy("id")
         val result = df.collect()
         assert(result.length == 2)
@@ -1320,8 +1319,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         val m1 = result(1).getMap[String, VariantVal](1)
         assert(m1.keySet == Set("only"))
         assert(variantToJson(m1("only")) == """{"v":99}""")
-      } finally
-        spark.conf.unset("spark.clickhouse.read.settings")
+      }
     }
   }
 
@@ -1391,8 +1389,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
 
       // Disable CH's default integer-quoting in JSON output so VariantBuilder.parseJson
       // round-trips integer paths as Int, not ShortString.
-      spark.conf.set("spark.clickhouse.read.settings", "output_format_json_quote_64bit_integers=0")
-      try {
+      withSQLConf(READ_SETTINGS_KEY -> readSettingsWith("output_format_json_quote_64bit_integers=0")) {
         val df = spark.table(s"$actualDb.$actualTbl").orderBy("id")
         val result = df.collect()
         assert(result.length == 1)
@@ -1402,8 +1399,7 @@ trait ClickHouseWriterTestBase extends SparkClickHouseSingleTest {
         assert(variantToJson(arr(0).get(1).asInstanceOf[VariantVal]) == """{"x":1}""")
         assert(arr(1).getString(0) == "second")
         assert(variantToJson(arr(1).get(1).asInstanceOf[VariantVal]) == """{"x":2}""")
-      } finally
-        spark.conf.unset("spark.clickhouse.read.settings")
+      }
     }
   }
 

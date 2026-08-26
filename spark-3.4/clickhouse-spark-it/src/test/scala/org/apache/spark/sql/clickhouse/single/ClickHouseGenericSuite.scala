@@ -459,7 +459,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
       // Tag the query so we can pull it from system.query_log by log_comment.
       val topNLogTag = java.util.UUID.randomUUID().toString
-      withSQLConf("spark.clickhouse.read.settings" -> s"log_comment='$topNLogTag'") {
+      withSQLConf(READ_SETTINGS_KEY -> readSettingsWith(s"log_comment='$topNLogTag'")) {
         checkAnswer(
           spark.sql(s"SELECT interval FROM $actualDb.$actualTbl ORDER BY interval DESC NULLS LAST LIMIT 2"),
           Seq(Row(40L), Row(30L))

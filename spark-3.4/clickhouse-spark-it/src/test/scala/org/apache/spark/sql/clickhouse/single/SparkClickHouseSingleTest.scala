@@ -36,6 +36,8 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
     s"test_db_${timestamp}_${uuidPrefix}"
   }
 
+  protected val READ_SETTINGS_KEY = "spark.clickhouse.read.settings"
+
   protected def useSuiteLevelDatabase: Boolean = isCloud
 
   /**
@@ -101,8 +103,20 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
    * On Cloud a read may be routed to a replica that has not yet caught up with a just-committed
    * insert, silently returning an empty table. Only replicated engines honour the setting.
    */
+  protected def cloudReadSettingValues: Seq[String] =
+    if (isCloud) Seq("select_sequential_consistency=1") else Nil
+
   private def cloudReadSettings: Iterable[(String, String)] =
-    if (isCloud) Seq("spark.clickhouse.read.settings" -> "select_sequential_consistency=1") else Nil
+    if (cloudReadSettingValues.isEmpty) Nil
+    else Seq(READ_SETTINGS_KEY -> cloudReadSettingValues.mkString(", "))
+
+  /**
+   * Read settings for a `withSQLConf(READ_SETTINGS_KEY -> ...)` override. The conf is single-valued,
+   * so overriding it outright would drop [[cloudReadSettingValues]] and let the read land on a
+   * replica that has not caught up.
+   */
+  protected def readSettingsWith(extra: String*): String =
+    (cloudReadSettingValues ++ extra).mkString(", ")
 
   override def cmdRunnerOptions: Map[String, String] = Map(
     "host" -> clickhouseHost,
