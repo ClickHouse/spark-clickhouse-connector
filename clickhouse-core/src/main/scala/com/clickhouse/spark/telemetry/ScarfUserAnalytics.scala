@@ -28,7 +28,7 @@ import java.util.concurrent.{LinkedBlockingQueue, ThreadFactory, ThreadPoolExecu
  * or `DO_NOT_TRACK` environment variable to `true` or `1`.
  */
 private[spark] class ScarfUserAnalytics(
-  endpoint: String = ScarfUserAnalytics.DEFAULT_ENDPOINT,
+  endpoint: String = ScarfUserAnalytics.resolveEndpoint(),
   env: String => Option[String] = key => sys.env.get(key)
 ) extends UserAnalytics with Logging {
   import ScarfUserAnalytics._
@@ -68,7 +68,12 @@ private[spark] class ScarfUserAnalytics(
 private[spark] object ScarfUserAnalytics {
 
   private val DEFAULT_ENDPOINT = "https://clickhouse.gateway.scarf.sh/spark-connector"
+  private val ENDPOINT_ENV = "CLICKHOUSE_SCARF_ENDPOINT"
   private val TIMEOUT_MS = 3000
+
+  /** Deliberately undocumented override, e.g. to point an end-to-end test at a local capture server. */
+  private[spark] def resolveEndpoint(env: String => Option[String] = key => sys.env.get(key)): String =
+    env(ENDPOINT_ENV).map(_.trim).filter(_.nonEmpty).getOrElse(DEFAULT_ENDPOINT)
 
   // one JVM-wide FIFO daemon thread shared by all instances; a full queue silently drops
   // events so a slow or unreachable endpoint never blocks the driver nor piles up work
