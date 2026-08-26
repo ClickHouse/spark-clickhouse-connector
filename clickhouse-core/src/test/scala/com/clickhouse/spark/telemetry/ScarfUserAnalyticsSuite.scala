@@ -64,6 +64,7 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
     assert(params("spark_version") === "3.5.4")
     assert(params("format") === "json")
     assert(params("engine") === "MergeTree")
+    assert(params("test") === "true") // the suite itself runs under a test framework
     assert(params("app_name_hash") === UserAnalyticsEvent.sha256Hex16("nightly_sales_load"))
     assert(params("table_id") === "1234567890abcdef")
     // `runtime` is present only when a managed platform is detected
@@ -76,7 +77,8 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
         "format",
         "engine",
         "app_name_hash",
-        "table_id"
+        "table_id",
+        "test"
       )
     )
 

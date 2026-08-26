@@ -38,6 +38,9 @@ case class UserAnalyticsEvent(
   // per event, not cached: only the reporting thread's stack shows the platform driving the job
   private val runtimeFromStack: Option[String] = Utils.RuntimeDetector.detectViaStackTrace()
 
+  // also caller-stack-sensitive: the test framework's frames live on the reporting thread's stack
+  private val isTestRun: Boolean = detectTestRun()
+
   def toParams: Seq[(String, String)] =
     Seq(
       "event" -> event,
@@ -49,7 +52,8 @@ case class UserAnalyticsEvent(
     ) ++
       appNameHash.map("app_name_hash" -> _) ++
       tableId.map("table_id" -> _) ++
-      (runtimeFromStack orElse runtimeFromEnvironment).map(r => "runtime" -> r.toLowerCase)
+      (runtimeFromStack orElse runtimeFromEnvironment).map(r => "runtime" -> r.toLowerCase) ++
+      (if (isTestRun) Some("test" -> "true") else None)
 }
 
 object UserAnalyticsEvent {
@@ -76,6 +80,39 @@ object UserAnalyticsEvent {
   // walks class loaders and every thread name, so it stays off the reporting thread; once per JVM
   private lazy val runtimeFromEnvironment: Option[String] =
     Utils.RuntimeDetector.detectViaClassLoader().orElse(Utils.RuntimeDetector.detectViaThreadNames())
+
+  // deterministic markers set by test-runner JVMs; presence is the signal, values are irrelevant
+  private val TEST_MARKER_PROPS = Seq("org.gradle.test.worker", "surefire.test.class.path", Utils.IS_TESTING)
+
+  // main classes of forked test-runner JVMs, matched against the start of `sun.java.command`
+  private val TEST_RUNNER_MAINS = Seq(
+    "worker.org.gradle.process.internal.worker.GradleWorkerMain",
+    "org.apache.maven.surefire.booter.ForkedBooter",
+    "org.scalatest.tools.Runner",
+    "org.junit.platform.console.ConsoleLauncher",
+    "sbt.ForkMain"
+  )
+
+  // package prefixes only, never bare substrings: these cannot appear in a production stack
+  private val TEST_STACK_PREFIXES = Seq("org.scalatest.", "org.junit.", "munit.", "org.testng.")
+
+  // a test-scope library in practice, so its mere presence marks an integration-test JVM; cached
+  // because the classpath cannot change, unlike the per-event thread-sensitive signals
+  private lazy val testcontainersOnClasspath: Boolean =
+    try {
+      Class.forName("org.testcontainers.containers.GenericContainer", false, getClass.getClassLoader)
+      true
+    } catch {
+      case _: Throwable => false
+    }
+
+  /** True when this JVM carries a test-runner marker or a test framework is on the caller's stack. */
+  private def detectTestRun(): Boolean =
+    TEST_MARKER_PROPS.exists(key => System.getProperty(key) != null) ||
+      sys.env.contains("SPARK_TESTING") ||
+      Option(System.getProperty("sun.java.command")).exists(cmd => TEST_RUNNER_MAINS.exists(cmd.startsWith)) ||
+      testcontainersOnClasspath ||
+      Thread.currentThread().getStackTrace.exists(frame => TEST_STACK_PREFIXES.exists(frame.getClassName.startsWith))
 
   /** First 16 hex chars of SHA-256; the raw value never leaves the driver. */
   private[spark] def sha256Hex16(value: String): String =
