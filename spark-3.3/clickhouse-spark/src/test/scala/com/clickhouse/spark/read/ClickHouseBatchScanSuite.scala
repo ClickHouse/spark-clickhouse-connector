@@ -15,7 +15,15 @@
 package com.clickhouse.spark.read
 
 import com.clickhouse.spark.Log4j2CaptureHelper
-import com.clickhouse.spark.spec.{DistributedEngineSpec, NoPartitionSpec, NodeSpec, PartitionSpec, TableSpec}
+import com.clickhouse.spark.ClickHouseTable
+import com.clickhouse.spark.spec.{
+  DistributedEngineSpec,
+  MergeTreeEngineSpec,
+  NoPartitionSpec,
+  NodeSpec,
+  PartitionSpec,
+  TableSpec
+}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
   READ_DISTRIBUTED_CONVERT_LOCAL,
   READ_DISTRIBUTED_USE_CLUSTER_NODES
@@ -50,6 +58,20 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
     // NoPartitionSpec already reads everything, so a complement would double-read the table
     assert(scan.inputPartitions.forall(_.complementOf.isEmpty))
     assert(scan.inputPartitions.map(_.partFilterExpr).toSeq === Seq("1=1"))
+  }
+
+  test("table identity ignores volatile runtime statistics") {
+    def table(rows: Option[Long]): ClickHouseTable = ClickHouseTable(
+      node = NodeSpec("127.0.0.1"),
+      cluster = None,
+      tz = ZoneId.of("UTC"),
+      spec = tableSpec().copy(total_rows = rows, total_bytes = rows, lifetime_rows = rows),
+      engineSpec = MergeTreeEngineSpec(engine_clause = "MergeTree")
+    )
+    // two catalog loads of the same table must stay equal while data commits, or plan reuse breaks
+    assert(table(Some(0L)) === table(Some(2L)))
+    assert(table(Some(0L)).hashCode === table(Some(2L)).hashCode)
+    assert(table(None) === table(Some(2L)))
   }
 
   private def inputPartition(

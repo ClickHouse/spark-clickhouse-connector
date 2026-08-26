@@ -17,7 +17,9 @@ package org.apache.spark.sql.clickhouse.single
 import com.clickhouse.spark.Log4j2CaptureHelper
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
 import org.apache.spark.sql.Row
+import org.scalatest.concurrent.Eventually._
 import org.scalatest.tags.Cloud
+import org.scalatest.time.SpanSugar._
 
 @Cloud
 class ClickHouseCloudReadWarningSuite extends ClickHouseReadWarningSuite with ClickHouseCloudMixIn
@@ -28,6 +30,11 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest with
 
   private val engineUtilsLogger = "com.clickhouse.spark.spec.TableEngineUtils"
   private val batchScanLogger = "com.clickhouse.spark.read.ClickHouseBatchScan"
+
+  // Cloud's multi-replica compute can serve reads from a replica whose part cache has not yet
+  // caught up with a recent write. Retry the assertion until reads converge.
+  private def eventuallyOnCloud(body: => Unit): Unit =
+    if (isCloud) eventually(timeout(15.seconds), interval(500.millis))(body) else body
 
   test("reading a view does not warn about unknown table engine") {
     withKVTable("db_read_warning", "tbl_view_src", valueColDef = "String") { (db, tbl) =>
@@ -83,9 +90,14 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest with
 
   test("reading a table with multiple partitions does not warn about single partition read") {
     withSimpleTable("db_read_warning", "tbl_multi_part", writeData = true) { (db, tbl) =>
-      val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, tbl))
-      assert(rowCount === 2)
-      assert(!warnings.exists(_.contains("as a single partition")))
+      // The warning is driven by the partition listing from `system.parts`, which is eventually
+      // consistent on Cloud: a listing that has not caught up looks like a single-partition table.
+      // Re-read until it converges; captureWarnings starts a fresh capture on each attempt.
+      eventuallyOnCloud {
+        val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, tbl))
+        assert(rowCount === 2)
+        assert(!warnings.exists(_.contains("as a single partition")))
+      }
     }
   }
 
