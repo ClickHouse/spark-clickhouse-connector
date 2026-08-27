@@ -30,10 +30,12 @@ import org.apache.spark.sql.connector.read.partitioning.{Partitioning, UnknownPa
 import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types.StructType
 import com.clickhouse.spark._
+import com.clickhouse.spark.telemetry.{UserAnalytics, UserAnalyticsEvents, UserAnalyticsFactory}
 import com.clickhouse.spark.expr.ExprRender
 import com.clickhouse.spark.spec._
 
 import java.time.ZoneId
+import java.util.concurrent.atomic.AtomicBoolean
 import scala.util.control.NonFatal
 
 class ClickHouseScanBuilder(
@@ -167,17 +169,21 @@ class ClickHouseScanBuilder(
 
   override def build(): Scan = {
     validateReadSchema()
-    new ClickHouseBatchScan(scanJob.copy(
-      readSchema = _readSchema,
-      filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
-      groupByClause = _groupByClause,
-      orderByClause = _orderByClause,
-      limit = _limit
-    ))
+    new ClickHouseBatchScan(
+      scanJob.copy(
+        readSchema = _readSchema,
+        filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
+        groupByClause = _groupByClause,
+        orderByClause = _orderByClause,
+        limit = _limit
+      ),
+      UserAnalyticsFactory.create()
+    )
   }
 }
 
-class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
+class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val userAnalytics: UserAnalytics)
+    extends Scan with Batch
     with SupportsReportPartitioning
     with SupportsRuntimeFiltering
     with PartitionReaderFactory
@@ -185,6 +191,8 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     with SQLHelper {
 
   implicit private val tz: ZoneId = scanJob.tz
+
+  private val usageStatsReported = new AtomicBoolean(false)
 
   private var runtimeFilters: Array[Filter] = Array.empty
 
@@ -248,7 +256,16 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
   // TODO KeyGroupedPartitioning
   override def outputPartitioning(): Partitioning = new UnknownPartitioning(inputPartitions.length)
 
-  override def createReaderFactory: PartitionReaderFactory = this
+  override def createReaderFactory: PartitionReaderFactory = {
+    // may run more than once per scan (e.g. AQE reuse); report at most one read event per scan
+    if (!usageStatsReported.getAndSet(true)) {
+      // never runs on executors, where the @transient sink would be null; Option is just-in-case
+      Option(userAnalytics).foreach(
+        _.reportJobRun(UserAnalyticsEvents.readEvent(scanJob), scanJob.readOptions.sendAnonymousUsageStats)
+      )
+    }
+    this
+  }
 
   override def createReader(_partition: InputPartition): PartitionReader[InternalRow] = {
     val format = scanJob.readOptions.format

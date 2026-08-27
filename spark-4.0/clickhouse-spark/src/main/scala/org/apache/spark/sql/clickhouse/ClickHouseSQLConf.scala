@@ -278,4 +278,16 @@ object ClickHouseSQLConf {
       .checkValue(_ > 0, "`spark.clickhouse.client.queryTimeout` should be positive.")
       .createWithDefaultString("60s")
 
+  val SEND_ANONYMOUS_USAGE_STATS: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.sendAnonymousUsageStats")
+      .doc("Whether to send anonymous usage statistics to ClickHouse (via Scarf) when Spark plans " +
+        "a read from ClickHouse or executes a write to it. The event carries only the connector " +
+        "and Spark versions, the OS name, coarse runtime facts (platform, table engine, wire format, " +
+        "test-run flag), a one-way hash of the Spark application name, and a truncated random table UUID; " +
+        "never data, names, hostnames, or credentials. Also disabled " +
+        "when the `SCARF_NO_ANALYTICS` or `DO_NOT_TRACK` environment variable is set to `true` or `1`.")
+      .version("0.10.1")
+      .booleanConf
+      .createWithDefault(true)
+
 }

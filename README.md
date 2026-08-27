@@ -69,3 +69,8 @@ Run single test
 Test against custom ClickHouse image
 
 `CLICKHOUSE_IMAGE=custom-org/clickhouse-server:custom-tag ./gradlew test`
+
+## Anonymous Usage Statistics
+
+The connector sends anonymous usage events to ClickHouse (via [Scarf](https://about.scarf.sh)); opt out with
+`spark.clickhouse.sendAnonymousUsageStats=false` or the `SCARF_NO_ANALYTICS`/`DO_NOT_TRACK` environment variables.

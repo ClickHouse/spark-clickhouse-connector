@@ -48,6 +48,8 @@ trait SparkTest extends QueryTest with SharedSparkSession {
     .set("spark.sql.catalogImplementation", "in-memory")
     .set("spark.sql.codegen.wholeStage", "false")
     .set("spark.sql.shuffle.partitions", "2")
+    // downstream repos compile these fixtures without the Gradle SCARF_NO_ANALYTICS env
+    .set("spark.clickhouse.sendAnonymousUsageStats", "false")
 
   def runClickHouseSQL(sql: String, options: Map[String, String] = cmdRunnerOptions): DataFrame =
     spark.executeCommand(classOf[ClickHouseCommandRunner].getName, sql, options)

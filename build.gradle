@@ -165,6 +165,8 @@ subprojects {
         jvmArgs += extraJvmArgs
         maxParallelForks = 1
         environment("ROOT_PROJECT_DIR", rootProject.projectDir)
+        // tests must never send anonymous usage stats
+        environment("SCARF_NO_ANALYTICS", "true")
         tags {
             exclude 'org.scalatest.tags.Slow'
             exclude 'org.scalatest.tags.Cloud'
@@ -175,6 +177,8 @@ subprojects {
         jvmArgs += extraJvmArgs
         maxParallelForks = 1
         environment("ROOT_PROJECT_DIR", rootProject.projectDir)
+        // tests must never send anonymous usage stats
+        environment("SCARF_NO_ANALYTICS", "true")
         tags {
             include 'org.scalatest.tags.Slow'
         }
@@ -184,6 +188,8 @@ subprojects {
         jvmArgs += extraJvmArgs
         maxParallelForks = 1
         environment("ROOT_PROJECT_DIR", rootProject.projectDir)
+        // tests must never send anonymous usage stats
+        environment("SCARF_NO_ANALYTICS", "true")
         tags {
             include 'org.scalatest.tags.Cloud'
         }
@@ -234,6 +240,16 @@ project(':clickhouse-core') {
 
     sourcesJar {
         dependsOn generateGrammarSource
+    }
+
+    // UserAnalyticsEvent reads the connector version from this jar's manifest in thin deployments
+    jar {
+        manifest {
+            attributes(
+                    'Implementation-Title': 'Spark-ClickHouse-Connector',
+                    'Implementation-Version': getProjectVersion()
+            )
+        }
     }
 
     dependencies {
