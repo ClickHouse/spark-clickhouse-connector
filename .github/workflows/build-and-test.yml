@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        clickhouse: [ 26.4, 26.5, 26.6, 26.7, latest, head ]
+        clickhouse: [ 26.5, 26.6, 26.7, 26.8, latest, head ]
         java: [ 8, 17 ]
         scala: [ '2.12', '2.13' ]
         spark: [ '3.3', '3.4', '3.5', '4.0' ]
