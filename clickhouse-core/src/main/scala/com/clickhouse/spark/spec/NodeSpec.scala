@@ -88,6 +88,14 @@ case class ShardSpec(
 
   override def toString: String = s"shard_num: $num, shard_weight: $weight, replicas: [${replicas.mkString(", ")}]"
 
+  // Arrays compare by reference; see ClusterSpec#equals. `compare` stays keyed on `num` alone.
+  override def equals(other: Any): Boolean = other match {
+    case that: ShardSpec => num == that.num && weight == that.weight && replicas.toSeq == that.replicas.toSeq
+    case _ => false
+  }
+
+  override def hashCode(): Int = (num, weight, replicas.toSeq).hashCode()
+
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = replicas.sorted.flatMap(_.nodes)
 }
 
@@ -97,6 +105,14 @@ case class ClusterSpec(
 ) extends Nodes with ToJson with Serializable {
 
   override def toString: String = s"cluster: $name, shards: [${shards.mkString(", ")}]"
+
+  // Arrays compare by reference, so without this two specs describing the same cluster differ.
+  override def equals(other: Any): Boolean = other match {
+    case that: ClusterSpec => name == that.name && shards.toSeq == that.shards.toSeq
+    case _ => false
+  }
+
+  override def hashCode(): Int = (name, shards.toSeq).hashCode()
 
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = shards.sorted.flatMap(_.nodes)
 
