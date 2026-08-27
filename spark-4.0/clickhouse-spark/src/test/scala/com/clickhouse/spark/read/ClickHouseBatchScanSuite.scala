@@ -17,7 +17,16 @@ package com.clickhouse.spark.read
 import com.clickhouse.spark.Log4j2CaptureHelper
 import com.clickhouse.spark.func.StaticFunctionRegistry
 import com.clickhouse.spark.ClickHouseTable
-import com.clickhouse.spark.spec.{DistributedEngineSpec, MergeTreeEngineSpec, NodeSpec, TableSpec}
+import com.clickhouse.spark.spec.{
+  ClusterSpec,
+  DistributedEngineSpec,
+  MergeTreeEngineSpec,
+  NodeSpec,
+  ReplicaSpec,
+  ShardSpec,
+  TableEngineSpec,
+  TableSpec
+}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
   READ_DISTRIBUTED_CONVERT_LOCAL,
   READ_DISTRIBUTED_USE_CLUSTER_NODES
@@ -38,19 +47,67 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
   }
 
   test("table identity ignores volatile runtime statistics") {
-    def table(rows: Option[Long]): ClickHouseTable = ClickHouseTable(
-      node = NodeSpec("127.0.0.1"),
-      cluster = None,
-      tz = ZoneId.of("UTC"),
-      spec = tableSpec().copy(total_rows = rows, total_bytes = rows, lifetime_rows = rows),
-      engineSpec = MergeTreeEngineSpec(engine_clause = "MergeTree"),
-      functionRegistry = StaticFunctionRegistry
-    )
-    // two catalog loads of the same table must stay equal while data commits, or plan reuse breaks
+    def table(rows: Option[Long]): ClickHouseTable =
+      clickHouseTable(spec = tableSpec().copy(total_rows = rows, total_bytes = rows, lifetime_rows = rows))
+    // two loads either side of a write must stay equal, or plan reuse breaks
     assert(table(Some(0L)) === table(Some(2L)))
     assert(table(Some(0L)).hashCode === table(Some(2L)).hashCode)
     assert(table(None) === table(Some(2L)))
   }
+
+  test("table identity ignores replica-local metadata") {
+    // replica-local: whichever replica served the load
+    def table(suffix: String): ClickHouseTable = clickHouseTable(spec =
+      tableSpec().copy(
+        data_paths = List(s"store/$suffix"),
+        metadata_path = s"metadata/$suffix",
+        metadata_modification_time = LocalDateTime.of(2026, 1, 1, 0, 0).plusSeconds(suffix.length.toLong)
+      )
+    )
+    assert(table("a") === table("bb"))
+    assert(table("a").hashCode === table("bb").hashCode)
+  }
+
+  test("table identity holds across separately built cluster specs") {
+    // a catalog is built per getTable, so two loads carry different ClusterSpec instances
+    def cluster(): ClusterSpec =
+      ClusterSpec("single", Array(ShardSpec(1, 1, Array(ReplicaSpec(1, NodeSpec("127.0.0.1"))))))
+    assert(cluster() === cluster())
+    assert(cluster().hashCode === cluster().hashCode)
+
+    def table(): ClickHouseTable = clickHouseTable(
+      cluster = Some(cluster()),
+      engineSpec = DistributedEngineSpec(
+        engine_clause = "Distributed('single', 'db', 'local')",
+        cluster = "single",
+        local_db = "db",
+        local_table = "local"
+      )
+    )
+    assert(table() === table())
+    assert(table().hashCode === table().hashCode)
+  }
+
+  test("table identity still distinguishes different tables") {
+    assert(clickHouseTable(spec = tableSpec().copy(name = "other")) !== clickHouseTable())
+    assert(clickHouseTable(spec = tableSpec().copy(uuid = "other")) !== clickHouseTable())
+    assert(clickHouseTable(spec = tableSpec().copy(database = "other")) !== clickHouseTable())
+    assert(clickHouseTable(node = NodeSpec("10.0.0.1")) !== clickHouseTable())
+  }
+
+  private def clickHouseTable(
+    node: NodeSpec = NodeSpec("127.0.0.1"),
+    cluster: Option[ClusterSpec] = None,
+    spec: TableSpec = tableSpec(),
+    engineSpec: TableEngineSpec = MergeTreeEngineSpec(engine_clause = "MergeTree")
+  ): ClickHouseTable = ClickHouseTable(
+    node = node,
+    cluster = cluster,
+    tz = ZoneId.of("UTC"),
+    spec = spec,
+    engineSpec = engineSpec,
+    functionRegistry = StaticFunctionRegistry
+  )
 
   private def tableSpec(): TableSpec = TableSpec(
     database = "db",
