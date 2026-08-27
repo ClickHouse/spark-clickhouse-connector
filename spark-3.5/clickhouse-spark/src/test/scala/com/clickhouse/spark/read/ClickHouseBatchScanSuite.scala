@@ -75,6 +75,22 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
     assert(cluster() === cluster())
     assert(cluster().hashCode === cluster().hashCode)
 
+    // queryClusterSpecs groups an unordered `system.clusters` result, so array order is not stable
+    val r1 = ReplicaSpec(1, NodeSpec("10.0.0.1"))
+    val r2 = ReplicaSpec(2, NodeSpec("10.0.0.2"))
+    val shard1 = (replicas: Array[ReplicaSpec]) => ShardSpec(1, 1, replicas)
+    val shard2 = ShardSpec(2, 1, Array(ReplicaSpec(1, NodeSpec("10.0.0.3"))))
+    val a = ClusterSpec("c", Array(shard1(Array(r1, r2)), shard2))
+    val b = ClusterSpec("c", Array(shard2, shard1(Array(r2, r1))))
+    assert(a === b)
+    assert(a.hashCode === b.hashCode)
+    // a genuinely different topology must still differ: same hosts, swapped replica numbers
+    val swapped = ClusterSpec(
+      "c",
+      Array(shard1(Array(ReplicaSpec(1, NodeSpec("10.0.0.2")), ReplicaSpec(2, NodeSpec("10.0.0.1")))), shard2)
+    )
+    assert(a !== swapped)
+
     def table(): ClickHouseTable = clickHouseTable(
       cluster = Some(cluster()),
       engineSpec = DistributedEngineSpec(

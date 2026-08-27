@@ -90,11 +90,12 @@ case class ShardSpec(
 
   // Arrays compare by reference; see ClusterSpec#equals. `compare` stays keyed on `num` alone.
   override def equals(other: Any): Boolean = other match {
-    case that: ShardSpec => num == that.num && weight == that.weight && replicas.toSeq == that.replicas.toSeq
+    case that: ShardSpec =>
+      num == that.num && weight == that.weight && replicas.sorted.toSeq == that.replicas.sorted.toSeq
     case _ => false
   }
 
-  override def hashCode(): Int = (num, weight, replicas.toSeq).hashCode()
+  override def hashCode(): Int = (num, weight, replicas.sorted.toSeq).hashCode()
 
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = replicas.sorted.flatMap(_.nodes)
 }
@@ -107,12 +108,14 @@ case class ClusterSpec(
   override def toString: String = s"cluster: $name, shards: [${shards.mkString(", ")}]"
 
   // Arrays compare by reference, so without this two specs describing the same cluster differ.
+  // Compared shard-order-insensitively: queryClusterSpecs groups an unordered `system.clusters`
+  // result, so the array order is not stable across lookups.
   override def equals(other: Any): Boolean = other match {
-    case that: ClusterSpec => name == that.name && shards.toSeq == that.shards.toSeq
+    case that: ClusterSpec => name == that.name && sortedShards.toSeq == that.sortedShards.toSeq
     case _ => false
   }
 
-  override def hashCode(): Int = (name, shards.toSeq).hashCode()
+  override def hashCode(): Int = (name, sortedShards.toSeq).hashCode()
 
   @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = shards.sorted.flatMap(_.nodes)
 
