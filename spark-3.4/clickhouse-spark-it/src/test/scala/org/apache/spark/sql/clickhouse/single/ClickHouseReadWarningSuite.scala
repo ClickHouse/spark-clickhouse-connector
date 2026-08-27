@@ -83,9 +83,14 @@ abstract class ClickHouseReadWarningSuite extends SparkClickHouseSingleTest with
 
   test("reading a table with multiple partitions does not warn about single partition read") {
     withSimpleTable("db_read_warning", "tbl_multi_part", writeData = true) { (db, tbl) =>
-      val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, tbl))
-      assert(rowCount === 2)
-      assert(!warnings.exists(_.contains("as a single partition")))
+      // The warning is driven by the partition listing from `system.parts`, which is eventually
+      // consistent on Cloud: a listing that has not caught up looks like a single-partition table.
+      // Re-read until it converges; captureWarnings starts a fresh capture on each attempt.
+      eventuallyOnCloud {
+        val (rowCount, warnings) = captureWarnings(batchScanLogger)(readRowCount(db, tbl))
+        assert(rowCount === 2)
+        assert(!warnings.exists(_.contains("as a single partition")))
+      }
     }
   }
 
