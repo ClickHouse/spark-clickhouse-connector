@@ -19,9 +19,7 @@ import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 import org.apache.spark.sql.types._
-import org.scalatest.concurrent.Eventually._
 import org.scalatest.tags.Cloud
-import org.scalatest.time.SpanSugar._
 
 @Cloud
 class ClickHouseCloudGenericSuite extends ClickHouseGenericSuite with ClickHouseCloudMixIn
@@ -31,11 +29,6 @@ class ClickHouseSingleGenericSuite extends ClickHouseGenericSuite with ClickHous
 abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
   import testImplicits._
-
-  // Cloud's multi-replica compute can serve reads from a replica whose part / mutation cache
-  // has not yet caught up with a recent write or DELETE. Retry the assertion until reads converge.
-  private def eventuallyOnCloud(body: => Unit): Unit =
-    if (isCloud) eventually(timeout(15.seconds), interval(500.millis))(body) else body
 
   test("clickhouse command runner") {
     // Pin the JSON formatting of UInt64 (visibleWidth returns UInt64). ClickHouse
@@ -94,7 +87,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         )
       }
 
-      spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
+      eventuallyOnCloud {
+        spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
+      }
       eventuallyOnCloud {
         checkAnswer(
           spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
@@ -102,7 +97,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         )
       }
 
-      spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 1) PURGE")
+      eventuallyOnCloud {
+        spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 1) PURGE")
+      }
       eventuallyOnCloud {
         checkAnswer(
           spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
@@ -126,7 +123,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         )
       }
 
-      spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
+      eventuallyOnCloud {
+        spark.sql(s"ALTER TABLE $actualDb.$actualTbl DROP PARTITION(m = 2)")
+      }
       eventuallyOnCloud {
         checkAnswer(
           spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
@@ -134,7 +133,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         )
       }
 
-      spark.sql(s"TRUNCATE TABLE $actualDb.$actualTbl PARTITION(m = 1)")
+      eventuallyOnCloud {
+        spark.sql(s"TRUNCATE TABLE $actualDb.$actualTbl PARTITION(m = 1)")
+      }
       eventuallyOnCloud {
         checkAnswer(
           spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
@@ -175,15 +176,17 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           Row(22L, date("2022-04-22")) :: Nil
       )
 
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq(
-          Row("date=2022-04-11"),
-          Row("date=2022-04-12"),
-          Row("date=2022-04-21"),
-          Row("date=2022-04-22")
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq(
+            Row("date=2022-04-11"),
+            Row("date=2022-04-12"),
+            Row("date=2022-04-21"),
+            Row("date=2022-04-22")
+          )
         )
-      )
+      }
     }
   }
 
@@ -221,15 +224,17 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           Row(22L, "two_two", "2", 2) :: Nil
       )
 
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq(
-          Row("part_1=1/part_2=1"),
-          Row("part_1=1/part_2=2"),
-          Row("part_1=2/part_2=1"),
-          Row("part_1=2/part_2=2")
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq(
+            Row("part_1=1/part_2=1"),
+            Row("part_1=1/part_2=2"),
+            Row("part_1=2/part_2=1"),
+            Row("part_1=2/part_2=2")
+          )
         )
-      )
+      }
     }
   }
 
@@ -264,15 +269,17 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
           Row(22L, date("2022-04-22"), 2) :: Nil
       )
 
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
-        Seq(
-          Row("part_1=2022-04-11/part_2=1"),
-          Row("part_1=2022-04-12/part_2=2"),
-          Row("part_1=2022-04-21/part_2=1"),
-          Row("part_1=2022-04-22/part_2=2")
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $actualDb.$actualTbl"),
+          Seq(
+            Row("part_1=2022-04-11/part_2=1"),
+            Row("part_1=2022-04-12/part_2=2"),
+            Row("part_1=2022-04-21/part_2=1"),
+            Row("part_1=2022-04-22/part_2=2")
+          )
         )
-      )
+      }
     }
   }
 
@@ -296,13 +303,15 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         (2L, "2022-06-07")
       )).toDF("id", "dt")
         .writeTo(s"$db.$tbl").append
-      checkAnswer(
-        spark.sql(s"SHOW PARTITIONS $db.$tbl"),
-        Seq(
-          Row("dt=20220606"),
-          Row("dt=20220607")
+      eventuallyOnCloud {
+        checkAnswer(
+          spark.sql(s"SHOW PARTITIONS $db.$tbl"),
+          Seq(
+            Row("dt=20220606"),
+            Row("dt=20220607")
+          )
         )
-      )
+      }
       checkAnswer(
         spark.table(s"$db.$tbl").orderBy($"id"),
         Seq(
@@ -450,7 +459,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
       // Tag the query so we can pull it from system.query_log by log_comment.
       val topNLogTag = java.util.UUID.randomUUID().toString
-      withSQLConf("spark.clickhouse.read.settings" -> s"log_comment='$topNLogTag'") {
+      withSQLConf(READ_SETTINGS_KEY -> readSettingsWith(s"log_comment='$topNLogTag'")) {
         checkAnswer(
           spark.sql(s"SELECT interval FROM $actualDb.$actualTbl ORDER BY interval DESC NULLS LAST LIMIT 2"),
           Seq(Row(40L), Row(30L))
