@@ -90,14 +90,15 @@ case class ShardSpec(
 
   // Arrays compare by reference; see ClusterSpec#equals. `compare` stays keyed on `num` alone.
   override def equals(other: Any): Boolean = other match {
-    case that: ShardSpec =>
-      num == that.num && weight == that.weight && replicas.sorted.toSeq == that.replicas.sorted.toSeq
+    case that: ShardSpec => num == that.num && weight == that.weight && sortedReplicas == that.sortedReplicas
     case _ => false
   }
 
-  override def hashCode(): Int = (num, weight, replicas.sorted.toSeq).hashCode()
+  override def hashCode(): Int = (num, weight, sortedReplicas).hashCode()
 
-  @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = replicas.sorted.flatMap(_.nodes)
+  @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = sortedReplicas.flatMap(_.nodes).toArray
+
+  @JsonIgnore @transient private[spec] lazy val sortedReplicas: Seq[ReplicaSpec] = replicas.sorted.toSeq
 }
 
 case class ClusterSpec(
@@ -111,17 +112,18 @@ case class ClusterSpec(
   // Compared shard-order-insensitively: queryClusterSpecs groups an unordered `system.clusters`
   // result, so the array order is not stable across lookups.
   override def equals(other: Any): Boolean = other match {
-    case that: ClusterSpec => name == that.name && sortedShards.toSeq == that.sortedShards.toSeq
+    case that: ClusterSpec => name == that.name && sortedShardSeq == that.sortedShardSeq
     case _ => false
   }
 
-  override def hashCode(): Int = (name, sortedShards.toSeq).hashCode()
+  override def hashCode(): Int = (name, sortedShardSeq).hashCode()
 
-  @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = shards.sorted.flatMap(_.nodes)
+  @JsonIgnore @transient override lazy val nodes: Array[NodeSpec] = sortedShards.flatMap(_.nodes)
 
   // shard routing tables for `ShardUtils.calcShard`, precomputed once per instance because it runs
   // per row on the write path and per comparison when sorting by shard number
   @JsonIgnore @transient private[spec] lazy val sortedShards: Array[ShardSpec] = shards.sorted
+  @JsonIgnore @transient private[spec] lazy val sortedShardSeq: Seq[ShardSpec] = sortedShards.toSeq
   @JsonIgnore @transient private[spec] lazy val shardWeightUpperBounds: Array[Int] =
     sortedShards.scanLeft(0)(_ + _.weight).tail
   @JsonIgnore @transient private[spec] lazy val totalWeight: Int = shards.map(_.weight).sum
