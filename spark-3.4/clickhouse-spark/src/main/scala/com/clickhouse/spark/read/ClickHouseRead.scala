@@ -196,16 +196,18 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
       case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
         scanJob.cluster.get.shards.flatMap { shardSpec =>
           Utils.tryWithResource(NodeClient(shardSpec.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-            queryPartitionSpec(local_db, local_table).map { partitionSpec =>
+            // complemented per shard: each shard is listed separately, so one complement over the
+            // flattened result would exclude the other shards' ids and be pinned to a single shard
+            withComplement(queryPartitionSpec(local_db, local_table).map { partitionSpec =>
               ClickHouseInputPartition(
                 scanJob.localTableSpec.get,
                 partitionSpec,
                 scanJob.readOptions.splitByPartitionId,
                 shardSpec // TODO pickup preferred
               )
-            }
+            }.toSeq)
           }
-        }
+        }.toArray
       case _: DistributedEngineSpec if scanJob.readOptions.useClusterNodesForDistributed =>
         throw CHClientException(
           s"${READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
@@ -220,20 +222,21 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
         ))
       case _: TableEngineSpec =>
         Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-          queryPartitionSpec(database, table).map { partitionSpec =>
+          withComplement(queryPartitionSpec(database, table).map { partitionSpec =>
             ClickHouseInputPartition(
               scanJob.tableSpec,
               partitionSpec,
               scanJob.readOptions.splitByPartitionId,
               scanJob.node // TODO pickup preferred
             )
-          }
+          }.toSeq)
         }.toArray
     }
-    if (partitions.length == 1) {
+    // counted on the listed partitions only: a complement is not a partition of the table
+    if (partitions.count(_.complementOf.isEmpty) == 1) {
       log.warn(s"Reading $database.$table as a single partition, which may impact read performance")
     }
-    withComplement(partitions.toSeq).toArray
+    partitions
   }
 
   /**

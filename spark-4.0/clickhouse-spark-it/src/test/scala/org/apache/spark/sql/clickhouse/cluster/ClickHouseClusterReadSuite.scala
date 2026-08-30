@@ -14,6 +14,7 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
+import com.clickhouse.spark.read.ClickHouseBatchScan
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.{AnalysisException, Row}
 import org.apache.spark.sql.catalyst.TableIdentifier
@@ -43,6 +44,32 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
             Row(2024, 1)
           )
         )
+      }
+    }
+  }
+
+  test("each shard is complemented from its own partition listing") {
+    // a single complement over the flattened result would carry every shard's ids and sit on one
+    // shard, so the rest of the cluster would keep the exposure the complement exists to remove
+    withSimpleDistTable("single_replica", "db_compl", "t_dist", true) { (_, db, tbl_dist, _) =>
+      withSQLConf(READ_DISTRIBUTED_CONVERT_LOCAL.key -> "true") {
+        val df = spark.sql(s"SELECT id FROM $db.$tbl_dist")
+        df.collect()
+        val scan = df.queryExecution.executedPlan.collectFirst {
+          case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
+        }.get
+
+        val complements = scan.inputPartitions.filter(_.complementOf.isDefined)
+        val listed = scan.inputPartitions.filter(_.complementOf.isEmpty)
+        // one per shard that reported partitions, not one for the whole scan
+        assert(complements.length === listed.map(_.candidateNodes).distinct.length)
+        assert(complements.length > 1)
+        // each complement excludes exactly the ids listed for its own shard
+        complements.foreach { complement =>
+          val ownIds = listed.filter(_.candidateNodes == complement.candidateNodes)
+            .map(_.partition.partition_id).sorted
+          assert(complement.complementOf.get.sorted === ownIds)
+        }
       }
     }
   }
