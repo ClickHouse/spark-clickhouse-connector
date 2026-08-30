@@ -59,6 +59,33 @@ case class ClickHouseTable(
     with SQLHelper
     with Logging {
 
+  /**
+   * The fields that identify this table, rather than describe its current contents. Spark compares
+   * plans to find cached data and a DataSourceV2Relation carries this Table, so an identity that
+   * moves with the data defeats plan reuse (CACHE TABLE, reused exchanges, self-join detection) —
+   * as the generated equality did, via [[TableSpec]]'s `total_rows` and friends from `system.tables`.
+   *
+   * Listed positively: a subtractive key silently admits every field nobody thought about.
+   */
+  private def identityKey =
+    (
+      node,
+      cluster,
+      tz,
+      spec.database,
+      spec.name,
+      spec.uuid,
+      spec.engine,
+      engineSpec
+    )
+
+  override def equals(other: Any): Boolean = other match {
+    case that: ClickHouseTable => identityKey == that.identityKey
+    case _ => false
+  }
+
+  override def hashCode(): Int = identityKey.hashCode()
+
   def database: String = spec.database
 
   def table: String = spec.name
