@@ -22,7 +22,7 @@ on:
       input_parquet_glob:
         description: "Override input glob (default = full 100 files)"
         required: false
-        default: "s3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet"
+        default: "s3a://clickbench-hits-us-east-2-796575137974/hits_compatible/athena_partitioned/hits_*.parquet"
       connector:
         description: "Connector under test (tags the run)"
         required: false
@@ -76,7 +76,7 @@ jobs:
       # tracked by clickhouse_version + the mandatory ch_insert_cpu_share_tier0
       # parse-watch, contract §1.4) and no on-master Secrets Manager read. See
       # contract §1.1 (Cloud-hosted Null branch) and benchmarks/tier0/README.md.
-      INPUT_PARQUET_GLOB: ${{ inputs.input_parquet_glob || 's3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet' }}
+      INPUT_PARQUET_GLOB: ${{ inputs.input_parquet_glob || 's3a://clickbench-hits-us-east-2-796575137974/hits_compatible/athena_partitioned/hits_*.parquet' }}
       # --- Connector operating config UNDER TEST (plan §4, §6.9) ---------------
       # These live in version control and are echoed into perf.runs.runtime (see
       # "Insert run record"), so the config under test is auditable per run and
@@ -160,17 +160,18 @@ jobs:
       # is a target-vs-source delta, never count()-uniqExact() on the target.
       # Re-derive both constants if the dataset or default glob changes.
       #
-      # DATA LOCALITY (co-location, 2026-08-31): this public dataset bucket
-      # lives in eu-central-1 (Frankfurt) — a trans-Atlantic read from either
-      # us-east region and the single largest locality confound in the run.
-      # Full co-location requires staging these parquet files once into a
-      # PERSISTENT us-east-2 bucket (the CI bucket has a 7-day expiry lifecycle,
-      # so it is NOT that bucket) and flipping the two globs below to the
-      # us-east-2 copy. The SOURCE_ROWS_EXPECTED / SOURCE_UNIQUE_EXPECTED
-      # constants remain valid ONLY if the staged copy is byte-identical to the
-      # public files; otherwise re-derive them with `clickhouse local`. Left on
-      # the public bucket for now so smoke runs still work until staging lands.
-      DEFAULT_INPUT_PARQUET_GLOB: "s3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet"
+      # DATA LOCALITY (co-location, 2026-08-31): the public ClickBench dataset
+      # lives in eu-central-1 (Frankfurt) — a trans-Atlantic read, the single
+      # largest locality confound. It was staged byte-identically (100 files,
+      # 13.7 GiB) into the PERSISTENT us-east-2 bucket referenced below (created
+      # for this — the CI bucket has a 7-day-expiry lifecycle and is NOT it), so
+      # compute + data now sit in us-east-2 alongside the target. The
+      # SOURCE_ROWS_EXPECTED / SOURCE_UNIQUE_EXPECTED constants stay valid because
+      # the staged copy is byte-identical; re-derive with `clickhouse local` only
+      # if the dataset changes. Reading this private bucket requires the EMR
+      # instance profile (EMR_EC2_DefaultRole) to have s3:GetObject/ListBucket on
+      # it — an IAM prerequisite tracked with the region cutover.
+      DEFAULT_INPUT_PARQUET_GLOB: "s3a://clickbench-hits-us-east-2-796575137974/hits_compatible/athena_partitioned/hits_*.parquet"
       SOURCE_ROWS_EXPECTED: "99997497"
       SOURCE_UNIQUE_EXPECTED: "99997493"
     steps:
