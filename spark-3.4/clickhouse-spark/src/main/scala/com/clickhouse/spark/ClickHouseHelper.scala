@@ -20,7 +20,11 @@ import com.clickhouse.spark.format.SimpleOutput
 import com.fasterxml.jackson.databind.node.{NullNode, ObjectNode}
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{CLIENT_QUERY_TIMEOUT, READ_PARTITION_LISTING_CLUSTER}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
+  CLIENT_QUERY_TIMEOUT,
+  READ_PARTITION_LISTING_CLUSTER,
+  READ_PARTITION_LISTING_UNION_REPLICAS
+}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, SchemaUtils}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
@@ -349,30 +353,70 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
          |""".stripMargin
 
     val ownView = query("`system`.`parts`", "")
-    val cluster = conf.getConf(READ_PARTITION_LISTING_CLUSTER)
-    if (!unionAcrossReplicas || cluster.isEmpty) {
-      nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
-    } else {
-      val union = query(
-        s"clusterAllReplicas('${cluster.replace("'", "\\'")}', `system`.`parts`)",
-        "SETTINGS skip_unavailable_shards=1"
-      )
-      Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(union)) match {
-        case Success(output) => output
-        case Failure(cause) =>
-          // an unknown cluster, or a table absent from other members: this server's own view is
-          // still a subset of the union, so the scan degrades to the pre-union behaviour
-          log.warn(
-            s"Could not list the partitions of $database.$table across the replicas of cluster " +
-              s"'$cluster'; falling back to this server's own view of system.parts, which lags a " +
-              s"recent write on an eventually consistent service. Set " +
-              s"${READ_PARTITION_LISTING_CLUSTER.key} to the right cluster, or to empty to stop trying.",
-            cause
-          )
-          nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
-      }
+    val cluster =
+      if (!unionAcrossReplicas || !conf.getConf(READ_PARTITION_LISTING_UNION_REPLICAS)) None
+      else conf.getConf(READ_PARTITION_LISTING_CLUSTER).orElse(partitionListingCluster)
+
+    cluster match {
+      case None => nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
+      case Some(name) =>
+        val union = query(
+          s"clusterAllReplicas('${name.replace("'", "\\'")}', `system`.`parts`)",
+          "SETTINGS skip_unavailable_shards=1"
+        )
+        Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(union)) match {
+          case Success(output) => output
+          case Failure(cause) =>
+            // e.g. a table absent from the other members: this server's own view is still a subset
+            // of the union, so the scan degrades to the behaviour it had before unioning
+            log.warn(
+              s"Could not list the partitions of $database.$table across the replicas of cluster " +
+                s"'$name'; falling back to this server's own view of system.parts, which lags a " +
+                s"recent write on an eventually consistent service. Set " +
+                s"${READ_PARTITION_LISTING_CLUSTER.key} if the cluster is wrong, or " +
+                s"${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to stop unioning.",
+              cause
+            )
+            nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
+        }
     }
   }
+
+  @volatile private var discoveredListingCluster: Option[Option[String]] = None
+
+  /**
+   * The cluster to union partition listings across, discovered rather than configured: the one
+   * containing this server with the fewest shards, so that reading a table does not fan out to
+   * shards which cannot hold its data. Clusters of a single server are ignored, so a deployment
+   * with nothing to union pays nothing. Memoized: it is fixed for the life of the server.
+   */
+  private def partitionListingCluster(implicit nodeClient: NodeClient): Option[String] =
+    discoveredListingCluster.getOrElse {
+      val found = Try {
+        nodeClient.syncQueryAndCheckOutputJSONEachRow(
+          """SELECT `cluster`
+            |FROM `system`.`clusters`
+            |WHERE `cluster` IN (SELECT `cluster` FROM `system`.`clusters` WHERE `is_local`)
+            |GROUP BY `cluster`
+            |HAVING count() > 1
+            |ORDER BY uniqExact(shard_num) ASC, count() ASC, `cluster` ASC
+            |LIMIT 1
+            |""".stripMargin
+        ).records.headOption.map(_.get("cluster").asText)
+      } match {
+        case Success(cluster) => cluster
+        case Failure(cause) =>
+          log.warn(
+            "Could not discover a cluster to list partitions across; reading system.parts " +
+              s"from the answering server only. Set ${READ_PARTITION_LISTING_CLUSTER.key} to name it " +
+              s"explicitly, or ${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to stop trying.",
+            cause
+          )
+          None
+      }
+      discoveredListingCluster = Some(found)
+      found
+    }
 
   /**
    * This method is considered as lightweight. Typically `sql` should contains `where 1=0` to avoid running the query on

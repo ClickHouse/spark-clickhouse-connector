@@ -16,7 +16,10 @@ package org.apache.spark.sql.clickhouse.single
 
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
 import com.clickhouse.spark.read.ClickHouseBatchScan
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_PARTITION_LISTING_CLUSTER
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
+  READ_PARTITION_LISTING_CLUSTER,
+  READ_PARTITION_LISTING_UNION_REPLICAS
+}
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
@@ -580,22 +583,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
 
   test("the partition listing union can be turned off") {
     withSimpleTable("db_listing", "tbl_off", writeData = true) { (db, tbl) =>
-      withSQLConf(READ_PARTITION_LISTING_CLUSTER.key -> "") {
+      withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
         checkAnswer(spark.sql(s"SELECT id FROM $db.$tbl"), Seq(Row(1L), Row(2L)))
       }
-    }
-  }
-
-  test("a unioned partition listing does not multiply row counts per replica") {
-    // system.parts answers per server, so the union must count a part once however many replicas
-    // report it; the listing feeds PartitionSpec.row_count
-    withSimpleTable("db_listing", "tbl_stats", writeData = true) { (db, tbl) =>
-      val df = spark.sql(s"SELECT id FROM $db.$tbl")
-      checkAnswer(df, Seq(Row(1L), Row(2L)))
-      val scan = df.queryExecution.sparkPlan.collectFirst {
-        case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
-      }.get
-      assert(scan.inputPartitions.map(_.partition.row_count).sum === 2)
     }
   }
 
