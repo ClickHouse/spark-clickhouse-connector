@@ -16,10 +16,11 @@ package com.clickhouse.spark
 
 import com.clickhouse.client.ClickHouseProtocol
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.NullNode
+import com.clickhouse.spark.format.SimpleOutput
+import com.fasterxml.jackson.databind.node.{NullNode, ObjectNode}
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.CLIENT_QUERY_TIMEOUT
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{CLIENT_QUERY_TIMEOUT, READ_PARTITION_LISTING_CLUSTER}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, SchemaUtils}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
@@ -33,6 +34,7 @@ import com.clickhouse.spark.spec._
 import java.time.{LocalDateTime, ZoneId}
 import java.util.{HashMap => JHashMap}
 import scala.collection.JavaConverters._
+import scala.util.{Failure, Success, Try}
 
 trait ClickHouseHelper extends SQLConfHelper with Logging {
 
@@ -293,22 +295,18 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     })
   }
 
+  /**
+   * @param unionAcrossReplicas
+   *   whether this listing is expected to describe the whole table, in which case it is unioned
+   *   across the replicas of [[READ_PARTITION_LISTING_CLUSTER]]. Leave it off where one listing
+   *   covers one shard, since the union would then report every shard's partitions to each shard.
+   */
   def queryPartitionSpec(
     database: String,
-    table: String
+    table: String,
+    unionAcrossReplicas: Boolean = false
   )(implicit nodeClient: NodeClient): Seq[PartitionSpec] = {
-    val partOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
-      s"""SELECT
-         |  partition,                           -- String
-         |  partition_id,                        -- String
-         |  sum(rows)          AS row_count,     -- UInt64
-         |  sum(bytes_on_disk) AS size_in_bytes  -- UInt64
-         |FROM `system`.`parts`
-         |WHERE `database`='$database' AND `table`='$table' AND `active`=1
-         |GROUP BY `partition`, `partition_id`
-         |ORDER BY `partition` ASC, partition_id ASC
-         |""".stripMargin
-    )
+    val partOutput = listActiveParts(database, table, unionAcrossReplicas)
     if (partOutput.isEmpty || partOutput.rows == 1 && partOutput.records.head.get("partition").asText == "tuple()") {
       return Array(NoPartitionSpec)
     }
@@ -319,6 +317,60 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
         row_count = row.get("row_count").asLong,
         size_in_bytes = row.get("size_in_bytes").asLong
       )
+    }
+  }
+
+  private def listActiveParts(
+    database: String,
+    table: String,
+    unionAcrossReplicas: Boolean
+  )(implicit nodeClient: NodeClient): SimpleOutput[ObjectNode] = {
+    // `system.parts` answers from one server, so its rows are deduplicated by part name before the
+    // per-partition sums: a part the union sees on several replicas must be counted once
+    def query(source: String, settings: String): String =
+      s"""SELECT
+         |  `partition`,                         -- String
+         |  partition_id,                        -- String
+         |  sum(row_count)     AS row_count,     -- UInt64
+         |  sum(size_in_bytes) AS size_in_bytes  -- UInt64
+         |FROM (
+         |  SELECT
+         |    any(`partition`)      AS `partition`,
+         |    any(partition_id)     AS partition_id,
+         |    any(`rows`)           AS row_count,
+         |    any(bytes_on_disk)    AS size_in_bytes
+         |  FROM $source
+         |  WHERE `database`='$database' AND `table`='$table' AND `active`=1
+         |  GROUP BY `name`
+         |)
+         |GROUP BY `partition`, partition_id
+         |ORDER BY `partition` ASC, partition_id ASC
+         |$settings
+         |""".stripMargin
+
+    val ownView = query("`system`.`parts`", "")
+    val cluster = conf.getConf(READ_PARTITION_LISTING_CLUSTER)
+    if (!unionAcrossReplicas || cluster.isEmpty) {
+      nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
+    } else {
+      val union = query(
+        s"clusterAllReplicas('${cluster.replace("'", "\\'")}', `system`.`parts`)",
+        "SETTINGS skip_unavailable_shards=1"
+      )
+      Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(union)) match {
+        case Success(output) => output
+        case Failure(cause) =>
+          // an unknown cluster, or a table absent from other members: this server's own view is
+          // still a subset of the union, so the scan degrades to the pre-union behaviour
+          log.warn(
+            s"Could not list the partitions of $database.$table across the replicas of cluster " +
+              s"'$cluster'; falling back to this server's own view of system.parts, which lags a " +
+              s"recent write on an eventually consistent service. Set " +
+              s"${READ_PARTITION_LISTING_CLUSTER.key} to the right cluster, or to empty to stop trying.",
+            cause
+          )
+          nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
+      }
     }
   }
 

@@ -322,7 +322,7 @@ case class ClickHouseTable(
         }
       case _ =>
         Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) { implicit nodeClient =>
-          queryPartitionSpec(database, table)
+          queryPartitionSpec(database, table, unionAcrossReplicas = true)
         }
     }
     partitionSpecs.map(_.partition_value)
