@@ -149,6 +149,7 @@ superset so both pipelines spell the same concept the same way when it lands.
 |-------|-----------|--------|
 | `task_retries` | `task_failed_count > 0` — retried work pollutes throughput/volume accounting (plan §6.4, §6.10). | **Implemented & emitted (Spark).** run-arm sets it when `TASK_FAILED_COUNT > 0`. |
 | `settle_timeout` | `settle_timed_out = 1` — settle right-censored at the 1800s cap; `settle_seconds` is a floor, not the true value. | **Implemented & emitted (Spark).** run-arm sets it when `SETTLE_TIMED_OUT != 0`. |
+| `idle_timeout` | `pre_arm_idle_timed_out = 1` — the pre-arm idle gate (`wait_for_idle.py`) hit `IDLE_TIMEOUT` (default 600s) and the target never visibly quiesced (merges quiescent + RSS flat) before the arm's timed window opened, so the arm started from a non-idle baseline and is non-comparable. | **Implemented & emitted (Spark, Amendment 2026-08-31).** run-arm sets it when `PRE_ARM_IDLE_TIMED_OUT != 0` (Tier-1 arms only). Flagged-not-failed, identical treatment to `settle_timeout`. |
 | `duplicate_rows` | (diagnostic) the delivered-vs-expected row delta is non-zero. | **Diagnostic readout, NOT an independent gate.** It is algebraically identical to the integrity volume check `rows_delivered != rows_expected` (§2.1, §3) — a non-zero delta already FAILS the run via that check, so this token adds no gating power beyond it. It is surfaced as a readout on the failed-run panel, not emitted as a distinct `flag_reason` token by the Spark pipeline. |
 | `rebalance` | (Kafka) a consumer-group rebalance occurred mid-run, making the drain non-comparable. | **Kafka-only.** A Connect consumer-group concept; correctly inert in Spark (no consumer group). Vocabulary only for Spark. |
 | `task_restart` | a worker/task process restarted mid-run (Spark executor loss / Kafka worker restart). | **NOT implemented in Spark** (would require executor-loss detection the harness does not yet do). Kept as shared vocabulary; the Spark pipeline never emits it today. |
@@ -256,6 +257,8 @@ pipelines. Units are the string written to the `unit` column.
 | `connections_per_insert` | `ratio` | New server connections created ÷ insert count over the run window (`metric_log` connection counters). Pool/keep-alive health. Same spelling on ALL tiers (Amendment 2026-07-07); the Tier-1 rename from `ch_connections_per_insert` landed 2026-07-07 (see §7 for the legacy-name coalesce). |
 | `settle_seconds` | `seconds` | Seconds from ingest-end until active parts stabilise (merge debt left behind). **MUST** be spelled `settle_seconds` (§7: Spark SQL currently emits `ch_settle_seconds`). |
 | `settle_timed_out` | `bool` | `1` iff settle hit the timeout cap (default 1800s), right-censoring `settle_seconds`. Feeds the `settle_timeout` flag (§1.3). |
+| `pre_arm_idle_seconds` | `seconds` | (Tier 1 only) Seconds spent in the pre-arm idle gate quiescing the target BEFORE the arm's timed window opens (merges quiescent + RSS flat). Measured OUTSIDE the timed window, so it never inflates e2e — a covariate for how dirty the pre-arm state was, and the instrument that verifies neither arm systematically starts dirtier (Amendment 2026-08-31). SQL `perf/25`. |
+| `pre_arm_idle_timed_out` | `bool` | `1` iff the pre-arm idle gate hit `IDLE_TIMEOUT` (default 600s), right-censoring `pre_arm_idle_seconds`. Feeds the `idle_timeout` flag (§1.3). SQL `perf/26`. |
 | `run_cost_usd` | `usd` | Instance-hours × price for the run. Makes cadence/tier decisions data-driven. Two-arm attribution (Amendment 2026-07-07): the shared infrastructure is provisioned once per pair, so the FULL pair cost is charged once, on the first-run arm's row; the other arm's row omits the metric. Per-pair sums stay correct; per-arm cost is undefined by design. Both pipelines MUST use this convention. |
 | `ch_uptime` | `seconds` | Target server uptime at run start. A drop vs the previous run ⇒ the service restarted between runs (covariate). |
 | `pre_run_rss` | `bytes` | Target `MemoryResident` at run start (pre-truncate). Inherited memory pressure (covariate). |
@@ -306,8 +309,9 @@ Three outcomes, applied identically by both pipelines:
    from failing good runs before the constant is validated.
 
 2. **Validity-guard trip ⇒ the run is FLAGGED.** A guard condition (§1.3
-   vocabulary; the Spark pipeline emits only `task_retries` and `settle_timeout`
-   today — the other tokens are Kafka-only, unimplemented, or derived, per §1.3)
+   vocabulary; the Spark pipeline emits only `task_retries`, `settle_timeout`,
+   and `idle_timeout` today — the other tokens are Kafka-only, unimplemented, or
+   derived, per §1.3)
    does **not** fail the run and is **not** a regression. The run is
    **FLAGGED** (`flagged='1'`, `flag_reason=<token[|token…]>`) and is **excluded
    from bands and ratios by default**. Flagged runs are still **fully captured
@@ -566,7 +570,7 @@ commit onward.
 | `pair_id` | `= RUN_ID` = `YYYY-MM-DDTHH-MM-SSZ-<shortsha>` |
 | `run_id` | `<pair_id>-<arm>-t<tier>` (recommended form; MUST be distinct per (arm, tier) row) |
 | rows per night (both tiers) | 4 `perf.runs` rows, one `pair_id` |
-| `flag_reason` tokens | `task_retries`, `settle_timeout`, `rebalance`, `task_restart`, `drain_incomplete`, `integrity_unverified`, `instrument_resize`, `instrument_shift` (join multiples with `|`). Spark EMITS only `task_retries`, `settle_timeout`; `rebalance`/`drain_incomplete` Kafka-only; `task_restart`/`instrument_shift` unimplemented (Spark); `integrity_unverified` = a state via `outcome='failed'`; `instrument_resize` derived in SQL; `duplicate_rows` a diagnostic readout, not a gate (= the volume check). See §1.3. |
+| `flag_reason` tokens | `task_retries`, `settle_timeout`, `idle_timeout`, `rebalance`, `task_restart`, `drain_incomplete`, `integrity_unverified`, `instrument_resize`, `instrument_shift` (join multiples with `|`). Spark EMITS only `task_retries`, `settle_timeout`, `idle_timeout`; `rebalance`/`drain_incomplete` Kafka-only; `task_restart`/`instrument_shift` unimplemented (Spark); `integrity_unverified` = a state via `outcome='failed'`; `instrument_resize` derived in SQL; `duplicate_rows` a diagnostic readout, not a gate (= the volume check). See §1.3. |
 | mandatory scope keys | `target_region`, `environment_class` (`staging`\|`production`) |
 | shared config keys | `batch_size`, `write_parallelism`, `async_insert`, `partition_scheme`, `dataset` |
 | Tab-5 server-cost name | `ch_insert_cpu_seconds_per_Mrows` (NOT `server_cpu_per_Mrows`) |
