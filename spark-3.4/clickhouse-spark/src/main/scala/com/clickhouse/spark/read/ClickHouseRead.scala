@@ -225,7 +225,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
         ))
       case _: TableEngineSpec =>
         Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-          queryPartitionSpec(database, table).map { partitionSpec =>
+          queryPartitionSpec(database, table, unionAcrossReplicas = true).map { partitionSpec =>
             ClickHouseInputPartition(
               scanJob.tableSpec,
               partitionSpec,
