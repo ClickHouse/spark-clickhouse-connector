@@ -39,24 +39,28 @@
 --   unflagged — connector scoping moots that here; the contract pins '1'.
 --
 -- HARD REQUIREMENTS met:
---   * ABSOLUTE metric set (6 series-kinds) — the deviation-band + noise-gauge
---     surface. Cardinality is (eligible rows) × 6, kept sane by never cross-joining:
+--   * ABSOLUTE metric set (7 series-kinds) — the deviation-band + noise-gauge
+--     surface. Cardinality is (eligible rows) × 7, kept sane by never cross-joining:
 --       Tier 0: null_rows_per_sec, cpu_seconds_per_Mrows, serialize_seconds_per_Mrows
---       Tier 1: throughput_rows_per_sec, parts_per_insert, merge_amplification
+--       Tier 1: ch_insert_cpu_seconds_per_Mrows, parts_per_insert,
+--               throughput_rows_per_sec (covariate), merge_amplification (covariate)
 --     null_rows_per_sec is Tier-0-only and throughput_rows_per_sec Tier-1-only by
 --     construction; the two connector-cost ratios are emitted at whatever tier they
 --     were captured. A metric simply does not appear for a run that never emitted it.
---     NOTE (contract §3, Amendment 2026-07-09b — gate composition): this dataset
---     still materialises ALL SIX series, but they are no longer a homogeneous
---     "gated set". As of the calibrated-band amendment the PAIR-LEVEL verdict gate
---     is: Tier-1 = throughput (banded ±9%) + parts_per_insert (TRIPWIRE, ==1.0);
---     Tier-0 = null_rows/cpu/serialize (banded). merge_amplification is WATCH-ONLY
---     (NOT gated) and parts_per_insert is a TRIPWIRE (not banded). They are kept
---     HERE deliberately: their trailing median/MAD/CoV are the covariate + noise
---     surface AND the basis for the ~2026-07-21 (~12 pairs) band recalibration to
---     the median±2*MAD design — so their statistics are computed exactly as
---     before. This is a PROSE clarification only; the windows/statistics are
---     UNCHANGED.
+--     NOTE (contract §3, Amendment 2026-07-09b + D4 Amendment 2026-08-31 — gate
+--     composition): this dataset materialises ALL SEVEN series, but they are not a
+--     homogeneous "gated set". As of the D4 "full demote + re-base" the PAIR-LEVEL
+--     verdict gate is: Tier-1 = ch_insert_cpu_seconds_per_Mrows (banded ±6%) +
+--     parts_per_insert (TRIPWIRE, ==1.0); Tier-0 = null_rows/cpu/serialize (banded).
+--     throughput_rows_per_sec is DEMOTED to WATCH-ONLY — a displayed COVARIATE, no
+--     longer the Tier-1 gate — and merge_amplification is WATCH-ONLY; parts_per_insert
+--     is a TRIPWIRE (not banded). All are kept HERE deliberately: their trailing
+--     median/MAD/CoV are the covariate + noise surface AND the basis for the
+--     ~2026-07-21 (~12 pairs) band recalibration to the median±2*MAD design.
+--     ch_insert_cpu_seconds_per_Mrows is ADDED to this set precisely so the ±6%
+--     Tier-1 gate can recalibrate off its own trailing window. This is a PROSE
+--     clarification PLUS the added cpu-server series; the pre-existing six series'
+--     windows/statistics are UNCHANGED.
 --   * PER-ARM separation (design note): every window is partitioned by
 --     (arm, tier, metric) — head and pinned are SEPARATE series and never share a
 --     frame. This is deliberate and required:
@@ -128,7 +132,11 @@ WITH
       max(if(metric_name = 'null_rows_per_sec',            value, NULL)) AS null_rows_per_sec,
       max(if(metric_name = 'cpu_seconds_per_Mrows',        value, NULL)) AS cpu_seconds_per_Mrows,
       max(if(metric_name = 'serialize_seconds_per_Mrows',  value, NULL)) AS serialize_seconds_per_Mrows,
-      -- gated ABSOLUTE metrics — Tier 1 (parts/merge coalesce legacy ch_ names)
+      -- Tier-1 GATE: server insert CPU per Mrows (D4 Amendment 2026-08-31 — the
+      -- banded ±6% Tier-1 gate that replaces throughput). No legacy rename sibling.
+      max(if(metric_name = 'ch_insert_cpu_seconds_per_Mrows', value, NULL)) AS ch_insert_cpu_seconds_per_Mrows,
+      -- gated ABSOLUTE metrics — Tier 1 (parts/merge coalesce legacy ch_ names).
+      -- throughput_rows_per_sec is WATCH-ONLY as of D4 but kept as a displayed covariate.
       max(if(metric_name = 'throughput_rows_per_sec',      value, NULL)) AS throughput_rows_per_sec,
       coalesce(
         max(if(metric_name = 'parts_per_insert',    value, NULL)),
@@ -157,6 +165,7 @@ WITH
       p.null_rows_per_sec,
       p.cpu_seconds_per_Mrows,
       p.serialize_seconds_per_Mrows,
+      p.ch_insert_cpu_seconds_per_Mrows,
       p.throughput_rows_per_sec,
       p.parts_per_insert,
       p.merge_amplification,
@@ -193,7 +202,7 @@ WITH
   -- Tall form: one row per (run, arm, tier, metric) for the gated ABSOLUTE set.
   -- Only rows where the metric is present (value IS NOT NULL) enter — an absent
   -- metric contributes nothing to its series' window. arrayJoin over a tuple array
-  -- keeps cardinality at exactly (eligible rows) × (present metrics ≤ 6).
+  -- keeps cardinality at exactly (eligible rows) × (present metrics ≤ 7).
   metric_long AS (
     SELECT
       run_id, run_started_at, git_sha, pair_id, arm, tier,
@@ -201,12 +210,13 @@ WITH
       mv.2 AS value
     FROM eligible
     ARRAY JOIN [
-      ('null_rows_per_sec',           null_rows_per_sec),
-      ('cpu_seconds_per_Mrows',       cpu_seconds_per_Mrows),
-      ('serialize_seconds_per_Mrows', serialize_seconds_per_Mrows),
-      ('throughput_rows_per_sec',     throughput_rows_per_sec),
-      ('parts_per_insert',            parts_per_insert),
-      ('merge_amplification',         merge_amplification)
+      ('null_rows_per_sec',                null_rows_per_sec),
+      ('cpu_seconds_per_Mrows',            cpu_seconds_per_Mrows),
+      ('serialize_seconds_per_Mrows',      serialize_seconds_per_Mrows),
+      ('ch_insert_cpu_seconds_per_Mrows',  ch_insert_cpu_seconds_per_Mrows),
+      ('throughput_rows_per_sec',          throughput_rows_per_sec),
+      ('parts_per_insert',                 parts_per_insert),
+      ('merge_amplification',              merge_amplification)
     ] AS mv
     WHERE mv.2 IS NOT NULL
   ),

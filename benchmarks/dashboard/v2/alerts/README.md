@@ -42,10 +42,10 @@ property of the metric's noise, so it is identical on Tier 0 and Tier 1):
 
 | Metric | Band |
 |---|---|
-| `throughput_rows_per_sec` | ±9% |
 | `null_rows_per_sec` / `null_drain_rows_per_sec` / `drain_rows_per_sec` | ±8.5% |
-| `cpu_seconds_per_Mrows` / `ch_insert_cpu_seconds_per_Mrows` | ±6% |
+| `cpu_seconds_per_Mrows` / `ch_insert_cpu_seconds_per_Mrows` | ±6% — **Tier-1 GATE** (the verified server-cost gate; D4 Amendment 2026-08-31) |
 | `serialize_seconds_per_Mrows` | ±8.5% |
+| `throughput_rows_per_sec` | **WATCH-ONLY** — DEMOTED, not gated, never alerts (D4 Amendment 2026-08-31; still displayed as a covariate) |
 | `merge_amplification` | **WATCH-ONLY** — not gated, never alerts |
 | `parts_per_insert` | **TRIPWIRE** — head arm `== 1.0` exactly; any deviation trips |
 

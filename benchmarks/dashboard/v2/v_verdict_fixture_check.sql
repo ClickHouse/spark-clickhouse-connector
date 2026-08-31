@@ -16,23 +16,32 @@
 -- Contract reference: docs/benchmark-v2-contract.md §3 (Amendment 2026-07-09b —
 --   CALIBRATED per-metric bands at 2x the measured noise floor; the flat
 --   ±3%/±5% rule is superseded; merge_amplification is WATCH-ONLY, not gated;
---   parts_per_insert is a binary TRIPWIRE) —
---   * BANDED metrics (PINNED calibrated bands, SAME on both tiers — a property of
---     the metric's noise, not the tier):
---         throughput_rows_per_sec (verified)               ±9%   => [0.91, 1.09]
---         null_rows_per_sec / null_drain / drain_rows/s    ±8.5% => [0.915,1.085]
+--   parts_per_insert is a binary TRIPWIRE; D4 Amendment 2026-08-31 — Tier-1 gate
+--   re-based onto ch_insert_cpu_seconds_per_Mrows, throughput demoted to WATCH-ONLY) —
+--   * BANDED + ASSERTED metrics (PINNED calibrated bands, SAME on both tiers — a
+--     property of the metric's noise, not the tier):
 --         ch_insert_cpu_seconds_per_Mrows / cpu_..._Mrows  ±6%   => [0.94, 1.06]
+--             ch_insert_cpu_seconds_per_Mrows is the VERIFIED Tier-1 GATE as of the
+--             D4 re-base (Amendment 2026-08-31); cpu_seconds_per_Mrows is the Tier-0
+--             client-cpu gate — both share the ±6% family band + lower_better dir.
+--         null_rows_per_sec / null_drain / drain_rows/s    ±8.5% => [0.915,1.085]
 --         serialize_seconds_per_Mrows                      ±8.5% => [0.915,1.085]
---   * DIRECTION (PINNED): throughput_rows_per_sec / null_* / drain = higher_better;
---     cpu_seconds_per_Mrows / ch_insert_cpu_..._Mrows / serialize_..._Mrows =
---     lower_better.
+--     throughput_rows_per_sec (±9%) is DEMOTED to WATCH-ONLY (D4 Amendment
+--     2026-08-31) — NOT gated and NOT asserted here (EXCLUDED from the classified
+--     set below, exactly like merge_amplification). v_pair_ratios still DISPLAYS it
+--     as a covariate; this acceptance view does not classify it.
+--   * DIRECTION (PINNED): null_* / drain = higher_better (and throughput, when
+--     displayed); cpu_seconds_per_Mrows / ch_insert_cpu_..._Mrows /
+--     serialize_..._Mrows = lower_better.
 --   * TRIPWIRE (PINNED): parts_per_insert is NOT banded and NOT ratio-compared —
 --     a BINARY tripwire on the HEAD arm's ABSOLUTE value: head == 1.0 => OK,
---     head != 1.0 => TRIPWIRE. (merge_amplification is WATCH-ONLY and is NOT
---     asserted here — it is not gated.)
+--     head != 1.0 => TRIPWIRE. (merge_amplification AND throughput_rows_per_sec are
+--     WATCH-ONLY and are NOT asserted here — neither is gated.)
 --   * RATIO→VERDICT (PINNED), precedence FAIL > FLAG > {NO_DATA / TRIPWIRE /
 --     IMPROVEMENT / REGRESSION / OK}:
---       pair flagged                     => FLAGGED  (overrides EVERYTHING below,
+--       integrity FAILED (either arm)    => FAIL     (overrides EVERYTHING, incl.
+--                                                     FLAGGED — precedence FAIL > FLAG)
+--       pair flagged                     => FLAGGED  (overrides everything below,
 --                                                     incl. an armed TRIPWIRE)
 --       (banded) ratio NULL/0-denominator=> NO_DATA   (absent EITHER arm, or /0)
 --       (banded) outside band, GOOD dir  => IMPROVEMENT
@@ -41,9 +50,13 @@
 --       (tripwire) head ABSENT (NULL)    => NO_DATA   (absent-head, kafka x-check)
 --       (tripwire) head == 1.0           => OK
 --       (tripwire) head != 1.0           => TRIPWIRE
---   (Integrity-FAIL precedence is not exercised here — all fixture rows pass
---    integrity by construction; the fixture targets the ratio→verdict map + the
---    tripwire, the layers this acceptance rule was written to protect.)
+--   INTEGRITY-FAIL precedence IS exercised (D4 re-base, Amendment 2026-08-31): the
+--   fixture now seeds integrity-mismatch pairs (integrity_ok=0) that MUST map to
+--   FAIL — including one that is ALSO flagged (proving FAIL > FLAG) — plus an
+--   outcome='failed' pair that MUST be EXCLUDED entirely (no cell). The eligible
+--   CTE below therefore CARRIES integrity_ok through instead of dropping the
+--   integrity-failed row; it still drops outcome='failed' runs (a failed run
+--   yields no comparable at all).
 --
 -- KEEP-IN-SYNC CONTRACT (read before editing):
 --   The `runs_scoped`/`metric_long`/ratio CTEs below are COPIED from
@@ -71,6 +84,23 @@
 --        run/metric after the inner argMax de-dup). (v_pair_ratios projects
 --        e.flagged directly instead of any() because its metric_long has no GROUP
 --        BY; both yield the same per-arm flag — the difference is cosmetic.)
+--     4. THROUGHPUT EXCLUDED FROM ASSERTION (D4 re-base, Amendment 2026-08-31):
+--        classified's final WHERE excludes BOTH merge_amplification AND
+--        throughput_rows_per_sec (both WATCH-ONLY). v_pair_ratios still EMITS
+--        throughput for DISPLAY (it does no classification), so this is an
+--        acceptance-only exclusion, not a v_pair_ratios divergence in the copied
+--        CTEs. The ratio/rename/argMax skeleton above is still verbatim.
+--     5. INTEGRITY-FAIL CARRIED + FAIL BRANCH (D4 re-base, Amendment 2026-08-31):
+--        v_pair_ratios DROPS integrity-failed runs (integrity_ok=0) in its eligible
+--        CTE — a FAIL run yields no headline number, so production never emits a row
+--        for it. Acceptance MUST prove the FAIL verdict, so this view instead CARRIES
+--        integrity_ok through eligible->metric_long->ratios->classified and adds a
+--        FAIL branch (precedence FAIL > FLAG) at the TOP of actual_verdict. It STILL
+--        drops outcome='failed' runs (matching v_pair_ratios) — a failed run is not a
+--        comparable at all, so the fixture's outcome='failed' pair proves the
+--        exclusion by emitting NO cell. This is a DELIBERATE acceptance-only
+--        divergence: v_pair_ratios' eligible does not carry integrity_ok because it
+--        never needs to render a FAIL row.
 --   A parameterized single-source approach was rejected: ClickHouse virtual-
 --   dataset SQL cannot self-reference (a view cannot `SELECT ... FROM
 --   v_pair_ratios WHERE ...`), and templating one body with an inverted predicate
@@ -126,15 +156,21 @@ WITH
     ) AS p ON r.run_id = p.run_id
     WHERE r.connector = 'verdict_fixture'             -- INVERTED SCOPE (contract §3)
   ),
-  -- Eligibility mirrors v_pair_ratios BUT DOES NOT DROP flagged (see header): a
-  -- pair still needs pair_id, non-failed outcome and non-FAILED integrity to be a
-  -- valid comparable; the flag is preserved into `flagged` for the verdict map.
+  -- Eligibility mirrors v_pair_ratios BUT DOES NOT DROP flagged NOR integrity-failed
+  -- (see header divergences #5): a pair still needs a pair_id and a non-failed
+  -- outcome to be a comparable, but a FAILED-integrity run is CARRIED (its FAIL
+  -- verdict must render — contract §3 precedence FAIL > FLAG). The flag is preserved
+  -- into `flagged`, and integrity is preserved into `integrity_ok` (1 = pass or
+  -- unknown, 0 = explicitly FAILED), both for the verdict map below. outcome='failed'
+  -- runs are STILL dropped (a failed run is not a comparable at all — matches
+  -- v_pair_ratios; the fixture's outcome='failed' pair proves this by emitting no cell).
   eligible AS (
-    SELECT run_id, pair_id, arm, tier, flagged
-    FROM runs_scoped
-    WHERE pair_id != ''
-      AND outcome != 'failed'
-      AND coalesce(
+    SELECT run_id, pair_id, arm, tier, flagged,
+      -- integrity_ok as a boolean CARRIED THROUGH (NOT used to DROP the row):
+      -- direct metric preferred, else delivered/expected comparison, else unknown
+      -- (NULL). coalesce(...,1) makes unknown pass as OK; the != 0 turns FAILED (0)
+      -- into a 0/1 flag the ratios CTE ORs across arms into pair-level FAIL.
+      coalesce(
         multiIf(
           integrity_ok_metric IS NOT NULL, integrity_ok_metric = 1,
           rows_delivered IS NOT NULL AND rows_expected IS NOT NULL
@@ -143,7 +179,10 @@ WITH
           NULL
         ),
         1
-      ) != 0
+      ) != 0 AS integrity_ok
+    FROM runs_scoped
+    WHERE pair_id != ''
+      AND outcome != 'failed'
   ),
   -- Long-form gated metric values per eligible run, §7 rename coalesced —
   -- COPIED from v_pair_ratios.metric_long (same argMax de-dup / remap).
@@ -152,7 +191,8 @@ WITH
       e.pair_id AS pair_id,
       e.tier    AS tier,
       e.arm     AS arm,
-      any(e.flagged) AS flagged,          -- flag is a per-run constant across metrics
+      any(e.flagged)       AS flagged,       -- flag is a per-run constant across metrics
+      any(e.integrity_ok)  AS integrity_ok,  -- likewise a per-run constant (D4: carried for FAIL)
       mm.metric_name AS metric,
       mm.value       AS value
     FROM eligible AS e
@@ -222,15 +262,24 @@ WITH
       -- pair is flagged iff EITHER arm is flagged (contract §3). coalesce(x,0)
       -- guards the one-sided FULL-join match (absent arm => NULL flag => treat 0).
       ((coalesce(h.flagged, 0) != 0) OR (coalesce(pn.flagged, 0) != 0)) AS flagged,
+      -- PAIR-LEVEL integrity FAIL (D4 re-base): the pair FAILS iff EITHER arm is
+      -- EXPLICITLY integrity-failed (integrity_ok = 0). integrity_ok carries 1 for
+      -- pass-or-unknown, 0 for FAILED (see eligible). coalesce(x,1) guards the
+      -- one-sided FULL-join match (absent arm => NULL => treat as OK, never FAIL).
+      ((coalesce(h.integrity_ok, 1) = 0) OR (coalesce(pn.integrity_ok, 1) = 0)) AS integrity_failed,
       h.value                          AS head_value,
       pn.value                         AS pinned_value,
       h.value / nullIf(pn.value, 0)    AS ratio
     FROM (
-      SELECT pair_id, tier, metric, toNullable(flagged) AS flagged, toNullable(value) AS value
+      SELECT pair_id, tier, metric,
+             toNullable(flagged) AS flagged, toNullable(integrity_ok) AS integrity_ok,
+             toNullable(value) AS value
       FROM metric_long WHERE arm = 'head'
     ) AS h
     FULL OUTER JOIN (
-      SELECT pair_id, tier, metric, toNullable(flagged) AS flagged, toNullable(value) AS value
+      SELECT pair_id, tier, metric,
+             toNullable(flagged) AS flagged, toNullable(integrity_ok) AS integrity_ok,
+             toNullable(value) AS value
       FROM metric_long WHERE arm = 'pinned'
     ) AS pn
       ON h.pair_id = pn.pair_id AND h.tier = pn.tier AND h.metric = pn.metric
@@ -240,7 +289,7 @@ WITH
   -- measured noise floor, SAME on both tiers), and the tripwire flag.
   classified AS (
     SELECT
-      pair_id, tier, metric, flagged, head_value, pinned_value, ratio,
+      pair_id, tier, metric, flagged, integrity_failed, head_value, pinned_value, ratio,
       multiIf(
         metric IN ('throughput_rows_per_sec','null_rows_per_sec',
                    'null_drain_rows_per_sec','drain_rows_per_sec'), 'higher_better',
@@ -280,8 +329,10 @@ WITH
         0.0
       ) AS band_hi
     FROM ratios
-    -- merge_amplification is WATCH-ONLY (contract §3, not gated) — never asserted.
-    WHERE metric != 'merge_amplification'
+    -- merge_amplification AND throughput_rows_per_sec are WATCH-ONLY (contract §3;
+    -- throughput demoted by D4 Amendment 2026-08-31) — NOT gated, never asserted.
+    -- (v_pair_ratios still DISPLAYS throughput as a covariate — see header #4.)
+    WHERE metric NOT IN ('merge_amplification','throughput_rows_per_sec')
   )
 SELECT
   pair_id,
@@ -291,11 +342,13 @@ SELECT
   ratio,
   flagged,
   -- ACTUAL verdict via the PINNED ratio→verdict map, in precedence order:
-  --   FLAG > NO_DATA > (banded excursion by direction | tripwire) > OK.
-  -- (FLAG is placed ABOVE everything to honour §3 precedence FLAG > all — a
-  --  flagged pair is FLAGGED even when its ratio is NULL/0-denominator OR its
-  --  tripwire is ARMED, so the flagged branch must dominate both.)
+  --   FAIL > FLAG > NO_DATA > (banded excursion by direction | tripwire) > OK.
+  -- (FAIL is placed ABOVE everything — even FLAGGED — to honour §3 precedence
+  --  FAIL > FLAG (D4 re-base): an integrity-failed pair is FAIL regardless of its
+  --  flag / ratio / tripwire. FLAG then dominates the rest so a flagged pair is
+  --  FLAGGED even when its ratio is NULL/0-denominator OR its tripwire is ARMED.)
   multiIf(
+    integrity_failed,                                     'FAIL',
     flagged,                                              'FLAGGED',
     -- TRIPWIRE branch (parts_per_insert): head absolute value, NO ratio/band.
     -- Absent head metric (head_value NULL) => NO_DATA per the map (NULL/absent
@@ -315,7 +368,19 @@ SELECT
   -- EXPECTED verdict hard-coded from the fixture matrix (the truth table the seed
   -- was built to realise). Keyed on (pair_id, metric); documented in the seed
   -- header. This is the INDEPENDENT oracle — actual must equal it.
+  -- The oracle is keyed on (pair_id, metric). NOTE the metric-agnostic branches
+  -- (e.g. `pair_id = 'FIXTURE-PAIR-01' => IMPROVEMENT`) apply to BOTH asserted cpu
+  -- metrics of a tier-1 pair (cpu_seconds_per_Mrows AND ch_insert_cpu_seconds_per_Mrows)
+  -- because the seed gives them IDENTICAL values => IDENTICAL verdicts; parts_per_insert
+  -- for those same pairs is consumed EARLIER by the explicit parts branches, so a
+  -- pair-level branch is only ever reached by the two cpu-family cells.
   multiIf(
+    -- INTEGRITY-FAIL pairs (D4 re-base): FAIL dominates EVERYTHING (contract §3
+    -- precedence FAIL > FLAG). P30 = integrity-mismatch (unflagged) => FAIL on every
+    -- asserted metric; P31 = integrity-mismatch AND flagged => FAIL (proves FAIL > FLAG,
+    -- so this MUST sit above the flagged branch). P32 is outcome='failed' and is
+    -- EXCLUDED upstream (eligible drops it) => it emits NO cell and needs no branch.
+    pair_id IN ('FIXTURE-PAIR-30','FIXTURE-PAIR-31'),                  'FAIL',
     -- flagged pairs: always FLAGGED regardless of metric/ratio/tripwire — 10
     -- below-band, 11 NULL, 12 0-denom, 13 in-band, 14 above-band, 15 tripwire
     -- ARMED. 13/14/15 close the precedence product AND catch a bug that hoists an
@@ -329,25 +394,35 @@ SELECT
     -- metric is NULL/absent => NO_DATA (NOT an armed tripwire). Checked BEFORE the
     -- tripwire OK branch so parts on P16 is NO_DATA, not OK.
     pair_id = 'FIXTURE-PAIR-16',                                       'NO_DATA',
+    -- TIER-0 pairs (D4 re-base): null_rows_per_sec (HB ±8.5%) + serialize_seconds_per_Mrows
+    -- (LB ±8.5%), exercising the ±8.5% band and the tier-0 metric identities. tier='0'.
+    -- P20 below-band: null 0.85 REGRESSION (HB) / serialize 0.85 IMPROVEMENT (LB).
+    pair_id = 'FIXTURE-PAIR-20' AND metric = 'null_rows_per_sec',           'REGRESSION',
+    pair_id = 'FIXTURE-PAIR-20' AND metric = 'serialize_seconds_per_Mrows', 'IMPROVEMENT',
+    -- P21 in-band: both OK.
+    pair_id = 'FIXTURE-PAIR-21',                                        'OK',
+    -- P22 above-band: null 1.15 IMPROVEMENT (HB) / serialize 1.15 REGRESSION (LB).
+    pair_id = 'FIXTURE-PAIR-22' AND metric = 'null_rows_per_sec',           'IMPROVEMENT',
+    pair_id = 'FIXTURE-PAIR-22' AND metric = 'serialize_seconds_per_Mrows', 'REGRESSION',
+    -- P23 NULL (pinned absent): both banded metrics => NO_DATA.
+    pair_id = 'FIXTURE-PAIR-23',                                        'NO_DATA',
     -- TRIPWIRE metric (parts_per_insert), unflagged pairs:
     metric = 'parts_per_insert' AND pair_id IN
       ('FIXTURE-PAIR-08','FIXTURE-PAIR-09'),                            'TRIPWIRE',
     metric = 'parts_per_insert',                                       'OK',  -- ==1.0 on 01-07
-    -- BANDED metrics, unflagged pairs:
-    -- NULL / 0-denominator => NO_DATA for both banded metrics (P04, P05)
+    -- BANDED cpu metrics (cpu_seconds_per_Mrows + ch_insert_cpu_seconds_per_Mrows,
+    -- identical seeded values => identical verdicts), unflagged pairs:
+    -- NULL / 0-denominator => NO_DATA (P04 pinned-absent, P05 0-denom).
     pair_id IN ('FIXTURE-PAIR-04','FIXTURE-PAIR-05'),                  'NO_DATA',
-    -- below-band (P01): thr 0.85 REGRESSION (HB) / cpu 0.90 IMPROVEMENT (LB)
-    pair_id = 'FIXTURE-PAIR-01' AND metric = 'throughput_rows_per_sec', 'REGRESSION',
-    pair_id = 'FIXTURE-PAIR-01' AND metric = 'cpu_seconds_per_Mrows',   'IMPROVEMENT',
-    -- in-band (P02) + tripwire-fired pairs' banded arms in-band (P08, P09)
+    -- below-band (P01): cpu 0.90 (<0.94) => IMPROVEMENT (LB, good dir).
+    pair_id = 'FIXTURE-PAIR-01',                                       'IMPROVEMENT',
+    -- in-band (P02) + tripwire-fired pairs' banded arms in-band (P08, P09).
     pair_id IN ('FIXTURE-PAIR-02','FIXTURE-PAIR-08','FIXTURE-PAIR-09'), 'OK',
-    -- above-band (P03): thr 1.15 IMPROVEMENT (HB) / cpu 1.10 REGRESSION (LB)
-    pair_id = 'FIXTURE-PAIR-03' AND metric = 'throughput_rows_per_sec', 'IMPROVEMENT',
-    pair_id = 'FIXTURE-PAIR-03' AND metric = 'cpu_seconds_per_Mrows',   'REGRESSION',
-    -- near-edge INSIDE (P06): thr 1.08 (<1.09) OK / cpu 1.05 (<1.06) OK
+    -- above-band (P03): cpu 1.10 (>1.06) => REGRESSION (LB, bad dir).
+    pair_id = 'FIXTURE-PAIR-03',                                       'REGRESSION',
+    -- near-edge INSIDE (P06): cpu 1.05 (<1.06) => OK.
     pair_id = 'FIXTURE-PAIR-06',                                        'OK',
-    -- near-edge OUTSIDE (P07): thr 1.10 (>1.09) IMPROVEMENT (HB) /
-    --                          cpu 0.93 (<0.94) IMPROVEMENT (LB, good dir)
+    -- near-edge OUTSIDE (P07): cpu 0.93 (<0.94) => IMPROVEMENT (LB, good dir).
     pair_id = 'FIXTURE-PAIR-07',                                        'IMPROVEMENT',
     'UNEXPECTED-CELL'
   )                                              AS expected_verdict,

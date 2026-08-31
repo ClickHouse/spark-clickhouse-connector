@@ -31,10 +31,17 @@
 --   independent base-table CTE with its own flagged=0 filter is the safe form.)
 --   A row here is thus a genuine regression/tripwire — never a flagged run.
 --
---   merge_amplification is WATCH-ONLY (contract §3): it is NOT gated and is
---   EXCLUDED from this alert — single-pair excursions <25% are indistinguishable
---   from merge-timing noise (12.7% within-arm floor, no pairing dividend), so
---   alerting on it would manufacture false regressions. It remains a covariate.
+--   merge_amplification AND throughput_rows_per_sec are WATCH-ONLY (contract §3):
+--   NEITHER is gated and BOTH are EXCLUDED from this alert.
+--     * merge_amplification — single-pair excursions <25% are indistinguishable
+--       from merge-timing noise (12.7% within-arm floor, no pairing dividend), so
+--       alerting on it would manufacture false regressions.
+--     * throughput_rows_per_sec — DEMOTED to watch-only (D4 "full demote + re-base",
+--       Amendment 2026-08-31): the Tier-1 gate is now ch_insert_cpu_seconds_per_Mrows
+--       (server insert CPU, banded ±6%) + parts_per_insert (tripwire). Throughput is
+--       still a displayed covariate (v2_pair_ratios / v2_trailing_windows), but it no
+--       longer raises a REGRESSION here.
+--   Both remain reported covariates.
 --
 -- Channel wiring is a FLAGGED follow-up (open decision 3) — see README.md.
 -- Non-empty result set == alert should fire; attach `pair_link` per row.
@@ -43,9 +50,12 @@
 --   2026-07-09b; each = 2x the measured noise floor, SAME on both tiers, keyed on
 --   the metric name, NOT the tier. Recalibrates from trailing-20 stats at ~12
 --   pairs (~2026-07-21), then median±2*MAD per plan §6.2):
---     throughput_rows_per_sec                         = 0.09   (±9%)
+--     throughput_rows_per_sec                         = WATCH-ONLY (band 0.09 kept
+--                                                        as the covariate scale only;
+--                                                        DEMOTED, never alerts — see
+--                                                        the watch-only note above)
 --     null_rows_per_sec / null_drain / drain_rows/s   = 0.085  (±8.5%)
---     cpu_seconds_per_Mrows / ch_insert_cpu_..._Mrows = 0.06   (±6%)
+--     cpu_seconds_per_Mrows / ch_insert_cpu_..._Mrows = 0.06   (±6%, Tier-1 GATE)
 --     serialize_seconds_per_Mrows                     = 0.085  (±8.5%)
 --     parts_per_insert                                = TRIPWIRE (== 1.0 exactly)
 --
@@ -158,7 +168,8 @@ WITH
       ON h.pair_id = pn.pair_id AND h.tier = pn.tier AND h.metric = pn.metric
   ),
   -- Direction + CALIBRATED per-metric band + tripwire flag (contract §3
-  -- Amendment 2026-07-09b). merge_amplification is dropped here (WATCH-ONLY).
+  -- Amendment 2026-07-09b + D4 Amendment 2026-08-31). merge_amplification AND
+  -- throughput_rows_per_sec are BOTH dropped here (both WATCH-ONLY, not gated).
   classified AS (
     SELECT
       pair_id, tier, metric, head_value, pinned_value, ratio,
@@ -181,7 +192,7 @@ WITH
         0.0
       ) AS band
     FROM ratios
-    WHERE metric != 'merge_amplification'            -- WATCH-ONLY, not gated
+    WHERE metric NOT IN ('merge_amplification','throughput_rows_per_sec')  -- WATCH-ONLY, not gated
   )
 SELECT
   pair_id,

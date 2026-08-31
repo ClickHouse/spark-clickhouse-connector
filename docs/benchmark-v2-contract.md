@@ -334,14 +334,18 @@ Three outcomes, applied identically by both pipelines:
 
    | Metric (and its rename/alias siblings) | band (± of ratio) |
    |----------------------------------------|-------------------|
-   | `throughput_rows_per_sec` (verified) | **±9%** |
    | `null_rows_per_sec`, `null_drain_rows_per_sec`, `drain_rows_per_sec` (Tier-0 null + Kafka drain analogues) | **±8.5%** |
-   | `ch_insert_cpu_seconds_per_Mrows`, `cpu_seconds_per_Mrows`, `connect_cpu_seconds_per_Mrows` (Kafka client-cpu spelling; gated at the family band — Amendment 2026-07-09f) | **±6%** |
+   | `ch_insert_cpu_seconds_per_Mrows`, `cpu_seconds_per_Mrows`, `connect_cpu_seconds_per_Mrows` (Kafka client-cpu spelling; gated at the family band — Amendment 2026-07-09f) — **verified Tier-1 gate (D4 Amendment 2026-08-31)** | **±6%** |
    | `serialize_seconds_per_Mrows` | **±8.5%** |
 
-   in-band ⇒ ratio ∈ `[1 − band, 1 + band]` (e.g. throughput `[0.91, 1.09]`;
-   cpu `[0.94, 1.06]`). A metric not in this table is **not banded** — it is
+   in-band ⇒ ratio ∈ `[1 − band, 1 + band]` (e.g. cpu `[0.94, 1.06]`;
+   null `[0.915, 1.085]`). A metric not in this table is **not banded** — it is
    either watch-only or a tripwire (see gate composition).
+
+   `throughput_rows_per_sec` (verified) is **WATCH-ONLY** as of D4 (Amendment
+   2026-08-31) — it is **not** in the gated bands set above. Its historical
+   in-band range `[0.91, 1.09]` (±9%) is retained only as the covariate display
+   scale (see gate composition); it no longer produces a verdict.
 
    **Ratio→verdict map (PINNED, both pipelines, any artifact emitting a
    verdict):** ratio NULL or 0-denominator ⇒ **NO_DATA** (never REGRESSION);
@@ -362,9 +366,12 @@ Three outcomes, applied identically by both pipelines:
    invariant break). NULL/absent `parts_per_insert` ⇒ **NO_DATA** as usual.
 
    **Gate composition (PINNED — Amendment 2026-07-09b, replaces the prior
-   flat-band gated set):**
-   - **Tier 1 gate** = verified throughput (`throughput_rows_per_sec` /
-     `drain_rows_per_sec`, banded) **+** `parts_per_insert` (tripwire).
+   flat-band gated set; Tier-1 re-based by D4 Amendment 2026-08-31):**
+   - **Tier 1 gate** (D4 "full demote + re-base", Amendment 2026-08-31) =
+     `ch_insert_cpu_seconds_per_Mrows` (server insert CPU per Mrows, banded **±6%**,
+     `lower_better`) **+** `parts_per_insert` (tripwire). The prior throughput gate
+     (`throughput_rows_per_sec` / `drain_rows_per_sec`) is **DEMOTED to WATCH-ONLY**
+     (see the demotion bullet below).
    - **Tier 0 gate** = `null_rows_per_sec` / `null_drain_rows_per_sec` (banded)
      and the client cpu-per-Mrows metric (`cpu_seconds_per_Mrows` Spark /
      `connect_cpu_seconds_per_Mrows` Kafka, banded), plus
@@ -378,6 +385,15 @@ Three outcomes, applied identically by both pipelines:
      and it gets **no pairing dividend** — the noise is per-run, not shared
      across the pair), so gating it would manufacture false regressions. It stays
      a reported covariate.
+   - **`throughput_rows_per_sec` / `drain_rows_per_sec` are DEMOTED to WATCH-ONLY**
+     (D4 "full demote + re-base", Amendment 2026-08-31) — they are **not gated** and
+     do **not** raise a REGRESSION. The verified Tier-1 gate is now the server-side
+     `ch_insert_cpu_seconds_per_Mrows` (banded ±6%): a lower-variance signal that a
+     connector change moves directly, without the throughput ratio's headline noise.
+     Throughput stays a **reported covariate** — still displayed on Tab 1 / Tab 2 and
+     still carried by `v2_pair_ratios` / `v2_trailing_windows` — but it no longer
+     contributes a verdict. Its ±9% band constant is retained only as the covariate
+     display scale, NOT as a gate.
    - `settle_seconds` / `settle_timed_out` and `merge_pool_peak_pct` remain
      **covariates** (already non-gate).
 
@@ -512,7 +528,15 @@ as board task **#40**.
 | `inserts_delayed_fraction` | `ch_inserts_delayed_fraction` | `benchmarks/sql/perf/16_insert_throttling.sql` |
 | `merge_pool_peak_pct` | `ch_merge_pool_peak_pct` | `benchmarks/sql/perf/16_insert_throttling.sql` |
 | `settle_seconds` | `ch_settle_seconds` | `benchmarks/sql/perf/14_insert_settle_seconds.sql` |
-| `ch_insert_cpu_seconds_per_Mrows` | **not emitted** — only the raw `ch_insert_cpu_seconds` exists; the per-Mrows derivation is missing | `benchmarks/sql/perf/11_insert_from_query_log.sql` (raw source) |
+
+> **Correction (D4 Amendment 2026-08-31):** an earlier row here claimed
+> `ch_insert_cpu_seconds_per_Mrows` was "not emitted — only the raw
+> `ch_insert_cpu_seconds` exists". That is **stale and false**: the per-Mrows
+> derivation IS emitted under the pinned name by
+> `benchmarks/sql/perf/11_insert_from_query_log.sql` (lines 90-103 — server insert
+> CPU seconds ÷ written-rows/1e6, `nullIf`-guarded). It is therefore **already
+> conformant on disk** and is now the verified **Tier-1 gate** (banded ±6%; see §3
+> gate composition). No rename work is needed for it.
 
 Also not yet emitted anywhere (planned, pinned in §2.1 for when they land):
 `run_cost_usd`; the Tier 0 set (`null_rows_per_sec`, `ch_insert_cpu_share_tier0`)
@@ -521,7 +545,9 @@ pending the Tier 0 build.
 Already conformant on disk (no action): `rows_delivered`, `rows_expected`,
 `duplicate_rows`, `ch_dedup_dropped_blocks`, `bytes_on_wire_per_row`,
 `ch_parts_active_peak`, `ch_memory_limit_errors`, `ch_avg_rows_per_insert`,
-`settle_timed_out`, `ch_uptime`, `pre_run_rss`, `pre_run_active_parts`.
+`settle_timed_out`, `ch_uptime`, `pre_run_rss`, `pre_run_active_parts`,
+`ch_insert_cpu_seconds_per_Mrows` (emitted by `11_insert_from_query_log.sql`; the
+Tier-1 gate metric — corrected D4 2026-08-31).
 
 Rename mechanics: because `metric_name` spelling IS the series identity (§2), a
 rename **MUST** be treated as a series cut-over — dashboards/views coalesce the

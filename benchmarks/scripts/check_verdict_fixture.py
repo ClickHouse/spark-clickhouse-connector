@@ -173,17 +173,23 @@ def _str(v):
 # ----------------------------------------------------------------------------
 # Assertion + reporting.
 # ----------------------------------------------------------------------------
-# 16 pairs × {throughput_rows_per_sec (HB banded ±9%),
-#             cpu_seconds_per_Mrows (LB banded ±6%),
-#             parts_per_insert (TRIPWIRE)} = 48 cells (contract §3, Amendment
-# 2026-07-09b). Covers {NULL(pinned-absent),NULL(head-absent),0-denom,below,in,
-# above,near-edge} × {HB,LB} banded × {flagged,unflagged}, PLUS the parts TRIPWIRE
-# axis {OK(==1.0), fired(!=1.0), head-absent(NO_DATA)} × {flagged (armed),
-# unflagged}. The head-absent pair (P16, +3 cells) is the kafka cross-check gap:
-# the head-driven join used to DROP an absent-head metric so the contract map's
-# "NULL/absent => NO_DATA" could never render in the Spark artifact.
-# merge_amplification is WATCH-ONLY (not gated) and is intentionally NOT asserted.
-EXPECTED_CELL_COUNT = 48
+# 62 asserted cells (contract §3, Amendment 2026-07-09b + D4 re-base 2026-08-31):
+#   * TIER-1 P01-P16 × {cpu_seconds_per_Mrows AND ch_insert_cpu_seconds_per_Mrows
+#     (LB banded ±6%, identical values), parts_per_insert (TRIPWIRE)} = 48. Covers
+#     {NULL(pinned-absent),NULL(head-absent),0-denom,below,in,above,near-edge} × LB
+#     banded × {flagged,unflagged}, PLUS the parts TRIPWIRE axis {OK(==1.0),
+#     fired(!=1.0), head-absent(NO_DATA)} × {flagged(armed),unflagged}. The
+#     head-absent pair (P16) is the kafka cross-check gap (absent-head => NO_DATA).
+#   * TIER-0 P20-P23 × {null_rows_per_sec (HB ±8.5%), serialize_seconds_per_Mrows
+#     (LB ±8.5%)} = 8. Exercises the ±8.5% band + the tier-0 metric identities across
+#     {below,in,above,NULL(pinned-absent)}.
+#   * INTEGRITY-FAIL P30/P31 × {cpu, ch_insert_cpu, parts} = 6, ALL => FAIL (P31 also
+#     flagged, proving FAIL > FLAG). P32 (outcome='failed') is EXCLUDED upstream => 0
+#     cells (the exact count proves the failed-run exclusion).
+# D4 DEMOTION: throughput_rows_per_sec is WATCH-ONLY — not seeded, not asserted
+# (mirroring merge_amplification, likewise not asserted); both are excluded by the
+# check view's classified WHERE.
+EXPECTED_CELL_COUNT = 62
 
 
 def _truthy(v: str) -> bool:
