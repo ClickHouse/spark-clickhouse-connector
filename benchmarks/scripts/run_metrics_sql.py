@@ -18,7 +18,8 @@ Required env: METRICS_CH_HOST, METRICS_CH_USER, METRICS_CH_PASSWORD,
               TARGET_CH_PASSWORD, CH_DATABASE, CH_TABLE
 Optional env: RUN_END (defaults to RUN_START — unset for pre-ingest capture),
               SETTLE_END (defaults to RUN_END), SETTLE_SECONDS (default 0),
-              SETTLE_TIMED_OUT (default 0), INPUT_PARQUET_GLOB (source glob,
+              SETTLE_TIMED_OUT (default 0), PRE_ARM_IDLE_SECONDS (default 0),
+              PRE_ARM_IDLE_TIMED_OUT (default 0), INPUT_PARQUET_GLOB (source glob,
               s3a:// or s3://; exposed to SQL as {source_glob} in s3:// form),
               DEFAULT_INPUT_PARQUET_GLOB, SOURCE_ROWS_EXPECTED,
               SOURCE_UNIQUE_EXPECTED (integrity source ground truth — see
@@ -130,6 +131,11 @@ def main() -> None:
         # a present-but-empty value must not float("")-crash the capture.
         "settle_seconds": float(os.environ.get("SETTLE_SECONDS") or "0"),
         "settle_timed_out": float(os.environ.get("SETTLE_TIMED_OUT") or "0"),
+        # Pre-arm idle gate (wait_for_idle.py). Same `or "0"` guard as the settle
+        # scalars: the two-arm reset sets them to empty in $GITHUB_ENV between
+        # arms, and a present-but-empty value must not float("")-crash capture.
+        "pre_arm_idle_seconds": float(os.environ.get("PRE_ARM_IDLE_SECONDS") or "0"),
+        "pre_arm_idle_timed_out": float(os.environ.get("PRE_ARM_IDLE_TIMED_OUT") or "0"),
         "source_glob": source_glob,
         "rows_expected": rows_expected,
         "unique_expected": unique_expected,

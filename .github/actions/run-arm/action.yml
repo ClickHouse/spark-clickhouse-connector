@@ -141,6 +141,8 @@ runs:
           echo "WRITE_PARALLELISM_META_S3_URI=s3://${S3_BUCKET}/run-meta/${ARM_RUN_ID}/write_parallelism"
           # Per-arm settle status sidecar — arm 2 must not read arm 1's flag.
           echo "SETTLE_STATUS_FILE=${RUNNER_TEMP}/settle_status_${ARM}"
+          # Per-arm pre-arm idle status sidecar — same arm-isolation as settle.
+          echo "IDLE_STATUS_FILE=${RUNNER_TEMP}/idle_status_${ARM}"
           # Reset the per-arm time windows and settle scalars written by a prior
           # arm so nothing leaks from arm 1 into arm 2 (they are re-set below).
           # GITHUB_ENV can only SET a variable (possibly to empty), never unset
@@ -152,6 +154,11 @@ runs:
           echo "SETTLE_END="
           echo "SETTLE_SECONDS=0"
           echo "SETTLE_TIMED_OUT=0"
+          # Pre-arm idle gate scalars — same reset rationale as the settle scalars
+          # above (run_metrics_sql.py float()s them; a present-but-empty arm-2
+          # value would crash capture). Reset to "0", not "".
+          echo "PRE_ARM_IDLE_SECONDS=0"
+          echo "PRE_ARM_IDLE_TIMED_OUT=0"
           # Reset flags: flagged is present-iff-tripped; a clean arm 2 must not
           # inherit arm 1's flag (contract §1.3).
           echo "FLAGGED="
@@ -242,6 +249,37 @@ runs:
         TARGET_CH_USER: ${{ inputs.target_ch_user }}
         TARGET_CH_PASSWORD: ${{ inputs.target_ch_password }}
       run: python benchmarks/scripts/run_metrics_sql.py benchmarks/sql/perf/21_pre_run_covariates.sql
+
+    - name: "Wait for target idle before arming (arm ${{ inputs.arm }})"
+      # PRE-ARM idle gate (symmetric with the post-ingest settle step below): make
+      # each arm start from the same quiesced target state — background merges
+      # quiesced AND resident memory flat — so a busy tail from the previous arm
+      # does not bias this one. The HEAD/pinned ratio cancels the AVERAGE
+      # environment but not DRIFT across the four sequential ingests in a pair.
+      # Placed BEFORE "Record arm RUN_START" so the wait is OUTSIDE the timed
+      # window. Structurally mirrors the settle step: wait_for_idle.py prints only
+      # the idle-end timestamp on stdout; the 1/0 timed-out flag comes back via the
+      # arm-scoped IDLE_STATUS_FILE sidecar (set in the first step). It NEVER blocks
+      # the pair — on IDLE_TIMEOUT it proceeds and records the flag.
+      # TIER 0 SKIPS the idle gate (spec Q3): a Null target creates no parts/merges
+      # (an RSS-only t0 mode is an explicit future follow-up). Gated on tier='1'.
+      if: ${{ !cancelled() && inputs.tier == '1' }}
+      shell: bash
+      env:
+        TARGET_CH_HOST: ${{ inputs.target_ch_host }}
+        TARGET_CH_USER: ${{ inputs.target_ch_user }}
+        TARGET_CH_PASSWORD: ${{ inputs.target_ch_password }}
+        CH_DATABASE: clickbench
+        CH_TABLE: hits
+      run: |
+        set -euo pipefail
+        PRE_IDLE=$(date -u +%Y-%m-%dT%H:%M:%S)
+        IDLE_END=$(benchmarks/scripts/wait_for_idle.py)
+        PRE_ARM_IDLE_SECONDS=$(( $(date -u -d "$IDLE_END" +%s) - $(date -u -d "$PRE_IDLE" +%s) ))
+        echo "PRE_ARM_IDLE_SECONDS=$PRE_ARM_IDLE_SECONDS" >> "$GITHUB_ENV"
+        PRE_ARM_IDLE_TIMED_OUT=$(cat "$IDLE_STATUS_FILE" 2>/dev/null || echo 0)
+        echo "PRE_ARM_IDLE_TIMED_OUT=$PRE_ARM_IDLE_TIMED_OUT" >> "$GITHUB_ENV"
+        echo "pre-arm idle took ${PRE_ARM_IDLE_SECONDS}s, timed_out=${PRE_ARM_IDLE_TIMED_OUT} (PRE_IDLE=$PRE_IDLE IDLE_END=$IDLE_END)"
 
     - name: "Record arm RUN_START (arm ${{ inputs.arm }})"
       shell: bash
@@ -484,7 +522,9 @@ runs:
           benchmarks/sql/perf/18_insert_derived_metrics.sql \
           benchmarks/sql/perf/19_insert_rate_stability.sql \
           benchmarks/sql/perf/22_insert_settle_timed_out.sql \
-          benchmarks/sql/perf/24_insert_parts_per_partition.sql"
+          benchmarks/sql/perf/24_insert_parts_per_partition.sql \
+          benchmarks/sql/perf/25_pre_arm_idle_seconds.sql \
+          benchmarks/sql/perf/26_pre_arm_idle_timed_out.sql"
         if [ "${SUBMIT_OUTCOME}" = "success" ]; then
           echo "capture: success-class — full family set (strict)"
           # 10 (event log) + 20 (integrity) are STRICT here: on a successful
@@ -531,10 +571,11 @@ runs:
       run: |
         set -euo pipefail
         TASK_FAILED_COUNT=$(python benchmarks/scripts/read_task_failed_count.py)
-        echo "task_failed_count=${TASK_FAILED_COUNT} settle_timed_out=${SETTLE_TIMED_OUT:-0}"
+        echo "task_failed_count=${TASK_FAILED_COUNT} settle_timed_out=${SETTLE_TIMED_OUT:-0} pre_arm_idle_timed_out=${PRE_ARM_IDLE_TIMED_OUT:-0}"
         REASONS=()
         if [ "${TASK_FAILED_COUNT:-0}" -gt 0 ]; then REASONS+=("task_retries"); fi
         if [ "${SETTLE_TIMED_OUT:-0}" != "0" ]; then REASONS+=("settle_timeout"); fi
+        if [ "${PRE_ARM_IDLE_TIMED_OUT:-0}" != "0" ]; then REASONS+=("idle_timeout"); fi
         if [ "${#REASONS[@]}" -gt 0 ]; then
           FLAG_REASON=$(IFS='|'; echo "${REASONS[*]}")
           echo "FLAGGED=1" >> "$GITHUB_ENV"
