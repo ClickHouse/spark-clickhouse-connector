@@ -14,6 +14,7 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
+import com.clickhouse.spark.read.ClickHouseBatchScan
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.{AnalysisException, Row}
 import org.apache.spark.sql.catalyst.TableIdentifier
@@ -45,6 +46,20 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
           )
         )
       }
+    }
+  }
+
+  test("a unioned partition listing counts each part once per replica set") {
+    // cluster `default` is 2 shards of 2 replicas, so every part is reported by two servers; without
+    // deduplication by part name the listing would double PartitionSpec.row_count
+    withSimpleDistTable("single_replica", "db_listing", "t_dist", true) { (_, db, _, tbl_local) =>
+      val df = spark.sql(s"SELECT id FROM $db.$tbl_local")
+      df.collect()
+      val scan = df.queryExecution.sparkPlan.collectFirst {
+        case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
+      }.get
+      // the fixture writes 4 rows across the shards; each lives on 2 replicas
+      assert(scan.inputPartitions.map(_.partition.row_count).sum === 4)
     }
   }
 

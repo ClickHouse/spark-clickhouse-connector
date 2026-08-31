@@ -236,17 +236,26 @@ object ClickHouseSQLConf {
       )
       .createWithDefault("variant")
 
-  val READ_PARTITION_LISTING_CLUSTER: ConfigEntry[String] =
+  val READ_PARTITION_LISTING_UNION_REPLICAS: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.read.partitionListing.unionReplicas")
+      .doc("If `true`, list a table's partitions across the replicas of its cluster rather than " +
+        "from the server answering the query. `system.parts` reflects only that server and lags a " +
+        "recent write on an eventually consistent service such as ClickHouse Cloud, and a listing " +
+        "that lags prunes a partition out of the scan and silently drops its rows. Unavailable " +
+        "replicas are skipped, and any failure falls back to the answering server's own view.")
+      .version("0.10.0")
+      .booleanConf
+      .createWithDefault(true)
+
+  val READ_PARTITION_LISTING_CLUSTER: OptionalConfigEntry[String] =
     buildConf("spark.clickhouse.read.partitionListing.cluster")
-      .doc("Cluster whose replicas are unioned when listing a table's partitions from " +
-        "`system.parts`, which reflects only the server answering the query and lags a recent " +
-        "write on an eventually consistent service such as ClickHouse Cloud. A listing that lags " +
-        "prunes a partition out of the scan and silently drops its rows. Unavailable replicas are " +
-        "skipped, and any failure — an unknown cluster, or a table absent from other members — " +
-        "falls back to the answering server's own view. Empty disables the union.")
+      .doc("Cluster to union partition listings across. Unset, the cluster is discovered from " +
+        "`system.clusters` by picking the one containing this server with the fewest shards, so " +
+        "that reading a table does not fan out to shards that cannot hold its data. Set this only " +
+        "when that choice is wrong for the deployment.")
       .version("0.10.0")
       .stringConf
-      .createWithDefault("default")
+      .createOptional
 
   val READ_SETTINGS: OptionalConfigEntry[String] =
     buildConf("spark.clickhouse.read.settings")
