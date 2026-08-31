@@ -209,6 +209,7 @@ SELECT
   concat('https://superset.clickhouse-dev.com/superset/dashboard/427/?pair_id=', pair_id) AS pair_link
 FROM classified
 WHERE
+  (
   -- (b) parts TRIPWIRE: head arm's absolute value deviates from the 1.0 invariant.
   (is_tripwire AND head_value != 1.0)
   OR
@@ -218,4 +219,11 @@ WHERE
       (direction = 'higher_better' AND ratio < 1 - band) OR   -- worse: slower/lower
       (direction = 'lower_better'  AND ratio > 1 + band)      -- worse: more cost
   ))
+  )
+  -- TIER SCOPING: ch_insert_cpu_seconds_per_Mrows is the SERVER-cpu Tier-1 gate.
+  -- Its Tier-0 sibling cpu_seconds_per_Mrows (client cpu) shares the same +-6%
+  -- band but is a distinct gate on a distinct tier, so the band map is keyed on
+  -- metric name alone (above) and would otherwise let the server-cpu gate fire
+  -- on a stray non-Tier-1 row. Restrict it to Tier 1 explicitly.
+  AND NOT (metric = 'ch_insert_cpu_seconds_per_Mrows' AND tier != '1')
 ORDER BY pair_id DESC, tier, metric
