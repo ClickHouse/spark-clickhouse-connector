@@ -25,10 +25,17 @@
 -- variant for a dashboard-native alert; keep the two conditions in step.
 -- Channel wiring beyond the GitHub issue is a follow-up (open decision 3) — see README.md.
 --
+-- FRESHNESS SLA: the interval is a Superset jinja param (default 36h) in the same
+-- style as v2_flag_rate.sql's `trailing_n`. The default MIRRORS the Python twin
+-- benchmarks/scripts/check_freshness.py (FRESHNESS_SLA_HOURS default '36') so the
+-- DWH/Superset variant and the scheduled watchdog stay in lock-step — change the
+-- default here and there together. Both conditions read the same param so STALE
+-- and HALF_PAIR share one window, exactly as the Python twin does.
+--
 -- Run against: DWH connection dc93cd97, db 1, schema raw_connectors_load_testing.
--- TODAY: condition (A) will fire if the newest run is >36h old; condition (B) is
--- empty because no pair_id exists yet (all history is arm=head with no pair_id).
--- Neither errors on the current data. Tune INTERVAL 36 HOUR to the real cadence.
+-- TODAY: condition (A) will fire if the newest run is older than the SLA; condition
+-- (B) is empty because no pair_id exists yet (all history is arm=head with no
+-- pair_id). Neither errors on the current data.
 -- =============================================================================
 WITH
   scoped AS (
@@ -55,9 +62,13 @@ SELECT
   ''                                                            AS tier,
   max(run_started_at)                                           AS last_run_at,
   toString(round(dateDiff('hour', max(run_started_at), now()))) AS hours_since_last_run,
-  'No spark run within the freshness SLA (36h) — two-arm pipeline may be down' AS detail
+  concat('No spark run within the freshness SLA (',
+         toString({{ freshness_sla_hours | default(36) }}),
+         'h) — two-arm pipeline may be down')                    AS detail
 FROM scoped
-HAVING max(run_started_at) < now() - INTERVAL 36 HOUR
+-- SLA param mirrors check_freshness.py FRESHNESS_SLA_HOURS (default 36); the
+-- Python twin uses toIntervalHour(...) likewise.
+HAVING max(run_started_at) < now() - toIntervalHour({{ freshness_sla_hours | default(36) }})
 
 UNION ALL
 
@@ -73,7 +84,7 @@ SELECT
          '] — expected both head+pinned; v2_pair_ratios will emit no ratio for it') AS detail
 FROM scoped
 WHERE pair_id != ''
-  AND run_started_at >= now() - INTERVAL 36 HOUR
+  AND run_started_at >= now() - toIntervalHour({{ freshness_sla_hours | default(36) }})
   AND outcome != 'failed'
 GROUP BY pair_id, tier
 HAVING uniqExact(arm) < 2      -- fewer than both arms => half-completed pair
