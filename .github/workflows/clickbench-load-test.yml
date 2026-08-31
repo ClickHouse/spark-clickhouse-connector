@@ -51,7 +51,13 @@ jobs:
       id-token: write
       contents: read
     env:
-      AWS_REGION: us-east-1
+      # Co-located with the TARGET (us-east-2) as of 2026-08-31 to remove the
+      # cross-region connector->server confound. Land as a single annotated
+      # step-change (the throughput jump is the move, not a code regression).
+      # NOTE: full co-location also requires the input dataset to live in
+      # us-east-2 (see DEFAULT_INPUT_PARQUET_GLOB below) and, ideally, the CI
+      # S3 bucket too; until those are staged this only co-locates compute.
+      AWS_REGION: us-east-2
       # EMR 7.13.0 ships Spark 3.5.6 + Scala 2.12. As of mid-2026 no EMR 7.x
       # release bundles Spark 4, so the connector jar must be built for
       # 3.5_2.12 to match. Bump this if a Spark-4 EMR release appears.
@@ -129,18 +135,16 @@ jobs:
       ENVIRONMENT_CLASS: "production"  # the Spark target is a production Cloud service
       # TARGET_REGION: Cloud region of the TARGET ClickHouse service. Set from
       # repo config, never hardcoded per run (contract §1.1). us-east-2 —
-      # confirmed by the user 2026-07-07 (task #9 closed): the benchmark is
-      # CROSS-REGION (EMR us-east-1 -> target us-east-2); move-vs-accept is an
-      # annotated step-change decision tracked outside the repo (plan §6.8).
+      # confirmed by the user 2026-07-07 (task #9 closed).
       TARGET_REGION: "us-east-2"
       # COMPUTE_REGION: Cloud region of the LOAD GENERATOR (EMR) — mandatory
-      # runtime key (contract §1.1, amendment 2026-07-07): when it differs from
-      # target_region the connector->server path is cross-region, a structural
-      # bias comparisons must be able to compute. Matches AWS_REGION /
-      # provisioning above. Target region confirmed us-east-2 (task #9), so the
-      # Spark connector->server path IS cross-region by design until the
-      # move-vs-accept decision says otherwise.
-      COMPUTE_REGION: "us-east-1"
+      # runtime key (contract §1.1, amendment 2026-07-07). Co-located with
+      # TARGET_REGION as of 2026-08-31 (move-vs-accept decided = MOVE): the
+      # connector->server path is now SAME-REGION, so this structural bias is
+      # zero. Must equal AWS_REGION above. Runs before/after the move are
+      # separated by an annotated step-change (region change is structural,
+      # not a code regression) so dashboard trends stay attributable.
+      COMPUTE_REGION: "us-east-2"
       # Run dimensions recorded on perf.runs (and exported to the DWH).
       CONNECTOR: ${{ inputs.connector || 'spark' }}
       RUN_PROFILE: ${{ inputs.run_profile || 'small' }}
@@ -155,6 +159,17 @@ jobs:
       # WatchIDs (…497 rows vs …493 distinct), which is why duplicate detection
       # is a target-vs-source delta, never count()-uniqExact() on the target.
       # Re-derive both constants if the dataset or default glob changes.
+      #
+      # DATA LOCALITY (co-location, 2026-08-31): this public dataset bucket
+      # lives in eu-central-1 (Frankfurt) — a trans-Atlantic read from either
+      # us-east region and the single largest locality confound in the run.
+      # Full co-location requires staging these parquet files once into a
+      # PERSISTENT us-east-2 bucket (the CI bucket has a 7-day expiry lifecycle,
+      # so it is NOT that bucket) and flipping the two globs below to the
+      # us-east-2 copy. The SOURCE_ROWS_EXPECTED / SOURCE_UNIQUE_EXPECTED
+      # constants remain valid ONLY if the staged copy is byte-identical to the
+      # public files; otherwise re-derive them with `clickhouse local`. Left on
+      # the public bucket for now so smoke runs still work until staging lands.
       DEFAULT_INPUT_PARQUET_GLOB: "s3a://clickhouse-public-datasets/hits_compatible/athena_partitioned/hits_*.parquet"
       SOURCE_ROWS_EXPECTED: "99997497"
       SOURCE_UNIQUE_EXPECTED: "99997493"
@@ -174,7 +189,7 @@ jobs:
         uses: aws-actions/configure-aws-credentials@v4
         with:
           role-to-assume: ${{ secrets.CLICKBENCH_AWS_ROLE_ARN }}
-          aws-region: us-east-1
+          aws-region: us-east-2
 
       - name: Build connector runtime jar
         run: |
