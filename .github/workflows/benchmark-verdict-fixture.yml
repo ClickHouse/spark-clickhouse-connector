@@ -1,0 +1,71 @@
+#
+# Licensed under the Apache License, Version 2.0 (the "License");
+# you may not use this file except in compliance with the License.
+# You may obtain a copy of the License at
+#
+#     https://www.apache.org/licenses/LICENSE-2.0
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+# See the License for the specific language governing permissions and
+# limitations under the License.
+#
+
+# Contract §3 verdict truth-table acceptance (D4 re-base). Runs
+# benchmarks/scripts/check_verdict_fixture.py --local: it seeds the synthetic
+# fixture pairs (benchmarks/sql/perf/90_verdict_fixture_seed.sql) and asserts the
+# PINNED ratio->verdict map THROUGH the real dataset SQL
+# (benchmarks/dashboard/v2/v_verdict_fixture_check.sql), all inside a single
+# `clickhouse local` process. This guards that any change to the verdict logic,
+# the bands, or the gate composition keeps matching the contract truth table.
+#
+# LOCAL MODE — NO secrets, NO network: everything runs in `clickhouse local`
+# (perf.* is created from the repo DDL, seeded, and asserted in-process). So this
+# runs on every push / PR that touches the benchmark artifacts, unlike the
+# freshness watchdog which needs live-service secrets.
+
+name: "Benchmark verdict fixture (contract §3)"
+
+on:
+  push:
+    paths:
+      - "benchmarks/**"
+      - "docs/benchmark-v2-contract.md"
+      - ".github/workflows/benchmark-verdict-fixture.yml"
+  pull_request:
+    paths:
+      - "benchmarks/**"
+      - "docs/benchmark-v2-contract.md"
+      - ".github/workflows/benchmark-verdict-fixture.yml"
+  workflow_dispatch:
+
+concurrency:
+  group: benchmark-verdict-fixture-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verdict-fixture:
+    runs-on: ubuntu-22.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.11"
+
+      - name: Install ClickHouse (clickhouse local)
+        run: |
+          set -euo pipefail
+          # Downloads a self-contained ./clickhouse binary (no server, no config).
+          curl -fsSL https://clickhouse.com/ | sh
+          # Put it on PATH so the check step resolves `clickhouse local` (space) —
+          # exactly how check_verdict_fixture.py's binary resolver invokes it.
+          # Move (not `clickhouse install`) to avoid the interactive server setup.
+          sudo mv ./clickhouse /usr/local/bin/clickhouse
+          clickhouse local --version
+
+      - name: Verdict truth-table acceptance (local)
+        run: python benchmarks/scripts/check_verdict_fixture.py --local
