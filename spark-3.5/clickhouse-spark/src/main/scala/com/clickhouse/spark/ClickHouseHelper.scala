@@ -336,10 +336,14 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     unionAcrossReplicas: Boolean
   )(implicit nodeClient: NodeClient): SimpleOutput[ObjectNode] = {
     // `system.parts` answers from one server, so its rows are deduplicated by part name before the
-    // per-partition sums: a part the union sees on several replicas must be counted once
-    def query(source: String, settings: String): String =
+    // per-partition sums: a part the union sees on several replicas must be counted once.
+    // Grouped on partition_id alone, never on `partition`: that column is rendered by whichever
+    // server answered, so a DateTime partition key renders differently under different server
+    // timezones. Grouping on it would split one partition into two input partitions carrying the
+    // same `_partition_id` filter, and every row of that partition would be read twice.
+    def query(source: String): String =
       s"""SELECT
-         |  `partition`,                         -- String
+         |  any(`partition`)   AS `partition`,   -- String
          |  partition_id,                        -- String
          |  sum(row_count)     AS row_count,     -- UInt64
          |  sum(size_in_bytes) AS size_in_bytes  -- UInt64
@@ -353,12 +357,11 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
          |  WHERE `database`='$database' AND `table`='$table' AND `active`=1
          |  GROUP BY `name`
          |)
-         |GROUP BY `partition`, partition_id
-         |ORDER BY `partition` ASC, partition_id ASC
-         |$settings
+         |GROUP BY partition_id
+         |ORDER BY partition_id ASC
          |""".stripMargin
 
-    val ownView = query("`system`.`parts`", "")
+    val ownView = query("`system`.`parts`")
     val cluster =
       if (!unionAcrossReplicas || !conf.getConf(READ_PARTITION_LISTING_UNION_REPLICAS)) None
       else partitionListingCluster
@@ -366,10 +369,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     cluster match {
       case None => nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
       case Some(name) =>
-        val union = query(
-          s"clusterAllReplicas('${name.replace("'", "\\'")}', `system`.`parts`)",
-          ""
-        )
+        val union = query(s"clusterAllReplicas('${name.replace("'", "\\'")}', `system`.`parts`)")
         Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(union)) match {
           case Success(output) => output
           case Failure(cause) =>
