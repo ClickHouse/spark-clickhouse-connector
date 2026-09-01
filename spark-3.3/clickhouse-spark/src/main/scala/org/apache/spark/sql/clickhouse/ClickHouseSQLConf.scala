@@ -234,16 +234,6 @@ object ClickHouseSQLConf {
       .booleanConf
       .createWithDefault(true)
 
-  val READ_PARTITION_LISTING_CLUSTER: OptionalConfigEntry[String] =
-    buildConf("spark.clickhouse.read.partitionListing.cluster")
-      .doc("Cluster to union partition listings across. Unset, the cluster is discovered from " +
-        "`system.clusters` by picking the one containing this server with the fewest shards, so " +
-        "that reading a table does not fan out to shards that cannot hold its data. Set this only " +
-        "when that choice is wrong for the deployment.")
-      .version("0.10.0")
-      .stringConf
-      .createOptional
-
   val READ_SETTINGS: OptionalConfigEntry[String] =
     buildConf("spark.clickhouse.read.settings")
       .doc("Settings when read from ClickHouse. e.g. `final=1, max_execution_time=5`")
