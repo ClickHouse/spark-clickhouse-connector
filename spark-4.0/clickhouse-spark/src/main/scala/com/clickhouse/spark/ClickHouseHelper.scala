@@ -21,11 +21,7 @@ import com.clickhouse.spark.format.SimpleOutput
 import com.fasterxml.jackson.databind.node.{NullNode, ObjectNode}
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
-  CLIENT_QUERY_TIMEOUT,
-  READ_PARTITION_LISTING_CLUSTER,
-  READ_PARTITION_LISTING_UNION_REPLICAS
-}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{CLIENT_QUERY_TIMEOUT, READ_PARTITION_LISTING_UNION_REPLICAS}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, SchemaUtils}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
@@ -312,7 +308,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
   /**
    * @param unionAcrossReplicas
    *   whether this listing is expected to describe the whole table, in which case it is unioned
-   *   across the replicas of [[READ_PARTITION_LISTING_CLUSTER]]. Leave it off where one listing
+   *   across its cluster, discovered from `system.clusters`. Leave it off where one listing
    *   covers one shard, since the union would then report every shard's partitions to each shard.
    */
   def queryPartitionSpec(
@@ -365,7 +361,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     val ownView = query("`system`.`parts`", "")
     val cluster =
       if (!unionAcrossReplicas || !conf.getConf(READ_PARTITION_LISTING_UNION_REPLICAS)) None
-      else conf.getConf(READ_PARTITION_LISTING_CLUSTER).orElse(partitionListingCluster)
+      else partitionListingCluster
 
     cluster match {
       case None => nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
@@ -383,7 +379,6 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
               s"Could not list the partitions of $database.$table across the replicas of cluster " +
                 s"'$name'; falling back to this server's own view of system.parts, which lags a " +
                 s"recent write on an eventually consistent service. Set " +
-                s"${READ_PARTITION_LISTING_CLUSTER.key} if the cluster is wrong, or " +
                 s"${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to stop unioning.",
               cause
             )
@@ -418,8 +413,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
         case Failure(cause) =>
           log.warn(
             "Could not discover a cluster to list partitions across; reading system.parts " +
-              s"from the answering server only. Set ${READ_PARTITION_LISTING_CLUSTER.key} to name it " +
-              s"explicitly, or ${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to stop trying.",
+              s"from the answering server only. Set ${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to stop trying.",
             cause
           )
           None

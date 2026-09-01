@@ -16,10 +16,7 @@ package org.apache.spark.sql.clickhouse.single
 
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
 import com.clickhouse.spark.read.ClickHouseBatchScan
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
-  READ_PARTITION_LISTING_CLUSTER,
-  READ_PARTITION_LISTING_UNION_REPLICAS
-}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_PARTITION_LISTING_UNION_REPLICAS
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
@@ -570,15 +567,6 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
         runClickHouseSQL(s"DROP DATABASE IF EXISTS `$db`")
       }
-  }
-
-  test("an unknown partition listing cluster falls back to the answering server") {
-    // the union query fails outright; without the fallback every read of the table would throw
-    withSimpleTable("db_listing", "tbl_fallback", writeData = true) { (db, tbl) =>
-      withSQLConf(READ_PARTITION_LISTING_CLUSTER.key -> "no_such_cluster") {
-        checkAnswer(spark.sql(s"SELECT id FROM $db.$tbl"), Seq(Row(1L), Row(2L)))
-      }
-    }
   }
 
   test("the partition listing union can be turned off") {

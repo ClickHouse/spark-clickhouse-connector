@@ -15,7 +15,10 @@
 package org.apache.spark.sql.clickhouse.cluster
 
 import com.clickhouse.spark.read.ClickHouseBatchScan
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
+  READ_DISTRIBUTED_CONVERT_LOCAL,
+  READ_PARTITION_LISTING_UNION_REPLICAS
+}
 import org.apache.spark.sql.{AnalysisException, Row}
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
@@ -53,12 +56,45 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
     // deduplication by part name the listing would double PartitionSpec.row_count
     withSimpleDistTable("single_replica", "db_listing", "t_dist", true) { (_, db, _, tbl_local) =>
       val df = spark.sql(s"SELECT id FROM $db.$tbl_local")
-      df.collect()
+      val unioned = df.collect().map(_.getLong(0)).sorted
       val scan = df.queryExecution.sparkPlan.collectFirst {
         case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
       }.get
       // the fixture writes 4 rows across the shards; each lives on 2 replicas
       assert(scan.inputPartitions.map(_.partition.row_count).sum === 4)
+
+      // `default` also spans the other shard, so the listing reports partitions this server does
+      // not hold: those tasks must read nothing rather than change the answer
+      var ownView: Array[Long] = Array.empty
+      withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
+        ownView = spark.sql(s"SELECT id FROM $db.$tbl_local").collect().map(_.getLong(0)).sorted
+      }
+      assert(unioned === ownView)
+    }
+  }
+
+  test("a table missing from the other cluster members falls back to the answering server") {
+    // discovery finds cluster `default`, but this table exists only on the server we are connected
+    // to, so the union errors rather than returning a partial result: the read must still work
+    val db = "db_listing_local"
+    val tbl = "tbl_node_local"
+    spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+    try {
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id BIGINT NOT NULL,
+           |  m  INT    NOT NULL
+           |) USING ClickHouse
+           |PARTITIONED BY (m)
+           |TBLPROPERTIES (order_by = 'id', engine = 'MergeTree()')
+           |""".stripMargin
+      )
+      spark.createDataFrame(Seq((1L, 1), (2L, 2))).toDF("id", "m")
+        .writeTo(s"$db.$tbl").append()
+      checkAnswer(spark.sql(s"SELECT id FROM $db.$tbl ORDER BY id"), Seq(Row(1L), Row(2L)))
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
     }
   }
 
