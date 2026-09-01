@@ -358,7 +358,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       case Some(name) =>
         val union = query(
           s"clusterAllReplicas('${name.replace("'", "\\'")}', `system`.`parts`)",
-          "SETTINGS skip_unavailable_shards=1"
+          ""
         )
         Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(union)) match {
           case Success(output) => output

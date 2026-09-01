@@ -74,9 +74,10 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
     }
   }
 
-  test("a table missing from the other cluster members falls back to the answering server") {
-    // discovery finds cluster `default`, but this table exists only on the server we are connected
-    // to, so the union errors rather than returning a partial result: the read must still work
+  test("a table present only on the connected server reads correctly under the union") {
+    // discovery finds cluster `default`, whose other members do not have this table and so
+    // contribute nothing to the union. The fallback itself is not covered: it needs an unreachable
+    // replica, which CI cannot stage.
     val db = "db_listing_local"
     val tbl = "tbl_node_local"
     spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")

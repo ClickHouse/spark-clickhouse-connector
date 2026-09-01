@@ -38,16 +38,6 @@ abstract class ClickHouseReader[Record](
   val readDistributedConvertLocal: Boolean = conf.getConf(READ_DISTRIBUTED_CONVERT_LOCAL)
   private val readSettings: Option[String] = conf.getConf(READ_SETTINGS)
 
-  /**
-   * A task whose partition filter matches nothing still returns one row under a pushed-down
-   * aggregation with no GROUP BY: the aggregate of the empty set, which for a non-nullable column
-   * is the type default rather than NULL. Spark folds that into the final value, so `MIN(id)` comes
-   * back as 0. Drop the row. A GROUP BY aggregation is unaffected, since an empty match produces no
-   * groups, and a plain scan must not carry HAVING at all.
-   */
-  private val emptyAggregateGuard: String =
-    if (scanJob.groupByClause.isDefined) "HAVING count() > 0" else ""
-
   val database: String = part.table.database
   val table: String = part.table.name
 //  val codec: ClickHouseCompression = scanJob.readOptions.compressionCodec
@@ -70,7 +60,6 @@ abstract class ClickHouseReader[Record](
        |FROM `$database`.`$table`
        |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
        |${scanJob.groupByClause.getOrElse("")}
-       |$emptyAggregateGuard
        |${scanJob.orderByClause.getOrElse("")}
        |${scanJob.limit.map(n => s"LIMIT $n").getOrElse("")}
        |${readSettings.map(settings => s"SETTINGS $settings").getOrElse("")}
