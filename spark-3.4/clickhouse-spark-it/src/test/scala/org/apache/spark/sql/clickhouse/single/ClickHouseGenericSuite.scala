@@ -577,6 +577,42 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     }
   }
 
+  test("a pushed-down aggregate over no matching rows is not the empty-set value") {
+    // a task matching nothing returns min()=0 for a non-nullable column unless the reader drops the
+    // row, and Spark folds that into the final value
+    withSimpleTable("db_agg_empty", "tbl_agg", writeData = true) { (db, tbl) =>
+      checkAnswer(spark.sql(s"SELECT MIN(id) FROM $db.$tbl WHERE id > 999"), Seq(Row(null)))
+      checkAnswer(spark.sql(s"SELECT COUNT(*) FROM $db.$tbl WHERE id > 999"), Seq(Row(0L)))
+    }
+  }
+
+  test("a pushed-down aggregate over an empty table keeps SQL semantics") {
+    withSimpleTable("db_agg_empty", "tbl_none", writeData = false) { (db, tbl) =>
+      // COUNT of no rows is 0, but MIN and SUM of no rows are NULL, as in Spark without pushdown
+      checkAnswer(spark.sql(s"SELECT COUNT(*) FROM $db.$tbl"), Seq(Row(0L)))
+      checkAnswer(spark.sql(s"SELECT MIN(id) FROM $db.$tbl"), Seq(Row(null)))
+      checkAnswer(spark.sql(s"SELECT SUM(id) FROM $db.$tbl"), Seq(Row(null)))
+    }
+  }
+
+  test("a pushed-down GROUP BY aggregate is unaffected by the guard") {
+    withSimpleTable("db_agg_empty", "tbl_grp", writeData = true) { (db, tbl) =>
+      checkAnswer(spark.sql(s"SELECT m, COUNT(*) FROM $db.$tbl GROUP BY m ORDER BY m"), Seq(Row(1, 1L), Row(2, 1L)))
+    }
+  }
+
+  test("a pushed-down aggregate keeps a legitimately zero result") {
+    // the guard tests how many rows the task read, not the aggregate's value, so a real 0 survives
+    withSimpleTable("db_agg_zero", "tbl_zero", writeData = false) { (db, tbl) =>
+      spark.createDataFrame(Seq(
+        (0L, "zero", java.sql.Timestamp.valueOf("2021-01-01 10:10:10"), 1),
+        (5L, "five", java.sql.Timestamp.valueOf("2021-01-01 10:10:10"), 2)
+      )).toDF("id", "value", "create_time", "m").writeTo(s"$db.$tbl").append()
+      checkAnswer(spark.sql(s"SELECT MIN(id) FROM $db.$tbl"), Seq(Row(0L)))
+      checkAnswer(spark.sql(s"SELECT SUM(id) FROM $db.$tbl WHERE id = 0"), Seq(Row(0L)))
+    }
+  }
+
   test("cache table") {
     val db = "cache_db"
     val tbl = "cache_tbl"

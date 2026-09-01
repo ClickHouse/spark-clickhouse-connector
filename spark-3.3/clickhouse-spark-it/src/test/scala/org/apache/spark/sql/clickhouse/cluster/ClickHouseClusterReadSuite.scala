@@ -99,6 +99,20 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
     }
   }
 
+  test("a pushed-down aggregate is not corrupted by partitions this server does not hold") {
+    // the union reports the other shard's partitions; those tasks match no rows, and a pushed
+    // MIN with no GROUP BY returns the empty-set aggregate (0 for a non-nullable column) which
+    // Spark would fold into the global result
+    withSimpleDistTable("single_replica", "db_agg_union", "t_dist", true) { (_, db, _, tbl_local) =>
+      val unioned = spark.sql(s"SELECT MIN(id) FROM $db.$tbl_local").collect()
+      var ownView: Array[Row] = Array.empty
+      withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
+        ownView = spark.sql(s"SELECT MIN(id) FROM $db.$tbl_local").collect()
+      }
+      assert(unioned === ownView)
+    }
+  }
+
   test("push down aggregation - distributed table") {
     withSimpleDistTable("single_replica", "db_agg_col", "t_dist", true) { (_, db, tbl_dist, _) =>
       checkAnswer(
