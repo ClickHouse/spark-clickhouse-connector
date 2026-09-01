@@ -52,8 +52,10 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
   }
 
   test("a unioned partition listing counts each part once per replica set") {
-    // cluster `default` is 2 shards of 2 replicas, so every part is reported by two servers; without
-    // deduplication by part name the listing would double PartitionSpec.row_count
+    // NOTE: this asserts the union engages (the local view alone sums to 1, not 4). It does NOT
+    // cover the part-name deduplication: withSimpleDistTable creates non-replicated MergeTree
+    // locals, so each part lives on exactly one server and there is nothing to deduplicate.
+    // Deduplication only matters for a ReplicatedMergeTree table, which no fixture creates.
     withSimpleDistTable("single_replica", "db_listing", "t_dist", true) { (_, db, _, tbl_local) =>
       val df = spark.sql(s"SELECT id FROM $db.$tbl_local")
       val unioned = df.collect().map(_.getLong(0)).sorted

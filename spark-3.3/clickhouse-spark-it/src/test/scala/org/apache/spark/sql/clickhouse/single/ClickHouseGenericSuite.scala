@@ -569,6 +569,8 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
       }
   }
 
+  // NOTE: near-vacuous on a single node — discovery finds no multi-member cluster, so both
+  // settings take the same path. It pins the conf key, not the behaviour.
   test("the partition listing union can be turned off") {
     withSimpleTable("db_listing", "tbl_off", writeData = true) { (db, tbl) =>
       withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
@@ -595,14 +597,14 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     }
   }
 
-  test("a pushed-down GROUP BY aggregate is unaffected by the guard") {
+  test("a pushed-down GROUP BY aggregate is unaffected") {
     withSimpleTable("db_agg_empty", "tbl_grp", writeData = true) { (db, tbl) =>
       checkAnswer(spark.sql(s"SELECT m, COUNT(*) FROM $db.$tbl GROUP BY m ORDER BY m"), Seq(Row(1, 1L), Row(2, 1L)))
     }
   }
 
   test("a pushed-down aggregate keeps a legitimately zero result") {
-    // the guard tests how many rows the task read, not the aggregate's value, so a real 0 survives
+    // *OrNull only changes the empty-set answer, so a genuine 0 is returned as 0
     withSimpleTable("db_agg_zero", "tbl_zero", writeData = false) { (db, tbl) =>
       spark.createDataFrame(Seq(
         (0L, "zero", java.sql.Timestamp.valueOf("2021-01-01 10:10:10"), 1),
