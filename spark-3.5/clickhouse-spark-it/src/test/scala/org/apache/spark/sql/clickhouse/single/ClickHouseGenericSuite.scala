@@ -613,6 +613,22 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
     }
   }
 
+  test("a pushed-down aggregate over no matching rows survives a filter") {
+    // collect() reads a NULL in a non-nullable slot as 0, so it cannot see the corruption a
+    // dropped empty-set row causes; a filter can
+    withSimpleTable("db_agg_filter", "tbl_filter", writeData = true) { (db, tbl) =>
+      val counted = spark.sql(s"SELECT COUNT(*) AS c FROM $db.$tbl WHERE id > 999")
+      assert(counted.filter("c = 0").count() === 1L)
+      assert(!counted.collect().head.isNullAt(0))
+
+      // COUNT and MIN need different empty-set answers out of the same task
+      checkAnswer(
+        spark.sql(s"SELECT COUNT(*), MIN(id) FROM $db.$tbl WHERE id > 999"),
+        Seq(Row(0L, null))
+      )
+    }
+  }
+
   test("cache table") {
     val db = "cache_db"
     val tbl = "cache_tbl"
