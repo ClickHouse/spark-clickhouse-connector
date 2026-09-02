@@ -232,7 +232,9 @@ object ClickHouseSQLConf {
         "cannot be reached is skipped, since the remaining members still include the server " +
         "answering the query. Any other failure — an unusable cluster, or credentials the cluster " +
         "members reject — falls back to that server's own view and logs a warning per scan; set " +
-        "this to false to stop retrying.")
+        "this to false to stop retrying. Ignored when " +
+        s"${READ_SPLIT_BY_PARTITION_ID.key} is false, since a partition value rendered by another " +
+        "replica could filter on the wrong value.")
       .version("0.10.1")
       .booleanConf
       .createWithDefault(true)
