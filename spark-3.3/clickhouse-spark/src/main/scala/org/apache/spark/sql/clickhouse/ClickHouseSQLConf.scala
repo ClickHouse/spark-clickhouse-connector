@@ -228,8 +228,11 @@ object ClickHouseSQLConf {
       .doc("If `true`, list a table's partitions across the replicas of its cluster rather than " +
         "from the server answering the query. `system.parts` reflects only that server and lags a " +
         "recent write on an eventually consistent service such as ClickHouse Cloud, and a listing " +
-        "that lags prunes a partition out of the scan and silently drops its rows. Any failure, " +
-        "including a replica that cannot be reached, falls back to the answering server's own view.")
+        "that lags prunes a partition out of the scan and silently drops its rows. A replica that " +
+        "cannot be reached is skipped, since the remaining members still include the server " +
+        "answering the query. Any other failure — an unusable cluster, or credentials the cluster " +
+        "members reject — falls back to that server's own view and logs a warning per scan; set " +
+        "this to false to stop retrying.")
       .version("0.10.1")
       .booleanConf
       .createWithDefault(true)

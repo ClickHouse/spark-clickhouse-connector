@@ -341,7 +341,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     // server answered, so a DateTime partition key renders differently under different server
     // timezones. Grouping on it would split one partition into two input partitions carrying the
     // same `_partition_id` filter, and every row of that partition would be read twice.
-    def query(source: String): String =
+    def query(source: String, settings: String = ""): String =
       s"""SELECT
          |  any(`partition`)   AS `partition`,   -- String
          |  partition_id,                        -- String
@@ -359,6 +359,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
          |)
          |GROUP BY partition_id
          |ORDER BY partition_id ASC
+         |$settings
          |""".stripMargin
 
     val ownView = query("`system`.`parts`")
@@ -369,7 +370,13 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     cluster match {
       case None => nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
       case Some(name) =>
-        val union = query(s"clusterAllReplicas('${name.replace("'", "\\'")}', `system`.`parts`)")
+        val union = query(
+          s"clusterAllReplicas('${name.replace("'", "\\'")}', `system`.`parts`)",
+          // an unreachable replica is skipped rather than failing the union, whose remaining
+          // members still include this server; the time bound keeps a replica that accepts a
+          // connection but never answers from dominating planning, since the fallback covers it
+          "SETTINGS skip_unavailable_shards=1, max_execution_time=10"
+        )
         Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(union)) match {
           case Success(output) => output
           case Failure(cause) =>
