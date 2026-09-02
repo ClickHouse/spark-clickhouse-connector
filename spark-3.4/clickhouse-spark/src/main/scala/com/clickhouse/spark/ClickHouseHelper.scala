@@ -358,7 +358,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
 
     val ownView = query("`system`.`parts`")
     val cluster =
-      if (!unionAcrossReplicas || !conf.getConf(READ_PARTITION_LISTING_UNION_REPLICAS)) None
+      if (!unionAcrossReplicas) None
       else partitionListingCluster
 
     cluster match {

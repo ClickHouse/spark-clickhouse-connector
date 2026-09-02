@@ -262,6 +262,15 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
           }.get.inputPartitions
         assert(byOption.forall(!_.filterByPartitionId))
         assert(!byOption.exists(_.partition.partition_id == "2"))
+        // the kill switch is honoured in the same two forms
+        val unionOff = spark.read
+          .option(READ_PARTITION_LISTING_UNION_REPLICAS.key, "false")
+          .table(s"$db.$tbl")
+          .queryExecution.sparkPlan.collectFirst {
+            case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
+          }.get.inputPartitions
+        assert(unionOff.forall(_.filterByPartitionId))
+        assert(!unionOff.exists(_.partition.partition_id == "2"))
       } finally
         runClickHouseSQL(s"SYSTEM START FETCHES $db.$tbl")
     }
