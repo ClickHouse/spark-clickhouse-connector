@@ -250,10 +250,19 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
         }
         assert(plannedPartitions(db, tbl).exists(_.partition_id == "2"))
         // filtering by partition value instead compares against a value rendered by whichever
-        // replica answered, so the listing is left un-unioned
+        // replica answered, so the listing is left un-unioned — by conf and by per-read option,
+        // which is the form the reader actually honours
         withSQLConf(READ_SPLIT_BY_PARTITION_ID.key -> "false") {
           assert(!plannedPartitions(db, tbl).exists(_.partition_id == "2"))
         }
+        val byOption = spark.read
+          .option(READ_SPLIT_BY_PARTITION_ID.key, "false")
+          .table(s"$db.$tbl")
+          .queryExecution.sparkPlan.collectFirst {
+            case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
+          }.get.inputPartitions
+        assert(byOption.forall(!_.filterByPartitionId))
+        assert(!byOption.exists(_.partition.partition_id == "2"))
       } finally
         runClickHouseSQL(s"SYSTEM START FETCHES $db.$tbl")
     }
