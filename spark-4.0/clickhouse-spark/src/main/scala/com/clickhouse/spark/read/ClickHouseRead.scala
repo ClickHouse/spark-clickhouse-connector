@@ -194,6 +194,9 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
   private val queryTimeoutMs: Long = scanJob.readOptions.clientQueryTimeout
 
   lazy val inputPartitions: Array[ClickHouseInputPartition] = {
+    // one value drives both the listing's union decision and the tasks' filter mode: a
+    // listing may only be unioned where tasks filter by `_partition_id`
+    val splitByPartitionId = scanJob.readOptions.splitByPartitionId
     val partitions = scanJob.tableEngineSpec match {
       case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
         scanJob.cluster.get.shards.flatMap { shardSpec =>
@@ -202,7 +205,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
               ClickHouseInputPartition(
                 scanJob.localTableSpec.get,
                 partitionSpec,
-                scanJob.readOptions.splitByPartitionId,
+                splitByPartitionId,
                 shardSpec // TODO pickup preferred
               )
             }
@@ -217,7 +220,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
         Array(ClickHouseInputPartition(
           scanJob.tableSpec,
           NoPartitionSpec,
-          scanJob.readOptions.splitByPartitionId,
+          splitByPartitionId,
           scanJob.node
         ))
       case _: TableEngineSpec =>
@@ -225,12 +228,12 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
           queryPartitionSpec(
             database,
             table,
-            unionAcrossReplicas = scanJob.readOptions.splitByPartitionId
+            unionAcrossReplicas = splitByPartitionId && scanJob.readOptions.partitionListingUnionReplicas
           ).map { partitionSpec =>
             ClickHouseInputPartition(
               scanJob.tableSpec,
               partitionSpec,
-              scanJob.readOptions.splitByPartitionId,
+              splitByPartitionId,
               scanJob.node // TODO pickup preferred
             )
           }
