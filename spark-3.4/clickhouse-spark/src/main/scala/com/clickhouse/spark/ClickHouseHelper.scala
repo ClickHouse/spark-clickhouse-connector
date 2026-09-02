@@ -20,11 +20,7 @@ import com.clickhouse.spark.format.SimpleOutput
 import com.fasterxml.jackson.databind.node.{NullNode, ObjectNode}
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
-  CLIENT_QUERY_TIMEOUT,
-  READ_PARTITION_LISTING_UNION_REPLICAS,
-  READ_SPLIT_BY_PARTITION_ID
-}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{CLIENT_QUERY_TIMEOUT, READ_PARTITION_LISTING_UNION_REPLICAS}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, SchemaUtils}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
@@ -301,9 +297,13 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
 
   /**
    * @param unionAcrossReplicas
-   *   whether this listing is expected to describe the whole table, in which case it is unioned
-   *   across its cluster, discovered from `system.clusters`. Leave it off where one listing
-   *   covers one shard, since the union would then report every shard's partitions to each shard.
+   *   whether this listing describes the whole table AND its caller will filter tasks by
+   *   `_partition_id`, in which case it is unioned across the table's cluster, discovered from
+   *   `system.clusters`. Leave it off where one listing covers one shard, since the union would
+   *   then report every shard's partitions to each shard, and off where the caller consumes
+   *   `partition_value`: that column is rendered by whichever replica answered, so a replica in
+   *   another timezone renders a DateTime partition differently. Only `partition_id` is stable
+   *   across replicas.
    */
   def queryPartitionSpec(
     database: String,
@@ -359,10 +359,6 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     val ownView = query("`system`.`parts`")
     val cluster =
       if (!unionAcrossReplicas || !conf.getConf(READ_PARTITION_LISTING_UNION_REPLICAS)) None
-      // filtering by partition value rather than by `_partition_id` would compare against
-      // `any(partition)`, rendered by whichever replica answered: a replica in another timezone
-      // renders a DateTime partition differently and the task would filter on the wrong value
-      else if (!conf.getConf(READ_SPLIT_BY_PARTITION_ID)) None
       else partitionListingCluster
 
     cluster match {
@@ -400,7 +396,9 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
   /**
    * Pinned on every listing union: under `timeout_overflow_mode=break` a query that hits its time
    * limit returns a truncated result and no error, which would be read as a complete listing and
-   * would prune live partitions out of the scan. A `readonly=1` user may set this one.
+   * would prune live partitions out of the scan. A `readonly=1` user may set this one only while
+   * it is already the effective value; where it is not, both probes below fail and the listing
+   * stays un-unioned rather than becoming truncatable.
    */
   private val listingGuardSettings = "timeout_overflow_mode='throw'"
 

@@ -220,7 +220,11 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
         ))
       case _: TableEngineSpec =>
         Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-          queryPartitionSpec(database, table, unionAcrossReplicas = true).map { partitionSpec =>
+          queryPartitionSpec(
+            database,
+            table,
+            unionAcrossReplicas = scanJob.readOptions.splitByPartitionId
+          ).map { partitionSpec =>
             ClickHouseInputPartition(
               scanJob.tableSpec,
               partitionSpec,
