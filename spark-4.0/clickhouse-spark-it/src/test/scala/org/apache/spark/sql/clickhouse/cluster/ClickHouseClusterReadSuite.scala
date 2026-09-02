@@ -15,6 +15,7 @@
 package org.apache.spark.sql.clickhouse.cluster
 
 import com.clickhouse.spark.read.ClickHouseBatchScan
+import com.clickhouse.spark.spec.PartitionSpec
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
   READ_DISTRIBUTED_CONVERT_LOCAL,
   READ_PARTITION_LISTING_UNION_REPLICAS
@@ -52,10 +53,8 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
   }
 
   test("a unioned partition listing counts each part once per replica set") {
-    // NOTE: this asserts the union engages (the local view alone sums to 1, not 4). It does NOT
-    // cover the part-name deduplication: withSimpleDistTable creates non-replicated MergeTree
-    // locals, so each part lives on exactly one server and there is nothing to deduplicate.
-    // Deduplication only matters for a ReplicatedMergeTree table, which no fixture creates.
+    // asserts the union engages; deduplication is covered by the replicated-table tests below,
+    // since withSimpleDistTable's locals are non-replicated MergeTree
     withSimpleDistTable("single_replica", "db_listing", "t_dist", true) { (_, db, _, tbl_local) =>
       val df = spark.sql(s"SELECT id FROM $db.$tbl_local")
       val unioned = df.collect().map(_.getLong(0)).sorted
@@ -219,6 +218,38 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
         case _ => false
       }
       assert(runtimeFilterExists)
+    }
+  }
+
+  private def plannedPartitions(db: String, tbl: String): Seq[PartitionSpec] =
+    spark.sql(s"SELECT id FROM $db.$tbl").queryExecution.sparkPlan.collectFirst {
+      case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
+    }.get.inputPartitions.map(_.partition).toSeq
+
+  test("a unioned partition listing counts a replicated part once") {
+    withReplicatedTable("db_dedupe", "t_dedupe") { (db, tbl) =>
+      runClickHouseSQL(s"INSERT INTO $db.$tbl VALUES (1, 1), (2, 2)")
+      runClickHouseSQL(s"SYSTEM SYNC REPLICA $db.$tbl", s1r2CmdRunnerOptions)
+      // both replicas now report both parts, so without deduplication by name this sums to 4
+      assert(plannedPartitions(db, tbl).map(_.row_count).sum === 2)
+    }
+  }
+
+  test("a unioned partition listing recovers a partition this server has not fetched") {
+    withReplicatedTable("db_lag", "t_lag") { (db, tbl) =>
+      runClickHouseSQL(s"INSERT INTO $db.$tbl VALUES (1, 1)")
+      runClickHouseSQL(s"SYSTEM SYNC REPLICA $db.$tbl", s1r2CmdRunnerOptions)
+      // stall this server's replication, then write to its peer: the partition exists but is
+      // absent from this server's own `system.parts`, which is the bug the union fixes
+      runClickHouseSQL(s"SYSTEM STOP FETCHES $db.$tbl")
+      try {
+        runClickHouseSQL(s"INSERT INTO $db.$tbl VALUES (2, 2)", s1r2CmdRunnerOptions)
+        withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
+          assert(!plannedPartitions(db, tbl).exists(_.partition_id == "2"))
+        }
+        assert(plannedPartitions(db, tbl).exists(_.partition_id == "2"))
+      } finally
+        runClickHouseSQL(s"SYSTEM START FETCHES $db.$tbl")
     }
   }
 }

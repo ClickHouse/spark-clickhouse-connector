@@ -193,4 +193,32 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
       }
       f(cluster, db, tbl_dist, tbl_local)
     }
+
+  def s1r2CmdRunnerOptions: Map[String, String] = cmdRunnerOptions ++ Map(
+    "host" -> clickhouse_s1r2_host,
+    "http_port" -> clickhouse_s1r2_http_port.toString
+  )
+
+  /** A table replicated across shard 1's two replicas, so a partition listing has peers to union. */
+  def withReplicatedTable(
+    db: String,
+    tbl: String,
+    cluster: String = "default"
+  )(f: (String, String) => Unit): Unit =
+    try {
+      runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS $db ON CLUSTER $cluster")
+      runClickHouseSQL(
+        s"""CREATE TABLE IF NOT EXISTS $db.$tbl ON CLUSTER $cluster (
+           |  id Int64,
+           |  m  Int32
+           |) ENGINE = ReplicatedMergeTree('/clickhouse/tables/{shard}/$db/$tbl', '{replica}')
+           |PARTITION BY m
+           |ORDER BY id
+           |""".stripMargin
+      )
+      f(db, tbl)
+    } finally {
+      runClickHouseSQL(s"DROP TABLE IF EXISTS $db.$tbl ON CLUSTER $cluster SYNC")
+      runClickHouseSQL(s"DROP DATABASE IF EXISTS $db ON CLUSTER $cluster")
+    }
 }
