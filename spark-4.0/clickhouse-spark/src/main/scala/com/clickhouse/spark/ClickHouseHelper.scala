@@ -21,7 +21,11 @@ import com.clickhouse.spark.format.SimpleOutput
 import com.fasterxml.jackson.databind.node.{NullNode, ObjectNode}
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{CLIENT_QUERY_TIMEOUT, READ_PARTITION_LISTING_UNION_REPLICAS}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
+  CLIENT_QUERY_TIMEOUT,
+  READ_PARTITION_LISTING_UNION_REPLICAS,
+  READ_SPLIT_BY_PARTITION_ID
+}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, SchemaUtils}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
@@ -365,19 +369,25 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     val ownView = query("`system`.`parts`")
     val cluster =
       if (!unionAcrossReplicas || !conf.getConf(READ_PARTITION_LISTING_UNION_REPLICAS)) None
+      // filtering by partition value rather than by `_partition_id` would compare against
+      // `any(partition)`, rendered by whichever replica answered: a replica in another timezone
+      // renders a DateTime partition differently and the task would filter on the wrong value
+      else if (!conf.getConf(READ_SPLIT_BY_PARTITION_ID)) None
       else partitionListingCluster
 
     cluster match {
       case None => nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
-      case Some(name) =>
+      case Some((name, settings)) =>
         val union = query(
-          s"clusterAllReplicas('${name.replace("'", "\\'")}', `system`.`parts`)",
-          // an unreachable replica is skipped rather than failing the union, whose remaining
-          // members still include this server; the time bound keeps a replica that accepts a
-          // connection but never answers from dominating planning, since the fallback covers it
-          "SETTINGS skip_unavailable_shards=1, max_execution_time=10"
+          s"clusterAllReplicas('${escapeSQLString(name)}', `system`.`parts`)",
+          s"SETTINGS $settings"
         )
-        Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(union)) match {
+        Try {
+          val output = nodeClient.syncQueryAndCheckOutputJSONEachRow(union)
+          // Scala 2.12 parses the rows lazily, so a mid-stream failure must surface inside the Try
+          output.rows
+          output
+        } match {
           case Success(output) => output
           case Failure(cause) =>
             // e.g. a table absent from the other members: this server's own view is still a subset
@@ -394,28 +404,52 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     }
   }
 
-  @volatile private var discoveredListingCluster: Option[Option[String]] = None
+  private def escapeSQLString(value: String): String =
+    value.replace("\\", "\\\\").replace("'", "\\'")
 
   /**
-   * The cluster to union partition listings across, discovered rather than configured: the one
-   * containing this server with the fewest shards, so that reading a table does not fan out to
-   * shards which cannot hold its data. Clusters of a single server are ignored, so a deployment
-   * with nothing to union pays nothing. Memoized: it is fixed for the life of the server.
+   * Pinned on every listing union: under `timeout_overflow_mode=break` a query that hits its time
+   * limit returns a truncated result and no error, which would be read as a complete listing and
+   * would prune live partitions out of the scan. A `readonly=1` user may set this one.
    */
-  private def partitionListingCluster(implicit nodeClient: NodeClient): Option[String] =
+  private val listingGuardSettings = "timeout_overflow_mode='throw'"
+
+  /**
+   * Skipping an unreachable replica keeps the union answering, since its remaining members still
+   * include this server; the time bound keeps a replica that accepts a connection but never
+   * answers from dominating planning, as the fallback covers it. Neither may be set by a
+   * `readonly=1` user, so they are probed rather than assumed.
+   */
+  private val listingTuningSettings = s"skip_unavailable_shards=1, max_execution_time=10, $listingGuardSettings"
+
+  @volatile private var discoveredListingCluster: Option[Option[(String, String)]] = None
+
+  /**
+   * The cluster to union partition listings across paired with the settings to union it under,
+   * discovered rather than configured: the cluster containing this server with the fewest shards,
+   * so that reading a table does not fan out to shards which cannot hold its data. Clusters of a
+   * single server are ignored, so a deployment with nothing to union pays nothing. Memoized: both
+   * are fixed for the life of the server.
+   */
+  private def partitionListingCluster(implicit nodeClient: NodeClient): Option[(String, String)] =
     discoveredListingCluster.getOrElse {
-      val found = Try {
+      def discover(settings: String): Option[(String, String)] =
         nodeClient.syncQueryAndCheckOutputJSONEachRow(
-          """SELECT `cluster`
-            |FROM `system`.`clusters`
-            |WHERE `cluster` IN (SELECT `cluster` FROM `system`.`clusters` WHERE `is_local`)
-            |GROUP BY `cluster`
-            |HAVING count() > 1
-            |ORDER BY uniqExact(shard_num) ASC, count() ASC, `cluster` ASC
-            |LIMIT 1
-            |""".stripMargin
-        ).records.headOption.map(_.get("cluster").asText)
-      } match {
+          s"""SELECT `cluster`
+             |FROM `system`.`clusters`
+             |WHERE `cluster` IN (SELECT `cluster` FROM `system`.`clusters` WHERE `is_local`)
+             |GROUP BY `cluster`
+             |HAVING count() > 1
+             |ORDER BY uniqExact(shard_num) ASC, count() ASC, `cluster` ASC
+             |LIMIT 1
+             |SETTINGS $settings
+             |""".stripMargin
+        ).records.headOption.map(_.get("cluster").asText -> settings)
+
+      // discovery carries the settings so that a user who may not set them still unions under the
+      // guard alone, rather than issuing one rejected union per scan
+      val found = Try(discover(listingTuningSettings))
+        .orElse(Try(discover(listingGuardSettings))) match {
         case Success(cluster) => cluster
         case Failure(cause) =>
           log.warn(
