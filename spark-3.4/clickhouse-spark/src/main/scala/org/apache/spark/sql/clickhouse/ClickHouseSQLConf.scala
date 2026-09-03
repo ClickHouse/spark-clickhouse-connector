@@ -228,14 +228,10 @@ object ClickHouseSQLConf {
       .doc("If `true`, list a table's partitions across the replicas of its cluster rather than " +
         "from the server answering the query. `system.parts` reflects only that server and lags a " +
         "recent write on an eventually consistent service such as ClickHouse Cloud, and a listing " +
-        "that lags prunes a partition out of the scan and silently drops its rows. A replica that " +
-        "cannot be reached is skipped, since the remaining members still include the server " +
-        "answering the query. Any other failure — an unusable cluster, or credentials the cluster " +
-        "members reject — falls back to that server's own view and logs a warning per scan; set " +
-        "this to false to stop retrying. Only applies to a scan that filters by `_partition_id`: " +
-        s"where ${READ_SPLIT_BY_PARTITION_ID.key} is off, whether by this conf or by a per-read " +
-        "option, the scan filters on a partition value which another replica may render " +
-        "differently, so the listing is left un-unioned.")
+        "that lags prunes a partition out of the scan and silently drops its rows. An unreachable " +
+        "replica is skipped; any other failure falls back to that server's own view and warns. " +
+        s"Applies only to a scan filtering by `_partition_id`, so ${READ_SPLIT_BY_PARTITION_ID.key}" +
+        " being off leaves the listing un-unioned.")
       .version("0.10.1")
       .booleanConf
       .createWithDefault(true)

@@ -55,8 +55,7 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
   }
 
   test("a unioned partition listing counts each part once per replica set") {
-    // asserts the union engages; deduplication is covered by the replicated-table tests below,
-    // since withSimpleDistTable's locals are non-replicated MergeTree
+    // asserts the union engages; deduplication needs the replicated-table tests below
     withSimpleDistTable("single_replica", "db_listing", "t_dist", true) { (_, db, _, tbl_local) =>
       val df = spark.sql(s"SELECT id FROM $db.$tbl_local")
       val unioned = df.collect().map(_.getLong(0)).sorted
@@ -66,8 +65,7 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
       // the fixture writes 4 rows across the shards; each lives on 2 replicas
       assert(scan.inputPartitions.map(_.partition.row_count).sum === 4)
 
-      // `default` also spans the other shard, so the listing reports partitions this server does
-      // not hold: those tasks must read nothing rather than change the answer
+      // `default` spans the other shard too, so those extra partitions must read nothing
       var ownView: Array[Long] = Array.empty
       withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
         ownView = spark.sql(s"SELECT id FROM $db.$tbl_local").collect().map(_.getLong(0)).sorted
@@ -77,9 +75,8 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
   }
 
   test("a table present only on the connected server reads correctly under the union") {
-    // discovery finds cluster `default`, whose other members do not have this table and so
-    // contribute nothing to the union. The fallback itself is not covered: it needs an unreachable
-    // replica, which CI cannot stage.
+    // the other members of `default` lack this table, so they contribute nothing. The fallback
+    // itself needs an unreachable replica, which CI cannot stage.
     val db = "db_listing_local"
     val tbl = "tbl_node_local"
     spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
@@ -103,9 +100,8 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
   }
 
   test("a pushed-down aggregate is not corrupted by partitions this server does not hold") {
-    // the union reports the other shard's partitions; those tasks match no rows, and a pushed
-    // MIN with no GROUP BY returns the empty-set aggregate (0 for a non-nullable column) which
-    // Spark would fold into the global result
+    // the union reports the other shard's partitions; those tasks match nothing, and a pushed MIN
+    // would return 0 rather than NULL for Spark to fold in
     withSimpleDistTable("single_replica", "db_agg_union", "t_dist", true) { (_, db, _, tbl_local) =>
       val unioned = spark.sql(s"SELECT MIN(id) FROM $db.$tbl_local").collect()
       var ownView: Array[Row] = Array.empty
@@ -239,8 +235,7 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
     withReplicatedTable("db_lag", "t_lag") { (db, tbl) =>
       runClickHouseSQL(s"INSERT INTO $db.$tbl VALUES (1, 1)")
       runClickHouseSQL(s"SYSTEM SYNC REPLICA $db.$tbl", s1r2CmdRunnerOptions)
-      // stall this server's replication, then write to its peer: the partition exists but is
-      // absent from this server's own `system.parts`, which is the bug the union fixes
+      // stall replication then write to the peer, so the partition is absent from this server's view
       runClickHouseSQL(s"SYSTEM STOP FETCHES $db.$tbl")
       try {
         runClickHouseSQL(s"INSERT INTO $db.$tbl VALUES (2, 2)", s1r2CmdRunnerOptions)
@@ -248,9 +243,8 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
           assert(!plannedPartitions(db, tbl).exists(_.partition_id == "2"))
         }
         assert(plannedPartitions(db, tbl).exists(_.partition_id == "2"))
-        // filtering by partition value instead compares against a value rendered by whichever
-        // replica answered, so the listing is left un-unioned — by conf and by per-read option,
-        // which is the form the reader actually honours
+        // value filtering compares against a per-replica rendering, so the listing is left
+        // un-unioned — by conf and by option, the form the reader honours
         withSQLConf(READ_SPLIT_BY_PARTITION_ID.key -> "false") {
           assert(!plannedPartitions(db, tbl).exists(_.partition_id == "2"))
         }

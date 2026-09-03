@@ -199,7 +199,7 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
     "http_port" -> clickhouse_s1r2_http_port.toString
   )
 
-  /** A table replicated across shard 1's two replicas, so a partition listing has peers to union. */
+  /** A table replicated across each shard's two replicas, so a listing has peers to union. */
   def withReplicatedTable(
     db: String,
     tbl: String,

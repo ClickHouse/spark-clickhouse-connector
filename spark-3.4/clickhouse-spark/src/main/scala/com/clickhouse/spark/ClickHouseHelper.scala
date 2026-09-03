@@ -297,11 +297,9 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
 
   /**
    * @param unionAcrossReplicas
-   *   also read the other replicas' `system.parts`, so a partition this server has not yet caught
-   *   up with is still planned. Only safe for a whole-table listing whose tasks filter by
-   *   `_partition_id`: the union spans the whole cluster, so a per-shard listing would see every
-   *   other shard's partitions, and `partition_value` is rendered in the answering server's
-   *   timezone while `partition_id` is identical on every replica.
+   *   also read the other replicas' `system.parts`, so a partition this server lags is still
+   *   planned. Only safe for a whole-table listing filtering by `_partition_id`: the union spans
+   *   every shard, and `partition_value` is rendered in the answering server's timezone.
    */
   def queryPartitionSpec(
     database: String,
@@ -327,10 +325,9 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     table: String,
     unionAcrossReplicas: Boolean
   )(implicit nodeClient: NodeClient): SimpleOutput[ObjectNode] = {
-    // Deduplicated by part name first: the union sees one part once per replica holding it, and
-    // summing those copies would multiply the totals. Grouped on partition_id, never on
-    // `partition`, which is rendered in the answering server's timezone — two renderings of one
-    // partition would plan two tasks with the same `_partition_id` filter, reading its rows twice.
+    // Deduplicated by part name: the union sees one part once per replica, and summing those
+    // copies would multiply the totals. Grouped on partition_id, never on `partition`, which each
+    // server renders in its own timezone — two renderings would read one partition's rows twice.
     def query(source: String, settings: String = ""): String =
       s"""SELECT
          |  any(`partition`)   AS `partition`,   -- String
@@ -372,8 +369,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
         } match {
           case Success(output) => output
           case Failure(cause) =>
-            // e.g. a table absent from the other members: this server's own view is still a subset
-            // of the union, so the scan degrades to the behaviour it had before unioning
+            // e.g. a table absent from the other members; the own view is what it read before
             log.warn(
               s"Could not list the partitions of $database.$table across the replicas of cluster " +
                 s"'$name'; falling back to this server's own view of system.parts, which lags a " +
@@ -390,30 +386,26 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     value.replace("\\", "\\\\").replace("'", "\\'")
 
   /**
-   * Pinned on every listing union: under `timeout_overflow_mode=break` a query that hits its time
-   * limit returns a truncated result and no error, which would be read as a complete listing and
-   * would prune live partitions out of the scan. A `readonly=1` user may set this one only while
-   * it is already the effective value; where it is not, both probes below fail and the listing
-   * stays un-unioned rather than becoming truncatable.
+   * Under `timeout_overflow_mode=break` a timed-out query returns a truncated result and no error,
+   * which would be read as a complete listing. A `readonly=1` user may set this only while it is
+   * already the effective value; otherwise both probes fail and the listing stays un-unioned.
    */
   private val listingGuardSettings = "timeout_overflow_mode='throw'"
 
   /**
-   * Skipping an unreachable replica keeps the union answering, since its remaining members still
-   * include this server; the time bound keeps a replica that accepts a connection but never
-   * answers from dominating planning, as the fallback covers it. Neither may be set by a
-   * `readonly=1` user, so they are probed rather than assumed.
+   * Skipping an unreachable replica keeps the union answering, whose remaining members still
+   * include this server; the time bound covers a replica that connects but never answers. Neither
+   * may be set by a `readonly=1` user, so they are probed rather than assumed.
    */
   private val listingTuningSettings = s"skip_unavailable_shards=1, max_execution_time=10, $listingGuardSettings"
 
   @volatile private var discoveredListingCluster: Option[Option[(String, String)]] = None
 
   /**
-   * The cluster to union partition listings across paired with the settings to union it under,
-   * discovered rather than configured: the cluster containing this server with the fewest shards,
-   * so that reading a table does not fan out to shards which cannot hold its data. Clusters of a
-   * single server are ignored, so a deployment with nothing to union pays nothing. Memoized: both
-   * are fixed for the life of the server.
+   * The cluster to union across and the settings to union it under, discovered rather than
+   * configured: the cluster containing this server with the fewest shards, so a read does not fan
+   * out to shards which cannot hold the table's data. Single-server clusters are ignored, so a
+   * deployment with nothing to union pays nothing. Memoized per instance.
    */
   private def partitionListingCluster(implicit nodeClient: NodeClient): Option[(String, String)] =
     discoveredListingCluster.getOrElse {
@@ -430,8 +422,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
              |""".stripMargin
         ).records.headOption.map(_.get("cluster").asText -> settings)
 
-      // discovery carries the settings so that a user who may not set them still unions under the
-      // guard alone, rather than issuing one rejected union per scan
+      // discovery carries the settings so a user who may not set them still unions under the guard
       val found = Try(discover(listingTuningSettings))
         .orElse(Try(discover(listingGuardSettings))) match {
         case Success(cluster) => cluster
