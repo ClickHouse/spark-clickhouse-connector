@@ -326,12 +326,10 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     table: String,
     unionAcrossReplicas: Boolean
   )(implicit nodeClient: NodeClient): SimpleOutput[ObjectNode] = {
-    // `system.parts` answers from one server, so its rows are deduplicated by part name before the
-    // per-partition sums: a part the union sees on several replicas must be counted once.
-    // Grouped on partition_id alone, never on `partition`: that column is rendered by whichever
-    // server answered, so a DateTime partition key renders differently under different server
-    // timezones. Grouping on it would split one partition into two input partitions carrying the
-    // same `_partition_id` filter, and every row of that partition would be read twice.
+    // Deduplicated by part name first: the union sees one part once per replica holding it, and
+    // summing those copies would multiply the totals. Grouped on partition_id, never on
+    // `partition`, which is rendered in the answering server's timezone — two renderings of one
+    // partition would plan two tasks with the same `_partition_id` filter, reading its rows twice.
     def query(source: String, settings: String = ""): String =
       s"""SELECT
          |  any(`partition`)   AS `partition`,   -- String
