@@ -307,13 +307,11 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
 
   /**
    * @param unionAcrossReplicas
-   *   whether this listing describes the whole table AND its caller will filter tasks by
-   *   `_partition_id`, in which case it is unioned across the table's cluster, discovered from
-   *   `system.clusters`. Leave it off where one listing covers one shard, since the union would
-   *   then report every shard's partitions to each shard, and off where the caller consumes
-   *   `partition_value`: that column is rendered by whichever replica answered, so a replica in
-   *   another timezone renders a DateTime partition differently. Only `partition_id` is stable
-   *   across replicas.
+   *   also read the other replicas' `system.parts`, so a partition this server has not yet caught
+   *   up with is still planned. Only safe for a whole-table listing whose tasks filter by
+   *   `_partition_id`: the union spans the whole cluster, so a per-shard listing would see every
+   *   other shard's partitions, and `partition_value` is rendered in the answering server's
+   *   timezone while `partition_id` is identical on every replica.
    */
   def queryPartitionSpec(
     database: String,
