@@ -61,7 +61,7 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
       val scan = df.queryExecution.sparkPlan.collectFirst {
         case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
       }.get
-      // the fixture writes 4 rows across the shards; each lives on 2 replicas
+      // the fixture writes 4 rows across the shards; this server's own view alone sums to 1
       assert(scan.inputPartitions.map(_.partition.row_count).sum === 4)
 
       // `default` spans the other shard too, so those extra partitions must read nothing
