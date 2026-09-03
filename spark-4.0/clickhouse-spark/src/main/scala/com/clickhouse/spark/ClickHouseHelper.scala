@@ -309,7 +309,8 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
    * @param unionAcrossReplicas
    *   also read the other replicas' `system.parts`, so a partition this server lags is still
    *   planned. Only safe for a whole-table listing filtering by `_partition_id`: the union spans
-   *   every shard, and `partition_value` is rendered in the answering server's timezone.
+   *   every shard, so a per-shard listing would see the others', and each member renders
+   *   `partition_value` in its own timezone whereas `partition_id` is identical everywhere.
    */
   def queryPartitionSpec(
     database: String,
@@ -379,7 +380,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
         } match {
           case Success(output) => output
           case Failure(cause) =>
-            // e.g. a table absent from the other members; the own view is what it read before
+            // e.g. credentials the members reject; the own view is what the scan read before
             log.warn(
               s"Could not list the partitions of $database.$table across the replicas of cluster " +
                 s"'$name'; falling back to this server's own view of system.parts, which lags a " +
