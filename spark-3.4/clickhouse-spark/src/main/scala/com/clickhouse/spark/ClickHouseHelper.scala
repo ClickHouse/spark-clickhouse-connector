@@ -16,10 +16,11 @@ package com.clickhouse.spark
 
 import com.clickhouse.client.ClickHouseProtocol
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.NullNode
+import com.clickhouse.spark.format.SimpleOutput
+import com.fasterxml.jackson.databind.node.{NullNode, ObjectNode}
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.CLIENT_QUERY_TIMEOUT
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{CLIENT_QUERY_TIMEOUT, READ_PARTITION_LISTING_UNION_REPLICAS}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, SchemaUtils}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
@@ -33,6 +34,7 @@ import com.clickhouse.spark.spec._
 import java.time.{LocalDateTime, ZoneId}
 import java.util.{HashMap => JHashMap}
 import scala.collection.JavaConverters._
+import scala.util.{Failure, Success, Try}
 
 trait ClickHouseHelper extends SQLConfHelper with Logging {
 
@@ -293,22 +295,19 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     })
   }
 
+  /**
+   * @param unionAcrossReplicas
+   *   also read the other replicas' `system.parts`, so a partition this server lags is still
+   *   planned. Only safe for a whole-table listing filtering by `_partition_id`: the union spans
+   *   every shard, so a per-shard listing would see the others', and each member renders
+   *   `partition_value` in its own timezone whereas `partition_id` is identical everywhere.
+   */
   def queryPartitionSpec(
     database: String,
-    table: String
+    table: String,
+    unionAcrossReplicas: Boolean = false
   )(implicit nodeClient: NodeClient): Seq[PartitionSpec] = {
-    val partOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
-      s"""SELECT
-         |  partition,                           -- String
-         |  partition_id,                        -- String
-         |  sum(rows)          AS row_count,     -- UInt64
-         |  sum(bytes_on_disk) AS size_in_bytes  -- UInt64
-         |FROM `system`.`parts`
-         |WHERE `database`='$database' AND `table`='$table' AND `active`=1
-         |GROUP BY `partition`, `partition_id`
-         |ORDER BY `partition` ASC, partition_id ASC
-         |""".stripMargin
-    )
+    val partOutput = listActiveParts(database, table, unionAcrossReplicas)
     if (partOutput.isEmpty || partOutput.rows == 1 && partOutput.records.head.get("partition").asText == "tuple()") {
       return Array(NoPartitionSpec)
     }
@@ -321,6 +320,124 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       )
     }
   }
+
+  private def listActiveParts(
+    database: String,
+    table: String,
+    unionAcrossReplicas: Boolean
+  )(implicit nodeClient: NodeClient): SimpleOutput[ObjectNode] = {
+    // Deduplicated by part name: the union sees one part once per replica, and summing those
+    // copies would multiply the totals. Grouped on partition_id, never on `partition`, which each
+    // server renders in its own timezone — two renderings would read one partition's rows twice.
+    def query(source: String, settings: String = ""): String =
+      s"""SELECT
+         |  any(`partition`)   AS `partition`,   -- String
+         |  partition_id,                        -- String
+         |  sum(row_count)     AS row_count,     -- UInt64
+         |  sum(size_in_bytes) AS size_in_bytes  -- UInt64
+         |FROM (
+         |  SELECT
+         |    any(`partition`)      AS `partition`,
+         |    any(partition_id)     AS partition_id,
+         |    any(`rows`)           AS row_count,
+         |    any(bytes_on_disk)    AS size_in_bytes
+         |  FROM $source
+         |  WHERE `database`='$database' AND `table`='$table' AND `active`=1
+         |  GROUP BY `name`
+         |)
+         |GROUP BY partition_id
+         |ORDER BY partition_id ASC
+         |$settings
+         |""".stripMargin
+
+    val ownView = query("`system`.`parts`")
+    val cluster =
+      if (!unionAcrossReplicas) None
+      else partitionListingCluster
+
+    cluster match {
+      case None => nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
+      case Some((name, settings)) =>
+        val union = query(
+          s"clusterAllReplicas('${escapeSQLString(name)}', `system`.`parts`)",
+          s"SETTINGS $settings"
+        )
+        Try {
+          val output = nodeClient.syncQueryAndCheckOutputJSONEachRow(union)
+          // Scala 2.12 parses the rows lazily, so a mid-stream failure must surface inside the Try
+          output.rows
+          output
+        } match {
+          case Success(output) => output
+          case Failure(cause) =>
+            // e.g. credentials the members reject; the own view is what the scan read before
+            log.warn(
+              s"Could not list the partitions of $database.$table across the replicas of cluster " +
+                s"'$name'; falling back to this server's own view of system.parts, which lags a " +
+                s"recent write on an eventually consistent service. Set " +
+                s"${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to stop unioning.",
+              cause
+            )
+            nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
+        }
+    }
+  }
+
+  private def escapeSQLString(value: String): String =
+    value.replace("\\", "\\\\").replace("'", "\\'")
+
+  /**
+   * Under `timeout_overflow_mode=break` a timed-out query returns a truncated result and no error,
+   * which would be read as a complete listing. A `readonly=1` user may set this only while it is
+   * already the effective value; otherwise both probes fail and the listing stays un-unioned.
+   */
+  private val listingGuardSettings = "timeout_overflow_mode='throw'"
+
+  /**
+   * Skipping an unreachable replica keeps the union answering, whose remaining members still
+   * include this server; the time bound covers a replica that connects but never answers. Neither
+   * may be set by a `readonly=1` user, so they are probed rather than assumed.
+   */
+  private val listingTuningSettings = s"skip_unavailable_shards=1, max_execution_time=10, $listingGuardSettings"
+
+  @volatile private var discoveredListingCluster: Option[Option[(String, String)]] = None
+
+  /**
+   * The cluster to union across and the settings to union it under, discovered rather than
+   * configured: the cluster containing this server with the fewest shards, so a read does not fan
+   * out to shards which cannot hold the table's data. Single-server clusters are ignored, so a
+   * deployment with nothing to union pays nothing. Memoized per instance.
+   */
+  private def partitionListingCluster(implicit nodeClient: NodeClient): Option[(String, String)] =
+    discoveredListingCluster.getOrElse {
+      def discover(settings: String): Option[(String, String)] =
+        nodeClient.syncQueryAndCheckOutputJSONEachRow(
+          s"""SELECT `cluster`
+             |FROM `system`.`clusters`
+             |WHERE `cluster` IN (SELECT `cluster` FROM `system`.`clusters` WHERE `is_local`)
+             |GROUP BY `cluster`
+             |HAVING count() > 1
+             |ORDER BY uniqExact(shard_num) ASC, count() ASC, `cluster` ASC
+             |LIMIT 1
+             |SETTINGS $settings
+             |""".stripMargin
+        ).records.headOption.map(_.get("cluster").asText -> settings)
+
+      // discovery carries the settings so a user who may not set them still unions under the guard
+      val found = Try(discover(listingTuningSettings))
+        .orElse(Try(discover(listingGuardSettings))) match {
+        case Success(cluster) => cluster
+        case Failure(cause) =>
+          log.warn(
+            "Could not discover a cluster to list partitions across; reading system.parts " +
+              s"from the answering server only. Set ${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to stop trying.",
+            cause
+          )
+          None
+      }
+      discoveredListingCluster = Some(found)
+      found
+    }
 
   /**
    * This method is considered as lightweight. Typically `sql` should contains `where 1=0` to avoid running the query on

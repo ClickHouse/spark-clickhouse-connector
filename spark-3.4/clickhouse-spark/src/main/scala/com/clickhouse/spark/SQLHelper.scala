@@ -73,16 +73,22 @@ trait SQLHelper {
     case _ => null
   })
 
+  /**
+   * ClickHouse returns a non-nullable column's default rather than NULL over no rows, so `MIN` of
+   * an empty match is 0 and Spark folds that into the final value; the `-OrNull` combinators give
+   * SQL's NULL instead. `COUNT` keeps its plain form: 0 is its correct empty-set value, and Spark
+   * merges it with a `Sum` whose output attribute is non-nullable, so a NULL there corrupts it.
+   */
   def compileAggregate(aggFunction: AggregateFunc): Option[String] =
     aggFunction match {
       case min: Min if min.column.isInstanceOf[NamedReference] =>
         val col = min.column.asInstanceOf[NamedReference]
         if (col.fieldNames().length != 1) return None
-        Some(s"MIN(${quoted(col.fieldNames.head)})")
+        Some(s"minOrNull(${quoted(col.fieldNames.head)})")
       case max: Max if max.column.isInstanceOf[NamedReference] =>
         val col = max.column.asInstanceOf[NamedReference]
         if (col.fieldNames.length != 1) return None
-        Some(s"MAX(${quoted(col.fieldNames.head)})")
+        Some(s"maxOrNull(${quoted(col.fieldNames.head)})")
       case count: Count if count.column.isInstanceOf[NamedReference] =>
         val col = count.column.asInstanceOf[NamedReference]
         if (col.fieldNames.length != 1) return None
@@ -94,7 +100,7 @@ trait SQLHelper {
         if (col.fieldNames.length != 1) return None
         val distinct = if (sum.isDistinct) "DISTINCT " else ""
         val column = quoted(col.fieldNames.head)
-        Some(s"SUM($distinct$column)")
+        Some(s"sumOrNull($distinct$column)")
       case _: CountStar =>
         Some("COUNT(*)")
       case _ => None

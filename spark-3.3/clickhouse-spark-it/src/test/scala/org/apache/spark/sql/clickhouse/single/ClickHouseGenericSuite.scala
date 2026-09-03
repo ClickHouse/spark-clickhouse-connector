@@ -15,6 +15,8 @@
 package org.apache.spark.sql.clickhouse.single
 
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
+import com.clickhouse.spark.read.ClickHouseBatchScan
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_PARTITION_LISTING_UNION_REPLICAS
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
@@ -565,6 +567,65 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
         runClickHouseSQL(s"DROP DATABASE IF EXISTS `$db`")
       }
+  }
+
+  // near-vacuous on a single node: no multi-member cluster to union, so this pins only the conf key
+  test("the partition listing union can be turned off") {
+    withSimpleTable("db_listing", "tbl_off", writeData = true) { (db, tbl) =>
+      withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
+        checkAnswer(spark.sql(s"SELECT id FROM $db.$tbl"), Seq(Row(1L), Row(2L)))
+      }
+    }
+  }
+
+  test("a pushed-down aggregate over no matching rows is not the empty-set value") {
+    // a task matching nothing returns min()=0 for a non-nullable column, which Spark folds in
+    withSimpleTable("db_agg_empty", "tbl_agg", writeData = true) { (db, tbl) =>
+      checkAnswer(spark.sql(s"SELECT MIN(id) FROM $db.$tbl WHERE id > 999"), Seq(Row(null)))
+      checkAnswer(spark.sql(s"SELECT COUNT(*) FROM $db.$tbl WHERE id > 999"), Seq(Row(0L)))
+    }
+  }
+
+  test("a pushed-down aggregate over an empty table keeps SQL semantics") {
+    withSimpleTable("db_agg_empty", "tbl_none", writeData = false) { (db, tbl) =>
+      // COUNT of no rows is 0, but MIN and SUM of no rows are NULL, as in Spark without pushdown
+      checkAnswer(spark.sql(s"SELECT COUNT(*) FROM $db.$tbl"), Seq(Row(0L)))
+      checkAnswer(spark.sql(s"SELECT MIN(id) FROM $db.$tbl"), Seq(Row(null)))
+      checkAnswer(spark.sql(s"SELECT SUM(id) FROM $db.$tbl"), Seq(Row(null)))
+    }
+  }
+
+  test("a pushed-down GROUP BY aggregate is unaffected") {
+    withSimpleTable("db_agg_empty", "tbl_grp", writeData = true) { (db, tbl) =>
+      checkAnswer(spark.sql(s"SELECT m, COUNT(*) FROM $db.$tbl GROUP BY m ORDER BY m"), Seq(Row(1, 1L), Row(2, 1L)))
+    }
+  }
+
+  test("a pushed-down aggregate keeps a legitimately zero result") {
+    // *OrNull only changes the empty-set answer, so a genuine 0 is returned as 0
+    withSimpleTable("db_agg_zero", "tbl_zero", writeData = false) { (db, tbl) =>
+      spark.createDataFrame(Seq(
+        (0L, "zero", java.sql.Timestamp.valueOf("2021-01-01 10:10:10"), 1),
+        (5L, "five", java.sql.Timestamp.valueOf("2021-01-01 10:10:10"), 2)
+      )).toDF("id", "value", "create_time", "m").writeTo(s"$db.$tbl").append()
+      checkAnswer(spark.sql(s"SELECT MIN(id) FROM $db.$tbl"), Seq(Row(0L)))
+      checkAnswer(spark.sql(s"SELECT SUM(id) FROM $db.$tbl WHERE id = 0"), Seq(Row(0L)))
+    }
+  }
+
+  test("a pushed-down aggregate over no matching rows survives a filter") {
+    // collect() reads NULL in a non-nullable slot as 0 and cannot see this corruption; a filter can
+    withSimpleTable("db_agg_filter", "tbl_filter", writeData = true) { (db, tbl) =>
+      val counted = spark.sql(s"SELECT COUNT(*) AS c FROM $db.$tbl WHERE id > 999")
+      assert(counted.filter("c = 0").count() === 1L)
+      assert(!counted.collect().head.isNullAt(0))
+
+      // COUNT and MIN need different empty-set answers out of the same task
+      checkAnswer(
+        spark.sql(s"SELECT COUNT(*), MIN(id) FROM $db.$tbl WHERE id > 999"),
+        Seq(Row(0L, null))
+      )
+    }
   }
 
   test("cache table") {

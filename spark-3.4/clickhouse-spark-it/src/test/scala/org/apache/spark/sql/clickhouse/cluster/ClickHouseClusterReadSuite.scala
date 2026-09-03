@@ -14,7 +14,13 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
+import com.clickhouse.spark.read.ClickHouseBatchScan
+import com.clickhouse.spark.spec.PartitionSpec
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
+  READ_DISTRIBUTED_CONVERT_LOCAL,
+  READ_PARTITION_LISTING_UNION_REPLICAS,
+  READ_SPLIT_BY_PARTITION_ID
+}
 import org.apache.spark.sql.{AnalysisException, Row}
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
@@ -44,6 +50,64 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
           )
         )
       }
+    }
+  }
+
+  test("a unioned partition listing counts each part once per replica set") {
+    // asserts the union engages; deduplication needs the replicated-table tests below
+    withSimpleDistTable("single_replica", "db_listing", "t_dist", true) { (_, db, _, tbl_local) =>
+      val df = spark.sql(s"SELECT id FROM $db.$tbl_local")
+      val unioned = df.collect().map(_.getLong(0)).sorted
+      val scan = df.queryExecution.sparkPlan.collectFirst {
+        case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
+      }.get
+      // the fixture writes 4 rows across the shards; this server's own view alone sums to 1
+      assert(scan.inputPartitions.map(_.partition.row_count).sum === 4)
+
+      // `default` spans the other shard too, so those extra partitions must read nothing
+      var ownView: Array[Long] = Array.empty
+      withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
+        ownView = spark.sql(s"SELECT id FROM $db.$tbl_local").collect().map(_.getLong(0)).sorted
+      }
+      assert(unioned === ownView)
+    }
+  }
+
+  test("a table present only on the connected server reads correctly under the union") {
+    // the other members of `default` lack this table, so they contribute nothing. The fallback
+    // itself needs an unreachable replica, which CI cannot stage.
+    val db = "db_listing_local"
+    val tbl = "tbl_node_local"
+    spark.sql(s"CREATE DATABASE IF NOT EXISTS $db")
+    try {
+      spark.sql(
+        s"""CREATE TABLE $db.$tbl (
+           |  id BIGINT NOT NULL,
+           |  m  INT    NOT NULL
+           |) USING ClickHouse
+           |PARTITIONED BY (m)
+           |TBLPROPERTIES (order_by = 'id', engine = 'MergeTree()')
+           |""".stripMargin
+      )
+      spark.createDataFrame(Seq((1L, 1), (2L, 2))).toDF("id", "m")
+        .writeTo(s"$db.$tbl").append()
+      checkAnswer(spark.sql(s"SELECT id FROM $db.$tbl ORDER BY id"), Seq(Row(1L), Row(2L)))
+    } finally {
+      spark.sql(s"DROP TABLE IF EXISTS $db.$tbl")
+      spark.sql(s"DROP DATABASE IF EXISTS $db")
+    }
+  }
+
+  test("a pushed-down aggregate is not corrupted by partitions this server does not hold") {
+    // the union reports the other shard's partitions; those tasks match nothing, and a pushed MIN
+    // would return 0 rather than NULL for Spark to fold in
+    withSimpleDistTable("single_replica", "db_agg_union", "t_dist", true) { (_, db, _, tbl_local) =>
+      val unioned = spark.sql(s"SELECT MIN(id) FROM $db.$tbl_local").collect()
+      var ownView: Array[Row] = Array.empty
+      withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
+        ownView = spark.sql(s"SELECT MIN(id) FROM $db.$tbl_local").collect()
+      }
+      assert(unioned === ownView)
     }
   }
 
@@ -151,6 +215,59 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
         case _ => false
       }
       assert(runtimeFilterExists)
+    }
+  }
+
+  private def plannedPartitions(db: String, tbl: String): Seq[PartitionSpec] =
+    spark.sql(s"SELECT id FROM $db.$tbl").queryExecution.sparkPlan.collectFirst {
+      case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
+    }.get.inputPartitions.map(_.partition).toSeq
+
+  test("a unioned partition listing counts a replicated part once") {
+    withReplicatedTable("db_dedupe", "t_dedupe") { (db, tbl) =>
+      runClickHouseSQL(s"INSERT INTO $db.$tbl VALUES (1, 1), (2, 2)")
+      runClickHouseSQL(s"SYSTEM SYNC REPLICA $db.$tbl", s1r2CmdRunnerOptions)
+      // both replicas now report both parts, so without deduplication by name this sums to 4
+      assert(plannedPartitions(db, tbl).map(_.row_count).sum === 2)
+    }
+  }
+
+  test("a unioned partition listing recovers a partition this server has not fetched") {
+    withReplicatedTable("db_lag", "t_lag") { (db, tbl) =>
+      runClickHouseSQL(s"INSERT INTO $db.$tbl VALUES (1, 1)")
+      runClickHouseSQL(s"SYSTEM SYNC REPLICA $db.$tbl", s1r2CmdRunnerOptions)
+      // stall replication then write to the peer, so the partition is absent from this server's view
+      runClickHouseSQL(s"SYSTEM STOP FETCHES $db.$tbl")
+      try {
+        runClickHouseSQL(s"INSERT INTO $db.$tbl VALUES (2, 2)", s1r2CmdRunnerOptions)
+        withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
+          assert(!plannedPartitions(db, tbl).exists(_.partition_id == "2"))
+        }
+        assert(plannedPartitions(db, tbl).exists(_.partition_id == "2"))
+        // value filtering compares against a per-replica rendering, so the listing is left
+        // un-unioned — by conf and by option, the form the reader honours
+        withSQLConf(READ_SPLIT_BY_PARTITION_ID.key -> "false") {
+          assert(!plannedPartitions(db, tbl).exists(_.partition_id == "2"))
+        }
+        val byOption = spark.read
+          .option(READ_SPLIT_BY_PARTITION_ID.key, "false")
+          .table(s"$db.$tbl")
+          .queryExecution.sparkPlan.collectFirst {
+            case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
+          }.get.inputPartitions
+        assert(byOption.forall(!_.filterByPartitionId))
+        assert(!byOption.exists(_.partition.partition_id == "2"))
+        // the kill switch is honoured in the same two forms
+        val unionOff = spark.read
+          .option(READ_PARTITION_LISTING_UNION_REPLICAS.key, "false")
+          .table(s"$db.$tbl")
+          .queryExecution.sparkPlan.collectFirst {
+            case b: BatchScanExec => b.scan.asInstanceOf[ClickHouseBatchScan]
+          }.get.inputPartitions
+        assert(unionOff.forall(_.filterByPartitionId))
+        assert(!unionOff.exists(_.partition.partition_id == "2"))
+      } finally
+        runClickHouseSQL(s"SYSTEM START FETCHES $db.$tbl")
     }
   }
 }
