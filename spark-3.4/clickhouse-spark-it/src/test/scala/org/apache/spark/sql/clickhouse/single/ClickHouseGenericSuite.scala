@@ -569,8 +569,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
       }
   }
 
-  // NOTE: near-vacuous on a single node — discovery finds no multi-member cluster, so both
-  // settings take the same path. It pins the conf key, not the behaviour.
+  // near-vacuous on a single node: no multi-member cluster to union, so this pins only the conf key
   test("the partition listing union can be turned off") {
     withSimpleTable("db_listing", "tbl_off", writeData = true) { (db, tbl) =>
       withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
@@ -580,8 +579,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
   }
 
   test("a pushed-down aggregate over no matching rows is not the empty-set value") {
-    // a task matching nothing returns min()=0 for a non-nullable column unless the reader drops the
-    // row, and Spark folds that into the final value
+    // a task matching nothing returns min()=0 for a non-nullable column, which Spark folds in
     withSimpleTable("db_agg_empty", "tbl_agg", writeData = true) { (db, tbl) =>
       checkAnswer(spark.sql(s"SELECT MIN(id) FROM $db.$tbl WHERE id > 999"), Seq(Row(null)))
       checkAnswer(spark.sql(s"SELECT COUNT(*) FROM $db.$tbl WHERE id > 999"), Seq(Row(0L)))
@@ -616,8 +614,7 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
   }
 
   test("a pushed-down aggregate over no matching rows survives a filter") {
-    // collect() reads a NULL in a non-nullable slot as 0, so it cannot see the corruption a
-    // dropped empty-set row causes; a filter can
+    // collect() reads NULL in a non-nullable slot as 0 and cannot see this corruption; a filter can
     withSimpleTable("db_agg_filter", "tbl_filter", writeData = true) { (db, tbl) =>
       val counted = spark.sql(s"SELECT COUNT(*) AS c FROM $db.$tbl WHERE id > 999")
       assert(counted.filter("c = 0").count() === 1L)
