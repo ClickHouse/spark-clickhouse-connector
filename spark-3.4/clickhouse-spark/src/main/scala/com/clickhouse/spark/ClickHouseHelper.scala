@@ -329,6 +329,9 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     // Deduplicated by part name: the union sees one part once per replica, and summing those
     // copies would multiply the totals. Grouped on partition_id, never on `partition`, which each
     // server renders in its own timezone — two renderings would read one partition's rows twice.
+    val dbLiteral = escapeSQLString(database)
+    val tblLiteral = escapeSQLString(table)
+
     def query(source: String, settings: String = ""): String =
       s"""SELECT
          |  any(`partition`)   AS `partition`,   -- String
@@ -342,7 +345,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
          |    any(`rows`)           AS row_count,
          |    any(bytes_on_disk)    AS size_in_bytes
          |  FROM $source
-         |  WHERE `database`='$database' AND `table`='$table' AND `active`=1
+         |  WHERE `database`='$dbLiteral' AND `table`='$tblLiteral' AND `active`=1
          |  GROUP BY `name`
          |)
          |GROUP BY partition_id
@@ -404,9 +407,10 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
 
   /**
    * The cluster to union across and the settings to union it under, discovered rather than
-   * configured: the cluster containing this server with the fewest shards, so a read does not fan
-   * out to shards which cannot hold the table's data. Single-server clusters are ignored, so a
-   * deployment with nothing to union pays nothing. Memoized per instance.
+   * configured: of the clusters containing this server, the one with the fewest shards, so a read
+   * does not fan out to shards which cannot hold the table's data, and then the most members, so
+   * the union reaches as many replicas of those shards as it can. Single-server clusters are
+   * ignored, so a deployment with nothing to union pays nothing. Memoized per instance.
    */
   private def partitionListingCluster(implicit nodeClient: NodeClient): Option[(String, String)] =
     discoveredListingCluster.getOrElse {
@@ -417,7 +421,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
              |WHERE `cluster` IN (SELECT `cluster` FROM `system`.`clusters` WHERE `is_local`)
              |GROUP BY `cluster`
              |HAVING count() > 1
-             |ORDER BY uniqExact(shard_num) ASC, count() ASC, `cluster` ASC
+             |ORDER BY uniqExact(shard_num) ASC, count() DESC, `cluster` ASC
              |LIMIT 1
              |SETTINGS $settings
              |""".stripMargin

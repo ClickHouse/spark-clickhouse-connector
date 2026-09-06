@@ -15,7 +15,6 @@
 package org.apache.spark.sql.clickhouse.single
 
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
-import com.clickhouse.spark.read.ClickHouseBatchScan
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_PARTITION_LISTING_UNION_REPLICAS
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.TableIdentifier
