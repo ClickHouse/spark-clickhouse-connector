@@ -396,8 +396,10 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     }
   }
 
+  // a quote is doubled rather than backslash-escaped, as SQLHelper.escapeSql does, but a literal
+  // backslash still has to be escaped or it consumes the character after it
   private def escapeSQLString(value: String): String =
-    value.replace("\\", "\\\\").replace("'", "\\'")
+    value.replace("\\", "\\\\").replace("'", "''")
 
   /**
    * Under `timeout_overflow_mode=break` a timed-out query returns a truncated result and no error,
