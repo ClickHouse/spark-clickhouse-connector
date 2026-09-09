@@ -28,7 +28,7 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import com.clickhouse.spark.Constants._
 import com.clickhouse.spark.Utils.dateTimeFmt
 import com.clickhouse.spark.client.NodeClient
-import com.clickhouse.spark.exception.{CHClientException, CHException}
+import com.clickhouse.spark.exception.{CHClientException, CHException, CHServerException}
 import com.clickhouse.spark.spec._
 
 import java.time.{LocalDateTime, ZoneId}
@@ -354,13 +354,12 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
          |""".stripMargin
 
     val ownView = query("`system`.`parts`")
-    val cluster =
-      if (!unionAcrossReplicas) None
+    val decision =
+      if (!unionAcrossReplicas) NoUnion
       else partitionListingCluster
 
-    cluster match {
-      case None => nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
-      case Some((name, settings)) =>
+    decision match {
+      case UnionAcross(name, settings) =>
         val union = query(
           s"clusterAllReplicas('${escapeSQLString(name)}', `system`.`parts`)",
           s"SETTINGS $settings"
@@ -383,6 +382,8 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
             )
             nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
         }
+      // spelt out rather than `case _`, so a case added later warns rather than falling through
+      case NoUnion | Undecided => nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
     }
   }
 
@@ -412,14 +413,12 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
    * shards as it can. Single-server clusters are ignored, so a deployment with nothing to union
    * pays nothing.
    *
-   * `system.clusters` names the cluster but says nothing about whether this user may query it:
-   * `clusterAllReplicas` needs the `REMOTE` grant, and the settings above need a user that is not
-   * `readonly=1`. Neither shows up on `system.clusters`, so the union itself is probed on a single
-   * row. Resolved once per server and user rather than per scan, since the answer turns on grants
-   * rather than on the table, and re-probing would pay a rejected query, and log for it, on every
-   * read.
+   * `system.clusters` names the cluster but not whether this user may query it: `clusterAllReplicas`
+   * needs the `REMOTE` grant, and the settings above need a user that is not `readonly=1`. So the
+   * union itself is probed on a single row. A settled answer is resolved once per connection rather
+   * than per scan, since it turns on grants rather than on the table; otherwise a later scan asks.
    */
-  private def partitionListingCluster(implicit nodeClient: NodeClient): Option[(String, String)] =
+  private def partitionListingCluster(implicit nodeClient: NodeClient): ListingDecision =
     ClickHouseHelper.listingPlanFor(nodeClient.nodeSpec) {
       def candidate: Option[String] =
         nodeClient.syncQueryAndCheckOutputJSONEachRow(
@@ -435,8 +434,12 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
 
       // the two questions are asked separately, so that the one needing the REMOTE grant is asked
       // once: whether this user may set the tuning settings needs no cluster at all
-      def settingsAccepted(settings: String): Boolean =
-        Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(s"SELECT 1 SETTINGS $settings").rows).isSuccess
+      // a refusal means this user may not set them and the union runs under the guard alone; any
+      // other failure leaves the question open rather than pinning later listings to the guard
+      def settingsAccepted(settings: String): Try[Boolean] =
+        Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(s"SELECT 1 SETTINGS $settings").rows)
+          .map(_ => true)
+          .recover { case cause if ClickHouseHelper.isSettledRefusal(cause) => false }
 
       def unionAccepted(name: String, settings: String): Try[Unit] = Try {
         nodeClient.syncQueryAndCheckOutputJSONEachRow(
@@ -446,32 +449,38 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
         ()
       }
 
-      // one line per server, and the cause only at debug: this is a settled fact about the
-      // deployment, not an error in the scan that hit it
-      def unavailable(why: String, cause: Throwable): Option[(String, String)] = {
+      // A refusal is settled, so it is remembered and said once. Anything else means no answer
+      // arrived and the question stays open: one blip must not cost the union for the JVM's life.
+      def unavailable(why: String, cause: Throwable): ListingDecision = {
+        val settled = ClickHouseHelper.isSettledRefusal(cause)
         val code = cause match {
           case e: CHException => s" (code ${e.code})"
           case _ => ""
         }
+        val remedy =
+          if (settled) s"Set ${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to skip the probe."
+          else "A later read will try again."
         log.warn(
           s"Not unioning partition listings on ${nodeClient.nodeSpec.host}: $why$code. Reading " +
             "system.parts from this server only, which lags a recent write on an eventually " +
-            "consistent service. `clusterAllReplicas` needs the REMOTE grant. Set " +
-            s"${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to silence this."
+            s"consistent service. $remedy"
         )
         log.debug("The partition listing union is unavailable", cause)
-        None
+        if (settled) NoUnion else Undecided
       }
 
       Try(candidate) match {
         case Failure(cause) => unavailable("no cluster could be discovered", cause)
-        case Success(None) => None // nothing to union, so nothing to say
+        case Success(None) => NoUnion // nothing to union, so nothing to say
         case Success(Some(name)) =>
-          val settings =
-            if (settingsAccepted(listingTuningSettings)) listingTuningSettings else listingGuardSettings
-          unionAccepted(name, settings) match {
-            case Success(_) => Some(name -> settings)
-            case Failure(cause) => unavailable(s"cluster '$name' cannot be queried", cause)
+          settingsAccepted(listingTuningSettings) match {
+            case Failure(cause) => unavailable("the listing settings could not be probed", cause)
+            case Success(tuningAccepted) =>
+              val settings = if (tuningAccepted) listingTuningSettings else listingGuardSettings
+              unionAccepted(name, settings) match {
+                case Success(_) => UnionAcross(name, settings)
+                case Failure(cause) => unavailable(s"cluster '$name' cannot be queried", cause)
+              }
           }
       }
     }
@@ -548,10 +557,10 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
 private[spark] object ClickHouseHelper {
 
   /**
-   * Partition listing plans, keyed by the identity of the connection rather than by the whole
-   * [[NodeSpec]] so that credentials stay out of a map living as long as the JVM. A plan holds the
-   * cluster to union across and the settings to union it under, or nothing where this server and
-   * user cannot union at all.
+   * Settled listing decisions, keyed by the connection's identity rather than the whole
+   * [[NodeSpec]] so credentials stay out of a map living as long as the JVM. Only [[UnionAcross]]
+   * and [[NoUnion]] are stored, and they last that long: a grant changed afterwards, or a
+   * single-replica service that later scales out, is noticed only on the next driver.
    *
    * The options are part of the key because they reach the connection as URL parameters, and some
    * of those decide the answer: `role=` selects which grants apply, so the same user can hold
@@ -560,11 +569,59 @@ private[spark] object ClickHouseHelper {
    * credentials of their own.
    */
   private val listingPlans =
-    new ConcurrentHashMap[(String, Int, String, String, Boolean, Int), Option[(String, String)]]()
+    new ConcurrentHashMap[(String, Int, String, String, Boolean, Int), ListingDecision]()
 
-  def listingPlanFor(node: NodeSpec)(resolve: => Option[(String, String)]): Option[(String, String)] =
-    listingPlans.computeIfAbsent(
+  /**
+   * Codes the server has settled: a grant it will not give, a setting this user may not change, a
+   * cluster it does not know. A later attempt would be told the same.
+   */
+  private val settledRefusalCodes = Set(
+    115, // UNKNOWN_SETTING
+    164, // READONLY
+    452, // SETTING_CONSTRAINT_VIOLATION
+    497, // ACCESS_DENIED — clusterAllReplicas needs the REMOTE grant
+    516, // AUTHENTICATION_FAILED — the cluster members reject these credentials
+    701 // CLUSTER_DOESNT_EXIST
+  )
+
+  /**
+   * Judged by code, not by exception type, which cannot tell: the client reports any HTTP error as
+   * a server exception — a proxy 503 arrives with code 0 — and a timeout (159) or a briefly-down
+   * replica (279) arrive as server exceptions that may well succeed next time. An allowlist, since
+   * leaving one open costs a warning per scan where settling one wrongly costs the union for the
+   * JVM's life.
+   */
+  def isSettledRefusal(cause: Throwable): Boolean = cause match {
+    case e: CHServerException => settledRefusalCodes.contains(e.code)
+    case _ => false
+  }
+
+  /**
+   * @param resolve
+   *   a settled [[UnionAcross]] or [[NoUnion]], which is remembered, or [[Undecided]], which is
+   *   not: a mapping function returning null stores nothing, so a later scan resolves again.
+   */
+  def listingPlanFor(node: NodeSpec)(resolve: => ListingDecision): ListingDecision = {
+    val decided = listingPlans.computeIfAbsent(
       (node.host, node.port, node.username, node.database, node.ssl, node.options.hashCode),
-      _ => resolve
+      _ => {
+        // bound once: `resolve` is by-name, and probing twice would double every round trip
+        val decision = resolve
+        if (decision == Undecided) null else decision
+      }
     )
+    if (decided == null) Undecided else decided
+  }
 }
+
+/**
+ * Whether a whole-table partition listing should be unioned across a cluster, and under which
+ * settings. [[Undecided]] differs from [[NoUnion]]: no answer arrived, so a later scan asks again.
+ */
+sealed private[spark] trait ListingDecision
+
+private[spark] case class UnionAcross(cluster: String, settings: String) extends ListingDecision
+
+private[spark] case object NoUnion extends ListingDecision
+
+private[spark] case object Undecided extends ListingDecision
