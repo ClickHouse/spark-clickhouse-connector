@@ -23,7 +23,7 @@ import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.connector.read.partitioning.{Partitioning, UnknownPartitioning}
 import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{ArrayType, DataType, MapType, StructType}
 import com.clickhouse.spark._
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.exception.CHClientException
@@ -99,6 +99,29 @@ class ClickHouseScanBuilder(
   private var _pushedGroupByCols: Option[Array[String]] = None
   private var _groupByClause: Option[String] = None
 
+  /**
+   * Columns whose MIN/MAX keeps the plain form, because `-OrNull` cannot be applied to them before
+   * ClickHouse 26.3 and pushing it there fails outright.
+   *
+   * Only Array and Map. `-OrNull` never wraps those even on a new server — `minOrNull` of an empty
+   * Array is `[]`, exactly as `min` is — so the plain form gives up nothing. Tuple is deliberately
+   * absent: from 26.3 ClickHouse does wrap it, `Nullable(Tuple(...))`, and `-OrNull` is what makes
+   * an empty match NULL rather than a tuple of defaults, so exempting it would give that up on
+   * every version this project tests. Below 26.3 its pushdown is declined instead, as it was
+   * before this branch.
+   *
+   * SUM needs no exemption: it rejects all of these in either form, so the probe declines it
+   * regardless.
+   */
+  private def plainMinMaxColumns: Set[String] = physicalSchema.collect {
+    case f if isContainerType(f.dataType) => f.name
+  }.toSet
+
+  private def isContainerType(dataType: DataType): Boolean = dataType match {
+    case _: ArrayType | _: MapType => true
+    case _ => false
+  }
+
   /** Such aggregations must be declined - pushing them fails Spark's output-schema assertion. */
   private def referencesUnsupportedColumn(aggregation: Aggregation): Boolean = {
     val unsupportedColumnNames = ClickHouseUnsupportedType.unsupportedColumns(physicalSchema).map(_._1).toSet
@@ -110,7 +133,7 @@ class ClickHouseScanBuilder(
   override def pushAggregation(aggregation: Aggregation): Boolean = {
     if (referencesUnsupportedColumn(aggregation)) return false
 
-    val compiledAggs = aggregation.aggregateExpressions.flatMap(compileAggregate)
+    val compiledAggs = aggregation.aggregateExpressions.flatMap(compileAggregate(_, plainMinMaxColumns))
     if (compiledAggs.length != aggregation.aggregateExpressions.length) return false
 
     val compiledGroupByCols = aggregation.groupByExpressions.map(_.toString)
