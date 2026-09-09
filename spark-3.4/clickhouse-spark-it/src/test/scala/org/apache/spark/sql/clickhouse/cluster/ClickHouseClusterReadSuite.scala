@@ -270,4 +270,44 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
         runClickHouseSQL(s"SYSTEM START FETCHES $db.$tbl")
     }
   }
+
+  test("a user without the REMOTE grant stops attempting the union") {
+    withReplicatedTable("db_grant", "t_grant") { (db, tbl) =>
+      runClickHouseSQL(s"INSERT INTO $db.$tbl VALUES (1, 1)")
+      runClickHouseSQL(s"SYSTEM SYNC REPLICA $db.$tbl", s1r2CmdRunnerOptions)
+      // `clusterAllReplicas` needs the REMOTE grant, which SELECT alone does not carry
+      runClickHouseSQL("CREATE USER IF NOT EXISTS selectonly IDENTIFIED WITH plaintext_password BY 'p'")
+      runClickHouseSQL("GRANT SELECT ON *.* TO selectonly")
+      try
+        withSQLConf(
+          "spark.sql.catalog.ch_grant" -> "com.clickhouse.spark.ClickHouseCatalog",
+          "spark.sql.catalog.ch_grant.host" -> clickhouse_s1r1_host,
+          "spark.sql.catalog.ch_grant.http_port" -> clickhouse_s1r1_http_port.toString,
+          "spark.sql.catalog.ch_grant.protocol" -> "http",
+          "spark.sql.catalog.ch_grant.user" -> "selectonly",
+          "spark.sql.catalog.ch_grant.password" -> "p",
+          "spark.sql.catalog.ch_grant.database" -> "default"
+        ) {
+          // the read is correct either way: the fallback is this server's own view
+          checkAnswer(spark.sql(s"SELECT id FROM ch_grant.$db.$tbl"), Seq(Row(1L)))
+          checkAnswer(spark.sql(s"SELECT id FROM ch_grant.$db.$tbl"), Seq(Row(1L)))
+          checkAnswer(spark.sql(s"SELECT id FROM ch_grant.$db.$tbl"), Seq(Row(1L)))
+
+          // but the union must be probed once for this user, not retried by every scan
+          runClickHouseSQL("SYSTEM FLUSH LOGS").collect()
+          // one row per attempt, whatever the log records about how each one ended
+          val attempts = runClickHouseSQL(
+            """SELECT DISTINCT query_id FROM system.query_log
+              |WHERE user = 'selectonly'
+              |  AND query LIKE '%clusterAllReplicas%'
+              |  AND event_time > now() - INTERVAL 5 MINUTE
+              |""".stripMargin
+          ).collect().length
+          // exactly one: a rejected probe is logged too, so zero would mean the probe never ran
+          assert(attempts === 1, s"the union was attempted $attempts times, expected exactly one probe")
+        }
+      finally
+        runClickHouseSQL("DROP USER IF EXISTS selectonly")
+    }
+  }
 }

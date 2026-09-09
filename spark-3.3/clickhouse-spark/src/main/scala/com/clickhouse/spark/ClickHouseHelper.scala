@@ -33,6 +33,7 @@ import com.clickhouse.spark.spec._
 
 import java.time.{LocalDateTime, ZoneId}
 import java.util.{HashMap => JHashMap}
+import java.util.concurrent.ConcurrentHashMap
 import scala.collection.JavaConverters._
 import scala.util.{Failure, Success, Try}
 
@@ -404,44 +405,75 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
    */
   private val listingTuningSettings = s"skip_unavailable_shards=1, max_execution_time=10, $listingGuardSettings"
 
-  @volatile private var discoveredListingCluster: Option[Option[(String, String)]] = None
-
   /**
-   * The cluster to union across and the settings to union it under, discovered rather than
-   * configured: of the clusters containing this server, the one with the fewest shards, so a read
-   * does not fan out to shards which cannot hold the table's data, and then the most members, so
-   * the union reaches as many replicas of those shards as it can. Single-server clusters are
-   * ignored, so a deployment with nothing to union pays nothing. Memoized per instance.
+   * The cluster to union across and the settings to union it under: of the clusters containing this
+   * server, the one with the fewest shards, so a read does not fan out to shards which cannot hold
+   * the table's data, and then the most members, so the union reaches as many replicas of those
+   * shards as it can. Single-server clusters are ignored, so a deployment with nothing to union
+   * pays nothing.
+   *
+   * `system.clusters` names the cluster but says nothing about whether this user may query it:
+   * `clusterAllReplicas` needs the `REMOTE` grant, and the settings above need a user that is not
+   * `readonly=1`. Neither shows up on `system.clusters`, so the union itself is probed on a single
+   * row. Resolved once per server and user rather than per scan, since the answer turns on grants
+   * rather than on the table, and re-probing would pay a rejected query, and log for it, on every
+   * read.
    */
   private def partitionListingCluster(implicit nodeClient: NodeClient): Option[(String, String)] =
-    discoveredListingCluster.getOrElse {
-      def discover(settings: String): Option[(String, String)] =
+    ClickHouseHelper.listingPlanFor(nodeClient.nodeSpec) {
+      def candidate: Option[String] =
         nodeClient.syncQueryAndCheckOutputJSONEachRow(
-          s"""SELECT `cluster`
-             |FROM `system`.`clusters`
-             |WHERE `cluster` IN (SELECT `cluster` FROM `system`.`clusters` WHERE `is_local`)
-             |GROUP BY `cluster`
-             |HAVING count() > 1
-             |ORDER BY uniqExact(shard_num) ASC, count() DESC, `cluster` ASC
-             |LIMIT 1
-             |SETTINGS $settings
-             |""".stripMargin
-        ).records.headOption.map(_.get("cluster").asText -> settings)
+          """SELECT `cluster`
+            |FROM `system`.`clusters`
+            |WHERE `cluster` IN (SELECT `cluster` FROM `system`.`clusters` WHERE `is_local`)
+            |GROUP BY `cluster`
+            |HAVING count() > 1
+            |ORDER BY uniqExact(shard_num) ASC, count() DESC, `cluster` ASC
+            |LIMIT 1
+            |""".stripMargin
+        ).records.headOption.map(_.get("cluster").asText)
 
-      // discovery carries the settings so a user who may not set them still unions under the guard
-      val found = Try(discover(listingTuningSettings))
-        .orElse(Try(discover(listingGuardSettings))) match {
-        case Success(cluster) => cluster
-        case Failure(cause) =>
-          log.warn(
-            "Could not discover a cluster to list partitions across; reading system.parts " +
-              s"from the answering server only. Set ${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to stop trying.",
-            cause
-          )
-          None
+      // the two questions are asked separately, so that the one needing the REMOTE grant is asked
+      // once: whether this user may set the tuning settings needs no cluster at all
+      def settingsAccepted(settings: String): Boolean =
+        Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(s"SELECT 1 SETTINGS $settings").rows).isSuccess
+
+      def unionAccepted(name: String, settings: String): Try[Unit] = Try {
+        nodeClient.syncQueryAndCheckOutputJSONEachRow(
+          s"SELECT 1 FROM clusterAllReplicas('${escapeSQLString(name)}', `system`.`one`) " +
+            s"LIMIT 1 SETTINGS $settings"
+        ).rows
+        ()
       }
-      discoveredListingCluster = Some(found)
-      found
+
+      // one line per server, and the cause only at debug: this is a settled fact about the
+      // deployment, not an error in the scan that hit it
+      def unavailable(why: String, cause: Throwable): Option[(String, String)] = {
+        val code = cause match {
+          case e: CHException => s" (code ${e.code})"
+          case _ => ""
+        }
+        log.warn(
+          s"Not unioning partition listings on ${nodeClient.nodeSpec.host}: $why$code. Reading " +
+            "system.parts from this server only, which lags a recent write on an eventually " +
+            "consistent service. `clusterAllReplicas` needs the REMOTE grant. Set " +
+            s"${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to silence this."
+        )
+        log.debug("The partition listing union is unavailable", cause)
+        None
+      }
+
+      Try(candidate) match {
+        case Failure(cause) => unavailable("no cluster could be discovered", cause)
+        case Success(None) => None // nothing to union, so nothing to say
+        case Success(Some(name)) =>
+          val settings =
+            if (settingsAccepted(listingTuningSettings)) listingTuningSettings else listingGuardSettings
+          unionAccepted(name, settings) match {
+            case Success(_) => Some(name -> settings)
+            case Failure(cause) => unavailable(s"cluster '$name' cannot be queried", cause)
+          }
+      }
     }
 
   /**
@@ -511,4 +543,28 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       log.error(s"[${ex.code}]: ${ex.getMessage}")
       false
   }
+}
+
+private[spark] object ClickHouseHelper {
+
+  /**
+   * Partition listing plans, keyed by the identity of the connection rather than by the whole
+   * [[NodeSpec]] so that credentials stay out of a map living as long as the JVM. A plan holds the
+   * cluster to union across and the settings to union it under, or nothing where this server and
+   * user cannot union at all.
+   *
+   * The options are part of the key because they reach the connection as URL parameters, and some
+   * of those decide the answer: `role=` selects which grants apply, so the same user can hold
+   * `REMOTE` on one connection and not on another, and a setting passed this way can decide
+   * whether the tuning settings are accepted. Only their hash is kept, since options may carry
+   * credentials of their own.
+   */
+  private val listingPlans =
+    new ConcurrentHashMap[(String, Int, String, String, Boolean, Int), Option[(String, String)]]()
+
+  def listingPlanFor(node: NodeSpec)(resolve: => Option[(String, String)]): Option[(String, String)] =
+    listingPlans.computeIfAbsent(
+      (node.host, node.port, node.username, node.database, node.ssl, node.options.hashCode),
+      _ => resolve
+    )
 }
