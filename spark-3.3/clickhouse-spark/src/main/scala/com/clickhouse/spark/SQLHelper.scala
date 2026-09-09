@@ -78,17 +78,24 @@ trait SQLHelper {
    * an empty match is 0 and Spark folds that into the final value; the `-OrNull` combinators give
    * SQL's NULL instead. `COUNT` keeps its plain form: 0 is its correct empty-set value, and Spark
    * merges it with a `Sum` whose output attribute is non-nullable, so a NULL there corrupts it.
+   *
+   * @param plainMinMax
+   *   columns whose `MIN`/`MAX` must keep the plain form, because ClickHouse rejects `-OrNull` for
+   *   them: pushing it fails outright and the whole column is read into Spark instead. They keep
+   *   the pushdown, and with it the empty-set value the plain form returns.
    */
-  def compileAggregate(aggFunction: AggregateFunc): Option[String] =
+  def compileAggregate(aggFunction: AggregateFunc, plainMinMax: Set[String] = Set.empty): Option[String] =
     aggFunction match {
       case min: Min if min.column.isInstanceOf[NamedReference] =>
         val col = min.column.asInstanceOf[NamedReference]
         if (col.fieldNames().length != 1) return None
-        Some(s"minOrNull(${quoted(col.fieldNames.head)})")
+        val name = col.fieldNames.head
+        Some(s"${if (plainMinMax.contains(name)) "min" else "minOrNull"}(${quoted(name)})")
       case max: Max if max.column.isInstanceOf[NamedReference] =>
         val col = max.column.asInstanceOf[NamedReference]
         if (col.fieldNames.length != 1) return None
-        Some(s"maxOrNull(${quoted(col.fieldNames.head)})")
+        val name = col.fieldNames.head
+        Some(s"${if (plainMinMax.contains(name)) "max" else "maxOrNull"}(${quoted(name)})")
       case count: Count if count.column.isInstanceOf[NamedReference] =>
         val col = count.column.asInstanceOf[NamedReference]
         if (col.fieldNames.length != 1) return None
