@@ -111,7 +111,7 @@ jobs:
           ./gradlew clean test --no-daemon --refresh-dependencies
           --init-script "$RUNNER_TEMP/mavenLocal.init.gradle"
           -Dscala_binary_version=2.13
-          -Dspark_binary_version=4.0
+          -Dspark_binary_version=4.1
           -Pclickhouse_jdbc_version=${{ steps.build-java.outputs.version }}
           -Pclickhouse_client_v2_version=${{ steps.build-java.outputs.version }}
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
