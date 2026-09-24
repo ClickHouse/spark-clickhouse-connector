@@ -95,11 +95,12 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
     .setUsername(nodeSpec.username)
     .setPassword(nodeSpec.password)
     .setDefaultDatabase(nodeSpec.database)
-    // From ClickHouse 26.9 the server compresses `compress=1` responses with ZSTD, which the client reads
-    // as LZ4 and fails on. HTTP compression is negotiated per response, so it works on every version,
-    // and unlike `network_compression_method` it is allowed for readonly=1 users.
-    // Set before `setOptions`, so `client.use_http_compression=false` still overrides it.
-    .useHttpCompression(true)
+    // From ClickHouse 26.9 the server compresses `compress=1` responses with ZSTD by default, which
+    // client-v2 reads as LZ4 and fails on. This asks for LZ4 again; older servers already use it.
+    // A readonly=1 user may not change settings, so this fails for them with code 164 on every version.
+    // TODO: remove once client-v2 decodes ZSTD responses (clickhouse-java#3105).
+    // Set before `setOptions`, so `clickhouse_setting_network_compression_method` still overrides it.
+    .serverSetting("network_compression_method", "lz4")
     // The client validates these and warns about the ones it does not recognize. From clickhouse-java
     // 0.9.7 on it throws instead, so that bump needs `ignore_unknown_config_key=true` added here.
     .setOptions(nodeSpec.options)
@@ -175,10 +176,6 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
     insertSettings.setDatabase(database)
     // TODO: check what type of compression is supported by the client v2
     insertSettings.compressClientRequest(true)
-    // Keep inserts on native LZ4 despite the client-wide HTTP compression. client-v2's HTTP LZ4 request
-    // writer is slow enough that the server drops inserts of a few tens of MB with a broken pipe, on
-    // every version. An insert's response carries no data, so the 26.9 ZSTD default does not reach it.
-    insertSettings.useHttpCompression(false)
     val payload: Array[Byte] = readAllBytes(data)
     val is: InputStream = new ByteArrayInputStream("".getBytes())
     Try(client.insert(

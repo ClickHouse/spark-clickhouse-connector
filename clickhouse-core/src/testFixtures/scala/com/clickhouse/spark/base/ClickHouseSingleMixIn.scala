@@ -68,10 +68,10 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with BeforeAndAfterAll with ForA
         override def getDriverClassName: String = "com.clickhouse.jdbc.ClickHouseDriver"
 
         // The startup check reads through the JDBC driver, which fails on the ZSTD responses of
-        // ClickHouse 26.9+ just like the connector's client did, so it uses HTTP compression too.
+        // ClickHouse 26.9+ just like the connector's client did, so it asks for LZ4 the same way.
         override def getJdbcUrl: String = {
           val url = super.getJdbcUrl
-          url + (if (url.contains("?")) "&" else "?") + "client.use_http_compression=true"
+          url + (if (url.contains("?")) "&" else "?") + "clickhouse_setting_network_compression_method=lz4"
         }
       }
         .withEnv("CLICKHOUSE_USER", CLICKHOUSE_USER)
