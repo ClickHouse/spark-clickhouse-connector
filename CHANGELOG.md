@@ -19,7 +19,7 @@ All notable changes to this project will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [Unreleased]
+## [0.10.1] - 2026-09-24
 
 ### Added
 - Additional write metrics ([#558](https://github.com/ClickHouse/spark-clickhouse-connector/pull/558)): number of flushes (batch inserts), failed write attempts (including retried ones), min/max flushed batch size (rows), a batch-fill distribution (four buckets of flushed batch size relative to the configured `batchSize`), and clients connected to ClickHouse, across all Spark profiles (3.3/3.4/3.5/4.0). Write metrics now also account for the final batch flushed during task commit, so `recordsWritten` no longer undercounts by the per-task remainder.
@@ -141,7 +141,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - gzip and zstd write compression support has been removed (currently supported codecs are `none`, `lz4` (default))
 
-[Unreleased]: https://github.com/ClickHouse/spark-clickhouse-connector/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/ClickHouse/spark-clickhouse-connector/compare/v0.10.1...HEAD
+[0.10.1]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.10.1
 [0.10.0]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.10.0
 [0.9.0]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.9.0
 [0.8.1]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.8.1
