@@ -175,6 +175,10 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
     insertSettings.setDatabase(database)
     // TODO: check what type of compression is supported by the client v2
     insertSettings.compressClientRequest(true)
+    // Keep inserts on native LZ4 despite the client-wide HTTP compression. client-v2's HTTP LZ4 request
+    // writer is slow enough that the server drops inserts of a few tens of MB with a broken pipe, on
+    // every version. An insert's response carries no data, so the 26.9 ZSTD default does not reach it.
+    insertSettings.useHttpCompression(false)
     val payload: Array[Byte] = readAllBytes(data)
     val is: InputStream = new ByteArrayInputStream("".getBytes())
     Try(client.insert(
