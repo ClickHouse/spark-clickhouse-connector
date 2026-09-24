@@ -95,6 +95,11 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
     .setUsername(nodeSpec.username)
     .setPassword(nodeSpec.password)
     .setDefaultDatabase(nodeSpec.database)
+    // From ClickHouse 26.9 the server compresses `compress=1` responses with ZSTD, which the client reads
+    // as LZ4 and fails on. HTTP compression is negotiated per response, so it works on every version,
+    // and unlike `network_compression_method` it is allowed for readonly=1 users.
+    // Set before `setOptions`, so `client.use_http_compression=false` still overrides it.
+    .useHttpCompression(true)
     // The client validates these and warns about the ones it does not recognize. From clickhouse-java
     // 0.9.7 on it throws instead, so that bump needs `ignore_unknown_config_key=true` added here.
     .setOptions(nodeSpec.options)
