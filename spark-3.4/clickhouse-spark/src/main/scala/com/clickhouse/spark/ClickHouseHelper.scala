@@ -16,10 +16,11 @@ package com.clickhouse.spark
 
 import com.clickhouse.client.ClickHouseProtocol
 import com.fasterxml.jackson.databind.JsonNode
-import com.fasterxml.jackson.databind.node.NullNode
+import com.clickhouse.spark.format.SimpleOutput
+import com.fasterxml.jackson.databind.node.{NullNode, ObjectNode}
 import org.apache.spark.sql.catalyst.SQLConfHelper
 import org.apache.spark.sql.catalyst.analysis.{NoSuchNamespaceException, NoSuchTableException}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.CLIENT_QUERY_TIMEOUT
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{CLIENT_QUERY_TIMEOUT, READ_PARTITION_LISTING_UNION_REPLICAS}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, SchemaUtils}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.types.StructType
@@ -27,12 +28,14 @@ import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import com.clickhouse.spark.Constants._
 import com.clickhouse.spark.Utils.dateTimeFmt
 import com.clickhouse.spark.client.NodeClient
-import com.clickhouse.spark.exception.{CHClientException, CHException}
+import com.clickhouse.spark.exception.{CHClientException, CHException, CHServerException}
 import com.clickhouse.spark.spec._
 
 import java.time.{LocalDateTime, ZoneId}
 import java.util.{HashMap => JHashMap}
+import java.util.concurrent.ConcurrentHashMap
 import scala.collection.JavaConverters._
+import scala.util.{Failure, Success, Try}
 
 trait ClickHouseHelper extends SQLConfHelper with Logging {
 
@@ -293,22 +296,19 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     })
   }
 
+  /**
+   * @param unionAcrossReplicas
+   *   also read the other replicas' `system.parts`, so a partition this server lags is still
+   *   planned. Only safe for a whole-table listing filtering by `_partition_id`: the union spans
+   *   every shard, so a per-shard listing would see the others', and each member renders
+   *   `partition_value` in its own timezone whereas `partition_id` is identical everywhere.
+   */
   def queryPartitionSpec(
     database: String,
-    table: String
+    table: String,
+    unionAcrossReplicas: Boolean = false
   )(implicit nodeClient: NodeClient): Seq[PartitionSpec] = {
-    val partOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
-      s"""SELECT
-         |  partition,                           -- String
-         |  partition_id,                        -- String
-         |  sum(rows)          AS row_count,     -- UInt64
-         |  sum(bytes_on_disk) AS size_in_bytes  -- UInt64
-         |FROM `system`.`parts`
-         |WHERE `database`='$database' AND `table`='$table' AND `active`=1
-         |GROUP BY `partition`, `partition_id`
-         |ORDER BY `partition` ASC, partition_id ASC
-         |""".stripMargin
-    )
+    val partOutput = listActiveParts(database, table, unionAcrossReplicas)
     if (partOutput.isEmpty || partOutput.rows == 1 && partOutput.records.head.get("partition").asText == "tuple()") {
       return Array(NoPartitionSpec)
     }
@@ -321,6 +321,170 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       )
     }
   }
+
+  private def listActiveParts(
+    database: String,
+    table: String,
+    unionAcrossReplicas: Boolean
+  )(implicit nodeClient: NodeClient): SimpleOutput[ObjectNode] = {
+    // Deduplicated by part name: the union sees one part once per replica, and summing those
+    // copies would multiply the totals. Grouped on partition_id, never on `partition`, which each
+    // server renders in its own timezone — two renderings would read one partition's rows twice.
+    val dbLiteral = escapeSQLString(database)
+    val tblLiteral = escapeSQLString(table)
+
+    def query(source: String, settings: String = ""): String =
+      s"""SELECT
+         |  any(`partition`)   AS `partition`,   -- String
+         |  partition_id,                        -- String
+         |  sum(row_count)     AS row_count,     -- UInt64
+         |  sum(size_in_bytes) AS size_in_bytes  -- UInt64
+         |FROM (
+         |  SELECT
+         |    any(`partition`)      AS `partition`,
+         |    any(partition_id)     AS partition_id,
+         |    any(`rows`)           AS row_count,
+         |    any(bytes_on_disk)    AS size_in_bytes
+         |  FROM $source
+         |  WHERE `database`='$dbLiteral' AND `table`='$tblLiteral' AND `active`=1
+         |  GROUP BY `name`
+         |)
+         |GROUP BY partition_id
+         |ORDER BY partition_id ASC
+         |$settings
+         |""".stripMargin
+
+    val ownView = query("`system`.`parts`")
+    val decision =
+      if (!unionAcrossReplicas) NoUnion
+      else partitionListingCluster
+
+    decision match {
+      case UnionAcross(name, settings) =>
+        val union = query(
+          s"clusterAllReplicas('${escapeSQLString(name)}', `system`.`parts`)",
+          s"SETTINGS $settings"
+        )
+        Try {
+          val output = nodeClient.syncQueryAndCheckOutputJSONEachRow(union)
+          // Scala 2.12 parses the rows lazily, so a mid-stream failure must surface inside the Try
+          output.rows
+          output
+        } match {
+          case Success(output) => output
+          case Failure(cause) =>
+            // e.g. credentials the members reject; the own view is what the scan read before
+            log.warn(
+              s"Could not list the partitions of $database.$table across the replicas of cluster " +
+                s"'$name'; falling back to this server's own view of system.parts, which lags a " +
+                s"recent write on an eventually consistent service. Set " +
+                s"${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to stop unioning.",
+              cause
+            )
+            nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
+        }
+      // spelt out rather than `case _`, so a case added later warns rather than falling through
+      case NoUnion | Undecided => nodeClient.syncQueryAndCheckOutputJSONEachRow(ownView)
+    }
+  }
+
+  // quotes are doubled, matching SQLHelper.escapeSql; a backslash needs an escape of its own or it
+  // consumes the character after it
+  private def escapeSQLString(value: String): String =
+    value.replace("\\", "\\\\").replace("'", "''")
+
+  /**
+   * Under `timeout_overflow_mode=break` a timed-out query returns a truncated result and no error,
+   * which would be read as a complete listing. A `readonly=1` user may set this only while it is
+   * already the effective value; otherwise both probes fail and the listing stays un-unioned.
+   */
+  private val listingGuardSettings = "timeout_overflow_mode='throw'"
+
+  /**
+   * Skipping an unreachable replica keeps the union answering, whose remaining members still
+   * include this server; the time bound covers a replica that connects but never answers. Neither
+   * may be set by a `readonly=1` user, so they are probed rather than assumed.
+   */
+  private val listingTuningSettings = s"skip_unavailable_shards=1, max_execution_time=10, $listingGuardSettings"
+
+  /**
+   * The cluster to union across and the settings to union it under: of the clusters containing this
+   * server, the one with the fewest shards, so a read does not fan out to shards which cannot hold
+   * the table's data, and then the most members, so the union reaches as many replicas of those
+   * shards as it can. Single-server clusters are ignored, so a deployment with nothing to union
+   * pays nothing.
+   *
+   * `system.clusters` names the cluster but not whether this user may query it: `clusterAllReplicas`
+   * needs the `REMOTE` grant, and the settings above need a user that is not `readonly=1`. So the
+   * union itself is probed on a single row. A settled answer is resolved once per connection rather
+   * than per scan, since it turns on grants rather than on the table; otherwise a later scan asks.
+   */
+  private def partitionListingCluster(implicit nodeClient: NodeClient): ListingDecision =
+    ClickHouseHelper.listingPlanFor(nodeClient.nodeSpec) {
+      def candidate: Option[String] =
+        nodeClient.syncQueryAndCheckOutputJSONEachRow(
+          """SELECT `cluster`
+            |FROM `system`.`clusters`
+            |WHERE `cluster` IN (SELECT `cluster` FROM `system`.`clusters` WHERE `is_local`)
+            |GROUP BY `cluster`
+            |HAVING count() > 1
+            |ORDER BY uniqExact(shard_num) ASC, count() DESC, `cluster` ASC
+            |LIMIT 1
+            |""".stripMargin
+        ).records.headOption.map(_.get("cluster").asText)
+
+      // the two questions are asked separately, so that the one needing the REMOTE grant is asked
+      // once: whether this user may set the tuning settings needs no cluster at all
+      // a refusal means this user may not set them and the union runs under the guard alone; any
+      // other failure leaves the question open rather than pinning later listings to the guard
+      def settingsAccepted(settings: String): Try[Boolean] =
+        Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(s"SELECT 1 SETTINGS $settings").rows)
+          .map(_ => true)
+          .recover { case cause if ClickHouseHelper.isSettledRefusal(cause) => false }
+
+      def unionAccepted(name: String, settings: String): Try[Unit] = Try {
+        nodeClient.syncQueryAndCheckOutputJSONEachRow(
+          s"SELECT 1 FROM clusterAllReplicas('${escapeSQLString(name)}', `system`.`one`) " +
+            s"LIMIT 1 SETTINGS $settings"
+        ).rows
+        ()
+      }
+
+      // A refusal is settled, so it is remembered and said once. Anything else means no answer
+      // arrived and the question stays open: one blip must not cost the union for the JVM's life.
+      def unavailable(why: String, cause: Throwable): ListingDecision = {
+        val settled = ClickHouseHelper.isSettledRefusal(cause)
+        val code = cause match {
+          case e: CHException => s" (code ${e.code})"
+          case _ => ""
+        }
+        val remedy =
+          if (settled) s"Set ${READ_PARTITION_LISTING_UNION_REPLICAS.key}=false to skip the probe."
+          else "A later read will try again."
+        log.warn(
+          s"Not unioning partition listings on ${nodeClient.nodeSpec.host}: $why$code. Reading " +
+            "system.parts from this server only, which lags a recent write on an eventually " +
+            s"consistent service. $remedy"
+        )
+        log.debug("The partition listing union is unavailable", cause)
+        if (settled) NoUnion else Undecided
+      }
+
+      Try(candidate) match {
+        case Failure(cause) => unavailable("no cluster could be discovered", cause)
+        case Success(None) => NoUnion // nothing to union, so nothing to say
+        case Success(Some(name)) =>
+          settingsAccepted(listingTuningSettings) match {
+            case Failure(cause) => unavailable("the listing settings could not be probed", cause)
+            case Success(tuningAccepted) =>
+              val settings = if (tuningAccepted) listingTuningSettings else listingGuardSettings
+              unionAccepted(name, settings) match {
+                case Success(_) => UnionAcross(name, settings)
+                case Failure(cause) => unavailable(s"cluster '$name' cannot be queried", cause)
+              }
+          }
+      }
+    }
 
   /**
    * This method is considered as lightweight. Typically `sql` should contains `where 1=0` to avoid running the query on
@@ -390,3 +554,75 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       false
   }
 }
+
+private[spark] object ClickHouseHelper {
+
+  /**
+   * Settled listing decisions, keyed by the connection's identity rather than the whole
+   * [[NodeSpec]] so credentials stay out of a map living as long as the JVM. Only [[UnionAcross]]
+   * and [[NoUnion]] are stored, and they last that long: a grant changed afterwards, or a
+   * single-replica service that later scales out, is noticed only on the next driver.
+   *
+   * The options are part of the key because they reach the connection as URL parameters, and some
+   * of those decide the answer: `role=` selects which grants apply, so the same user can hold
+   * `REMOTE` on one connection and not on another, and a setting passed this way can decide
+   * whether the tuning settings are accepted. Only their hash is kept, since options may carry
+   * credentials of their own.
+   */
+  private val listingPlans =
+    new ConcurrentHashMap[(String, Int, String, String, Boolean, Int), ListingDecision]()
+
+  /**
+   * Codes the server has settled: a grant it will not give, a setting this user may not change, a
+   * cluster it does not know. A later attempt would be told the same.
+   */
+  private val settledRefusalCodes = Set(
+    115, // UNKNOWN_SETTING
+    164, // READONLY
+    452, // SETTING_CONSTRAINT_VIOLATION
+    497, // ACCESS_DENIED — clusterAllReplicas needs the REMOTE grant
+    516, // AUTHENTICATION_FAILED — the cluster members reject these credentials
+    701 // CLUSTER_DOESNT_EXIST
+  )
+
+  /**
+   * Judged by code, not by exception type, which cannot tell: the client reports any HTTP error as
+   * a server exception — a proxy 503 arrives with code 0 — and a timeout (159) or a briefly-down
+   * replica (279) arrive as server exceptions that may well succeed next time. An allowlist, since
+   * leaving one open costs a warning per scan where settling one wrongly costs the union for the
+   * JVM's life.
+   */
+  def isSettledRefusal(cause: Throwable): Boolean = cause match {
+    case e: CHServerException => settledRefusalCodes.contains(e.code)
+    case _ => false
+  }
+
+  /**
+   * @param resolve
+   *   a settled [[UnionAcross]] or [[NoUnion]], which is remembered, or [[Undecided]], which is
+   *   not: a mapping function returning null stores nothing, so a later scan resolves again.
+   */
+  def listingPlanFor(node: NodeSpec)(resolve: => ListingDecision): ListingDecision = {
+    val decided = listingPlans.computeIfAbsent(
+      (node.host, node.port, node.username, node.database, node.ssl, node.options.hashCode),
+      _ => {
+        // bound once: `resolve` is by-name, and probing twice would double every round trip
+        val decision = resolve
+        if (decision == Undecided) null else decision
+      }
+    )
+    if (decided == null) Undecided else decided
+  }
+}
+
+/**
+ * Whether a whole-table partition listing should be unioned across a cluster, and under which
+ * settings. [[Undecided]] differs from [[NoUnion]]: no answer arrived, so a later scan asks again.
+ */
+sealed private[spark] trait ListingDecision
+
+private[spark] case class UnionAcross(cluster: String, settings: String) extends ListingDecision
+
+private[spark] case object NoUnion extends ListingDecision
+
+private[spark] case object Undecided extends ListingDecision
