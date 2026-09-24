@@ -21,7 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.1] - 2026-09-24
 
+### Known Issues
+- Reads fail against ClickHouse 26.9+ with `Invalid LZ4 magic byte`. From 26.9 the server compresses `compress=1` responses with ZSTD by default, and the bundled client-v2 0.9.5 only decodes LZ4 ([#584](https://github.com/ClickHouse/spark-clickhouse-connector/pull/584)).
+
 ### Added
+- Per-write ClickHouse Java client insert options through `spark.clickhouse.write.option.<name>` ([#553](https://github.com/ClickHouse/spark-clickhouse-connector/pull/553)), including server settings such as `clickhouse_setting_log_comment`.
+- `clickhouse.column.<name>.json_hints` table property for Spark 4.0 `VariantType` columns ([#561](https://github.com/ClickHouse/spark-clickhouse-connector/pull/561)). Maps the column to a ClickHouse `JSON(...)` type with typed paths, `SKIP` paths and parameters. Mutually exclusive with `variant_types`.
 - Additional write metrics ([#558](https://github.com/ClickHouse/spark-clickhouse-connector/pull/558)): number of flushes (batch inserts), failed write attempts (including retried ones), min/max flushed batch size (rows), a batch-fill distribution (four buckets of flushed batch size relative to the configured `batchSize`), and clients connected to ClickHouse, across all Spark profiles (3.3/3.4/3.5/4.0). Write metrics now also account for the final batch flushed during task commit, so `recordsWritten` no longer undercounts by the per-task remainder.
 - Top-N pushdown for read scans ([#543](https://github.com/ClickHouse/spark-clickhouse-connector/pull/543)). `ORDER BY ... LIMIT n` queries are now pushed down to ClickHouse (`SupportsPushDownTopN`) across all Spark profiles (3.3/3.4/3.5/4.0). Each input partition runs its own local top-N and Spark performs a final global merge across partitions. Gated by the new SQL config `spark.clickhouse.read.pushdown.topN` (default `true`).
 - Configurable ClickHouse query timeout ([#542](https://github.com/ClickHouse/spark-clickhouse-connector/pull/542)). Added the SQL config `spark.clickhouse.client.queryTimeout` (default `60s`) to control the timeout for ClickHouse client query and ping operations across the catalog, read, and write paths.
@@ -42,7 +47,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.10.0] - 2026-01-19
 
 ### Added
-- Support per-write ClickHouse Java client insert options through `spark.clickhouse.write.option.<name>`, including server settings such as `clickhouse_setting_log_comment`.
 - Variant type support ([#456](https://github.com/ClickHouse/spark-clickhouse-connector/pull/456)). Added support for Spark 4.0's `VariantType` mapped to ClickHouse's `JSON`/`Variant` type. Requires Spark 4.0+ and ClickHouse 25.3+.
 - TableProvider API support ([#471](https://github.com/ClickHouse/spark-clickhouse-connector/pull/471)). Added `ClickHouseTableProvider` implementation enabling format-based access pattern (`.format("clickhouse")`), making the connector compatible with Databricks Unity Catalog and other environments that require TableProvider API.
 - Support for macros in cluster names ([#400](https://github.com/ClickHouse/spark-clickhouse-connector/pull/400)). The connector now resolves ClickHouse macros (e.g., `{cluster}`) in Distributed table cluster names, allowing dynamic cluster resolution based on node-specific macro definitions.
