@@ -48,15 +48,19 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        spark: [ '3.3', '3.4', '3.5', '4.0' ]
+        spark: [ '3.3', '3.4', '3.5', '4.0', '4.1' ]
         scala: [ '2.12', '2.13' ]
         java: [ 8, 17 ]
         exclude:
-          # Spark 4.0 only supports Scala 2.13
+          # Spark 4.x only supports Scala 2.13
+          # Spark 4.x requires Java 17+
           - spark: '4.0'
             scala: '2.12'
-          # Spark 4.0 requires Java 17+
           - spark: '4.0'
+            java: 8
+          - spark: '4.1'
+            scala: '2.12'
+          - spark: '4.1'
             java: 8
     env:
       CLICKHOUSE_CLOUD_HOST: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT }}

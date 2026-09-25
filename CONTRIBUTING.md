@@ -206,14 +206,14 @@ If this is your first contribution, make sure to sign ClickHouse's Contributor L
 ### Project Structure
 
 * `clickhouse-core/`: Core functionality shared across Spark versions
-* `spark-3.3/`, `spark-3.4/`, `spark-3.5/`, `spark-4.0/`: Spark version-specific implementations
+* `spark-3.3/`, `spark-3.4/`, `spark-3.5/`, `spark-4.0/`, `spark-4.1/`: Spark version-specific implementations
 * `docs/`: Documentation (Note: This documentation is no longer maintained and will be merged into clickhouse.com soon)
 * `docker/`: Docker configuration for development and testing
 
 ### Supported Spark Versions
 
 The connector supports:
-* Apache Spark 3.3, 3.4, 3.5, and 4.0
+* Apache Spark 3.3, 3.4, 3.5, 4.0 and 4.1
 * Scala 2.12 and 2.13
 
 ### Code Review Process
