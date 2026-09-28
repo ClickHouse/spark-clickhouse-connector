@@ -14,14 +14,14 @@
 
 package com.clickhouse.spark.telemetry
 
-import com.clickhouse.spark.base.ScarfUserAnalyticsCapture
+import com.clickhouse.spark.base.HttpGetUserAnalyticsCapture
 import com.sun.net.httpserver.{HttpExchange, HttpHandler, HttpServer}
 import org.scalatest.funsuite.AnyFunSuite
 
 import java.net.InetSocketAddress
 import java.util.concurrent.{CountDownLatch, TimeUnit}
 
-class ScarfUserAnalyticsSuite extends AnyFunSuite {
+class HttpGetUserAnalyticsSuite extends AnyFunSuite {
 
   private val noEnv: String => Option[String] = _ => None
 
@@ -39,71 +39,69 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
     )
 
   test("disabledByEnv - not disabled by default") {
-    assert(!ScarfUserAnalytics.disabledByEnv(noEnv))
-  }
-
-  test("disabledByEnv - SCARF_NO_ANALYTICS") {
-    assert(ScarfUserAnalytics.disabledByEnv(Map("SCARF_NO_ANALYTICS" -> "true").get))
-    assert(ScarfUserAnalytics.disabledByEnv(Map("SCARF_NO_ANALYTICS" -> "TRUE").get))
-    assert(ScarfUserAnalytics.disabledByEnv(Map("SCARF_NO_ANALYTICS" -> "1").get))
-    assert(!ScarfUserAnalytics.disabledByEnv(Map("SCARF_NO_ANALYTICS" -> "false").get))
-    assert(!ScarfUserAnalytics.disabledByEnv(Map("SCARF_NO_ANALYTICS" -> "0").get))
+    assert(!HttpGetUserAnalytics.disabledByEnv(noEnv))
   }
 
   test("disabledByEnv - DO_NOT_TRACK") {
-    assert(ScarfUserAnalytics.disabledByEnv(Map("DO_NOT_TRACK" -> "true").get))
-    assert(ScarfUserAnalytics.disabledByEnv(Map("DO_NOT_TRACK" -> "1").get))
-    assert(!ScarfUserAnalytics.disabledByEnv(Map("DO_NOT_TRACK" -> "false").get))
+    assert(HttpGetUserAnalytics.disabledByEnv(Map("DO_NOT_TRACK" -> "true").get))
+    assert(HttpGetUserAnalytics.disabledByEnv(Map("DO_NOT_TRACK" -> "TRUE").get))
+    assert(HttpGetUserAnalytics.disabledByEnv(Map("DO_NOT_TRACK" -> "1").get))
+    assert(!HttpGetUserAnalytics.disabledByEnv(Map("DO_NOT_TRACK" -> "false").get))
+    assert(!HttpGetUserAnalytics.disabledByEnv(Map("DO_NOT_TRACK" -> "0").get))
   }
 
-  test("buildUrl carries the expected params and omits absent ones") {
-    val url = ScarfUserAnalytics.buildUrl(sampleEvent(), "https://example.com/spark-connector")
-    assert(url.startsWith("https://example.com/spark-connector?"))
+  test("buildUrl carries every param, falling back to unknown") {
+    val url = HttpGetUserAnalytics.buildUrl(sampleEvent(), "https://example.com/data")
+    assert(url.startsWith("https://example.com/data?"))
     val params = url.split('?')(1).split('&').map(_.split("=", 2)).map(kv => kv(0) -> kv(1)).toMap
-    assert(params("event") === "read")
-    assert(params("spark_version") === "3.5.4")
-    assert(params("format") === "json")
-    assert(params("engine") === "MergeTree")
-    assert(params("test") === "true") // the suite itself runs under a test framework
-    assert(params("app_name_hash") === UserAnalyticsEvent.sha256Hex16("nightly_sales_load"))
+    assert(params("activity_type") === "spark-clickhouse-connector")
+    assert(params("event_type") === "read")
+    assert(params("connector_platform_version") === "3.5.4")
+    assert(params("wire_format") === "json")
+    assert(params("table_engine") === "MergeTree")
+    assert(params("run_type") === "test") // the suite itself runs under a test framework
+    assert(params("workflow_hash") === UserAnalyticsEvent.sha256Hex16("nightly_sales_load"))
     assert(params("table_id") === "1234567890abcdef")
-    // `runtime` is present only when a managed platform is detected
     assert(
-      (params.keySet - "runtime") === Set(
-        "event",
-        "version",
-        "spark_version",
+      params.keySet === Set(
+        "activity_type",
+        "connector_version",
+        "event_type",
+        "connector_platform_version",
         "os",
-        "format",
-        "engine",
-        "app_name_hash",
-        "table_id",
-        "test"
+        "wire_format",
+        "table_engine",
+        "run_type",
+        "managed_platform",
+        "workflow_hash",
+        "table_id"
       )
     )
 
+    // unresolved params fall back to `unknown` rather than dropping out of the query string
     val minimal = sampleEvent().copy(appNameHash = None, tableId = None)
-    val minimalParams = ScarfUserAnalytics.buildUrl(minimal, "https://example.com/x")
-      .split('?')(1).split('&').map(_.split("=", 2)(0)).toSet
-    assert(!minimalParams.contains("app_name_hash"))
-    assert(!minimalParams.contains("table_id"))
+    val minimalParams = HttpGetUserAnalytics.buildUrl(minimal, "https://example.com/x")
+      .split('?')(1).split('&').map(_.split("=", 2)).map(kv => kv(0) -> kv(1)).toMap
+    assert(minimalParams("workflow_hash") === "unknown")
+    assert(minimalParams("table_id") === "unknown")
+    assert(minimalParams("managed_platform") === "unknown") // no managed platform on the suite's stack
   }
 
   test("reportJobRun sends a GET only when enabled by conf and env") {
-    ScarfUserAnalyticsCapture.withCapture { capture =>
+    HttpGetUserAnalyticsCapture.withCapture { capture =>
       // dropped: disabled by conf, then disabled by env
-      new ScarfUserAnalytics(capture.endpoint, noEnv).reportJobRun(sampleEvent(), enabledByConf = false)
-      new ScarfUserAnalytics(capture.endpoint, Map("DO_NOT_TRACK" -> "1").get)
+      new HttpGetUserAnalytics(capture.endpoint, noEnv).reportJobRun(sampleEvent(), enabledByConf = false)
+      new HttpGetUserAnalytics(capture.endpoint, Map("DO_NOT_TRACK" -> "1").get)
         .reportJobRun(sampleEvent(), enabledByConf = true)
       // sent; all instances share one FIFO delivery thread, so had either dropped
       // event been enqueued it would arrive first
-      new ScarfUserAnalytics(capture.endpoint, noEnv)
+      new HttpGetUserAnalytics(capture.endpoint, noEnv)
         .reportJobRun(sampleEvent(event = UserAnalyticsEvent.EVENT_WRITE, sparkVersion = "4.0.1"), enabledByConf = true)
 
       val events = capture.awaitEvents(1)
       assert(events.size === 1)
-      assert(events.head.params("event") === "write")
-      assert(events.head.params("spark_version") === "4.0.1")
+      assert(events.head.params("event_type") === "write")
+      assert(events.head.params("connector_platform_version") === "4.0.1")
       assert(events.head.userAgent.startsWith("spark-clickhouse-connector/"))
     }
   }
@@ -114,7 +112,7 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
 
     val server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
     server.createContext(
-      "/spark-connector",
+      "/data",
       new HttpHandler {
         override def handle(exchange: HttpExchange): Unit = {
           requestReceived.countDown()
@@ -126,14 +124,14 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
     )
     server.start()
     try {
-      val scarf =
-        new ScarfUserAnalytics(s"http://127.0.0.1:${server.getAddress.getPort}/spark-connector", noEnv)
+      val analytics =
+        new HttpGetUserAnalytics(s"http://127.0.0.1:${server.getAddress.getPort}/data", noEnv)
 
       // 10 events against the hanging endpoint also fill the send queue and hit the discard
       // path; a blocking implementation would need the 3s read timeout per event (30s total)
       val startNanos = System.nanoTime()
       (1 to 10).foreach { _ =>
-        scarf.reportJobRun(sampleEvent(), enabledByConf = true)
+        analytics.reportJobRun(sampleEvent(), enabledByConf = true)
       }
       val elapsedMs = (System.nanoTime() - startNanos) / 1000000L
 
@@ -148,7 +146,7 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
 
   test("reportJobRun swallows exceptions thrown while resolving the conf") {
     var evaluated = false
-    new ScarfUserAnalytics("http://127.0.0.1:1/spark-connector", noEnv).reportJobRun(
+    new HttpGetUserAnalytics("http://127.0.0.1:1/data", noEnv).reportJobRun(
       sampleEvent(),
       enabledByConf = { evaluated = true; throw new IllegalArgumentException("not a boolean") }
     )
@@ -157,7 +155,7 @@ class ScarfUserAnalyticsSuite extends AnyFunSuite {
 
   test("reportJobRun swallows LinkageErrors raised while building the event") {
     var evaluated = false
-    new ScarfUserAnalytics("http://127.0.0.1:1/spark-connector", noEnv).reportJobRun(
+    new HttpGetUserAnalytics("http://127.0.0.1:1/data", noEnv).reportJobRun(
       { evaluated = true; throw new NoClassDefFoundError("com/example/PlatformProbeParent") },
       enabledByConf = true
     )

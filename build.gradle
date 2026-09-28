@@ -166,7 +166,7 @@ subprojects {
         maxParallelForks = 1
         environment("ROOT_PROJECT_DIR", rootProject.projectDir)
         // tests must never send anonymous usage stats
-        environment("SCARF_NO_ANALYTICS", "true")
+        environment("DO_NOT_TRACK", "true")
         tags {
             exclude 'org.scalatest.tags.Slow'
             exclude 'org.scalatest.tags.Cloud'
@@ -178,7 +178,7 @@ subprojects {
         maxParallelForks = 1
         environment("ROOT_PROJECT_DIR", rootProject.projectDir)
         // tests must never send anonymous usage stats
-        environment("SCARF_NO_ANALYTICS", "true")
+        environment("DO_NOT_TRACK", "true")
         tags {
             include 'org.scalatest.tags.Slow'
         }
@@ -189,7 +189,7 @@ subprojects {
         maxParallelForks = 1
         environment("ROOT_PROJECT_DIR", rootProject.projectDir)
         // tests must never send anonymous usage stats
-        environment("SCARF_NO_ANALYTICS", "true")
+        environment("DO_NOT_TRACK", "true")
         tags {
             include 'org.scalatest.tags.Cloud'
         }

@@ -41,25 +41,36 @@ case class UserAnalyticsEvent(
   // also caller-stack-sensitive: the test framework's frames live on the reporting thread's stack
   private val isTestRun: Boolean = detectTestRun()
 
+  /**
+   * Param names are the endpoint's contract; it groups events by `activity_type`, hence the connector
+   * there. Every param is always sent, falling back to `unknown`, so a key is never simply missing.
+   */
   def toParams: Seq[(String, String)] =
     Seq(
-      "event" -> event,
-      "version" -> connectorVersion,
-      "spark_version" -> sparkVersion,
-      "os" -> sys.props.getOrElse("os.name", "unknown"),
-      "format" -> format,
-      "engine" -> engine
-    ) ++
-      appNameHash.map("app_name_hash" -> _) ++
-      tableId.map("table_id" -> _) ++
-      (runtimeFromStack orElse runtimeFromEnvironment).map(r => "runtime" -> r.toLowerCase) ++
-      (if (isTestRun) Some("test" -> "true") else None)
+      "activity_type" -> CONNECTOR,
+      "connector_version" -> connectorVersion,
+      "event_type" -> event,
+      "connector_platform_version" -> sparkVersion,
+      "os" -> sys.props.getOrElse("os.name", UNKNOWN),
+      "wire_format" -> format,
+      "table_engine" -> engine,
+      "run_type" -> (if (isTestRun) "test" else UNKNOWN),
+      "managed_platform" -> (runtimeFromStack orElse runtimeFromEnvironment).map(_.toLowerCase).getOrElse(UNKNOWN),
+      "workflow_hash" -> appNameHash.getOrElse(UNKNOWN),
+      "table_id" -> tableId.getOrElse(UNKNOWN)
+    )
 }
 
 object UserAnalyticsEvent {
 
   val EVENT_READ: String = "read"
   val EVENT_WRITE: String = "write"
+
+  // names this connector among the others reporting to the shared telemetry endpoint
+  private val CONNECTOR = "spark-clickhouse-connector"
+
+  // every param is always sent; this stands in wherever there is nothing to report
+  private val UNKNOWN = "unknown"
 
   // tables in legacy `Ordinary` databases carry the zero UUID, which identifies nothing
   private val ZERO_UUID = "00000000-0000-0000-0000-000000000000"

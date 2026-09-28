@@ -17,10 +17,10 @@ package com.clickhouse.spark.telemetry
 /** Creates the [[UserAnalytics]] sinks the calling side passes into the read/write paths. */
 private[spark] object UserAnalyticsFactory {
 
-  /** The sink the connector ships with: Scarf. */
-  def create(): UserAnalytics = createScarf()
+  /** The sink the connector ships with: a best-effort HTTP GET per event. */
+  def create(): UserAnalytics = createHttpGet()
 
-  def createScarf(): UserAnalytics = new ScarfUserAnalytics()
+  def createHttpGet(): UserAnalytics = new HttpGetUserAnalytics()
 
   /** In-memory recorder for suites asserting what the production hooks report. */
   def createCapture(): CaptureUserAnalytics = new CaptureUserAnalytics()

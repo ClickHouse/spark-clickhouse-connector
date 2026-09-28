@@ -72,5 +72,5 @@ Test against custom ClickHouse image
 
 ## Anonymous Usage Statistics
 
-The connector sends anonymous usage events to ClickHouse (via [Scarf](https://about.scarf.sh)); opt out with
-`spark.clickhouse.sendAnonymousUsageStats=false` or the `SCARF_NO_ANALYTICS`/`DO_NOT_TRACK` environment variables.
+The connector sends anonymous usage events to ClickHouse; opt out with
+`spark.clickhouse.sendAnonymousUsageStats=false` or the `DO_NOT_TRACK` environment variable.

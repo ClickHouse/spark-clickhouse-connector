@@ -20,18 +20,18 @@ import java.net.{HttpURLConnection, URL, URLEncoder}
 import java.util.concurrent.{LinkedBlockingQueue, ThreadFactory, ThreadPoolExecutor, TimeUnit}
 
 /**
- * [[UserAnalytics]] backed by ClickHouse's Scarf (https://about.scarf.sh) gateway:
- * gates on the user's opt-outs, then fires one asynchronous, best-effort GET per event.
- * Failures are swallowed and can never fail or slow down the job.
+ * [[UserAnalytics]] delivering events as query params on a plain HTTP GET: gates on the user's
+ * opt-outs, then fires one asynchronous, best-effort request per event. Failures are swallowed
+ * and can never fail or slow down the job.
  *
- * Disabled by `spark.clickhouse.sendAnonymousUsageStats=false`, or by setting the `SCARF_NO_ANALYTICS`
- * or `DO_NOT_TRACK` environment variable to `true` or `1`.
+ * Disabled by `spark.clickhouse.sendAnonymousUsageStats=false`, or by setting the `DO_NOT_TRACK`
+ * environment variable to `true` or `1`.
  */
-private[spark] class ScarfUserAnalytics(
-  endpoint: String = ScarfUserAnalytics.resolveEndpoint(),
+private[spark] class HttpGetUserAnalytics(
+  endpoint: String = HttpGetUserAnalytics.resolveEndpoint(),
   env: String => Option[String] = key => sys.env.get(key)
 ) extends UserAnalytics with Logging {
-  import ScarfUserAnalytics._
+  import HttpGetUserAnalytics._
 
   override def reportJobRun(event: => UserAnalyticsEvent, enabledByConf: => Boolean): Unit =
     try
@@ -41,7 +41,7 @@ private[spark] class ScarfUserAnalytics(
       }
     catch {
       // Throwable, not NonFatal: a LinkageError while building the event must not reach the caller
-      case e: Throwable => log.debug(s"Skipped Scarf usage analytics event: $e")
+      case e: Throwable => log.debug(s"Skipped usage analytics event: $e")
     }
 
   // builds the URL here too: its costlier params, like the class loader probing, stay off the caller thread
@@ -60,15 +60,15 @@ private[spark] class ScarfUserAnalytics(
     } catch {
       case e: InterruptedException =>
         Thread.currentThread().interrupt()
-        log.debug(s"Failed to send Scarf usage analytics event: $e")
-      case e: Throwable => log.debug(s"Failed to send Scarf usage analytics event: $e")
+        log.debug(s"Failed to send usage analytics event: $e")
+      case e: Throwable => log.debug(s"Failed to send usage analytics event: $e")
     }
 }
 
-private[spark] object ScarfUserAnalytics {
+private[spark] object HttpGetUserAnalytics {
 
-  private val DEFAULT_ENDPOINT = "https://clickhouse.gateway.scarf.sh/spark-connector"
-  private val ENDPOINT_ENV = "CLICKHOUSE_SCARF_ENDPOINT"
+  private val DEFAULT_ENDPOINT = "https://telemetry.clickhouse.com/data"
+  private val ENDPOINT_ENV = "CLICKHOUSE_TELEMETRY_ENDPOINT"
   private val TIMEOUT_MS = 3000
 
   /** Deliberately undocumented override, e.g. to point an end-to-end test at a local capture server. */
@@ -80,7 +80,7 @@ private[spark] object ScarfUserAnalytics {
   private lazy val executor: ThreadPoolExecutor = {
     val threadFactory = new ThreadFactory {
       override def newThread(r: Runnable): Thread = {
-        val thread = new Thread(r, "clickhouse-scarf-analytics")
+        val thread = new Thread(r, "clickhouse-usage-analytics")
         thread.setDaemon(true)
         thread
       }
@@ -98,10 +98,8 @@ private[spark] object ScarfUserAnalytics {
     pool
   }
 
-  private[spark] def disabledByEnv(env: String => Option[String]): Boolean = {
-    def truthy(key: String): Boolean = env(key).exists(v => v.equalsIgnoreCase("true") || v == "1")
-    truthy("SCARF_NO_ANALYTICS") || truthy("DO_NOT_TRACK")
-  }
+  private[spark] def disabledByEnv(env: String => Option[String]): Boolean =
+    env("DO_NOT_TRACK").exists(v => v.equalsIgnoreCase("true") || v == "1")
 
   private[spark] def buildUrl(event: UserAnalyticsEvent, endpoint: String): String =
     event.toParams

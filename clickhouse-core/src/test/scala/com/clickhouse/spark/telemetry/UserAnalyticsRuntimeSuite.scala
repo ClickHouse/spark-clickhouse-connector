@@ -27,7 +27,7 @@ class UserAnalyticsRuntimeSuite extends AnyFunSuite {
 
   test("the runtime reported by the caller's stack survives building the params off that thread") {
     val event = new DataprocProbe().buildEvent()
-    assert(paramsOnFreshThread(event).get("runtime") === Some("dataproc"))
+    assert(paramsOnFreshThread(event).get("managed_platform") === Some("dataproc"))
   }
 }
 

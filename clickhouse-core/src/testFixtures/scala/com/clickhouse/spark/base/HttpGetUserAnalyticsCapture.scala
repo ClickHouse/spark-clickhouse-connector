@@ -21,15 +21,15 @@ import java.util.concurrent.ConcurrentLinkedQueue
 import scala.collection.JavaConverters._
 
 /**
- * Local HTTP server capturing the Scarf usage-analytics GETs sent to [[endpoint]]. The delivery
+ * Local HTTP server capturing the usage-analytics GETs sent to [[endpoint]]. The delivery
  * thread is FIFO, so suites can prove nothing else was enqueued with a trailing marker event.
  */
-class ScarfUserAnalyticsCapture private (server: HttpServer) {
-  import ScarfUserAnalyticsCapture._
+class HttpGetUserAnalyticsCapture private (server: HttpServer) {
+  import HttpGetUserAnalyticsCapture._
 
   private val captured = new ConcurrentLinkedQueue[CapturedEvent]
 
-  def endpoint: String = s"http://127.0.0.1:${server.getAddress.getPort}/spark-connector"
+  def endpoint: String = s"http://127.0.0.1:${server.getAddress.getPort}/data"
 
   def events: Seq[CapturedEvent] = captured.asScala.toList
 
@@ -41,15 +41,15 @@ class ScarfUserAnalyticsCapture private (server: HttpServer) {
   }
 }
 
-object ScarfUserAnalyticsCapture {
+object HttpGetUserAnalyticsCapture {
 
   case class CapturedEvent(params: Map[String, String], userAgent: String)
 
-  def withCapture[T](f: ScarfUserAnalyticsCapture => T): T = {
+  def withCapture[T](f: HttpGetUserAnalyticsCapture => T): T = {
     val server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0)
-    val capture = new ScarfUserAnalyticsCapture(server)
+    val capture = new HttpGetUserAnalyticsCapture(server)
     server.createContext(
-      "/spark-connector",
+      "/data",
       new HttpHandler {
         override def handle(exchange: HttpExchange): Unit = {
           capture.captured.add(CapturedEvent(

@@ -28,8 +28,8 @@ class UserAnalyticsFactorySuite extends AnyFunSuite {
       engine = "MergeTree"
     )
 
-  test("create returns the shipped default: Scarf") {
-    assert(UserAnalyticsFactory.create().isInstanceOf[ScarfUserAnalytics])
+  test("create returns the shipped default: the HTTP GET sink") {
+    assert(UserAnalyticsFactory.create().isInstanceOf[HttpGetUserAnalytics])
   }
 
   test("createCapture records only conf-enabled events, in order") {
