@@ -139,6 +139,28 @@ object ClickHouseSQLConf {
       .booleanConf
       .createWithDefault(true)
 
+  val READ_SPLIT_BY_PRIMARY_KEY: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.read.splitByPrimaryKey")
+      .doc("If `true`, split reads of MergeTree-family tables into ranges of the primary key holding about " +
+        "the same number of rows, cut from the primary index within the query's filters on key columns, " +
+        "instead of one input partition per ClickHouse partition. Reads keep one input partition per " +
+        "ClickHouse partition on ClickHouse before 24.2, when the primary key does not start with a column " +
+        "of an integer, date, date time, string or UUID type, and for aggregations pushed down without " +
+        "GROUP BY.")
+      .version("0.10.2")
+      .booleanConf
+      .createWithDefault(true)
+
+  val READ_PARALLELISM: OptionalConfigEntry[Int] =
+    buildConf("spark.clickhouse.read.parallelism")
+      .doc(s"The number of input partitions to split a read into by `${READ_SPLIT_BY_PRIMARY_KEY.key}`. " +
+        "Fewer are used when the data read is too small, as a range holds at least one granule. " +
+        "Defaults to three times Spark's default parallelism.")
+      .version("0.10.2")
+      .intConf
+      .checkValue(_ > 0, "`spark.clickhouse.read.parallelism` should be positive.")
+      .createOptional
+
   val WRITE_LOCAL_SORT_BY_PARTITION: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.write.localSortByPartition")
       .doc(s"If `true`, do local sort by partition before writing. If not set, it equals to " +

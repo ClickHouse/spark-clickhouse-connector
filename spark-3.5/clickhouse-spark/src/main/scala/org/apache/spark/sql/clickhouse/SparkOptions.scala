@@ -47,6 +47,12 @@ class ReadOptions(_options: JMap[String, String]) extends SparkOptions {
   def splitByPartitionId: Boolean =
     eval(READ_SPLIT_BY_PARTITION_ID.key, READ_SPLIT_BY_PARTITION_ID)
 
+  def splitByPrimaryKey: Boolean =
+    eval(READ_SPLIT_BY_PRIMARY_KEY.key, READ_SPLIT_BY_PRIMARY_KEY)
+
+  def parallelism: Option[Int] =
+    eval(READ_PARALLELISM.key, READ_PARALLELISM)
+
   def compressionCodec: ClickHouseCompression =
     ClickHouseCompression.fromEncoding(eval(READ_COMPRESSION_CODEC.key, READ_COMPRESSION_CODEC))
 

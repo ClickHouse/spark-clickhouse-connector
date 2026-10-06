@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Changed
+- Reads of MergeTree-family tables are split into ranges of the primary key instead of one input partition per ClickHouse partition ([#XXX](https://github.com/ClickHouse/spark-clickhouse-connector/pull/XXX)). The driver cuts the rows the query's filters on key columns select into ranges of about as many rows each, reading only the primary index (`mergeTreeIndex`, ClickHouse 24.2+). Tasks no longer map to ClickHouse partitions a filtered query can't match, and unpartitioned tables and single partitions are read in parallel. The ranges cover every key value, so such reads no longer depend on a `system.parts` listing that can miss a partition on a lagging replica. New SQL configs: `spark.clickhouse.read.parallelism` sets the number of ranges (default three times Spark's default parallelism; fewer when the data read spans fewer granules), and `spark.clickhouse.read.splitByPrimaryKey=false` restores one input partition per ClickHouse partition. Reads keep that per-partition split on ClickHouse before 24.2, for Distributed tables, when the primary key does not start with a column of an integer, date, date time, string or UUID type, and for aggregations pushed down without `GROUP BY`. Applies to all Spark profiles (3.3/3.4/3.5/4.0).
+
 ## [0.10.1] - 2026-09-24
 
 ### Known Issues

@@ -19,6 +19,7 @@ import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
 import com.clickhouse.spark.spec.{DistributedEngineSpec, NoPartitionSpec, TableEngineSpec}
 import com.clickhouse.spark.{BlocksReadMetric, BytesReadMetric, ClickHouseHelper, Logging, SQLHelper, Utils}
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, ExprUtils}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
@@ -165,19 +166,32 @@ class ClickHouseScanBuilder(
     }
   }
 
+  // without GROUP BY, an empty range still returns a row of ClickHouse's defaults (not NULL) that Spark merges in
+  private def pushedAggregationWithoutGroupBy: Boolean = _pushedGroupByCols.exists(_.isEmpty)
+
   override def build(): Scan = {
     validateReadSchema()
-    new ClickHouseBatchScan(scanJob.copy(
-      readSchema = _readSchema,
-      filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
-      groupByClause = _groupByClause,
-      orderByClause = _orderByClause,
-      limit = _limit
-    ))
+    new ClickHouseBatchScan(
+      scanJob.copy(
+        readSchema = _readSchema,
+        filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
+        groupByClause = _groupByClause,
+        orderByClause = _orderByClause,
+        limit = _limit
+      ),
+      splitByPrimaryKey = scanJob.readOptions.splitByPrimaryKey && !pushedAggregationWithoutGroupBy,
+      tableColumns = physicalSchema.fieldNames.toSet,
+      pushedFilters = pushedFilters
+    )
   }
 }
 
-class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
+class ClickHouseBatchScan(
+  scanJob: ScanJobDescription,
+  splitByPrimaryKey: Boolean = false,
+  tableColumns: Set[String] = Set.empty,
+  pushedFilters: Array[Filter] = Array.empty
+) extends Scan with Batch
     with SupportsReportPartitioning
     with SupportsRuntimeFiltering
     with PartitionReaderFactory
@@ -222,13 +236,24 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
         ))
       case _: TableEngineSpec =>
         Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-          queryPartitionSpec(database, table).map { partitionSpec =>
-            ClickHouseInputPartition(
-              scanJob.tableSpec,
-              partitionSpec,
-              scanJob.readOptions.splitByPartitionId,
-              scanJob.node // TODO pickup preferred
-            )
+          primaryKeyRanges match {
+            case Some(ranges) => ranges.map { range =>
+                ClickHouseInputPartition(
+                  scanJob.tableSpec,
+                  NoPartitionSpec,
+                  scanJob.readOptions.splitByPartitionId,
+                  scanJob.node,
+                  keyRange = Some(range)
+                )
+              }
+            case None => queryPartitionSpec(database, table).map { partitionSpec =>
+                ClickHouseInputPartition(
+                  scanJob.tableSpec,
+                  partitionSpec,
+                  scanJob.readOptions.splitByPartitionId,
+                  scanJob.node // TODO pickup preferred
+                )
+              }
           }
         }.toArray
     }
@@ -237,6 +262,14 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     }
     partitions
   }
+
+  private def primaryKeyRanges(implicit nodeClient: NodeClient): Option[Seq[PrimaryKeyRange]] =
+    if (!splitByPrimaryKey) None
+    else {
+      val filters = pushedFilters.toSeq.flatMap(f => compileFilter(f).map(_ -> f.references.toSet))
+      val slices = scanJob.readOptions.parallelism.getOrElse(3 * SparkSession.active.sparkContext.defaultParallelism)
+      PrimaryKeyRange.plan(scanJob.tableSpec, tableColumns, filters, slices)
+    }
 
   override def toBatch: Batch = this
 
