@@ -31,6 +31,7 @@ import com.clickhouse.data.value.{
 }
 import com.clickhouse.data.{ClickHouseArraySequence, ClickHouseRecord, ClickHouseValue}
 import com.clickhouse.spark.exception.CHClientException
+import com.clickhouse.spark.format.RowBinaryInput
 import com.clickhouse.spark.read.{ClickHouseInputPartition, ClickHouseReader, ScanJobDescription}
 import org.apache.spark.sql.catalyst.InternalRow
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
@@ -44,22 +45,31 @@ import java.util
 import java.util.concurrent.TimeUnit
 import scala.collection.JavaConverters._
 
+import RowBinaryDecoder.toDecimal
+
 class ClickHouseBinaryReader(
   scanJob: ScanJobDescription,
   part: ClickHouseInputPartition
-) extends ClickHouseReader[GenericRecord](scanJob, part) {
+) extends ClickHouseReader[InternalRow](scanJob, part) {
 
   override val format: String = "RowBinaryWithNamesAndTypes"
 
-  lazy val streamOutput: Iterator[GenericRecord] = {
-    val inputString: InputStream = resp.getInputStream
+  // Decodes RowBinary directly when every column type is supported, otherwise through client-v2's reader
+  lazy val streamOutput: Iterator[InternalRow] = {
+    val input = new RowBinaryInput(resp.getInputStream)
+    RowBinaryDecoder.rows(input, readSchema).getOrElse(clientRows(input.replay()))
+  }
+
+  override def decode(row: InternalRow): InternalRow = row
+
+  private def clientRows(inputString: InputStream): Iterator[InternalRow] = {
     val cbfr: ClickHouseBinaryFormatReader = new RowBinaryWithNamesAndTypesFormatReader(
       inputString,
       resp.getSettings,
       new BinaryStreamReader.DefaultByteBufferAllocator
     )
     val r = new Records(resp, cbfr)
-    r.asScala.iterator
+    r.asScala.iterator.map(decodeRecord)
   }
 
   private val converters: Array[AnyRef => Any] = readSchema.fields.map(f => converter(f.name, f.dataType))
@@ -68,7 +78,7 @@ class ClickHouseBinaryReader(
   private val values: Array[Any] = new Array[Any](converters.length)
   private val row: InternalRow = new GenericInternalRow(values)
 
-  override def decode(record: GenericRecord): InternalRow = {
+  private def decodeRecord(record: GenericRecord): InternalRow = {
     var i: Int = 0
     while (i < converters.length) {
       values(i) = convertValue(record.getObject(i + 1), converters(i))
@@ -168,14 +178,5 @@ class ClickHouseBinaryReader(
         new GenericInternalRow(fieldValues)
     case _ =>
       _ => throw CHClientException(s"Unsupported catalyst type $name[$dataType]")
-  }
-
-  private def toDecimal(value: AnyRef, d: DecimalType): Decimal = {
-    // Java client returns BigInteger for Int256/UInt256, BigDecimal for Decimal types
-    val dec: BigDecimal = value match {
-      case bi: java.math.BigInteger => BigDecimal(bi)
-      case bd: java.math.BigDecimal => BigDecimal(bd)
-    }
-    Decimal(dec.setScale(d.scale))
   }
 }
