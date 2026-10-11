@@ -26,6 +26,7 @@ import scala.util.Try
 /**
  * Epoch days of Date and Date32 values as client-v2 reads them: the start of the day in `zone`, then its local date.
  * That is the day itself, except in a zone that skipped the whole day (2011-12-30 in Pacific/Apia reads as 12-31).
+ * client-v2 0.10.0 and later read dates without this shift, so this class can go when upgrading.
  */
 final class StartOfDayDates(zone: ZoneId) {
   import StartOfDayDates._
