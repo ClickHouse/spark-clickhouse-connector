@@ -22,7 +22,7 @@ import com.clickhouse.spark.format.RowBinaryTestData._
 import com.clickhouse.spark.func.StaticFunctionRegistry
 import com.clickhouse.spark.read.{ClickHouseInputPartition, ScanJobDescription}
 import com.clickhouse.spark.spec.{MergeTreeEngineSpec, NoPartitionSpec, NodeSpec, TableSpec}
-import org.apache.spark.sql.catalyst.expressions.{UnsafeProjection, UnsafeRow}
+import org.apache.spark.sql.catalyst.expressions.{GenericInternalRow, UnsafeProjection, UnsafeRow}
 import org.apache.spark.sql.clickhouse.{ReadOptions, SchemaUtils}
 import org.apache.spark.sql.types._
 import org.scalatest.funsuite.AnyFunSuite
@@ -32,7 +32,7 @@ import java.math.{BigDecimal => JBigDecimal, BigInteger}
 import java.net.{Inet4Address, InetAddress}
 import java.nio.charset.StandardCharsets
 import java.time.{Instant, LocalDate, LocalDateTime, Period, ZoneId}
-import java.util.{Arrays, UUID}
+import java.util.{Arrays, TimeZone, UUID}
 import scala.collection.JavaConverters._
 import scala.collection.mutable.ArrayBuffer
 import scala.util.Random
@@ -705,6 +705,216 @@ class RowBinaryDecoderSuite extends AnyFunSuite {
   test("many rows of mixed types") {
     val outcome = check(mixedColumns, mixedRows(20000, seed = 11))
     assert(outcome.rows.size === 20000)
+  }
+
+  test("a reused row clears a column's null flag when its next value isn't null, for every type") {
+    val columns = Seq(
+      "b" -> "Nullable(Bool)",
+      "i8" -> "Nullable(Int8)",
+      "u8" -> "Nullable(UInt8)",
+      "i16" -> "Nullable(Int16)",
+      "u16" -> "Nullable(UInt16)",
+      "i32" -> "Nullable(Int32)",
+      "u32" -> "Nullable(UInt32)",
+      "i64" -> "Nullable(Int64)",
+      "u64" -> "Nullable(UInt64)",
+      "i128" -> "Nullable(Int128)",
+      "f32" -> "Nullable(Float32)",
+      "f64" -> "Nullable(Float64)",
+      "d9" -> "Nullable(Decimal(9, 2))",
+      "d38" -> "Nullable(Decimal(38, 10))",
+      "date" -> "Nullable(Date)",
+      "date32" -> "Nullable(Date32)",
+      "dt" -> "Nullable(DateTime)",
+      "dt64" -> "Nullable(DateTime64(6))",
+      "s" -> "Nullable(String)",
+      "lc" -> "LowCardinality(Nullable(String))",
+      "fs" -> "Nullable(FixedString(2))",
+      "uuid" -> "Nullable(UUID)",
+      "v4" -> "Nullable(IPv4)",
+      "v6" -> "Nullable(IPv6)",
+      "e" -> "Nullable(Enum8('a' = 1))",
+      "t" -> "Nullable(Tuple(Int32, String))"
+    )
+    val values = Seq[Any](
+      true,
+      1,
+      1,
+      1,
+      1,
+      1,
+      1L,
+      1L,
+      1L,
+      BigInteger.ONE,
+      1.5f,
+      2.5d,
+      dec("1.25"),
+      dec("1.5"),
+      date("2024-01-01"),
+      date("1900-01-01"),
+      Instant.ofEpochSecond(1),
+      Instant.ofEpochSecond(1, 1000),
+      "x",
+      "y",
+      "ab",
+      new UUID(1, 2),
+      ip4("1.2.3.4"),
+      notNull(ip6("::1")),
+      "a",
+      Seq(1, "one")
+    )
+    // the decoder fills its two rows in turn, so each gets null, a value, null, a value
+    val nulls = Seq(true, true, false, false, true, true, false, false)
+    val outcome = check(columns, nulls.map(isNull => if (isNull) Seq.fill(columns.size)(null) else values))
+    for ((isNull, r) <- nulls.zipWithIndex; c <- columns.indices)
+      assert(outcome.rows(r).isNullAt(c) === isNull, s"row $r, ${columns(c)._1}")
+  }
+
+  test("values taken from a returned row stay intact while later rows are read") {
+    val columns = Seq(
+      "s" -> "String",
+      "n" -> "Nullable(String)",
+      "lc" -> "LowCardinality(String)",
+      "fb" -> "FixedString(3)",
+      "fs" -> "FixedString(3)",
+      "as" -> "Array(String)",
+      "an" -> "Array(Nullable(String))",
+      "aa" -> "Array(Array(String))",
+      "m" -> "Map(String, String)",
+      "ma" -> "Map(String, Array(String))",
+      "t" -> "Tuple(String, FixedString(2))",
+      "u" -> "UUID",
+      "v4" -> "IPv4",
+      "v6" -> "IPv6",
+      "e" -> "Enum8('a' = 1, 'b' = 2)",
+      "i128" -> "Int128",
+      "d" -> "Decimal(38, 10)"
+    )
+    val schema = StructType(schemaOf(columns).map(f => if (f.name == "fs") f.copy(dataType = StringType) else f))
+    val random = new Random(7)
+    def text(): String = random.alphanumeric.take(random.nextInt(30)).mkString + (if (random.nextBoolean()) "é" else "")
+    def bytes(n: Int): Raw = Raw(Array.fill(n)(random.nextInt(256).toByte))
+    // rows 500, 1500 and 2500 outgrow the read buffer
+    val rows = (0 until 3000).map { i =>
+      Seq(
+        if (i % 1000 == 500) "x" * 150000 else text(),
+        if (i % 3 == 0) null else text(),
+        text(),
+        bytes(3),
+        bytes(3),
+        Seq.fill(random.nextInt(4))(text()),
+        Seq.fill(random.nextInt(4))(if (random.nextBoolean()) null else text()),
+        Seq.fill(random.nextInt(3))(Seq.fill(random.nextInt(3))(text())),
+        Entries(Seq.fill(random.nextInt(3))(text() -> text()): _*),
+        Entries(Seq.fill(random.nextInt(3))(text() -> Seq.fill(random.nextInt(3))(text())): _*),
+        Seq(text(), bytes(2)),
+        new UUID(random.nextLong(), random.nextLong()),
+        int32LE(random.nextInt()),
+        bytes(16),
+        if (random.nextBoolean()) "a" else "b",
+        BigInteger.valueOf(random.nextLong()).shiftLeft(random.nextInt(60)),
+        JBigDecimal.valueOf(random.nextLong(), 10)
+      )
+    }
+    for ((label, stream) <- variants(encode(columns, rows))) {
+      val r = reader(response(stream()), schema)
+      // the values themselves, not copies, as an operator holding them would keep them
+      val held = ArrayBuffer.empty[Array[Any]]
+      while (r.next()) {
+        val row = r.get
+        held += Array.tabulate(schema.length)(i => if (row.isNullAt(i)) null else row.get(i, schema(i).dataType))
+      }
+      assert(!r.rowDecoder.handedOver, label)
+      val projection = UnsafeProjection.create(schema)
+      val main = readLikeMain(response(stream()), schema)
+      assert(main.error.isEmpty, label)
+      assert(held.map(values => projection(new GenericInternalRow(values)).copy()).toList === main.rows, label)
+    }
+  }
+
+  test("a row handed to client-v2 mid-stream is neither skipped nor repeated, wherever it falls") {
+    val columns = Seq(
+      "id" -> "Int32",
+      "s" -> "String",
+      "t" -> "Nullable(DateTime64(3))",
+      "a" -> "Array(String)",
+      "m" -> "Map(String, Int64)"
+    )
+    val n = 3000
+    val random = new Random(9)
+    def text(max: Int): String = random.alphanumeric.take(random.nextInt(max)).mkString
+    val base = (0 until n).map { i =>
+      Seq[Any](
+        i,
+        text(60),
+        if (i % 4 == 0) null else Instant.ofEpochMilli(random.nextLong() % 4000000000000L),
+        Seq.fill(random.nextInt(4))(text(10)),
+        Entries(Seq.fill(random.nextInt(3))(text(3) -> random.nextLong()): _*)
+      )
+    }
+    // client-v2 converts it; past the microseconds Spark holds, so the decoder hands over
+    val beyondMicros = notNull(int64LE(9000000000000L * 1000 + 1))
+    // the value after other columns of its row, or first in it
+    val layouts = Seq(Seq(0, 1, 2, 3, 4), Seq(2, 0, 1, 3, 4))
+    val badRows = Seq(0, 1, 2, 3, 517, 1499, 1500, 2222, n - 2, n - 1)
+    for (layout <- layouts; bad <- badRows) {
+      val rows = base.zipWithIndex.map { case (row, i) =>
+        layout.map(if (i == bad) row.updated(2, beyondMicros) else row)
+      }
+      val outcome = check(layout.map(columns), rows, handsOver = true)
+      assert(outcome.error.isEmpty, s"bad row $bad")
+      assert(outcome.rows.map(_.getInt(layout.indexOf(0))) === (0 until n), s"bad row $bad")
+    }
+  }
+
+  test("a stream that breaks anywhere, compressed or not, fails instead of ending") {
+    val rows = mixedRows(3000, seed = 5)
+    val bytes = encode(mixedColumns, rows)
+    val compressed = lz4(bytes)
+    val random = new Random(13)
+    val boundaries = (0 to rows.size by 97).map(k => encode(mixedColumns, rows.take(k)).length)
+    // every byte of the header and first rows, some row boundaries, random points through the rest, and the end
+    def cuts(length: Int): Seq[Int] =
+      ((0 to 300) ++ boundaries.filter(_ <= length) ++ Seq.fill(150)(random.nextInt(length + 1)) :+ length).distinct
+    val failure = new IOException("connection reset")
+    def assertFails(label: String, stream: () => InputStream): Unit = {
+      val outcome = assertSame(Seq(label -> stream), schemaOf(mixedColumns), None)
+      assert(outcome.error.exists(_.contains("connection reset")), label)
+    }
+    for (cut <- cuts(bytes.length)) {
+      val head = Arrays.copyOf(bytes, cut)
+      assertFails(s"plain, cut at $cut", () => new FailingStream(head, failure))
+      assertFails(s"one byte per read, cut at $cut", () => new Trickle(new FailingStream(head, failure), 1))
+    }
+    for (cut <- cuts(compressed.length)) {
+      val head = Arrays.copyOf(compressed, cut)
+      assertFails(s"lz4, cut at $cut", () => unlz4(new FailingStream(head, failure)))
+    }
+  }
+
+  test("a column of a type it doesn't decode sends the whole scan to client-v2") {
+    val types = Seq(
+      "JSON",
+      "IntervalYear",
+      "IntervalMonth",
+      "IntervalDay",
+      "IntervalHour",
+      "IntervalMinute",
+      "IntervalSecond",
+      "Array(Nothing)",
+      "Array(IPv6)",
+      "Array(Array(IPv6))",
+      "Array(Map(String, Int32))",
+      "Map(FixedString(2), String)",
+      "Map(String, Array(IPv6))",
+      "Tuple(a Int32, b Array(Map(String, Int32)))"
+    )
+    for (chType <- types) {
+      val columns = Seq("id" -> "Int32", "c" -> chType)
+      val parsed = columns.map { case (name, t) => ClickHouseColumn.of(name, t) }.toArray
+      assert(RowBinaryDecoder.decoders(parsed, schemaOf(columns), TimeZone.getTimeZone("UTC")).isEmpty, chType)
+    }
   }
 
   test("DecodedRow reads back like SpecificInternalRow") {
