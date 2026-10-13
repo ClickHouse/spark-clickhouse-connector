@@ -60,7 +60,7 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
         parseVersionString(v) match {
           case Some((spark, scala, connector)) =>
             val runtimeSuffix = getRuntimeEnvironmentSuffix()
-            s"$t/$connector (fv:spark/$spark, lv:scala/$scala$runtimeSuffix)"
+            s"$t/$connector (fv:spark/$spark; lv:scala/$scala$runtimeSuffix)"
           case None => "Spark-ClickHouse-Connector"
         }
       case _ => "Spark-ClickHouse-Connector"
@@ -76,7 +76,7 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
     if (shouldInferRuntime()) {
       detectRuntime()
         .filter(_.nonEmpty)
-        .fold("")(env => s", env:$env")
+        .fold("")(env => s"; env:$env")
     } else {
       ""
     }
