@@ -53,13 +53,13 @@ jobs:
         java: [ 8, 17 ]
         exclude:
           # Spark 4.x only supports Scala 2.13
-          # Spark 4.x requires Java 17+
           - spark: '4.0'
             scala: '2.12'
-          - spark: '4.0'
-            java: 8
           - spark: '4.1'
             scala: '2.12'
+          # Spark 4.x requires Java 17+
+          - spark: '4.0'
+            java: 8
           - spark: '4.1'
             java: 8
     env:

@@ -15,7 +15,10 @@
 subprojects {
     apply plugin: "maven-publish"
     apply plugin: 'signing'
-    if (JavaVersion.current() >= JavaVersion.VERSION_11) {
+    // nmcp 1.x registers a publish task wherever it is applied and fails without
+    // credentials, so apply it only to the modules configured for release below.
+    if (JavaVersion.current() >= JavaVersion.VERSION_11 && project.hasProperty('release')
+            && project.name.contains("-runtime") && !project.version.toString().endsWith("-SNAPSHOT")) {
         apply plugin: 'com.gradleup.nmcp'
     }
     afterEvaluate {
@@ -124,10 +127,10 @@ subprojects {
 
             if (JavaVersion.current() >= JavaVersion.VERSION_11 && !project.version.endsWith("-SNAPSHOT")) {
                 nmcp {
-                    publish('shadow') {
+                    publishAllPublicationsToCentralPortal {
                         username = System.getenv('NMCP_USERNAME')
                         password = System.getenv('NMCP_PASSWORD')
-                        publicationType = 'USER_MANAGED'
+                        publishingType = 'USER_MANAGED'
                     }
                 }
             }

@@ -25,9 +25,10 @@ clickhouse-core/           Spark-agnostic core: NodeClient/ClusterClient,
                            functions, format plumbing, SQL parser, test mixins.
 clickhouse-core-it/        Core IT tests (no Spark dep).
 spark-3.3/                 ┐
-spark-3.4/                 ├─ Per-Spark-version trees. Each one contains:
-spark-3.5/                 │    clickhouse-spark/          (main connector code)
-spark-4.0/                 ┘    clickhouse-spark-runtime/  (shadowed runtime jar)
+spark-3.4/                 │
+spark-3.5/                 ├─ Per-Spark-version trees. Each one contains:
+spark-4.0/                 │    clickhouse-spark/          (main connector code)
+spark-4.1/                 ┘    clickhouse-spark-runtime/  (shadowed runtime jar)
                                 clickhouse-spark-it/       (Spark IT tests)
 docker/                    Compose files for single-node + cluster CH.
 .github/workflows/         CI.
@@ -35,7 +36,7 @@ docker/                    Compose files for single-node + cluster CH.
 
 ## Where to edit
 
-Per-Spark-version paths (identical across `spark-3.3/` … `spark-4.0/` unless
+Per-Spark-version paths (identical across `spark-3.3/` … `spark-4.1/` unless
 noted), under `clickhouse-spark/src/main/scala/`:
 
 - `com/clickhouse/spark/`
@@ -101,7 +102,7 @@ Spark on the result rows. This is intentional, not an oversight.
   members are still fetched in full and any expression beyond a bare column
   reference (`col + 1`, `length(s)`, `s.a`) runs in Spark.
 - **No join push-down.** `SupportsPushDownJoin` (SPARK-52187) only exists
-  in Spark 4.1+, which the connector does not target yet. Zero matches for
+  in Spark 4.1+ and no tree implements it. Zero matches for
   `JoinPushdown|pushDownJoin|SupportsPushDownJoin` on `main`. Joins run
   as two independent `ClickHouseBatchScan`s plus a Spark-side join.
   `ClickHouseCommandRunner` is **not** a join escape hatch — it's an
@@ -113,16 +114,16 @@ Spark on the result rows. This is intentional, not an oversight.
 
 ### Cross-version drift
 
-The four trees diverge in narrow, predictable places. Diff carefully:
+The five trees diverge in narrow, predictable places. Diff carefully:
 
-- **Spark 4.0 reworked `AnalysisException` for error classes.** 4.0:
+- **Spark 4.x reworked `AnalysisException` for error classes.** 4.0 / 4.1:
   `new AnalysisException(errorClass = "...", messageParameters = Map(...))`.
   3.3 / 3.4 / 3.5 still use the positional
   `new AnalysisException(message, cause = Some(e))`. The
   `UnsupportedOperationException` handler in `ExprUtils.scala` is the
   canonical place this shows up; compare each tree before copying.
 - **`ExprUtils` function-translation signatures differ between 3.3 and
-  3.4+.** 3.4 / 3.5 / 4.0 thread a `functionRegistry: FunctionRegistry`
+  3.4+.** 3.4 / 3.5 / 4.x thread a `functionRegistry: FunctionRegistry`
   argument through `toCatalyst`, `toSparkTransformOpt`, `toSparkExpression`,
   `toClickHouse`, and `toClickHouseSortOrderOpt` (so 3.3 calls
   `pushTopN`'s `toClickHouseSortOrderOpt(o)` while 3.4+ call
@@ -135,18 +136,19 @@ The four trees diverge in narrow, predictable places. Diff carefully:
 - **`SupportsPushDown*` mix-in list on `ClickHouseScanBuilder` is uniform
   on `main` today** (TopN + Limit + Filters + Aggregates + RequiredColumns)
   but is *not* guaranteed to stay uniform across versions if a future Spark
-  release adds an interface only 4.0 implements. Always grep the actual
+  release adds an interface only one tree implements. Always grep the actual
   `extends ScanBuilder with ...` line in each tree before assuming
   identical surface.
 
-### `VariantType` is Spark 4.0-only
+### `VariantType` is Spark 4.x-only
 
 The symbols `VariantType`, `VariantVal`, and `Variant` do not exist on the
-Spark 3.x classpath. Variant-handling code — the 4.0 `ClickHouseArrowStreamWriter`
+Spark 3.x classpath. Variant-handling code — the 4.x `ClickHouseArrowStreamWriter`
 override of `revisedDataSchema`, its `variantToJsonString` helper,
-schema-mapping branches, related tests — lives **only** in `spark-4.0/`.
-(The base `ClickHouseWriter.revisedDataSchema` field itself exists in every
-version; only the Variant-rewrite override is 4.0-only.)
+schema-mapping branches, related tests — lives **only** in the 4.x trees
+(`spark-4.0/`, `spark-4.1/`). (The base `ClickHouseWriter.revisedDataSchema`
+field itself exists in every version; only the Variant-rewrite override is
+4.x-only.)
 
 ---
 
@@ -176,13 +178,14 @@ wraps `com.clickhouse.client.api.Client` from `com.clickhouse:client-v2`.
   `spark.clickhouse.read.settings=<k>=<v>,...` (literal `SETTINGS` clause on
   the SELECT). **There is no `spark.clickhouse.write.settings`** — for
   write-path server settings, use `option.clickhouse_setting_*`.
-- **Arrow write Variant workaround (Spark 4.0 only):**
-  `spark-4.0/clickhouse-spark/.../write/format/ClickHouseArrowStreamWriter.scala`
+- **Arrow write Variant workaround (Spark 4.x only):**
+  `spark-4.<v>/clickhouse-spark/.../write/format/ClickHouseArrowStreamWriter.scala`
+  (identical in 4.0 / 4.1)
   overrides `revisedDataSchema` to rewrite every `VariantType` field to
   `StringType`, then serializes each value via a local `variantToJsonString`
   helper before handing it to the Arrow writer (see
-  [*`VariantType` is Spark 4.0-only*](#varianttype-is-spark-40-only) above for
-  why this lives only in `spark-4.0/`). Intentional, not dead code: ClickHouse's
+  [*`VariantType` is Spark 4.x-only*](#varianttype-is-spark-4x-only) above for
+  why this lives only in the 4.x trees). Intentional, not dead code: ClickHouse's
   Arrow input format does not recognise Arrow `Union`, the `arrow.variant`
   extension type, or any other structural Variant encoding. Do not "clean it up"
   without first verifying ClickHouse's Arrow reader can consume the new encoding
