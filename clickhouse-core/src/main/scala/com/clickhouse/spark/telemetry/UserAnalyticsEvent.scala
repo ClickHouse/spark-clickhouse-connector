@@ -51,6 +51,7 @@ case class UserAnalyticsEvent(
       "connector_version" -> connectorVersion,
       "event_type" -> event,
       "connector_platform_version" -> sparkVersion,
+      "language_version" -> sys.props.getOrElse("java.version", UNKNOWN),
       "os" -> sys.props.getOrElse("os.name", UNKNOWN),
       "wire_format" -> format,
       "table_engine" -> engine,

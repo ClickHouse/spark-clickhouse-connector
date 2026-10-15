@@ -148,6 +148,8 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
         val params = event.toParams.toMap
         assert(params("connector_version") !== "unknown")
         assert(!params("connector_version").contains("_"))
+
+        assert(params("language_version") === sys.props("java.version"))
       }
       assert(readEvent.format === spark.conf.get("spark.clickhouse.read.format"))
       assert(writeEvent.format === spark.conf.get("spark.clickhouse.write.format"))

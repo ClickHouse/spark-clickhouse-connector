@@ -57,6 +57,7 @@ class HttpGetUserAnalyticsSuite extends AnyFunSuite {
     assert(params("activity_type") === "spark-clickhouse-connector")
     assert(params("event_type") === "read")
     assert(params("connector_platform_version") === "3.5.4")
+    assert(params("language_version") === sys.props("java.version"))
     assert(params("wire_format") === "json")
     assert(params("table_engine") === "MergeTree")
     assert(params("run_type") === "test") // the suite itself runs under a test framework
@@ -68,6 +69,7 @@ class HttpGetUserAnalyticsSuite extends AnyFunSuite {
         "connector_version",
         "event_type",
         "connector_platform_version",
+        "language_version",
         "os",
         "wire_format",
         "table_engine",
@@ -102,6 +104,7 @@ class HttpGetUserAnalyticsSuite extends AnyFunSuite {
       assert(events.size === 1)
       assert(events.head.params("event_type") === "write")
       assert(events.head.params("connector_platform_version") === "4.0.1")
+      assert(events.head.params("language_version") === sys.props("java.version"))
       assert(events.head.userAgent.startsWith("spark-clickhouse-connector/"))
     }
   }
