@@ -101,7 +101,7 @@ confirm `Total number of tests run: N` is non-zero — never trust the exit stat
 Adding or changing a `ClickHouseSQLConf` entry requires regenerating the
 `docs/configurations/*.md` golden file, which `ConfigurationSuite` asserts
 against. Run it with `UPDATE=1` for every Spark version that exposes the entry
-(3.4 / 3.5 / 4.0; 3.3 predates `ConfigurationSuite`):
+(3.4 / 3.5 / 4.0 / 4.1; 3.3 predates `ConfigurationSuite`):
 
 ```bash
 UPDATE=1 ./gradlew test --tests=ConfigurationSuite \
@@ -159,10 +159,10 @@ profile-independent, so it cleans under any profile):
 - Spark-version-specific suites → `spark-<v>/clickhouse-spark-it/src/test/`
   (further split into `single/` and `cluster/`).
 - `ClickHouseSQLConf` golden-file tests → `spark-<v>/clickhouse-spark/src/test/scala/.../ConfigurationSuite.scala`
-  (3.4 / 3.5 / 4.0 only; 3.3 predates it).
+  (3.4 / 3.5 / 4.0 / 4.1 only; 3.3 predates it).
 
 Spark-version-specific suites must be duplicated across `spark-3.3` …
-`spark-4.0` the same way main code is.
+`spark-4.1` the same way main code is.
 
 ---
 
@@ -188,16 +188,16 @@ Spark-version-specific suites must be duplicated across `spark-3.3` …
 Workflows in `.github/workflows/`:
 
 - `build-and-test.yml` — full ClickHouse × Java × Scala × Spark matrix
-  (Spark 4.0 excludes Scala 2.12 and Java 8). **Source of truth for the
+  (Spark 4.x excludes Scala 2.12 and Java 8). **Source of truth for the
   supported ClickHouse-version list.**
 - `style.yml` — `spotlessCheck` per Spark version with matching Java
-  (3.3/3.4/3.5 → Java 8, 4.0 → Java 17).
+  (3.3/3.4/3.5 → Java 8, 4.x → Java 17).
 - `check-license.yml` — RAT license-header check.
 - `cloud.yml` — `cloudTest` against real ClickHouse Cloud (uses secrets).
 - `tpcds.yml` — TPC-DS (slow).
 - `publish-release.yml` — publishes release artifacts to Maven Central
   (`publishAllPublicationsToCentralPortal -Prelease`) on `v*` tag push or manual
-  dispatch, across the full Scala × Spark matrix (4.0 excludes 2.12). Signed
+  dispatch, across the full Scala × Spark matrix (4.x excludes 2.12). Signed
   (`SIGNING_KEY`/`SIGNING_PASSWORD`, `NMCP_*` secrets).
 - `publish-snapshot.yml` — nightly (cron) snapshot publish of `main` to Maven
   Central; same matrix and secrets as the release workflow.
