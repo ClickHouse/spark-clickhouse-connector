@@ -38,7 +38,7 @@ class BatchPayloadSuite extends AnyFunSuite {
   }
 
   test("BatchHandle exposes a future that completes from its promise") {
-    val h = BatchHandle(ShardKey("db", "t", None), "id-1", 10L, new BytesPayload(Array[Byte](9)))
+    val h = BatchHandle(ShardKey("q", "db", "t", None), "id-1", 10L, new BytesPayload(Array[Byte](9)))
     assert(!h.future.isCompleted)
     h.promise.success(())
     assert(h.future.isCompleted)

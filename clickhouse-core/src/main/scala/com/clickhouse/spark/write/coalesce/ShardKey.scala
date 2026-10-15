@@ -14,5 +14,10 @@
 
 package com.clickhouse.spark.write.coalesce
 
-/** Identifies a coalescing target on one executor: a (database, table, shard) tuple. */
-final case class ShardKey(database: String, table: String, shardNum: Option[Int])
+/**
+ * Identifies a coalescing target on one executor: a (write job, database, table, shard) tuple.
+ * `writeId` (the Spark write's queryId) scopes buckets to a single write job, so two writes to the
+ * same table name (e.g. after a drop/recreate with a different schema) never share a bucket or
+ * its BucketContext.
+ */
+final case class ShardKey(writeId: String, database: String, table: String, shardNum: Option[Int])

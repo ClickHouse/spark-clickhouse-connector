@@ -53,8 +53,8 @@ class ArrowStreamAssemblerRoundTripSuite extends AnyFunSuite {
     val header = headerBaos.toByteArray
 
     val group = Seq(
-      BatchHandle(ShardKey("d", "t", None), "1", 2L, new BytesPayload(batchBytes(Seq(1, 2)))),
-      BatchHandle(ShardKey("d", "t", None), "2", 3L, new BytesPayload(batchBytes(Seq(3, 4, 5))))
+      BatchHandle(ShardKey("q", "d", "t", None), "1", 2L, new BytesPayload(batchBytes(Seq(1, 2)))),
+      BatchHandle(ShardKey("q", "d", "t", None), "2", 3L, new BytesPayload(batchBytes(Seq(3, 4, 5))))
     )
     def readAll(is: java.io.InputStream): Array[Byte] = {
       val baos = new ByteArrayOutputStream(); val tmp = new Array[Byte](4096)

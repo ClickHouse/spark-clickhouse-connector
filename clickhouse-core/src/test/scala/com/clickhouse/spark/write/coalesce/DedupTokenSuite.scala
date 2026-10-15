@@ -19,7 +19,7 @@ import org.scalatest.funsuite.AnyFunSuite
 class DedupTokenSuite extends AnyFunSuite {
 
   private def handle(id: String): BatchHandle =
-    BatchHandle(ShardKey("db", "t", None), id, 1L, new BytesPayload(Array[Byte](0)))
+    BatchHandle(ShardKey("q", "db", "t", None), id, 1L, new BytesPayload(Array[Byte](0)))
 
   test("token is stable for the same ordered group") {
     val g = Seq(handle("a"), handle("b"), handle("c"))

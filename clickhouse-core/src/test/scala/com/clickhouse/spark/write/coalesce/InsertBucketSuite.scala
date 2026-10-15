@@ -27,7 +27,7 @@ class InsertBucketSuite extends AnyFunSuite with BeforeAndAfterEach {
   override def beforeEach(): Unit = pool = Executors.newScheduledThreadPool(2)
   override def afterEach(): Unit = pool.shutdownNow()
 
-  private val key = ShardKey("d", "t", None)
+  private val key = ShardKey("q", "d", "t", None)
   private def payloadOf(n: Int): BytesPayload = new BytesPayload(Array.fill(n)(0.toByte))
   private def handle(id: String, n: Int): BatchHandle = BatchHandle(key, id, 1L, payloadOf(n))
 
@@ -83,6 +83,58 @@ class InsertBucketSuite extends AnyFunSuite with BeforeAndAfterEach {
     bucket.seal()
     assert(flushed.await(5, TimeUnit.SECONDS))
     assert(groups.asScala.flatten.map(_.dedupId).toList == List("a"))
+  }
+
+  test("flushNow flushes the remainder once; later sub-target batches keep coalescing") {
+    import scala.concurrent.Await
+    import scala.concurrent.duration._
+    val groups = new ConcurrentLinkedQueue[Seq[BatchHandle]]()
+    val bucket = new InsertBucket(
+      key,
+      ctxWith(cfg(target = 1000, maxBuf = 10000, linger = 0)),
+      pool,
+      { (_, g) => groups.add(g); g.foreach(_.promise.success(())) }
+    )
+    val fa = bucket.submit(handle("a", 10))
+    bucket.flushNow()
+    Await.result(fa, 5.seconds)
+    // Unlike seal(), flushNow() is one-shot: these sub-target batches must stay buffered.
+    val fb = bucket.submit(handle("b", 10))
+    val fc = bucket.submit(handle("c", 10))
+    Thread.sleep(300)
+    assert(!fb.isCompleted && !fc.isCompleted, "batches after a one-shot flush must not be sent individually")
+    bucket.flushNow()
+    Await.result(fc, 5.seconds)
+    assert(groups.asScala.map(_.map(_.dedupId).toList).toList == List(List("a"), List("b", "c")))
+  }
+
+  test("a batch arriving while a flushNow group is in flight is not sent as an extra group") {
+    import scala.concurrent.Await
+    import scala.concurrent.duration._
+    val groups = new ConcurrentLinkedQueue[List[String]]()
+    val inFlight = new CountDownLatch(1)
+    val release = new CountDownLatch(1)
+    val bucket = new InsertBucket(
+      key,
+      ctxWith(cfg(target = 1000, maxBuf = 10000, linger = 0)),
+      pool,
+      { (_, g) =>
+        groups.add(g.map(_.dedupId).toList)
+        inFlight.countDown(); release.await(5, TimeUnit.SECONDS)
+        g.foreach(_.promise.success(()))
+      }
+    )
+    val fa = bucket.submit(handle("a", 10))
+    bucket.flushNow()
+    assert(inFlight.await(5, TimeUnit.SECONDS))
+    val fb = bucket.submit(handle("b", 10)) // another task's batch, its task has not committed
+    release.countDown()
+    Await.result(fa, 5.seconds)
+    Thread.sleep(300)
+    assert(!fb.isCompleted, "b must wait for its own commit flush (or the target/linger)")
+    bucket.flushNow()
+    Await.result(fb, 5.seconds)
+    assert(groups.asScala.toList == List(List("a"), List("b")))
   }
 
   test("linger flushes a sub-target buffer after the timeout") {

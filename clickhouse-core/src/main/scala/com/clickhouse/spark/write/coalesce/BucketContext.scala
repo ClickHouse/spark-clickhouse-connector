@@ -17,9 +17,9 @@ package com.clickhouse.spark.write.coalesce
 import com.clickhouse.spark.client.NodeClient
 
 /**
- * Per-bucket immutable context established by the first batch submitted to a bucket. All batches
- * sharing a ShardKey on one executor target the same table via the same shared client, so this
- * context is consistent across the tasks that contribute to a bucket.
+ * Per-bucket immutable context established by the writer that creates a bucket. All batches
+ * sharing a ShardKey belong to one write job on one executor and target the same table via the
+ * same shared client, so this context is consistent across the tasks that contribute to a bucket.
  */
 final case class BucketContext(
   client: NodeClient,

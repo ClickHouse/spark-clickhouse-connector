@@ -227,7 +227,8 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   private def coalesceActive: Boolean = coalesceConfig.enabled && coalesceSupported
 
   private val pendingAcks = ArrayBuffer.empty[Future[Unit]]
-  private val sealedBuckets = scala.collection.mutable.Set.empty[ShardKey]
+  // Buckets this writer holds a reference on (acquired on first submit, released in close()).
+  private val acquiredBuckets = scala.collection.mutable.Set.empty[ShardKey]
   private var submittedRows = 0L
 
   override def write(record: InternalRow): Unit = {
@@ -277,7 +278,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   private def doCoalescedFlush(shardNum: Option[Int]): Unit = {
     if (currentBufferedRows == 0) return
-    val key = ShardKey(database, table, shardNum)
+    val key = ShardKey(writeJob.queryId, database, table, shardNum)
     val payload = serializeRecordBatch()
     val handle = BatchHandle(key, UUID.randomUUID().toString, currentBufferedRows, payload)
     val ctx = BucketContext(
@@ -288,8 +289,8 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
       baseSettings = Map.empty,
       config = coalesceConfig
     )
-    pendingAcks += InsertCoordinator.submit(handle, ctx)
-    sealedBuckets += key
+    if (acquiredBuckets.add(key)) InsertCoordinator.acquire(key, ctx)
+    pendingAcks += InsertCoordinator.submit(handle)
     submittedRows += currentBufferedRows
     reset()
   }
@@ -337,7 +338,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   override def commit(): WriterCommitMessage =
     if (coalesceActive) {
       flush(force = currentBufferedRows > 0, currentShardNum)
-      sealedBuckets.foreach(InsertCoordinator.seal)
+      acquiredBuckets.foreach(InsertCoordinator.flush)
       pendingAcks.foreach(f => Await.result(f, Duration.Inf))
       _totalRecordsWritten.add(submittedRows)
       CommitMessage(s"Job[${writeJob.queryId}]: commit (coalesced)")
@@ -348,10 +349,15 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
 
   override def abort(): Unit = {}
 
-  override def close(): Unit =
+  override def close(): Unit = {
+    // Spark calls close() after commit() or abort(), so this is where the writer's bucket
+    // references are dropped; the last writer of a job's bucket removes it from the coordinator.
+    acquiredBuckets.foreach(InsertCoordinator.release)
+    acquiredBuckets.clear()
     // The shared NodeClientCache owns client lifetime (closed at executor shutdown). Only
     // per-task resources are released here; the Arrow root/allocator are closed by subclasses.
     // In coalesce mode the output/compression chain is never instantiated, so skip it (avoids
     // forcing the lazy 64 MB buffer and a null forwarding-delegate NPE at teardown).
     if (!coalesceActive) IOUtils.closeQuietly(output)
+  }
 }

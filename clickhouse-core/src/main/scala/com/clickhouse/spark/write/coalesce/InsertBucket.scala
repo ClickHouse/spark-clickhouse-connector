@@ -21,7 +21,8 @@ import scala.concurrent.Future
 
 /**
  * Per-target buffer of record-batch handles. A flush is triggered by size (bufferedBytes >=
- * targetBytes), seal(), or a linger timer; draining and the sender call always run on `pool`,
+ * targetBytes), flushNow() (one-shot, used at task commit), seal() (sticky, used once the bucket
+ * has no writers left), or a linger timer; draining and the sender call always run on `pool`,
  * never on the submitting (task) thread. submit() blocks while bufferedBytes >= maxBufferedBytes
  * (backpressure). `sender` performs the insert and completes each handle's promise.
  *
@@ -43,8 +44,11 @@ final class InsertBucket(
   private var isSealed = false
   private var draining = false
   private var lingerScheduled = false
-  // Set by seal()/linger to force a flush of a sub-target remainder.
+  // Set by flushNow()/seal()/linger to force a flush of a sub-target remainder.
   private var forceFlush = false
+  // Number of writers holding this bucket. Only read/written inside InsertCoordinator's
+  // ConcurrentHashMap.compute, which serialises access per key.
+  private[coalesce] var refs = 0
 
   def submit(h: BatchHandle): Future[Unit] = {
     lock.lock()
@@ -66,6 +70,18 @@ final class InsertBucket(
     } finally lock.unlock()
   }
 
+  /**
+   * Flush everything buffered now, without sealing: once the buffer drains, later batches resume
+   * normal target-size grouping. A committing task uses this so its own batches are sent while
+   * the bucket keeps coalescing for the job's other tasks.
+   */
+  def flushNow(): Unit = {
+    lock.lock()
+    try if (buffer.nonEmpty) { forceFlush = true; ensureDraining() }
+    finally lock.unlock()
+  }
+
+  /** Sticky: every later submit is sent immediately. Used when the last writer releases. */
   def seal(): Unit = {
     lock.lock()
     try { isSealed = true; forceFlush = true; ensureDraining() }
@@ -113,6 +129,10 @@ final class InsertBucket(
           val taken = takeGroup(flushAll)
           group = taken._1
           groupBytes = taken._2
+          // A forced group takes the whole buffer, so the flushNow()/linger request is satisfied.
+          // Clear it now: batches arriving while this group is in flight resume normal grouping
+          // instead of being sent as an extra, premature group.
+          forceFlush = false
           // bytes stay counted while in flight; we do NOT signal notFull here.
         }
       } finally lock.unlock()
