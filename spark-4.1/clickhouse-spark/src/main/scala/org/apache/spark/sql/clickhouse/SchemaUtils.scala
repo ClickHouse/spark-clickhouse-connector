@@ -1,0 +1,247 @@
+/*
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *     https://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+
+package org.apache.spark.sql.clickhouse
+
+import com.clickhouse.data.ClickHouseDataType._
+import com.clickhouse.data.{ClickHouseColumn, ClickHouseDataType}
+import com.clickhouse.spark.{ColumnUtils, Logging}
+import com.clickhouse.spark.exception.CHClientException
+import org.apache.spark.sql.types._
+import org.apache.spark.sql.catalyst.SQLConfHelper
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_FIXED_STRING_AS, READ_JSON_AS}
+
+import scala.collection.JavaConverters._
+
+object SchemaUtils extends SQLConfHelper with Logging {
+
+  /**
+   * Maps a ClickHouse column to its Spark data type and nullability, or `None` if the
+   * ClickHouse type has no Spark mapping (e.g. `AggregateFunction`, `Point`, `Nested`).
+   * Throws only on genuine errors, e.g. an invalid read-format configuration value.
+   */
+  def fromClickHouseType(chColumn: ClickHouseColumn): Option[(DataType, Boolean)] = {
+    val catalystType: Option[DataType] = chColumn.getDataType match {
+      case Nothing => Some(NullType)
+      case Bool => Some(BooleanType)
+      case JSON =>
+        conf.getConf(READ_JSON_AS) match {
+          case "variant" => Some(VariantType)
+          case "string" => Some(StringType)
+          case unsupported => throw CHClientException(s"Unsupported JSON read format mapping: $unsupported")
+        }
+      case Variant => Some(VariantType)
+      case String | UUID | Enum8 | Enum16 | IPv4 | IPv6 => Some(StringType)
+      case FixedString =>
+        conf.getConf(READ_FIXED_STRING_AS) match {
+          case "binary" => Some(BinaryType)
+          case "string" => Some(StringType)
+          case unsupported => throw CHClientException(s"Unsupported fixed string read format mapping: $unsupported")
+        }
+      case Int8 => Some(ByteType)
+      case UInt8 =>
+        // Check if this UInt8 is actually a Bool (ClickHouse stores Bool as UInt8)
+        if (chColumn.getOriginalTypeName.toLowerCase.contains("bool")) Some(BooleanType)
+        else Some(ShortType)
+      case Int16 => Some(ShortType)
+      case UInt16 | Int32 => Some(IntegerType)
+      case UInt32 | Int64 => Some(LongType)
+      case UInt64 => Some(DecimalType(20, 0))
+      case Int128 | UInt128 | Int256 | UInt256 => Some(DecimalType(38, 0))
+      case Float32 => Some(FloatType)
+      case Float64 => Some(DoubleType)
+      case Date | Date32 => Some(DateType)
+      case DateTime | DateTime32 | DateTime64 => Some(TimestampType)
+      case ClickHouseDataType.Decimal if chColumn.getScale <= 38 =>
+        Some(DecimalType(chColumn.getPrecision, chColumn.getScale))
+      case Decimal32 => Some(DecimalType(9, chColumn.getScale))
+      case Decimal64 => Some(DecimalType(18, chColumn.getScale))
+      case Decimal128 => Some(DecimalType(38, chColumn.getScale))
+      case IntervalYear => Some(YearMonthIntervalType(YearMonthIntervalType.YEAR))
+      case IntervalMonth => Some(YearMonthIntervalType(YearMonthIntervalType.MONTH))
+      case IntervalDay => Some(DayTimeIntervalType(DayTimeIntervalType.DAY))
+      case IntervalHour => Some(DayTimeIntervalType(DayTimeIntervalType.HOUR))
+      case IntervalMinute => Some(DayTimeIntervalType(DayTimeIntervalType.MINUTE))
+      case IntervalSecond => Some(DayTimeIntervalType(DayTimeIntervalType.SECOND))
+      case Array =>
+        val elementChCols = chColumn.getNestedColumns
+        assert(elementChCols.size == 1)
+        fromClickHouseType(elementChCols.get(0)).map { case (elementType, elementNullable) =>
+          ArrayType(elementType, elementNullable)
+        }
+      case Map =>
+        val kvChCols = chColumn.getNestedColumns
+        assert(kvChCols.size == 2)
+        val (keyChType, valueChType) = (kvChCols.get(0), kvChCols.get(1))
+        fromClickHouseType(keyChType).flatMap { case (keyType, keyNullable) =>
+          require(
+            !keyNullable,
+            s"Illegal type: ${keyChType.getOriginalTypeName}, the key type of Map should not be nullable"
+          )
+          fromClickHouseType(valueChType).map { case (valueType, valueNullable) =>
+            MapType(keyType, valueType, valueNullable)
+          }
+        }
+      case Tuple =>
+        val nestedCols = chColumn.getNestedColumns.asScala
+        val fields = nestedCols.zipWithIndex.flatMap { case (col, idx) =>
+          fromClickHouseType(col).map { case (fieldType, fieldNullable) =>
+            // Use Spark convention for unnamed tuple fields: _1, _2, etc.
+            val fieldName = if (col.getColumnName.isEmpty) s"_${idx + 1}" else col.getColumnName
+            StructField(fieldName, fieldType, fieldNullable)
+          }
+        }
+        // a Tuple is mappable only if every field is
+        if (fields.size == nestedCols.size) Some(StructType(fields.toArray)) else None
+      // Object, Nested, Point, Polygon, MultiPolygon, Ring, IntervalQuarter, IntervalWeek,
+      // Decimal256, AggregateFunction, SimpleAggregateFunction, and any future type without a mapping
+      case _ => None
+    }
+    catalystType.map(dataType => (dataType, chColumn.isNullable))
+  }
+
+  def toClickHouseType(catalystType: DataType, nullable: Boolean): String =
+    toClickHouseType(catalystType, nullable, None, None)
+
+  def toClickHouseType(catalystType: DataType, nullable: Boolean, variantTypes: Option[String]): String =
+    toClickHouseType(catalystType, nullable, variantTypes, None)
+
+  def toClickHouseType(
+    catalystType: DataType,
+    nullable: Boolean,
+    variantTypes: Option[String],
+    jsonHints: Option[String]
+  ): String =
+    catalystType match {
+      case BooleanType => maybeNullable("Bool", nullable)
+      case ByteType => maybeNullable("Int8", nullable)
+      case ShortType => maybeNullable("Int16", nullable)
+      case IntegerType => maybeNullable("Int32", nullable)
+      case LongType => maybeNullable("Int64", nullable)
+      case FloatType => maybeNullable("Float32", nullable)
+      case DoubleType => maybeNullable("Float64", nullable)
+      case StringType => maybeNullable("String", nullable)
+      case VarcharType(_) => maybeNullable("String", nullable)
+      case CharType(_) => maybeNullable("String", nullable) // TODO: maybe FixString?
+      case VariantType =>
+        (variantTypes, jsonHints) match {
+          case (Some(types), _) => s"Variant($types)"
+          case (None, Some(hints)) => maybeNullable(s"JSON($hints)", nullable)
+          case (None, None) => maybeNullable("JSON", nullable)
+        }
+      case DateType => maybeNullable("Date", nullable)
+      case TimestampType => maybeNullable("DateTime", nullable)
+      case DecimalType.Fixed(p, s) => maybeNullable(s"Decimal($p, $s)", nullable)
+      case ArrayType(elemType, containsNull) =>
+        s"Array(${toClickHouseType(elemType, containsNull, variantTypes, jsonHints)})"
+      // TODO currently only support String as key
+      case MapType(keyType, valueType, valueContainsNull) if keyType.isInstanceOf[StringType] =>
+        s"Map(${toClickHouseType(keyType, nullable = false, variantTypes, jsonHints)}, " +
+          s"${toClickHouseType(valueType, valueContainsNull, variantTypes, jsonHints)})"
+      case struct: StructType =>
+        val fieldTypes = struct.fields.map { field =>
+          val fieldType = toClickHouseType(field.dataType, field.nullable, variantTypes, jsonHints)
+          s"${field.name} ${fieldType}"
+        }.mkString(", ")
+        s"Tuple($fieldTypes)"
+      case _ => throw CHClientException(s"Unsupported type: $catalystType")
+    }
+
+  /** Maps a ClickHouse schema to a Spark schema; unmappable columns become placeholder [[ClickHouseUnsupportedType]] fields. */
+  def fromClickHouseSchema(chSchema: Seq[(String, String)]): StructType = {
+    val fields = chSchema.map { case (name, maybeNullableType) =>
+      ColumnUtils.tryParseColumn(name, maybeNullableType)
+        .flatMap(fromClickHouseType)
+        .map { case (sparkType, nullable) => StructField(name, sparkType, nullable) }
+        .getOrElse(ClickHouseUnsupportedType.field(name, maybeNullableType))
+    }
+    val schema = StructType(fields)
+    val unsupported = ClickHouseUnsupportedType.unsupportedColumns(schema)
+    if (unsupported.nonEmpty) {
+      log.warn(s"Found ${unsupported.size} column(s) with unsupported ClickHouse type(s): " +
+        ColumnUtils.renderColumns(unsupported) +
+        ". These columns are mapped to the placeholder `unsupported` Spark type; " +
+        "reading them (explicitly or via SELECT *) or writing to them fails.")
+    }
+    schema
+  }
+
+  def toClickHouseSchema(catalystSchema: StructType): Seq[(String, String, String)] =
+    toClickHouseSchema(catalystSchema, scala.collection.immutable.Map.empty[String, String])
+
+  /**
+   * Convert Spark schema to ClickHouse schema with optional column properties.
+   *
+   * For VariantType columns, you can specify the ClickHouse Variant types via table properties:
+   * {{{
+   * CREATE TABLE clickhouse.db.table (
+   *   id INT,
+   *   data VARIANT
+   * )
+   * TBLPROPERTIES (
+   *   'clickhouse.column.data.variant_types' = 'Int64, Float64, Bool, Array(String),JSON'
+   * )
+   * }}}
+   *
+   * If no variant_types property is specified, VariantType defaults to ClickHouse's JSON type (schema-less).
+   *
+   * For VariantType columns that map to the JSON type, you can supply JSON type hints (typed paths,
+   * SKIP paths, parameters) via the json_hints property. The value is wrapped verbatim as
+   * `JSON(<hints>)` and validated by ClickHouse at CREATE TABLE time:
+   * {{{
+   * CREATE TABLE clickhouse.db.table (
+   *   id INT,
+   *   data VARIANT
+   * )
+   * TBLPROPERTIES (
+   *   'clickhouse.column.data.json_hints' = 'a.b UInt32, SKIP a.c, max_dynamic_paths=16'
+   * )
+   * }}}
+   *
+   * variant_types and json_hints are mutually exclusive for the same column (they map to the
+   * mutually exclusive ClickHouse types Variant(...) and JSON(...)); specifying both throws.
+   */
+  /** A schema used to create a ClickHouse table must not contain placeholder [[ClickHouseUnsupportedType]] columns. */
+  def validateCreateSchema(catalystSchema: StructType): Unit = {
+    val unsupported = ClickHouseUnsupportedType.unsupportedColumns(catalystSchema)
+    if (unsupported.nonEmpty) {
+      throw CHClientException(
+        s"Can not create columns with unsupported ClickHouse types: " +
+          s"${ColumnUtils.renderColumns(unsupported)}. Exclude these columns from the schema."
+      )
+    }
+  }
+
+  def toClickHouseSchema(catalystSchema: StructType, properties: Map[String, String]): Seq[(String, String, String)] = {
+    validateCreateSchema(catalystSchema)
+    catalystSchema.fields
+      .map { field =>
+        val variantTypes = properties.get(s"clickhouse.column.${field.name}.variant_types")
+        val jsonHints = properties.get(s"clickhouse.column.${field.name}.json_hints")
+        if (variantTypes.isDefined && jsonHints.isDefined) {
+          throw CHClientException(
+            s"Cannot specify both 'variant_types' and 'json_hints' for column '${field.name}'; " +
+              "they map to mutually exclusive ClickHouse types (Variant(...) vs JSON(...))"
+          )
+        }
+        val chType = toClickHouseType(field.dataType, field.nullable, variantTypes, jsonHints)
+        (field.name, chType, field.getComment().map(c => s" COMMENT '$c'").getOrElse(""))
+      }
+  }
+
+  private[clickhouse] def maybeNullable(chType: String, nullable: Boolean): String =
+    if (nullable) wrapNullable(chType) else chType
+
+  private[clickhouse] def wrapNullable(chType: String): String = s"Nullable($chType)"
+}

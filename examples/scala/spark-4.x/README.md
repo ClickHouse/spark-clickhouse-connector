@@ -1,6 +1,7 @@
-# Spark 4.0 ClickHouse Connector Examples
+# Spark 4.x ClickHouse Connector Examples
 
-This directory contains example applications for debugging and testing the ClickHouse connector with Spark 4.0.
+This directory contains example applications for debugging and testing the ClickHouse connector with Spark 4.x
+(4.0 or 4.1). The commands below use 4.0; pass `-Dspark_binary_version=4.1` to run them on Spark 4.1.
 
 ## Prerequisites
 
@@ -37,8 +38,8 @@ This directory contains example applications for debugging and testing the Click
      -Dspark_binary_version=4.0
      -Dscala_binary_version=2.13
      ```
-   - Working directory: `spark-4.0/examples`
-   - Classpath: Include `clickhouse-spark-4.0_2.13` module
+   - Working directory: `examples/scala/spark-4.x`
+   - Classpath: Include the `clickhouse-spark-4.0_2.13` module (or the 4.1 one when running on Spark 4.1)
 
 3. **Set Breakpoints** in connector code:
    - Write path: `com.clickhouse.spark.write.ClickHouseWriter`
@@ -54,14 +55,14 @@ This directory contains example applications for debugging and testing the Click
 **SimpleBatchExample:**
 ```bash
 # From project root
-CH_PORT=8123 ./gradlew :examples-scala-spark-4.0:runBatch \
+CH_PORT=8123 ./gradlew :examples-scala-spark-4.x:runBatch \
   -Dspark_binary_version=4.0 -Dscala_binary_version=2.13
 ```
 
 **StreamingRateExample:**
 ```bash
 # From project root
-CH_PORT=8123 ./gradlew :examples-scala-spark-4.0:runStreaming \
+CH_PORT=8123 ./gradlew :examples-scala-spark-4.x:runStreaming \
   -Dspark_binary_version=4.0 -Dscala_binary_version=2.13
 ```
 
@@ -79,13 +80,13 @@ CH_PORT=8123 ./gradlew :examples-scala-spark-4.0:runStreaming \
 
 **SimpleBatchExample:**
 ```bash
-# From examples/scala/spark-4.0 directory
+# From examples/scala/spark-4.x directory
 CH_PORT=8123 sbt "runMain examples.SimpleBatchExample"
 ```
 
 **StreamingRateExample:**
 ```bash
-# From examples/scala/spark-4.0 directory
+# From examples/scala/spark-4.x directory
 CH_PORT=8123 sbt "runMain examples.StreamingRateExample"
 ```
 
@@ -99,7 +100,7 @@ spark-submit \
   --class examples.SimpleBatchExample \
   --master local[*] \
   --jars /path/to/clickhouse-spark-runtime-4.0_2.13-0.9.0-SNAPSHOT.jar \
-  /path/to/examples-scala-spark-4.0.jar
+  /path/to/examples-scala-spark-4.x.jar
 ```
 
 **StreamingRateExample:**
@@ -108,7 +109,7 @@ spark-submit \
   --class examples.StreamingRateExample \
   --master local[*] \
   --jars /path/to/clickhouse-spark-runtime-4.0_2.13-0.9.0-SNAPSHOT.jar \
-  /path/to/examples-scala-spark-4.0.jar
+  /path/to/examples-scala-spark-4.x.jar
 ```
 
 ## Examples Description

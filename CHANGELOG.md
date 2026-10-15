@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Support for Spark 4.1 ([#583](https://github.com/ClickHouse/spark-clickhouse-connector/pull/583)). New `spark-4.1` build profile (Scala 2.13, Java 17), published as `clickhouse-spark-runtime-4.1_2.13`. The connector code is identical to the Spark 4.0 profile.
+
 ## [0.10.1] - 2026-09-24
 
 ### Known Issues
