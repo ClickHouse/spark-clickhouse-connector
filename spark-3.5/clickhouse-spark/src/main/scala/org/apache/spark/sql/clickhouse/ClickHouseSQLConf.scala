@@ -65,7 +65,7 @@ object ClickHouseSQLConf {
         "Only effective with the arrow write format.")
       .version("0.9.0")
       .booleanConf
-      .createWithDefault(false)
+      .createWithDefault(true)
 
   val WRITE_COALESCE_TARGET_BYTES: ConfigEntry[Long] =
     buildConf("spark.clickhouse.write.coalesce.targetBytes")
