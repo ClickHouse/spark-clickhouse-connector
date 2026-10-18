@@ -206,8 +206,14 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   if (!coalesceActive) renewCompressedOutput()
 
   override def currentMetricsValues: Array[CustomTaskMetric] = Array(
-    TaskMetric(RECORDS_WRITTEN, totalRecordsWritten),
-    TaskMetric(BYTES_WRITTEN, totalSerializedBytesWritten),
+    // Include work already handed off to the coordinator but not yet credited (coalesce mode). On
+    // the direct path submittedRows/submittedBytes are always 0, so this reduces to the committed
+    // totals. In coalesce mode the authoritative credit happens in commit() (see below), AFTER
+    // Spark takes its final sample here, so without this term every pre-commit sample would read 0.
+    // Adding the in-flight term here keeps the one source of truth in commit() (no double counting):
+    // commit() resets these to 0 once it credits them, so a post-commit sample stays correct too.
+    TaskMetric(RECORDS_WRITTEN, totalRecordsWritten + submittedRows),
+    TaskMetric(BYTES_WRITTEN, totalSerializedBytesWritten + submittedBytes),
     TaskMetric(SERIALIZE_TIME, totalSerializeTime),
     TaskMetric(WRITE_TIME, totalWriteTime)
   )
@@ -229,7 +235,11 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
   private val pendingAcks = ArrayBuffer.empty[Future[Unit]]
   // Buckets this writer holds a reference on (acquired on first submit, released in close()).
   private val acquiredBuckets = scala.collection.mutable.Set.empty[ShardKey]
+  // In-flight coalesce accounting: rows and serialized bytes handed to the coordinator but not yet
+  // credited to the totals. Touched only on the task thread (doCoalescedFlush / commit /
+  // currentMetricsValues), so plain vars are safe; the background sender threads never read them.
   private var submittedRows = 0L
+  private var submittedBytes = 0L
 
   override def write(record: InternalRow): Unit = {
     val shardNum = calcShard(record)
@@ -292,6 +302,10 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     if (acquiredBuckets.add(key)) InsertCoordinator.acquire(key, ctx)
     pendingAcks += InsertCoordinator.submit(handle)
     submittedRows += currentBufferedRows
+    // Count the serialized record-batch bytes (payload size) so BYTES_WRITTEN is non-zero in
+    // coalesce mode. The direct path counts these via the observable output stream; the coalesce
+    // Arrow path bypasses that stream, so take the size from the payload we just serialized.
+    submittedBytes += payload.sizeBytes
     reset()
   }
 
@@ -339,8 +353,15 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     if (coalesceActive) {
       flush(force = currentBufferedRows > 0, currentShardNum)
       acquiredBuckets.foreach(InsertCoordinator.flush)
+      // Block until every submitted group is acked; a failed insert rethrows here (before the
+      // credit below), so we never permanently over-count on failure, matching the direct path.
       pendingAcks.foreach(f => Await.result(f, Duration.Inf))
+      // Authoritative credit: move the in-flight tallies into the totals, then zero them so a
+      // post-commit currentMetricsValues sample reports the same figure (no double counting).
       _totalRecordsWritten.add(submittedRows)
+      _totalSerializedBytesWritten.add(submittedBytes)
+      submittedRows = 0L
+      submittedBytes = 0L
       CommitMessage(s"Job[${writeJob.queryId}]: commit (coalesced)")
     } else {
       flush(currentBufferedRows > 0, currentShardNum)
