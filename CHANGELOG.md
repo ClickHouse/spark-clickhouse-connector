@@ -23,6 +23,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [0.10.2] - 2026-10-22
 
+### Known Issues
+- Reads fail against ClickHouse 26.9+ with `Invalid LZ4 magic byte`. From 26.9 the server compresses `compress=1` responses with ZSTD by default, and the bundled client-v2 0.9.5 only decodes LZ4 ([#584](https://github.com/ClickHouse/spark-clickhouse-connector/pull/584)).
+
 ### Security
 - The format API (`format("clickhouse")` reads and writes) no longer logs the connection options at INFO. On Spark 3.3–3.5, v0.10.0 and v0.10.1 wrote the plaintext `password` option to the Spark driver log on every schema inference. Users of those versions should treat passwords that reached their driver logs as exposed.
 
