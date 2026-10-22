@@ -33,7 +33,6 @@ import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonR
 import com.clickhouse.spark.spec._
 
 import java.time.ZoneId
-import java.util.concurrent.atomic.AtomicBoolean
 import scala.util.control.NonFatal
 
 class ClickHouseScanBuilder(
@@ -190,8 +189,6 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
 
   implicit private val tz: ZoneId = scanJob.tz
 
-  private val usageStatsReported = new AtomicBoolean(false)
-
   private var runtimeFilters: Array[Filter] = Array.empty
 
   val database: String = scanJob.database
@@ -255,13 +252,11 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
   override def outputPartitioning(): Partitioning = new UnknownPartitioning(inputPartitions.length)
 
   override def createReaderFactory: PartitionReaderFactory = {
-    // may run more than once per scan (e.g. AQE reuse); report at most one read event per scan
-    if (!usageStatsReported.getAndSet(true)) {
-      // never runs on executors, where the @transient sink would be null; Option is just-in-case
-      Option(userAnalytics).foreach(
-        _.reportJobRun(UserAnalyticsEvents.readEvent(scanJob), scanJob.readOptions.sendAnonymousUsageStats)
-      )
-    }
+    // may run more than once per scan (e.g. AQE reuse); the sink reports each table once
+    // never runs on executors, where the @transient sink would be null; Option is just-in-case
+    Option(userAnalytics).foreach(
+      _.reportJobRun(UserAnalyticsEvents.readEvent(scanJob), scanJob.readOptions.sendAnonymousUsageStats)
+    )
     this
   }
 

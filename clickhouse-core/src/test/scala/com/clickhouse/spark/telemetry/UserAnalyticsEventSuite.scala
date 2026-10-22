@@ -14,6 +14,7 @@
 
 package com.clickhouse.spark.telemetry
 
+import com.clickhouse.spark.spec.NodeSpec
 import org.scalatest.funsuite.AnyFunSuite
 
 class UserAnalyticsEventSuite extends AnyFunSuite {
@@ -39,5 +40,20 @@ class UserAnalyticsEventSuite extends AnyFunSuite {
   test("parseConnectorVersion - plain core-jar version is kept as is") {
     assert(UserAnalyticsEvent.parseConnectorVersion("0.10.1") === "0.10.1")
     assert(UserAnalyticsEvent.parseConnectorVersion("0.10.1-SNAPSHOT") === "0.10.1-SNAPSHOT")
+  }
+
+  test("clientVersion is the client-v2 runtime version") {
+    assert(UserAnalyticsEvent.clientVersion.matches("""\d+\.\d+\.\d+.*"""))
+  }
+
+  test("serverVersion - looked up per server, blank versions ignored") {
+    // a host of its own: the registry is JVM-wide
+    val node = NodeSpec("server-version-suite", Some(8123))
+    UserAnalyticsEvent.recordServerVersion(node, " ")
+    assert(UserAnalyticsEvent.serverVersion(node) === None)
+    UserAnalyticsEvent.recordServerVersion(node, "25.3.14.14")
+    assert(UserAnalyticsEvent.serverVersion(node) === Some("25.3.14.14"))
+    assert(UserAnalyticsEvent.serverVersion(NodeSpec("server-version-suite", Some(8124))) === None)
+    assert(UserAnalyticsEvent.serverVersion(NodeSpec("server-version-suite")) === None) // no port: must not throw
   }
 }

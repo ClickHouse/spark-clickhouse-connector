@@ -17,7 +17,7 @@ package com.clickhouse.spark.telemetry
 /** Creates the [[UserAnalytics]] sinks the calling side passes into the read/write paths. */
 private[spark] object UserAnalyticsFactory {
 
-  /** The sink the connector ships with: a best-effort HTTP GET per event. */
+  /** The sink the connector ships with: a best-effort HTTP GET per event type and table, once per JVM. */
   def create(): UserAnalytics = createHttpGet()
 
   def createHttpGet(): UserAnalytics = new HttpGetUserAnalytics()

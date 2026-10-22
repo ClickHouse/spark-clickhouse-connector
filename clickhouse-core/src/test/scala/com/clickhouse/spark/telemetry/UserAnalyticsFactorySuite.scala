@@ -25,7 +25,10 @@ class UserAnalyticsFactorySuite extends AnyFunSuite {
       appNameHash = None,
       tableId = None,
       format = "json",
-      engine = "MergeTree"
+      engine = "MergeTree",
+      convertLocal = false,
+      serverVersion = None,
+      streaming = false
     )
 
   test("create returns the shipped default: the HTTP GET sink") {

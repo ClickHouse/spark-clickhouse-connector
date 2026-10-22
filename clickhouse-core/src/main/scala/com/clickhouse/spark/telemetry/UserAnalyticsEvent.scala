@@ -14,10 +14,13 @@
 
 package com.clickhouse.spark.telemetry
 
+import com.clickhouse.client.api.Client
 import com.clickhouse.spark.Utils
+import com.clickhouse.spark.spec.NodeSpec
 
 import java.nio.charset.StandardCharsets
 import java.security.MessageDigest
+import java.util.concurrent.ConcurrentHashMap
 
 /**
  * The metadata carried by one anonymous usage event: what happened (read/write), the versions
@@ -31,7 +34,10 @@ case class UserAnalyticsEvent(
   appNameHash: Option[String],
   tableId: Option[String],
   format: String,
-  engine: String
+  engine: String,
+  convertLocal: Boolean,
+  serverVersion: Option[String],
+  streaming: Boolean
 ) {
   import UserAnalyticsEvent._
 
@@ -52,10 +58,14 @@ case class UserAnalyticsEvent(
       "event_type" -> event,
       "connector_platform_version" -> sparkVersion,
       "language_version" -> sys.props.getOrElse("java.version", UNKNOWN),
+      "client_version" -> clientVersion,
+      "server_version" -> serverVersion.getOrElse(UNKNOWN),
       "os" -> sys.props.getOrElse("os.name", UNKNOWN),
       "wire_format" -> format,
       "table_engine" -> engine,
+      "convert_local" -> convertLocal.toString,
       "run_type" -> (if (isTestRun) "test" else UNKNOWN),
+      "execution_mode" -> (if (streaming) "streaming" else UNKNOWN),
       "managed_platform" -> (runtimeFromStack orElse runtimeFromEnvironment).map(_.toLowerCase).getOrElse(UNKNOWN),
       "workflow_hash" -> appNameHash.getOrElse(UNKNOWN),
       "table_id" -> tableId.getOrElse(UNKNOWN)
@@ -88,6 +98,21 @@ object UserAnalyticsEvent {
       case Array(_, _, connector, _*) => connector
       case _ => implementationVersion
     }
+
+  // from client-v2 itself, not the manifest: in the fat jar every package reports the connector's version
+  private[spark] lazy val clientVersion: String =
+    Option(Client.clientVersion).filter(_.nonEmpty).getOrElse(UNKNOWN)
+
+  // filled by the catalog's connection check, so events need no query of their own; the key never leaves the driver
+  private val serverVersions = new ConcurrentHashMap[(String, Option[Int], Option[Int]), String]
+
+  private[spark] def recordServerVersion(node: NodeSpec, version: String): Unit =
+    Option(version).map(_.trim).filter(_.nonEmpty).foreach(serverVersions.put(serverKey(node), _))
+
+  private[spark] def serverVersion(node: NodeSpec): Option[String] = Option(serverVersions.get(serverKey(node)))
+
+  // ports as options: `NodeSpec.port` throws when the protocol's port is unset
+  private def serverKey(node: NodeSpec): (String, Option[Int], Option[Int]) = (node.host, node.http_port, node.tcp_port)
 
   // walks class loaders and every thread name, so it stays off the reporting thread; once per JVM
   private lazy val runtimeFromEnvironment: Option[String] =

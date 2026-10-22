@@ -61,7 +61,10 @@ private object UserAnalyticsRuntimeSuite {
         appNameHash = None,
         tableId = None,
         format = "json",
-        engine = "MergeTree"
+        engine = "MergeTree",
+        convertLocal = false,
+        serverVersion = None,
+        streaming = false
       )
   }
 }

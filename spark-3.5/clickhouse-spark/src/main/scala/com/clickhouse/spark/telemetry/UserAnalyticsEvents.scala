@@ -15,6 +15,7 @@
 package com.clickhouse.spark.telemetry
 
 import com.clickhouse.spark.read.ScanJobDescription
+import com.clickhouse.spark.spec.NodeSpec
 import com.clickhouse.spark.write.WriteJobDescription
 import org.apache.spark.SPARK_VERSION
 import org.apache.spark.sql.SparkSession
@@ -24,27 +25,36 @@ import scala.util.Try
 /** Extracts [[UserAnalyticsEvent]] metadata from Spark and the connector's job descriptions. */
 object UserAnalyticsEvents {
 
+  // Spark's StreamExecution.QUERY_ID_KEY: set on the thread running each micro-batch, `foreachBatch` included
+  private val STREAMING_QUERY_ID = "sql.streaming.queryId"
+
   def readEvent(scanJob: ScanJobDescription): UserAnalyticsEvent =
     event(
       UserAnalyticsEvent.EVENT_READ,
+      scanJob.node,
       scanJob.tableSpec.uuid,
       scanJob.tableSpec.engine,
-      scanJob.readOptions.format
+      scanJob.readOptions.format,
+      scanJob.readOptions.convertDistributedToLocal
     )
 
   def writeEvent(writeJob: WriteJobDescription): UserAnalyticsEvent =
     event(
       UserAnalyticsEvent.EVENT_WRITE,
+      writeJob.node,
       writeJob.tableSpec.uuid,
       writeJob.tableSpec.engine,
-      writeJob.writeOptions.format
+      writeJob.writeOptions.format,
+      writeJob.writeOptions.convertDistributedToLocal
     )
 
   private def event(
     eventType: String,
+    node: NodeSpec,
     tableUuid: String,
     engine: String,
-    format: String
+    format: String,
+    convertLocal: Boolean
   ): UserAnalyticsEvent =
     UserAnalyticsEvent(
       event = eventType,
@@ -52,6 +62,9 @@ object UserAnalyticsEvents {
       appNameHash = Try(SparkSession.active.sparkContext.appName).toOption.map(UserAnalyticsEvent.sha256Hex16),
       tableId = UserAnalyticsEvent.tableId(tableUuid),
       format = format,
-      engine = engine
+      engine = engine,
+      convertLocal = convertLocal,
+      serverVersion = UserAnalyticsEvent.serverVersion(node),
+      streaming = Try(SparkSession.active.sparkContext.getLocalProperty(STREAMING_QUERY_ID)).toOption.exists(_ != null)
     )
 }

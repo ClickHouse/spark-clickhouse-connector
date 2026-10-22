@@ -21,16 +21,19 @@ import com.clickhouse.spark.write.{ClickHouseBatchWrite, WriteJobDescription}
 import com.clickhouse.spark.telemetry.UserAnalyticsFactory
 import com.clickhouse.spark.{ClickHouseCatalog, ClickHouseTable}
 import org.apache.spark.SPARK_VERSION
+import org.apache.spark.sql.DataFrame
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.SEND_ANONYMOUS_USAGE_STATS
 import org.apache.spark.sql.clickhouse.single.SparkClickHouseSingleTest
 import org.apache.spark.sql.clickhouse.{ReadOptions, WriteOptions}
 import org.apache.spark.sql.connector.catalog.Identifier
 import org.apache.spark.sql.connector.write.PhysicalWriteInfo
+import org.apache.spark.sql.execution.streaming.MemoryStream
 import org.apache.spark.sql.types.StructType
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.scalatest.tags.Cloud
 
 import java.nio.charset.StandardCharsets
+import java.nio.file.Files
 import java.security.MessageDigest
 import java.util.UUID
 
@@ -68,6 +71,16 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
       uuidAndEngine = (row.get("uuid").asText, row.get("engine").asText)
     }
     uuidAndEngine
+  }
+
+  /** Ground truth fetched from the live server. */
+  private def liveServerVersion(): String = {
+    var version: String = null
+    withNodeClient() { client =>
+      val output = client.syncQueryAndCheckOutputJSONEachRow("SELECT version() AS version")
+      version = output.records.head.get("version").asText
+    }
+    version
   }
 
   private def scanJob(table: ClickHouseTable, readOptions: ReadOptions): ScanJobDescription =
@@ -120,13 +133,12 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
 
       val table = loadClickHouseTable(db, tbl)
       val (uuid, engine) = tableUuidAndEngine(db, tbl)
+      val serverVersion = liveServerVersion()
       assert(table.spec.uuid === uuid)
 
       val enabled = options(SEND_ANONYMOUS_USAGE_STATS.key -> "true") // the shared IT conf turns reporting off
       val readCapture = UserAnalyticsFactory.createCapture()
-      val scan = new ClickHouseBatchScan(scanJob(table, new ReadOptions(enabled)), readCapture)
-      scan.createReaderFactory
-      scan.createReaderFactory // e.g. AQE stage reuse: still at most one event per scan
+      new ClickHouseBatchScan(scanJob(table, new ReadOptions(enabled)), readCapture).createReaderFactory
       assert(readCapture.events.map(_.event) === Seq("read"))
 
       val writeCapture = UserAnalyticsFactory.createCapture()
@@ -142,17 +154,47 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
         assert(event.appNameHash === Some(expectedSha256Hex16(spark.sparkContext.appName)))
         assert(event.tableId === Some(expectedTableId(uuid)))
         assert(event.engine === engine)
+        assert(event.serverVersion === Some(serverVersion)) // recorded by the catalog's connection check
 
-        // this suite runs against the fat runtime jar: the version must survive its composite
+        // this suite runs against the fat runtime jar: the versions must survive its composite
         // `<spark>_<scala>_<connector>` manifest, so no `_` may leak through
         val params = event.toParams.toMap
         assert(params("connector_version") !== "unknown")
         assert(!params("connector_version").contains("_"))
+        assert(params("client_version").matches("""\d+\.\d+\.\d+.*"""))
+        assert(!params("client_version").contains("_"))
 
         assert(params("language_version") === sys.props("java.version"))
+        assert(params("execution_mode") === "unknown") // built on the test thread, not a micro-batch
       }
       assert(readEvent.format === spark.conf.get("spark.clickhouse.read.format"))
       assert(writeEvent.format === spark.conf.get("spark.clickhouse.write.format"))
+      assert(readEvent.convertLocal.toString === spark.conf.get("spark.clickhouse.read.distributed.convertLocal"))
+      assert(writeEvent.convertLocal.toString === spark.conf.get("spark.clickhouse.write.distributed.convertLocal"))
+    }
+  }
+
+  test("an event reported from a foreachBatch micro-batch is flagged as streaming") {
+    withSimpleTable("usage_stats_db", "usage_stats_streaming", writeData = false) { (db, tbl) =>
+      val table = loadClickHouseTable(db, tbl)
+      val enabled = options(SEND_ANONYMOUS_USAGE_STATS.key -> "true")
+      val writeCapture = UserAnalyticsFactory.createCapture()
+      // runs on Spark's micro-batch thread, where a user's foreachBatch write plans its write
+      val perBatch: (DataFrame, Long) => Unit = (_, _) =>
+        new ClickHouseBatchWrite(writeJob(table, new WriteOptions(enabled)), isOverwrite = false, writeCapture)
+          .createBatchWriterFactory(onePartition)
+
+      import testImplicits._
+      val input = MemoryStream[Int]
+      input.addData(1)
+      val query = input.toDF().writeStream
+        .foreachBatch(perBatch)
+        .option("checkpointLocation", Files.createTempDirectory("usage-stats-streaming").toString)
+        .start()
+      try query.processAllAvailable()
+      finally query.stop()
+
+      assert(writeCapture.events.map(_.toParams.toMap.apply("execution_mode")) === Seq("streaming"))
     }
   }
 
