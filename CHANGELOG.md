@@ -23,6 +23,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 - Anonymous usage statistics ([#576](https://github.com/ClickHouse/spark-clickhouse-connector/pull/576)). The connector now sends a lightweight, anonymous usage event to ClickHouse's telemetry endpoint when Spark plans a read from ClickHouse or executes a write to it (at most once per scan or write), carrying only the connector, Spark, and Java versions, the OS name, coarse runtime facts (platform, table engine, wire format, test-run flag), a one-way hash of the Spark application name, and a truncated random table UUID — never data, names, hostnames, or credentials. Events are sent asynchronously and best-effort, so they can never fail or slow down a job. Opt out with the new SQL config `spark.clickhouse.sendAnonymousUsageStats=false` (default `true`) or the standard `DO_NOT_TRACK` environment variable. Applies to all Spark profiles (3.3/3.4/3.5/4.0).
+
+## [0.10.2] - 2026-10-22
+
+### Security
+- The format API (`format("clickhouse")` reads and writes) no longer logs the connection options at INFO. On Spark 3.3–3.5, v0.10.0 and v0.10.1 wrote the plaintext `password` option to the Spark driver log on every schema inference. Users of those versions should treat passwords that reached their driver logs as exposed.
+
+## [0.10.1] - 2026-09-24
+
+### Known Issues
+- Reads fail against ClickHouse 26.9+ with `Invalid LZ4 magic byte`. From 26.9 the server compresses `compress=1` responses with ZSTD by default, and the bundled client-v2 0.9.5 only decodes LZ4 ([#584](https://github.com/ClickHouse/spark-clickhouse-connector/pull/584)).
+
+### Added
+- Per-write ClickHouse Java client insert options through `spark.clickhouse.write.option.<name>` ([#553](https://github.com/ClickHouse/spark-clickhouse-connector/pull/553)), including server settings such as `clickhouse_setting_log_comment`.
+- `clickhouse.column.<name>.json_hints` table property for Spark 4.0 `VariantType` columns ([#561](https://github.com/ClickHouse/spark-clickhouse-connector/pull/561)). Maps the column to a ClickHouse `JSON(...)` type with typed paths, `SKIP` paths and parameters. Mutually exclusive with `variant_types`.
 - Additional write metrics ([#558](https://github.com/ClickHouse/spark-clickhouse-connector/pull/558)): number of flushes (batch inserts), failed write attempts (including retried ones), min/max flushed batch size (rows), a batch-fill distribution (four buckets of flushed batch size relative to the configured `batchSize`), and clients connected to ClickHouse, across all Spark profiles (3.3/3.4/3.5/4.0). Write metrics now also account for the final batch flushed during task commit, so `recordsWritten` no longer undercounts by the per-task remainder.
 - Top-N pushdown for read scans ([#543](https://github.com/ClickHouse/spark-clickhouse-connector/pull/543)). `ORDER BY ... LIMIT n` queries are now pushed down to ClickHouse (`SupportsPushDownTopN`) across all Spark profiles (3.3/3.4/3.5/4.0). Each input partition runs its own local top-N and Spark performs a final global merge across partitions. Gated by the new SQL config `spark.clickhouse.read.pushdown.topN` (default `true`).
 - Configurable ClickHouse query timeout ([#542](https://github.com/ClickHouse/spark-clickhouse-connector/pull/542)). Added the SQL config `spark.clickhouse.client.queryTimeout` (default `60s`) to control the timeout for ClickHouse client query and ping operations across the catalog, read, and write paths.
@@ -31,6 +45,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 - Reads that plan a single input partition (e.g. a view or an unpartitioned table) now log a warning, since single-partition reads may impact read performance ([#575](https://github.com/ClickHouse/spark-clickhouse-connector/pull/575)). Also stopped logging the spurious "Unknown table engine" warning when the table is a view (its `engine_full` is empty by design). Applies to all Spark profiles (3.3/3.4/3.5/4.0).
 
 ### Fixed
+- Runtime statistics no longer take part in a ClickHouse table's identity ([#579](https://github.com/ClickHouse/spark-clickhouse-connector/pull/579)). `ClickHouseTable` is a case class, so its generated equality included `total_rows`, `total_bytes` and the `lifetime_*` counters from `system.tables`, which change as data commits. Spark finds cached data by comparing plans and a `DataSourceV2Relation` carries the `Table`, so two loads of the same table taken either side of a write compared unequal and silently defeated plan reuse — `CACHE TABLE` lookups missing, reused exchanges and self-join detection not firing. Equality and `hashCode` now use only the stable fields; the statistics remain available in `properties()`. Applies to all Spark profiles (3.3/3.4/3.5/4.0).
 - Sort rows by shard number instead of by sharding key value when writing to a Distributed table with `spark.clickhouse.write.distributed.convertLocal=true` ([#562](https://github.com/ClickHouse/spark-clickhouse-connector/pull/562)), on Spark profiles 3.4/3.5/4.0 (Spark 3.3 cannot resolve catalog functions in write sort orders). Consecutive sharding key values map to different shards, so the previous key-value sort forced the writer to flush a tiny batch at almost every distinct key boundary, producing roughly one INSERT per distinct sharding key value instead of about one INSERT per shard per Spark partition. Writes through the session catalog-less `TableProvider` path (`format("clickhouse")`) keep the previous key-value sort, since Spark cannot resolve the shard-number function there. Shard routing tables (`ShardUtils.calcShard`) are now precomputed once per cluster instead of rebuilt per call, keeping the shard-number sort cheap and speeding up per-row shard routing in the writer.
 - Stopped leaking the connector-only `ssl` option into the clickhouse-java client ([#563](https://github.com/ClickHouse/spark-clickhouse-connector/pull/563)). `option.ssl` (which selects the `https://`/`http://` URL scheme) is now read into a first-class `NodeSpec.ssl` field and stripped from the options forwarded to the client. As a failsafe, the forwarded options are filtered to those the v2 client recognizes and any dropped key is logged, so connector-only settings and typos (e.g. `ssl_mode`) no longer trigger `Unknown and unmapped config properties` warnings. No behavior change — SSL is still driven by the URL scheme.
 - Tables containing columns with unsupported ClickHouse types (e.g. `AggregateFunction`, `Point`) no longer fail every query and write during analysis ([#457](https://github.com/ClickHouse/spark-clickhouse-connector/issues/457)). Such columns now appear in the Spark table schema with a placeholder `unsupported` type (the original ClickHouse type is kept in the field metadata under `clickhouse.type`), so operations touching only supported columns succeed, while reading an unsupported column — explicitly or via `SELECT *` — or writing to it fails with an error listing the offending columns and their ClickHouse types. The columns are also listed in the `unsupported.columns` table property (visible via `SHOW TBLPROPERTIES` / `DESCRIBE TABLE EXTENDED`). Applies to all Spark profiles (3.3/3.4/3.5/4.0).
@@ -42,7 +57,6 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [0.10.0] - 2026-01-19
 
 ### Added
-- Support per-write ClickHouse Java client insert options through `spark.clickhouse.write.option.<name>`, including server settings such as `clickhouse_setting_log_comment`.
 - Variant type support ([#456](https://github.com/ClickHouse/spark-clickhouse-connector/pull/456)). Added support for Spark 4.0's `VariantType` mapped to ClickHouse's `JSON`/`Variant` type. Requires Spark 4.0+ and ClickHouse 25.3+.
 - TableProvider API support ([#471](https://github.com/ClickHouse/spark-clickhouse-connector/pull/471)). Added `ClickHouseTableProvider` implementation enabling format-based access pattern (`.format("clickhouse")`), making the connector compatible with Databricks Unity Catalog and other environments that require TableProvider API.
 - Support for macros in cluster names ([#400](https://github.com/ClickHouse/spark-clickhouse-connector/pull/400)). The connector now resolves ClickHouse macros (e.g., `{cluster}`) in Distributed table cluster names, allowing dynamic cluster resolution based on node-specific macro definitions.
@@ -141,7 +155,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - gzip and zstd write compression support has been removed (currently supported codecs are `none`, `lz4` (default))
 
-[Unreleased]: https://github.com/ClickHouse/spark-clickhouse-connector/compare/v0.10.0...HEAD
+[Unreleased]: https://github.com/ClickHouse/spark-clickhouse-connector/compare/v0.10.2...HEAD
+[0.10.2]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.10.2
+[0.10.1]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.10.1
 [0.10.0]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.10.0
 [0.9.0]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.9.0
 [0.8.1]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.8.1

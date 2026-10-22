@@ -20,6 +20,8 @@ import org.apache.spark.sql.clickhouse.SparkTest
 import org.apache.spark.sql.functions.month
 import org.apache.spark.sql.types.StructType
 import org.scalatest.BeforeAndAfterAll
+import org.scalatest.concurrent.Eventually._
+import org.scalatest.time.SpanSugar._
 
 import java.util.UUID
 
@@ -33,7 +35,17 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
     s"test_db_${timestamp}_${uuidPrefix}"
   }
 
+  protected val READ_SETTINGS_KEY = "spark.clickhouse.read.settings"
+
   protected def useSuiteLevelDatabase: Boolean = isCloud
+
+  /**
+   * Cloud's multi-replica compute can serve a read from a replica whose part or mutation cache has
+   * not yet caught up with a recent write or DELETE. Retries `body` until reads converge, and runs
+   * it once unchanged when not on Cloud.
+   */
+  protected def eventuallyOnCloud(body: => Unit): Unit =
+    if (isCloud) eventually(timeout(15.seconds), interval(500.millis))(body) else body
 
   override def beforeAll(): Unit = {
     super.beforeAll()
@@ -85,6 +97,26 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
     .set("spark.clickhouse.write.write.repartitionNum", "0")
     .set("spark.clickhouse.read.format", "json")
     .set("spark.clickhouse.write.format", "json")
+    .setAll(cloudReadSettings)
+
+  /**
+   * On Cloud a read may be routed to a replica that has not yet caught up with a just-committed
+   * insert, silently returning an empty table. Only replicated engines honour the setting.
+   */
+  protected def cloudReadSettingValues: Seq[String] =
+    if (isCloud) Seq("select_sequential_consistency=1") else Nil
+
+  private def cloudReadSettings: Iterable[(String, String)] =
+    if (cloudReadSettingValues.isEmpty) Nil
+    else Seq(READ_SETTINGS_KEY -> cloudReadSettingValues.mkString(", "))
+
+  /**
+   * Read settings for a `withSQLConf(READ_SETTINGS_KEY -> ...)` override. The conf is single-valued,
+   * so overriding it outright would drop [[cloudReadSettingValues]] and let the read land on a
+   * replica that has not caught up.
+   */
+  protected def readSettingsWith(extra: String*): String =
+    (cloudReadSettingValues ++ extra).mkString(", ")
 
   override def cmdRunnerOptions: Map[String, String] = Map(
     "host" -> clickhouseHost,
