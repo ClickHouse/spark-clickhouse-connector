@@ -106,6 +106,10 @@ jobs:
           }
           EOF
 
+      # A random password for the test container, so the leak check below has something to look for
+      - name: Generate ClickHouse password
+        run: echo "CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
+
       - name: Run tests against the built Java client
         run: >-
           ./gradlew clean test --no-daemon --refresh-dependencies
@@ -116,8 +120,15 @@ jobs:
           -Pclickhouse_client_v2_version=${{ steps.build-java.outputs.version }}
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
 
+      - name: Check logs for credentials
+        id: check-credentials
+        if: always()
+        uses: ./.github/actions/check-logs-for-credentials
+        with:
+          password: ${{ env.CLICKHOUSE_PASSWORD }}
+
       - name: Upload logs
-        if: failure()
+        if: failure() && steps.check-credentials.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: log-java-snapshot

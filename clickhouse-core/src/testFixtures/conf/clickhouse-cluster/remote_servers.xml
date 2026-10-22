@@ -21,10 +21,14 @@
                 <replica>
                     <host>clickhouse-s1r1</host>
                     <port>9000</port>
+                    <user>default</user>
+                    <password from_env="CH_TEST_PASSWORD"></password>
                 </replica>
                 <replica>
                     <host>clickhouse-s1r2</host>
                     <port>9000</port>
+                    <user>default</user>
+                    <password from_env="CH_TEST_PASSWORD"></password>
                 </replica>
             </shard>
             <shard>
@@ -33,10 +37,14 @@
                 <replica>
                     <host>clickhouse-s2r1</host>
                     <port>9000</port>
+                    <user>default</user>
+                    <password from_env="CH_TEST_PASSWORD"></password>
                 </replica>
                 <replica>
                     <host>clickhouse-s2r2</host>
                     <port>9000</port>
+                    <user>default</user>
+                    <password from_env="CH_TEST_PASSWORD"></password>
                 </replica>
             </shard>
         </default>
@@ -45,24 +53,32 @@
                 <replica>
                     <host>clickhouse-s1r1</host>
                     <port>9000</port>
+                    <user>default</user>
+                    <password from_env="CH_TEST_PASSWORD"></password>
                 </replica>
             </shard>
             <shard>
                 <replica>
                     <host>clickhouse-s1r2</host>
                     <port>9000</port>
+                    <user>default</user>
+                    <password from_env="CH_TEST_PASSWORD"></password>
                 </replica>
             </shard>
             <shard>
                 <replica>
                     <host>clickhouse-s2r1</host>
                     <port>9000</port>
+                    <user>default</user>
+                    <password from_env="CH_TEST_PASSWORD"></password>
                 </replica>
             </shard>
             <shard>
                 <replica>
                     <host>clickhouse-s2r2</host>
                     <port>9000</port>
+                    <user>default</user>
+                    <password from_env="CH_TEST_PASSWORD"></password>
                 </replica>
             </shard>
         </single_replica>

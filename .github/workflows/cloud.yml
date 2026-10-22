@@ -101,11 +101,21 @@ jobs:
           -Dspark_binary_version=${{ matrix.spark }}
           -Dscala_binary_version=${{ matrix.scala }}
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+      # pull_request_target checks out the PR head, so the action is missing on PRs
+      # branched before it existed. Skipping the check there also skips the upload.
+      - name: Check logs for credentials
+        id: check-credentials
+        if: always() && hashFiles('.github/actions/check-logs-for-credentials/action.yml') != ''
+        uses: ./.github/actions/check-logs-for-credentials
+        with:
+          user: ${{ env.CLICKHOUSE_CLOUD_USER || 'default' }}
+          password: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
       - name: Upload test logs
-        if: failure()
+        if: failure() && steps.check-credentials.outcome == 'success'
         uses: actions/upload-artifact@v4
         with:
           name: log-clickhouse-cloud-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}-java-${{ matrix.java }}
+          retention-days: 7
           path: |
             **/build/unit-tests.log
             log/**

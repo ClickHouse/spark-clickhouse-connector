@@ -68,8 +68,6 @@ class ClickHouseTableProvider extends TableProvider
    * - timezone: Timezone (default: "server")
    */
   override def inferSchema(options: CaseInsensitiveStringMap): StructType = {
-    log.info(s"Inferring schema for ClickHouse with options: ${options.asCaseSensitiveMap()}")
-
     // Infer schema from table using catalog
     val catalog = createCatalog(options)
     val identifier = extractIdentifier(options)

@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Security
+- The format API (`format("clickhouse")` reads and writes) no longer logs the connection options at INFO. On Spark 3.3–3.5, v0.10.0 and v0.10.1 wrote the plaintext `password` option to the Spark driver log on every schema inference. Users of those versions should treat passwords that reached their driver logs as exposed.
+
 ## [0.10.1] - 2026-09-24
 
 ### Known Issues

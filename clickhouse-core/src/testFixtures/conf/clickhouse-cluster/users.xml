@@ -16,8 +16,8 @@
     <!-- Users and ACL. -->
     <users>
         <default>
-            <!-- Password could be empty. If so, any password is allowed. -->
-            <password></password>
+            <!-- Set by the test harness from CLICKHOUSE_PASSWORD; empty when unset. -->
+            <password from_env="CH_TEST_PASSWORD"></password>
 
             <!-- Or you can specify password hash (see authentication methods section). -->
             <!-- <password_sha256_hex></password_sha256_hex> -->
