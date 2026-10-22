@@ -21,7 +21,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
-## [0.10.2]
+## [0.10.2] - 2026-10-22
 
 ### Security
 - The format API (`format("clickhouse")` reads and writes) no longer logs the connection options at INFO. On Spark 3.3–3.5, v0.10.0 and v0.10.1 wrote the plaintext `password` option to the Spark driver log on every schema inference. Users of those versions should treat passwords that reached their driver logs as exposed.
@@ -152,7 +152,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ### Removed
 - gzip and zstd write compression support has been removed (currently supported codecs are `none`, `lz4` (default))
 
-[Unreleased]: https://github.com/ClickHouse/spark-clickhouse-connector/compare/v0.10.1...HEAD
+[Unreleased]: https://github.com/ClickHouse/spark-clickhouse-connector/compare/v0.10.2...HEAD
 [0.10.2]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.10.2
 [0.10.1]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.10.1
 [0.10.0]: https://github.com/ClickHouse/spark-clickhouse-connector/releases/tag/v0.10.0
