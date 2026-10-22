@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Anonymous usage statistics ([#576](https://github.com/ClickHouse/spark-clickhouse-connector/pull/576)). The connector now sends a lightweight, anonymous usage event to ClickHouse's telemetry endpoint when Spark plans a read from ClickHouse or executes a write to it (at most one read and one write event per table per Spark application), carrying only the connector, ClickHouse Java client, ClickHouse server, Spark, and Java versions, the OS name, coarse runtime facts (platform, table engine, wire format, `convertLocal` setting, test-run and streaming flags), a one-way hash of the Spark application name, and a truncated random table UUID — never data, names, hostnames, or credentials. Events are sent asynchronously and best-effort, so they can never fail or slow down a job. Opt out with the new SQL config `spark.clickhouse.sendAnonymousUsageStats=false` (default `true`) or the standard `DO_NOT_TRACK` environment variable. Applies to all Spark profiles (3.3/3.4/3.5/4.0).
+
 ## [0.10.2] - 2026-10-22
 
 ### Security

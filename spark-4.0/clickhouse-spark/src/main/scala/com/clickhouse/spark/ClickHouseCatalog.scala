@@ -37,11 +37,13 @@ import com.clickhouse.spark.func.{
 import com.clickhouse.spark.spec.{ClusterSpec, DistributedEngineSpec, NodeSpec, TableEngineUtils}
 import com.clickhouse.spark.func._
 import com.clickhouse.spark.client.NodeClient
+import com.clickhouse.spark.telemetry.UserAnalyticsEvent
 import com.clickhouse.spark.spec._
 
 import java.time.ZoneId
 import java.util
 import scala.collection.JavaConverters._
+import scala.util.Try
 
 class ClickHouseCatalog extends TableCatalog
     with SupportsNamespaces
@@ -80,7 +82,9 @@ class ClickHouseCatalog extends TableCatalog
     this.currentDb = nodeSpec.database
     this.nodeClient = NodeClient(nodeSpec, clientQueryTimeoutMs)
 
-    this.nodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT 1")
+    // also the connection check; the version feeds usage analytics
+    val versionOutput = this.nodeClient.syncQueryAndCheckOutputJSONEachRow("SELECT version() AS version")
+    Try(versionOutput.records.head.get("version").asText).foreach(UserAnalyticsEvent.recordServerVersion(nodeSpec, _))
 
     this.tz = catalogTimeZone(options) match {
       case tz if tz == null || tz.isEmpty || tz.toLowerCase == "server" =>
