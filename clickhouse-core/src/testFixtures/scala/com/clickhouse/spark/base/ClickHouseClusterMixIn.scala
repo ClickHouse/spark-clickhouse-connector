@@ -35,8 +35,6 @@ trait ClickHouseClusterMixIn extends AnyFunSuite with ForAllTestContainer {
 
   protected val clickhouseVersion: ClickHouseVersion = ClickHouseVersion.of(CLICKHOUSE_IMAGE.split(":").last)
 
-  def clickhousePassword: String = Utils.load("CLICKHOUSE_PASSWORD", "")
-
   test("clickhouse cluster up") {
     assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s1r1").isDefined)
     assert(sys.props.get(s"${PREFIX}_HOST_clickhouse-s1r1_PORT_$CLICKHOUSE_HTTP_PORT").isDefined)
@@ -70,7 +68,7 @@ trait ClickHouseClusterMixIn extends AnyFunSuite with ForAllTestContainer {
       // s2r2
       ExposedService("clickhouse-s2r2", CLICKHOUSE_HTTP_PORT) ::
       ExposedService("clickhouse-s2r2", CLICKHOUSE_TCP_PORT) :: Nil,
-    env = Map("CLICKHOUSE_IMAGE" -> CLICKHOUSE_IMAGE, "CLICKHOUSE_PASSWORD" -> clickhousePassword)
+    env = Map("CLICKHOUSE_IMAGE" -> CLICKHOUSE_IMAGE)
   ).createContainer()
 
   // format: off

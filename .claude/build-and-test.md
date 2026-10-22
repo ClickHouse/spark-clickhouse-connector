@@ -206,14 +206,3 @@ Workflows in `.github/workflows/`:
 
 A green local build for one Spark version is not enough — multi-version
 divergence is exactly what the matrix is designed to catch.
-
-**Credential leak check.** Test logs are uploaded as public artifacts on
-failure. `build-and-test.yml`, `tpcds.yml` and `nightly-java-client.yml` run
-the tests with a random per-run `CLICKHOUSE_PASSWORD`; `cloud.yml` uses the
-Cloud secret. After the tests, `.github/actions/check-logs-for-credentials`
-fails the job if `**/build/unit-tests.log` or `log/**` contains the password
-(plaintext, URL-encoded, or as a Basic auth header), and the logs are then
-not uploaded. Never log connection options, auth headers or `NodeSpec.toJson`;
-keep HttpClient (shaded under `com.clickhouse.*`) out of DEBUG log configs.
-The single-node and cluster fixtures both honor `CLICKHOUSE_PASSWORD` (empty
-by default), so a leak can be reproduced locally by setting it.

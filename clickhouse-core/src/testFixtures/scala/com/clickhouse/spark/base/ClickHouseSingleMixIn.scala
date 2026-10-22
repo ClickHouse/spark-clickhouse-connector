@@ -66,8 +66,6 @@ trait ClickHouseSingleMixIn extends AnyFunSuite with BeforeAndAfterAll with ForA
       ) {
         // TODO: remove this workaround after https://github.com/testcontainers/testcontainers-java/pull/5666
         override def getDriverClassName: String = "com.clickhouse.jdbc.ClickHouseDriver"
-        // The readiness check logs in with getPassword, which is hardcoded to "" upstream
-        override def getPassword: String = CLICKHOUSE_PASSWORD
       }
         .withEnv("CLICKHOUSE_USER", CLICKHOUSE_USER)
         .withEnv("CLICKHOUSE_PASSWORD", CLICKHOUSE_PASSWORD)

@@ -69,7 +69,7 @@ class ClusterShardNumSortWriteSuite extends SparkClickHouseClusterTest {
       "http_port" -> httpPort.toString,
       "protocol" -> "http",
       "user" -> "default",
-      "password" -> clickhousePassword,
+      "password" -> "",
       "database" -> "default"
     )
   }
@@ -158,7 +158,7 @@ class ClusterShardNumSortWriteSuite extends SparkClickHouseClusterTest {
       providerOptions.put("http_port", clickhouse_s1r1_http_port.toString)
       providerOptions.put("protocol", "http")
       providerOptions.put("user", "default")
-      providerOptions.put("password", clickhousePassword)
+      providerOptions.put("password", "")
       providerOptions.put("database", db)
       providerOptions.put("table", tbl_dist)
       val provider = new ClickHouseTableProvider

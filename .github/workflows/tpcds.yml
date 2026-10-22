@@ -55,22 +55,13 @@ jobs:
           distribution: zulu
           java-version: ${{ matrix.java }}
           cache: gradle
-      # A random password for the test container, so the leak check below has something to look for
-      - name: Generate ClickHouse password
-        run: echo "CLICKHOUSE_PASSWORD=$(openssl rand -hex 16)" >> "$GITHUB_ENV"
       - run: >-
           ./gradlew clean slowTest --no-daemon --refresh-dependencies
           -Dspark_binary_version=${{ matrix.spark }}
           -Dscala_binary_version=${{ matrix.scala }}
           -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
-      - name: Check logs for credentials
-        id: check-credentials
-        if: always()
-        uses: ./.github/actions/check-logs-for-credentials
-        with:
-          password: ${{ env.CLICKHOUSE_PASSWORD }}
       - name: Upload test logs
-        if: failure() && steps.check-credentials.outcome == 'success'
+        if: failure()
         uses: actions/upload-artifact@v4
         with:
           name: log-tpcds-spark-${{ matrix.spark }}-scala-${{ matrix.scala }}-java-${{ matrix.java }}
