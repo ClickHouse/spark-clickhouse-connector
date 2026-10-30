@@ -59,8 +59,8 @@ jobs:
           - spark: '4.0'
             java: 8
     env:
-      CLICKHOUSE_CLOUD_HOST: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_HOST_SMT }}
-      CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
+      CLICKHOUSE_CLOUD_HOST: ${{ secrets.CONNECTORS_TEAM_TESTS_CLOUD_HOST }}
+      CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.CONNECTORS_TEAM_TESTS_CLOUD_PASSWORD }}
       DOCKER_MIN_API_VERSION: "1.24"
     steps:
       - uses: actions/checkout@v4
@@ -73,7 +73,7 @@ jobs:
           cache: gradle
       - name: Wake up ClickHouse Cloud instance
         env:
-          CLICKHOUSE_PASSWORD: ${{ secrets.INTEGRATIONS_TEAM_TESTS_CLOUD_PASSWORD_SMT }}
+          CLICKHOUSE_PASSWORD: ${{ secrets.CONNECTORS_TEAM_TESTS_CLOUD_PASSWORD }}
         run: |
           echo "Waking up ClickHouse Cloud instance..."
           max_attempts=3
