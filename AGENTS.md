@@ -27,7 +27,7 @@ limitations under the License.
 
 | | |
 |--|--|
-| **Spark** | 3.3, 3.4, 3.5, 4.0, 4.1 |
+| **Spark** | 3.3, 3.4, 3.5, 4.0, 4.1, 4.2 |
 | **Scala** | 2.12 (Spark 3.3 / 3.4 / 3.5) · 2.13 (all) — Spark 4.x is 2.13 only |
 | **Java** | 8 (Spark 3.3 / 3.4 / 3.5) · 17 (all) — Spark 4.x requires 17 |
 
@@ -46,8 +46,8 @@ Run spotless **for every Spark version you touched**; CI fails otherwise.
 
 ## Jackson shading
 
-**Version-specific.** Spark 4.0 / 4.1 bundle + relocate Jackson; 3.3 / 3.4 / 3.5
-exclude it. Exclude transitive Jackson from any new dependency on all five
+**Version-specific.** Spark 4.0 / 4.1 / 4.2 bundle + relocate Jackson; 3.3 / 3.4 / 3.5
+exclude it. Exclude transitive Jackson from any new dependency on all six
 trees. (This is the one build constraint not covered by the references below.)
 
 ## Detailed references
