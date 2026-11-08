@@ -55,9 +55,8 @@ class NodeClientSuite extends AnyFunSuite with LogCaptureHelper {
   private val UnknownKey = "definitely_not_a_ch_client_option"
 
   test("unrecognized client options are dropped with a warning") {
-    // A typo must be reported, not swallowed. Deliberately ungated: from clickhouse-java 0.9.7 on the
-    // client throws here instead, and this test must fail until `ignore_unknown_config_key=true` is
-    // passed in `NodeClient`.
+    // A typo must be reported, not swallowed. From clickhouse-java 0.9.7 on the client throws here
+    // unless `NodeClient` passes `ignore_unknown_config_key=true`.
     val warnings = warningsForOptions(UnknownKey -> "x")
 
     assert(

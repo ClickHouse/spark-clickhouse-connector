@@ -95,8 +95,10 @@ class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAU
     .setUsername(nodeSpec.username)
     .setPassword(nodeSpec.password)
     .setDefaultDatabase(nodeSpec.database)
-    // The client validates these and warns about the ones it does not recognize. From clickhouse-java
-    // 0.9.7 on it throws instead, so that bump needs `ignore_unknown_config_key=true` added here.
+    // The client validates these. Since clickhouse-java 0.9.7 it throws on keys it does not recognize
+    // unless `ignore_unknown_config_key=true`, in which case it warns and drops them. Set before
+    // `setOptions` so a user can still opt into strict validation.
+    .setOption("ignore_unknown_config_key", "true")
     .setOptions(nodeSpec.options)
     .setClientName(userAgent)
     .addEndpoint(createClickHouseURL(nodeSpec))
