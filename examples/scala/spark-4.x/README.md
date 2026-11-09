@@ -76,7 +76,9 @@ CH_PORT=8123 ./gradlew :examples-scala-spark-4.x:runStreaming \
 
 ### Option 2: Using sbt
 
-**Note:** sbt will automatically download the connector from Maven Central (version `0.9.0`).
+**Note:** sbt will automatically download the connector from Maven Central (version `0.9.0`). To build against Spark 4.1,
+pass the flag before the command: `sbt -Dspark_binary_version=4.1 "runMain examples.SimpleBatchExample"`. This needs a
+connector release that ships `clickhouse-spark-runtime-4.1`.
 
 **SimpleBatchExample:**
 ```bash

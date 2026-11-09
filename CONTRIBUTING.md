@@ -213,7 +213,7 @@ If this is your first contribution, make sure to sign ClickHouse's Contributor L
 ### Supported Spark Versions
 
 The connector supports:
-* Apache Spark 3.3, 3.4, 3.5, 4.0 and 4.1
+* Apache Spark 3.3, 3.4, 3.5, 4.0, and 4.1
 * Scala 2.12 and 2.13
 
 ### Code Review Process
