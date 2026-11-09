@@ -15,12 +15,15 @@
 package org.apache.spark.sql.clickhouse.single
 
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
-import com.clickhouse.spark.read.{ClickHouseBatchScan, ClickHouseInputPartition}
 import com.clickhouse.spark.spec.NoPartitionSpec
 import org.apache.spark.sql.{DataFrame, Row}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_PARALLELISM, READ_SPLIT_BY_PRIMARY_KEY}
-import org.apache.spark.sql.execution.datasources.v2.DataSourceV2ScanRelation
-import org.apache.spark.sql.types.{IntegerType, LongType, StructField, StructType}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_PARALLELISM, READ_TASK_SPLIT_STRATEGY}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
+  TASK_SPLIT_STRATEGY_ONE_TASK,
+  TASK_SPLIT_STRATEGY_PARTITION,
+  TASK_SPLIT_STRATEGY_PRIMARY_INDEX
+}
+import org.apache.spark.sql.types.{DoubleType, IntegerType, LongType, StructField, StructType}
 import org.scalatest.tags.Cloud
 
 @Cloud
@@ -64,9 +67,41 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
     }
   }
 
-  test("a read is split by ClickHouse partition when splitting by primary key is off") {
+  test("a read falls back to one task when the primary key can't be split on") {
+    // NaN falls outside every range, so a Float64 key is never split on
+    withTable(
+      "db_pk_split",
+      "tbl_pk_split_float",
+      StructType(Seq(StructField("f", DoubleType, nullable = false), StructField("m", IntegerType, nullable = false))),
+      sortKeys = Seq("f"),
+      partKeys = Seq("m")
+    ) { (db, tbl) =>
+      runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` SELECT number / 2, intDiv(number, ${rows / 3}) FROM numbers($rows)")
+      val parts = inputPartitions(spark.table(s"$db.$tbl"))
+      assert(parts.length === 1)
+      assert(parts.head.keyRange.isEmpty && parts.head.partition == NoPartitionSpec)
+      checkAnswer(spark.table(s"$db.$tbl").select("m"), (0 until rows).map(id => Row(id / (rows / 3))))
+      withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> TASK_SPLIT_STRATEGY_PARTITION) {
+        eventuallyOnCloud(assert(inputPartitions(spark.table(s"$db.$tbl")).length === 3))
+      }
+    }
+  }
+
+  test("a read is one task under the oneTask task split strategy") {
     withIdTable() { (db, tbl) =>
-      withSQLConf(READ_SPLIT_BY_PRIMARY_KEY.key -> "false", READ_PARALLELISM.key -> "4") {
+      withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> TASK_SPLIT_STRATEGY_ONE_TASK) {
+        val df = spark.table(s"$db.$tbl")
+        val parts = inputPartitions(df)
+        assert(parts.length === 1)
+        assert(parts.head.keyRange.isEmpty && parts.head.partition == NoPartitionSpec)
+        checkAnswer(df.select("id"), (0 until rows).map(id => Row(id.toLong)))
+      }
+    }
+  }
+
+  test("a read is split by ClickHouse partition under the partitionSplit task split strategy") {
+    withIdTable() { (db, tbl) =>
+      withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> TASK_SPLIT_STRATEGY_PARTITION, READ_PARALLELISM.key -> "4") {
         val df = spark.table(s"$db.$tbl")
         eventuallyOnCloud {
           val parts = inputPartitions(spark.table(s"$db.$tbl"))
@@ -88,6 +123,23 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
     }
   }
 
+  test("the task split strategy is set per read in any case and must be a known one") {
+    withIdTable() { (db, tbl) =>
+      eventuallyOnCloud {
+        val parts = inputPartitions(
+          spark.read.option(READ_TASK_SPLIT_STRATEGY.key, TASK_SPLIT_STRATEGY_PARTITION.toUpperCase).table(s"$db.$tbl")
+        )
+        assert(parts.length === 3)
+        assert(parts.forall(_.keyRange.isEmpty))
+      }
+      val e = intercept[IllegalArgumentException] {
+        inputPartitions(spark.read.option(READ_TASK_SPLIT_STRATEGY.key, "rangeSplit").table(s"$db.$tbl"))
+      }
+      assert(e.getMessage.contains(READ_TASK_SPLIT_STRATEGY.key))
+      assert(e.getMessage.contains(TASK_SPLIT_STRATEGY_PRIMARY_INDEX))
+    }
+  }
+
   test("an aggregation with GROUP BY is pushed into each range") {
     withIdTable() { (db, tbl) =>
       withSQLConf(READ_PARALLELISM.key -> "4") {
@@ -101,35 +153,32 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
     }
   }
 
-  test("an aggregation without GROUP BY is not split by primary key") {
-    // `m` is not in the key, so ranges past the first third would match nothing and return a MIN of 0,
-    // ClickHouse's default for an empty match, rather than NULL
-    withIdTable(partitioned = false) { (db, tbl) =>
-      withSQLConf(READ_PARALLELISM.key -> "4") {
-        val sql = s"SELECT MIN(id), MAX(id), COUNT(*) FROM $db.$tbl WHERE m = 0 AND id >= 100"
-        val parts = inputPartitions(spark.sql(sql))
-        assert(parts.nonEmpty && parts.forall(_.keyRange.isEmpty))
-        checkAnswer(spark.sql(sql), Row(100L, rows / 3 - 1L, rows / 3 - 100L))
+  test("an aggregation without GROUP BY is read as one task under every strategy") {
+    // a key range or partition the filter empties still returns a row of defaults (a MIN of 0, not NULL)
+    // that Spark would merge into the result
+    withIdTable() { (db, tbl) =>
+      Seq(TASK_SPLIT_STRATEGY_PRIMARY_INDEX, TASK_SPLIT_STRATEGY_PARTITION).foreach { strategy =>
+        withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> strategy, READ_PARALLELISM.key -> "4") {
+          val sql = s"SELECT MIN(id), MAX(id), COUNT(*) FROM $db.$tbl WHERE m = 0 AND id >= 100"
+          assert(inputPartitions(spark.sql(sql)).length === 1)
+          checkAnswer(spark.sql(sql), Row(100L, rows / 3 - 1L, rows / 3 - 100L))
+        }
       }
     }
   }
 
   /** Creates a table of `rows` ids in 64-row granules, partitioned into thirds of the ids. */
-  private def withIdTable(partitioned: Boolean = true)(f: (String, String) => Unit): Unit =
+  private def withIdTable()(f: (String, String) => Unit): Unit =
     withTable(
       "db_pk_split",
       "tbl_pk_split",
       StructType(Seq(StructField("id", LongType, nullable = false), StructField("m", IntegerType, nullable = false))),
-      partKeys = if (partitioned) Seq("m") else Seq.empty,
+      partKeys = Seq("m"),
       extraProperties = Map("settings.index_granularity" -> granule.toString)
     ) { (db, tbl) =>
       runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` SELECT number, intDiv(number, ${rows / 3}) FROM numbers($rows)")
       f(db, tbl)
     }
-
-  private def inputPartitions(df: DataFrame): Seq[ClickHouseInputPartition] =
-    df.queryExecution.optimizedPlan.collect { case relation: DataSourceV2ScanRelation => relation.scan }
-      .flatMap { case scan: ClickHouseBatchScan => scan.inputPartitions }
 
   private def rowsPerTask(df: DataFrame): Seq[Int] = df.rdd.mapPartitions(it => Iterator(it.size)).collect().toSeq
 }

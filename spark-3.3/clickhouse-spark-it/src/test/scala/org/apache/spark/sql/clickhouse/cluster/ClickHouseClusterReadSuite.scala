@@ -14,7 +14,8 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_DISTRIBUTED_CONVERT_LOCAL, READ_TASK_SPLIT_STRATEGY}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.TASK_SPLIT_STRATEGY_ONE_TASK
 import org.apache.spark.sql.{AnalysisException, Row}
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
@@ -123,6 +124,25 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
           Row(4, 4)
         )
       )
+    }
+  }
+
+  test("aggregation without GROUP BY and oneTask read a distributed table in one task") {
+    withSimpleDistTable("single_replica", "db_one_task", "t_dist", true) { (_, db, tbl_dist, tbl_local) =>
+      // convertLocal is on: a plain read is one task per shard and partition of the local table
+      val plain = inputPartitions(spark.table(s"$db.$tbl_dist"))
+      assert(plain.length > 1 && plain.forall(_.table.name == tbl_local))
+
+      // the tasks for ids 1 and 2 would match nothing and return a MIN of 0, ClickHouse's default for an empty match
+      val agg = spark.sql(s"SELECT MIN(id), MAX(id), COUNT(*) FROM $db.$tbl_dist WHERE id >= 3")
+      assert(inputPartitions(agg).map(_.table.name) === Seq(tbl_dist))
+      checkAnswer(agg, Row(3L, 4L, 2L))
+
+      withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> TASK_SPLIT_STRATEGY_ONE_TASK) {
+        val df = spark.table(s"$db.$tbl_dist")
+        assert(inputPartitions(df).map(_.table.name) === Seq(tbl_dist))
+        checkAnswer(df.select("id"), Seq(Row(1L), Row(2L), Row(3L), Row(4L)))
+      }
     }
   }
 

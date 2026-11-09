@@ -47,8 +47,8 @@ class ReadOptions(_options: JMap[String, String]) extends SparkOptions {
   def splitByPartitionId: Boolean =
     eval(READ_SPLIT_BY_PARTITION_ID.key, READ_SPLIT_BY_PARTITION_ID)
 
-  def splitByPrimaryKey: Boolean =
-    eval(READ_SPLIT_BY_PRIMARY_KEY.key, READ_SPLIT_BY_PRIMARY_KEY)
+  def taskSplitStrategy: String =
+    eval(READ_TASK_SPLIT_STRATEGY.key, READ_TASK_SPLIT_STRATEGY)
 
   def parallelism: Option[Int] =
     eval(READ_PARALLELISM.key, READ_PARALLELISM)

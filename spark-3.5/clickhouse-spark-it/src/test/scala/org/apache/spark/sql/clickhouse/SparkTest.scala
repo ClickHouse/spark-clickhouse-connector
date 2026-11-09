@@ -19,7 +19,9 @@ import com.clickhouse.spark.base.ClickHouseRetryMixIn
 import org.apache.spark.SparkConf
 import org.apache.spark.sql.test.SharedSparkSession
 import org.apache.spark.sql.{DataFrame, QueryTest}
+import org.apache.spark.sql.execution.datasources.v2.DataSourceV2ScanRelation
 import com.clickhouse.spark.ClickHouseCommandRunner
+import com.clickhouse.spark.read.{ClickHouseBatchScan, ClickHouseInputPartition}
 
 import java.sql.{Date, Timestamp}
 import java.time.Instant
@@ -93,6 +95,11 @@ trait SparkTest extends QueryTest with SharedSparkSession {
     )
     block(database, table)
   }
+
+  /** The input partitions of every ClickHouse scan in `df`'s plan. */
+  def inputPartitions(df: DataFrame): Seq[ClickHouseInputPartition] =
+    df.queryExecution.optimizedPlan.collect { case relation: DataSourceV2ScanRelation => relation.scan }
+      .flatMap { case scan: ClickHouseBatchScan => scan.inputPartitions }
 
   // for debugging webui
   protected def infiniteLoop(): Unit = while (true) {

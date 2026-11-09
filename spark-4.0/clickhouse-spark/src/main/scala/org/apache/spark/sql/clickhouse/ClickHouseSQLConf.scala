@@ -139,21 +139,34 @@ object ClickHouseSQLConf {
       .booleanConf
       .createWithDefault(true)
 
-  val READ_SPLIT_BY_PRIMARY_KEY: ConfigEntry[Boolean] =
-    buildConf("spark.clickhouse.read.splitByPrimaryKey")
-      .doc("If `true`, split reads of MergeTree-family tables into ranges of the primary key holding about " +
-        "the same number of rows, cut from the primary index within the query's filters on key columns, " +
-        "instead of one input partition per ClickHouse partition. Reads keep one input partition per " +
-        "ClickHouse partition on ClickHouse before 24.2, when the primary key does not start with a column " +
-        "of an integer, date, date time, string or UUID type, and for aggregations pushed down without " +
-        "GROUP BY.")
+  val TASK_SPLIT_STRATEGY_ONE_TASK: String = "oneTask"
+  val TASK_SPLIT_STRATEGY_PARTITION: String = "partitionSplit"
+  val TASK_SPLIT_STRATEGY_PRIMARY_INDEX: String = "primaryIndexSplit"
+  private val TASK_SPLIT_STRATEGIES =
+    Seq(TASK_SPLIT_STRATEGY_ONE_TASK, TASK_SPLIT_STRATEGY_PARTITION, TASK_SPLIT_STRATEGY_PRIMARY_INDEX)
+
+  val READ_TASK_SPLIT_STRATEGY: ConfigEntry[String] =
+    buildConf("spark.clickhouse.read.taskSplitStrategy")
+      .doc(s"How a read is split into input partitions. `$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` splits reads of " +
+        "MergeTree-family tables into ranges of the primary key holding about the same number of rows, cut from " +
+        s"the primary index within the query's filters on key columns. `$TASK_SPLIT_STRATEGY_PARTITION` reads " +
+        s"one input partition per ClickHouse partition. `$TASK_SPLIT_STRATEGY_ONE_TASK` reads the whole table " +
+        s"in one input partition. `$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` falls back to " +
+        s"`$TASK_SPLIT_STRATEGY_ONE_TASK` on ClickHouse before 24.2 and when the primary key does not start " +
+        "with a column of an integer, date, date time, string or UUID type. Aggregations pushed down without " +
+        s"GROUP BY are always read as `$TASK_SPLIT_STRATEGY_ONE_TASK`. A Distributed table is read through the " +
+        s"Distributed engine in one input partition under `$TASK_SPLIT_STRATEGY_ONE_TASK` and ignores the other " +
+        "values.")
       .version("0.10.2")
-      .booleanConf
-      .createWithDefault(true)
+      .stringConf
+      .transform(v => TASK_SPLIT_STRATEGIES.find(_.equalsIgnoreCase(v)).getOrElse(v))
+      .checkValues(TASK_SPLIT_STRATEGIES.toSet)
+      .createWithDefault(TASK_SPLIT_STRATEGY_PRIMARY_INDEX)
 
   val READ_PARALLELISM: OptionalConfigEntry[Int] =
     buildConf("spark.clickhouse.read.parallelism")
-      .doc(s"The number of input partitions to split a read into by `${READ_SPLIT_BY_PRIMARY_KEY.key}`. " +
+      .doc(s"The number of input partitions to split a read into under the `$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` " +
+        "task split strategy. " +
         "Fewer are used when the data read is too small, as a range holds at least one granule. " +
         "Defaults to three times Spark's default parallelism.")
       .version("0.10.2")

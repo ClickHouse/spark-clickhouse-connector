@@ -135,12 +135,12 @@ object PrimaryKeyRange extends Logging {
     else
       try describeIndex(table) match {
           case None =>
-            log.info(s"Reading $name by partition, as splitting it by primary key needs ClickHouse 24.2+")
+            log.info(s"Not splitting $name by primary key, as that needs ClickHouse 24.2+")
             None
           case Some(indexColumns) =>
             val key = splitColumns(indexColumns, tableColumns)
             if (key.isEmpty) {
-              log.info(s"Reading $name by partition, as its first primary key column can't be split on")
+              log.info(s"Not splitting $name by primary key, as its first key column can't be split on")
               None
             } else {
               val ranges = cut(table, key, filters, slices)
@@ -150,7 +150,7 @@ object PrimaryKeyRange extends Logging {
         }
       catch {
         case NonFatal(e) =>
-          log.warn(s"Reading $name by partition, as splitting it by primary key failed", e)
+          log.warn(s"Not splitting $name by primary key, as planning the ranges failed", e)
           None
       }
   }
