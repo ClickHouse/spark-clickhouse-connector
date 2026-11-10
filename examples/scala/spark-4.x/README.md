@@ -93,7 +93,7 @@ CH_PORT=8123 ./gradlew :examples-scala-spark-4.x:runStreaming \
 # From examples/scala/spark-4.x directory
 CH_PORT=8123 sbt "runMain examples.SimpleBatchExample"
 
-# On Spark 4.2
+# On Spark 4.2 (until a release ships the 4.2 runtime, add -Dclickhouse_connector_local=true; see below)
 CH_PORT=8123 sbt -Dspark_binary_version=4.2 "runMain examples.SimpleBatchExample"
 ```
 
@@ -102,13 +102,13 @@ CH_PORT=8123 sbt -Dspark_binary_version=4.2 "runMain examples.SimpleBatchExample
 # From examples/scala/spark-4.x directory
 CH_PORT=8123 sbt "runMain examples.StreamingRateExample"
 
-# On Spark 4.2
+# On Spark 4.2 (until a release ships the 4.2 runtime, add -Dclickhouse_connector_local=true; see below)
 CH_PORT=8123 sbt -Dspark_binary_version=4.2 "runMain examples.StreamingRateExample"
 ```
 
 **For local debugging:** build the runtime JAR for the Spark line, then run with `-Dclickhouse_connector_local=true`.
 sbt then uses `spark-<spark_binary_version>/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-<spark_binary_version>_2.13-<version>.jar`
-instead of the Maven artifact, and fails with the build command to run if the JAR is missing:
+instead of the Maven artifact. If the JAR is missing, `compile` and `run` fail with the build command to run (`sbt update` alone does not check it):
 ```bash
 # From project root
 ./gradlew :clickhouse-spark-runtime-4.2_2.13:shadowJar -Dspark_binary_version=4.2 -Dscala_binary_version=2.13

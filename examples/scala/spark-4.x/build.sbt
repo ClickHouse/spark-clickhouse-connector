@@ -66,7 +66,7 @@ libraryDependencies ++= {
 Compile / unmanagedJars ++= {
   if (!useLocalConnector) Nil
   else {
-    val repoRoot = baseDirectory.value / ".." / ".." / ".."
+    val repoRoot = (baseDirectory.value / ".." / ".." / "..").getCanonicalFile
     val version = sys.props.getOrElse("clickhouse_connector_version", IO.read(repoRoot / "version.txt").trim)
     val runtimeJar = repoRoot / s"spark-$sparkBinaryVersion" / "clickhouse-spark-runtime" / "build" / "libs" /
       s"clickhouse-spark-runtime-${sparkBinaryVersion}_2.13-$version.jar"
