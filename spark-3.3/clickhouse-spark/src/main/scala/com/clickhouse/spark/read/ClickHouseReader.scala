@@ -53,13 +53,13 @@ abstract class ClickHouseReader[Record](
         "1" // for case like COUNT(*) which prunes all columns
       } else {
         readSchema.map {
-          field => if (scanJob.groupByClause.isDefined) field.name else s"`${field.name}`"
+          field => if (scanJob.pushedGroupBy.isDefined) field.name else s"`${field.name}`"
         }.mkString(", ")
       }
     s"""SELECT $selectItems
        |FROM `$database`.`$table`
-       |WHERE (${part.partFilterExpr}) AND (${scanJob.filtersExpr})
-       |${scanJob.groupByClause.getOrElse("")}
+       |WHERE (${part.filterExpr}) AND (${scanJob.filtersExpr})
+       |${scanJob.groupByClause}
        |${scanJob.orderByClause.getOrElse("")}
        |${scanJob.limit.map(n => s"LIMIT $n").getOrElse("")}
        |${readSettings.map(settings => s"SETTINGS $settings").getOrElse("")}

@@ -14,8 +14,9 @@
 
 package com.clickhouse.spark.read
 
+import com.clickhouse.spark.expr.PushedFilter
 import com.clickhouse.spark.func.FunctionRegistry
-import com.clickhouse.spark.spec.{ClusterSpec, DistributedEngineSpec, NodeSpec, TableEngineSpec, TableSpec}
+import com.clickhouse.spark.spec.{ClusterSpec, NodeSpec, TableEngineSpec, TableSpec}
 import org.apache.spark.sql.clickhouse.ReadOptions
 import org.apache.spark.sql.types.StructType
 
@@ -26,28 +27,27 @@ case class ScanJobDescription(
   tz: ZoneId,
   tableSpec: TableSpec,
   tableEngineSpec: TableEngineSpec,
+  tableColumns: Set[String], // tells the primary key's columns from its expressions
   cluster: Option[ClusterSpec],
   localTableSpec: Option[TableSpec],
   localTableEngineSpec: Option[TableEngineSpec],
   readOptions: ReadOptions,
+  maxParallelism: Int, // the most input partitions a split makes
   functionRegistry: FunctionRegistry,
   // Below fields will be constructed in ScanBuilder.
   readSchema: StructType = new StructType,
-  // We should pass compiled ClickHouse SQL snippets(or ClickHouse SQL AST data structure) instead of Spark Expression
-  // into Scan tasks because the check happens in planing phase on driver side.
-  filtersExpr: String = "1=1",
-  groupByClause: Option[String] = None,
+  // Pushed down as compiled ClickHouse SQL: the executors can't translate Spark expressions.
+  filters: Seq[PushedFilter] = Nil,
+  pushedGroupBy: Option[Seq[String]] = None, // the GROUP BY columns of a pushed aggregation, none without GROUP BY
   orderByClause: Option[String] = None,
   limit: Option[Int] = None
 ) {
 
-  def database: String = tableEngineSpec match {
-    case dist: DistributedEngineSpec if readOptions.convertDistributedToLocal => dist.local_db
-    case _ => tableSpec.database
-  }
+  /** The filters as one WHERE conjunct, `1=1` without any. */
+  def filtersExpr: String = ("1=1" +: filters.map(_.sql)).map(f => s"($f)").mkString(" AND ")
 
-  def table: String = tableEngineSpec match {
-    case dist: DistributedEngineSpec if readOptions.convertDistributedToLocal => dist.local_table
-    case _ => tableSpec.name
-  }
+  def groupByClause: String = pushedGroupBy.filter(_.nonEmpty).fold("")(_.mkString("GROUP BY ", ", ", ""))
+
+  // an empty task of such an aggregation returns a row of ClickHouse's defaults (not NULL) that Spark would merge in
+  def globalAggregatePushed: Boolean = pushedGroupBy.exists(_.isEmpty)
 }

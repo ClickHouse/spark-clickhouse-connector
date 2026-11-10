@@ -14,9 +14,10 @@
 
 package com.clickhouse.spark.spec
 
-import com.clickhouse.spark.{Logging, Utils}
+import com.clickhouse.spark.Utils
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.exception.ClickHouseErrCode
+import com.clickhouse.spark.expr.PushedFilter
 
 import scala.util.control.NonFatal
 
@@ -43,7 +44,10 @@ case class PrimaryKeyRange(columns: Seq[String], lower: Option[Seq[String]], upp
   }
 }
 
-object PrimaryKeyRange extends Logging {
+/** Why a table can't be split by its primary key, with the failure when planning threw. */
+case class NotSplittable(reason: String, cause: Option[Throwable] = None)
+
+object PrimaryKeyRange {
 
   /** How a key column's cut values are read from the index and written back as SQL literals. */
   sealed private[spec] trait KeyType {
@@ -116,44 +120,40 @@ object PrimaryKeyRange extends Logging {
   private val MaxLiteralLength = 1024
 
   /**
-   * Splits `table` into up to `slices` ranges of its primary key holding about the same number of rows, cut from
-   * the primary index without reading data. None when the table can't be split this way.
+   * Splits `table` into ranges of its primary key holding about the same number of rows, cut from the primary index
+   * without reading data: two at least, up to `slices`. Or why the table can't be split by its primary key.
    *
    * @param tableColumns
    *   the table's columns, telling key columns from key expressions
    * @param filters
-   *   pushed-down conjuncts with the columns they read; those on key columns limit the cuts to the rows read
+   *   the pushed-down filters; those on key columns limit the cuts to the rows read
    */
   def plan(
     table: TableSpec,
     tableColumns: Set[String],
-    filters: Seq[(String, Set[String])],
+    filters: Seq[PushedFilter],
     slices: Int
-  )(implicit nodeClient: NodeClient): Option[Seq[PrimaryKeyRange]] = {
-    val name = s"${table.database}.${table.name}"
-    if (!table.engine.endsWith("MergeTree") || table.primary_key.isEmpty) None
+  )(implicit nodeClient: NodeClient): Either[NotSplittable, Seq[PrimaryKeyRange]] =
+    if (!table.engine.endsWith("MergeTree")) Left(NotSplittable(s"the ${table.engine} engine has no primary index"))
+    else if (table.primary_key.isEmpty) Left(NotSplittable("the table has no primary key"))
     else
       try describeIndex(table) match {
-          case None =>
-            log.info(s"Not splitting $name by primary key, as that needs ClickHouse 24.2+")
-            None
+          case None => Left(NotSplittable("reading the primary index needs ClickHouse 24.2+"))
           case Some(indexColumns) =>
             val key = splitColumns(indexColumns, tableColumns)
             if (key.isEmpty) {
-              log.info(s"Not splitting $name by primary key, as its first key column can't be split on")
-              None
+              Left(NotSplittable(
+                "the primary key does not start with a column of an integer, date, date time, string or UUID type"
+              ))
             } else {
-              val ranges = cut(table, key, filters, slices)
-              log.info(s"Splitting $name into ${ranges.length} ranges of (${key.map(_._1).mkString(", ")})")
-              Some(ranges)
+              val cuts = cutPoints(table, key, filters, slices)
+              if (cuts.isEmpty) Left(NotSplittable("the primary index yields no cut point within the filters"))
+              else Right(ranges(key.map(_._1), cuts))
             }
         }
       catch {
-        case NonFatal(e) =>
-          log.warn(s"Not splitting $name by primary key, as planning the ranges failed", e)
-          None
+        case NonFatal(e) => Left(NotSplittable("planning the primary key ranges failed", Some(e)))
       }
-  }
 
   // None before ClickHouse 24.2, which lacks `mergeTreeIndex`
   private def describeIndex(table: TableSpec)(implicit nodeClient: NodeClient): Option[Seq[(String, String)]] =
@@ -176,21 +176,24 @@ object PrimaryKeyRange extends Logging {
       .takeWhile(_.isDefined)
       .flatten
 
-  private def cut(
+  /** The keys to cut at, in key order. The smallest is dropped, as cutting there would leave the first range empty. */
+  private def cutPoints(
     table: TableSpec,
     key: Seq[(String, KeyType)],
-    filters: Seq[(String, Set[String])],
+    filters: Seq[PushedFilter],
     slices: Int
-  )(implicit nodeClient: NodeClient): Seq[PrimaryKeyRange] = {
-    val cuts = nodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(
-      cutsQuery(table, key, filters, slices)
-    ).records.toList
+  )(implicit nodeClient: NodeClient): Seq[Seq[String]] =
+    nodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(cutsQuery(table, key, filters, slices))
+      .records.toList
       .map(row => key.zip(row).map { case ((_, keyType), value) => keyType.literal(value.asText) })
       .distinct
-      .drop(1) // the smallest key: cutting there would leave the first range empty
+      .drop(1)
       .filterNot(_.exists(_.length > MaxLiteralLength))
+
+  /** The `[lower, upper)` ranges between consecutive cuts, open-ended at both ends. */
+  private def ranges(columns: Seq[String], cuts: Seq[Seq[String]]): Seq[PrimaryKeyRange] = {
     val bounds = cuts.map(Some(_))
-    (None +: bounds).zip(bounds :+ None).map { case (lower, upper) => PrimaryKeyRange(key.map(_._1), lower, upper) }
+    (None +: bounds).zip(bounds :+ None).map { case (lower, upper) => PrimaryKeyRange(columns, lower, upper) }
   }
 
   /**
@@ -200,15 +203,15 @@ object PrimaryKeyRange extends Logging {
   private[spec] def cutsQuery(
     table: TableSpec,
     key: Seq[(String, KeyType)],
-    filters: Seq[(String, Set[String])],
+    filters: Seq[PushedFilter],
     slices: Int
   ): String = {
     val columns = key.map { case (column, _) => Utils.wrapBackQuote(column) }
     val keyColumns = key.map(_._1).toSet
     // key columns after a high-cardinality prefix may be left unloaded, reading as their default: keep those granules
     val keyFilters = filters.collect {
-      case (sql, references) if references.subsetOf(keyColumns) =>
-        val unloaded = (references - key.head._1).toSeq.sorted.map(Utils.wrapBackQuote)
+      case PushedFilter(sql, columns) if columns.subsetOf(keyColumns) =>
+        val unloaded = (columns - key.head._1).toSeq.sorted.map(Utils.wrapBackQuote)
           .map(column => s"$column = defaultValueOfArgumentType($column)")
         (s"($sql)" +: unloaded).mkString(" OR ")
     }

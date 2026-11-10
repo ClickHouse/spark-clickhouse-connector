@@ -18,6 +18,7 @@ import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.expr.{Expr, OrderExpr}
 import com.clickhouse.spark.func.FunctionRegistry
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
+import org.apache.spark.sql.SparkSession
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, ExprUtils, ReadOptions, WriteOptions}
@@ -195,15 +196,18 @@ case class ClickHouseTable(
     }
 
   override def newScanBuilder(options: CaseInsensitiveStringMap): ScanBuilder = {
+    val readOptions = new ReadOptions(options.asCaseSensitiveMap())
     val scanJob = read.ScanJobDescription(
       node = node,
       tz = tz,
       tableSpec = spec,
       tableEngineSpec = engineSpec,
+      tableColumns = schema.fieldNames.toSet,
       cluster = cluster,
       localTableSpec = localTableSpec,
       localTableEngineSpec = localTableEngineSpec,
-      readOptions = new ReadOptions(options.asCaseSensitiveMap()),
+      readOptions = readOptions,
+      maxParallelism = readOptions.maxParallelism.getOrElse(3 * SparkSession.active.sparkContext.defaultParallelism),
       functionRegistry = functionRegistry
     )
     // TODO schema of partitions

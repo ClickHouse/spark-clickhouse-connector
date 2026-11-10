@@ -21,6 +21,7 @@ import org.apache.spark.sql.connector.expressions.aggregate._
 import org.apache.spark.sql.connector.expressions.NamedReference
 import org.apache.spark.sql.sources._
 import org.apache.spark.unsafe.types.UTF8String
+import com.clickhouse.spark.expr.PushedFilter
 import com.clickhouse.spark.Utils._
 
 trait SQLHelper {
@@ -104,4 +105,8 @@ trait SQLHelper {
     filters
       .flatMap(_f => compileFilter(_f)(tz))
       .map(p => s"($p)").mkString(" AND ")
+
+  /** The filters ClickHouse can evaluate, each as SQL with the columns it reads. */
+  def compilePushedFilters(filters: Seq[Filter])(implicit tz: ZoneId): Seq[PushedFilter] =
+    filters.flatMap(f => compileFilter(f).map(PushedFilter(_, f.references.toSet)))
 }

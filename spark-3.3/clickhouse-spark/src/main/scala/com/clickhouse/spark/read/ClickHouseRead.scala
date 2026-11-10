@@ -14,7 +14,20 @@
 
 package com.clickhouse.spark.read
 
-import org.apache.spark.sql.SparkSession
+import com.clickhouse.spark.client.NodeClient
+import com.clickhouse.spark.exception.CHClientException
+import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
+import com.clickhouse.spark.read.TaskSplit._
+import com.clickhouse.spark.read.TaskSplit.OneTaskReason._
+import com.clickhouse.spark.spec.{
+  DistributedEngineSpec,
+  Nodes,
+  NotSplittable,
+  PartitionGroups,
+  PrimaryKeyRange,
+  TableSpec
+}
+import com.clickhouse.spark.{BlocksReadMetric, BytesReadMetric, ClickHouseHelper, Logging, SQLHelper, Utils}
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, ExprUtils}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
@@ -23,14 +36,10 @@ import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
 import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.connector.read.partitioning.{Partitioning, UnknownPartitioning}
-import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
+import org.apache.spark.sql.sources.Filter
 import org.apache.spark.sql.types.StructType
 import com.clickhouse.spark._
-import com.clickhouse.spark.client.NodeClient
-import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.expr.ExprRender
-import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
-import com.clickhouse.spark.read.TaskSplit._
 import com.clickhouse.spark.spec._
 
 import java.time.ZoneId
@@ -98,8 +107,7 @@ class ClickHouseScanBuilder(
     unSupported
   }
 
-  private var _pushedGroupByCols: Option[Array[String]] = None
-  private var _groupByClause: Option[String] = None
+  private var _pushedGroupBy: Option[Seq[String]] = None
 
   /** Such aggregations must be declined - pushing them fails Spark's output-schema assertion. */
   private def referencesUnsupportedColumn(aggregation: Aggregation): Boolean = {
@@ -138,8 +146,7 @@ class ClickHouseScanBuilder(
           .map { case (structField, colExpr) => structField.copy(name = colExpr) }
         StructType(fields)
       }
-      _pushedGroupByCols = Some(compiledGroupByCols)
-      _groupByClause = Some(groupByClause)
+      _pushedGroupBy = Some(compiledGroupByCols.toList)
       true
     } catch {
       case NonFatal(e) =>
@@ -165,32 +172,20 @@ class ClickHouseScanBuilder(
     }
   }
 
-  // without GROUP BY, an empty task still returns a row of ClickHouse's defaults (not NULL) that Spark merges in
-  private def globalAggregatePushed: Boolean = _pushedGroupByCols.exists(_.isEmpty)
-
   override def build(): Scan = {
     validateReadSchema()
-    new ClickHouseBatchScan(
-      scanJob.copy(
-        readSchema = _readSchema,
-        filtersExpr = compileFilters(AlwaysTrue :: pushedFilters.toList),
-        groupByClause = _groupByClause,
-        orderByClause = _orderByClause,
-        limit = _limit
-      ),
-      globalAggregatePushed = globalAggregatePushed,
-      tableColumns = physicalSchema.fieldNames.toSet,
-      pushedFilters = pushedFilters
-    )
+    new ClickHouseBatchScan(scanJob.copy(
+      readSchema = _readSchema,
+      filters = compilePushedFilters(pushedFilters.toSeq),
+      pushedGroupBy = _pushedGroupBy,
+      orderByClause = _orderByClause,
+      limit = _limit
+    ))
   }
+
 }
 
-class ClickHouseBatchScan(
-  scanJob: ScanJobDescription,
-  globalAggregatePushed: Boolean = false,
-  tableColumns: Set[String] = Set.empty,
-  pushedFilters: Array[Filter] = Array.empty
-) extends Scan with Batch
+class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
     with SupportsReportPartitioning
     with SupportsRuntimeFiltering
     with PartitionReaderFactory
@@ -201,66 +196,71 @@ class ClickHouseBatchScan(
 
   private var runtimeFilters: Array[Filter] = Array.empty
 
-  val database: String = scanJob.database
-  val table: String = scanJob.table
-
   private val queryTimeoutMs: Long = scanJob.readOptions.clientQueryTimeout
 
-  lazy val taskSplit: TaskSplit = TaskSplit.resolve(
+  // the scan doubles as the reader factory shipped to every task; the split stays on the driver
+  @transient lazy val taskSplit: TaskSplit = TaskSplit.resolve(
     strategy = scanJob.readOptions.taskSplitStrategy,
-    globalAggregatePushed = globalAggregatePushed,
+    globalAggregatePushed = scanJob.globalAggregatePushed,
+    maxParallelism = scanJob.maxParallelism,
     engine = scanJob.tableEngineSpec,
     convertDistributedToLocal = scanJob.readOptions.convertDistributedToLocal,
-    useClusterNodesForDistributed = scanJob.readOptions.useClusterNodesForDistributed,
+    partitions = listPartitions(),
     primaryKeyRanges = planPrimaryKeyRanges()
   )
 
-  lazy val inputPartitions: Array[ClickHouseInputPartition] = {
-    val partitions = taskSplit match {
-      case OneTask => Array(wholeTablePartition)
-      case PartitionSplit if scanJob.tableEngineSpec.isInstanceOf[DistributedEngineSpec] => shardPartitions
-      case PartitionSplit => tablePartitions
-      case PrimaryIndexSplit(ranges) => ranges.map(range => wholeTablePartition.copy(keyRange = Some(range))).toArray
+  @transient lazy val inputPartitions: Array[ClickHouseInputPartition] = {
+    logSplit(taskSplit)
+    taskSplit match {
+      case OneTask(_) => Array(wholeTable)
+      case PartitionSplit(partitions) => partitions.toArray
+      case PrimaryIndexSplit(ranges) => ranges.map(range => wholeTable.copy(filterExpr = range.filterExpr)).toArray
     }
-    val oneTaskChosen = globalAggregatePushed || scanJob.readOptions.taskSplitStrategy == TASK_SPLIT_STRATEGY_ONE_TASK
-    if (partitions.length == 1 && !oneTaskChosen) {
-      log.warn(s"Reading $database.$table as a single partition, which may impact read performance")
-    }
-    partitions
   }
 
-  // the whole table in one task; for a Distributed table, through the Distributed engine
-  private def wholeTablePartition: ClickHouseInputPartition =
-    ClickHouseInputPartition(scanJob.tableSpec, NoPartitionSpec, scanJob.readOptions.splitByPartitionId, scanJob.node)
+  // the whole table in one task; a Distributed table through its engine
+  private def wholeTable: ClickHouseInputPartition = ClickHouseInputPartition(scanJob.tableSpec, "1=1", scanJob.node)
 
-  // one task per ClickHouse partition
-  private def tablePartitions: Array[ClickHouseInputPartition] =
-    Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-      queryPartitionSpec(database, table).map { partitionSpec =>
-        // TODO pickup preferred
-        ClickHouseInputPartition(scanJob.tableSpec, partitionSpec, scanJob.readOptions.splitByPartitionId, scanJob.node)
-      }
-    }.toArray
-
-  // one task per shard and partition of the local tables behind a Distributed table
-  private def shardPartitions: Array[ClickHouseInputPartition] = {
-    val localTable = scanJob.localTableSpec.get
-    scanJob.cluster.get.shards.flatMap { shard =>
-      Utils.tryWithResource(NodeClient(shard.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-        queryPartitionSpec(localTable.database, localTable.name).map { partitionSpec =>
-          // TODO pickup preferred
-          ClickHouseInputPartition(localTable, partitionSpec, scanJob.readOptions.splitByPartitionId, shard)
+  // the ClickHouse partitions of the table in at most maxParallelism tasks holding about as many rows each; of every
+  // shard's local table for a Distributed table, listed on one node of the shard, each shard getting an equal share
+  private def listPartitions(): Seq[ClickHouseInputPartition] = {
+    def tasksOf(table: TableSpec, nodes: Nodes, tasks: Int): Seq[ClickHouseInputPartition] =
+      Utils.tryWithResource(NodeClient(nodes.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
+        PartitionGroups.group(queryPartitionSpec(table.database, table.name), tasks).map { group =>
+          val byId = scanJob.readOptions.splitByPartitionId
+          val filterExpr = PartitionGroups.filterExpr(group, table.partition_key, byId)
+          ClickHouseInputPartition(table, filterExpr, nodes) // TODO pickup preferred
         }
       }
+    scanJob.tableEngineSpec match {
+      case _: DistributedEngineSpec =>
+        val shards = scanJob.cluster.get.shards.toSeq
+        val share = math.max(1, scanJob.maxParallelism / shards.length)
+        shards.flatMap(shard => tasksOf(scanJob.localTableSpec.get, shard, share))
+      case _ => tasksOf(scanJob.tableSpec, scanJob.node, scanJob.maxParallelism)
     }
   }
 
-  private def planPrimaryKeyRanges(): Option[Seq[PrimaryKeyRange]] =
+  private def planPrimaryKeyRanges(): Either[NotSplittable, Seq[PrimaryKeyRange]] =
     Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-      val filters = pushedFilters.toSeq.flatMap(f => compileFilter(f).map(_ -> f.references.toSet))
-      val slices = scanJob.readOptions.parallelism.getOrElse(3 * SparkSession.active.sparkContext.defaultParallelism)
-      PrimaryKeyRange.plan(scanJob.tableSpec, tableColumns, filters, slices)
+      PrimaryKeyRange.plan(scanJob.tableSpec, scanJob.tableColumns, scanJob.filters, scanJob.maxParallelism)
     }
+
+  private def logSplit(split: TaskSplit): Unit = {
+    val table = s"${scanJob.tableSpec.database}.${scanJob.tableSpec.name}"
+    split match {
+      case OneTask(reason @ (Chosen | GlobalAggregate | MaxParallelismOne)) =>
+        log.info(s"Reading $table as one task: ${reason.message}")
+      case OneTask(NoKeyRanges(NotSplittable(reason, Some(cause)))) =>
+        log.warn(s"Reading $table as one task, which may impact read performance: $reason", cause)
+      case OneTask(reason) =>
+        log.warn(s"Reading $table as one task, which may impact read performance: ${reason.message}")
+      case PartitionSplit(partitions) =>
+        log.info(s"Reading $table in ${partitions.length} tasks by ClickHouse partition")
+      case PrimaryIndexSplit(ranges) =>
+        log.info(s"Reading $table in ${ranges.length} tasks, one per range of (${ranges.head.columns.mkString(", ")})")
+    }
+  }
 
   override def toBatch: Batch = this
 
@@ -277,10 +277,7 @@ class ClickHouseBatchScan(
   override def createReader(_partition: InputPartition): PartitionReader[InternalRow] = {
     val format = scanJob.readOptions.format
     val partition = _partition.asInstanceOf[ClickHouseInputPartition]
-    val finalScanJob = scanJob.copy(filtersExpr =
-      scanJob.filtersExpr + " AND "
-        + compileFilters(AlwaysTrue :: runtimeFilters.toList)
-    )
+    val finalScanJob = scanJob.copy(filters = scanJob.filters ++ compilePushedFilters(runtimeFilters.toSeq))
     format match {
       case "json" => new ClickHouseJsonReader(finalScanJob, partition)
       case "binary" => new ClickHouseBinaryReader(finalScanJob, partition)

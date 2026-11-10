@@ -15,9 +15,8 @@
 package org.apache.spark.sql.clickhouse.single
 
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
-import com.clickhouse.spark.spec.NoPartitionSpec
 import org.apache.spark.sql.{DataFrame, Row}
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_PARALLELISM, READ_TASK_SPLIT_STRATEGY}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_MAX_PARALLELISM, READ_TASK_SPLIT_STRATEGY}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
   TASK_SPLIT_STRATEGY_ONE_TASK,
   TASK_SPLIT_STRATEGY_PARTITION,
@@ -38,12 +37,13 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
 
   test("a read is split into ranges of the primary key holding about as many rows each") {
     withIdTable() { (db, tbl) =>
-      withSQLConf(READ_PARALLELISM.key -> "4") {
+      withSQLConf(READ_MAX_PARALLELISM.key -> "4") {
         eventuallyOnCloud {
           val df = spark.table(s"$db.$tbl")
           val parts = inputPartitions(df)
           assert(parts.length === 4)
-          assert(parts.forall(part => part.keyRange.isDefined && part.partition == NoPartitionSpec))
+          assert(parts.forall(_.filterExpr.startsWith("(`id` ")))
+          assert(parts.head.filterExpr.startsWith("(`id` <") && parts.last.filterExpr.startsWith("(`id` >="))
           rowsPerTask(df).foreach(n => assert(math.abs(n - rows / 4) <= granule))
         }
         checkAnswer(spark.table(s"$db.$tbl"), (0 until rows).map(id => Row(id.toLong, id / (rows / 3))))
@@ -53,7 +53,7 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
 
   test("every range of a filtered read holds rows the query reads") {
     withIdTable() { (db, tbl) =>
-      withSQLConf(READ_PARALLELISM.key -> "4") {
+      withSQLConf(READ_MAX_PARALLELISM.key -> "4") {
         // only the last ClickHouse partition can match
         val lastThird = s"id >= ${rows - rows / 3}"
         eventuallyOnCloud {
@@ -77,9 +77,7 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
       partKeys = Seq("m")
     ) { (db, tbl) =>
       runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` SELECT number / 2, intDiv(number, ${rows / 3}) FROM numbers($rows)")
-      val parts = inputPartitions(spark.table(s"$db.$tbl"))
-      assert(parts.length === 1)
-      assert(parts.head.keyRange.isEmpty && parts.head.partition == NoPartitionSpec)
+      assert(inputPartitions(spark.table(s"$db.$tbl")).map(_.filterExpr) === Seq("1=1"))
       checkAnswer(spark.table(s"$db.$tbl").select("m"), (0 until rows).map(id => Row(id / (rows / 3))))
       withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> TASK_SPLIT_STRATEGY_PARTITION) {
         eventuallyOnCloud(assert(inputPartitions(spark.table(s"$db.$tbl")).length === 3))
@@ -91,9 +89,7 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
     withIdTable() { (db, tbl) =>
       withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> TASK_SPLIT_STRATEGY_ONE_TASK) {
         val df = spark.table(s"$db.$tbl")
-        val parts = inputPartitions(df)
-        assert(parts.length === 1)
-        assert(parts.head.keyRange.isEmpty && parts.head.partition == NoPartitionSpec)
+        assert(inputPartitions(df).map(_.filterExpr) === Seq("1=1"))
         checkAnswer(df.select("id"), (0 until rows).map(id => Row(id.toLong)))
       }
     }
@@ -101,24 +97,38 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
 
   test("a read is split by ClickHouse partition under the partitionSplit task split strategy") {
     withIdTable() { (db, tbl) =>
-      withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> TASK_SPLIT_STRATEGY_PARTITION, READ_PARALLELISM.key -> "4") {
+      withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> TASK_SPLIT_STRATEGY_PARTITION, READ_MAX_PARALLELISM.key -> "4") {
         val df = spark.table(s"$db.$tbl")
         eventuallyOnCloud {
           val parts = inputPartitions(spark.table(s"$db.$tbl"))
           assert(parts.length === 3)
-          assert(parts.forall(_.keyRange.isEmpty))
+          assert(parts.forall(_.filterExpr.startsWith("_partition_id IN (")))
         }
         checkAnswer(df.select("id"), (0 until rows).map(id => Row(id.toLong)))
       }
     }
   }
 
-  test("the parallelism can be set per read") {
+  test("partitionSplit groups the ClickHouse partitions into at most maxParallelism tasks") {
+    withIdTable() { (db, tbl) =>
+      withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> TASK_SPLIT_STRATEGY_PARTITION, READ_MAX_PARALLELISM.key -> "2") {
+        val df = spark.table(s"$db.$tbl")
+        eventuallyOnCloud {
+          val parts = inputPartitions(df)
+          assert(parts.length === 2)
+          assert(parts.forall(_.filterExpr.startsWith("_partition_id IN (")))
+        }
+        checkAnswer(df.select("id"), (0 until rows).map(id => Row(id.toLong)))
+      }
+    }
+  }
+
+  test("the maximum parallelism can be set per read") {
     withIdTable() { (db, tbl) =>
       eventuallyOnCloud {
-        val parts = inputPartitions(spark.read.option(READ_PARALLELISM.key, "5").table(s"$db.$tbl"))
+        val parts = inputPartitions(spark.read.option(READ_MAX_PARALLELISM.key, "5").table(s"$db.$tbl"))
         assert(parts.length === 5)
-        assert(parts.forall(_.keyRange.isDefined))
+        assert(parts.forall(_.filterExpr.startsWith("(`id` ")))
       }
     }
   }
@@ -130,7 +140,7 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
           spark.read.option(READ_TASK_SPLIT_STRATEGY.key, TASK_SPLIT_STRATEGY_PARTITION.toUpperCase).table(s"$db.$tbl")
         )
         assert(parts.length === 3)
-        assert(parts.forall(_.keyRange.isEmpty))
+        assert(parts.forall(_.filterExpr.startsWith("_partition_id IN (")))
       }
       val e = intercept[IllegalArgumentException] {
         inputPartitions(spark.read.option(READ_TASK_SPLIT_STRATEGY.key, "rangeSplit").table(s"$db.$tbl"))
@@ -142,7 +152,7 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
 
   test("an aggregation with GROUP BY is pushed into each range") {
     withIdTable() { (db, tbl) =>
-      withSQLConf(READ_PARALLELISM.key -> "4") {
+      withSQLConf(READ_MAX_PARALLELISM.key -> "4") {
         val sql = s"SELECT m, COUNT(*), MIN(id), MAX(id), SUM(id) FROM $db.$tbl WHERE id >= 100 GROUP BY m"
         eventuallyOnCloud(assert(inputPartitions(spark.sql(sql)).length === 4))
         val expected = (100 until rows).groupBy(_ / (rows / 3)).toSeq.map { case (m, ids) =>
@@ -158,7 +168,7 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
     // that Spark would merge into the result
     withIdTable() { (db, tbl) =>
       Seq(TASK_SPLIT_STRATEGY_PRIMARY_INDEX, TASK_SPLIT_STRATEGY_PARTITION).foreach { strategy =>
-        withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> strategy, READ_PARALLELISM.key -> "4") {
+        withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> strategy, READ_MAX_PARALLELISM.key -> "4") {
           val sql = s"SELECT MIN(id), MAX(id), COUNT(*) FROM $db.$tbl WHERE m = 0 AND id >= 100"
           assert(inputPartitions(spark.sql(sql)).length === 1)
           checkAnswer(spark.sql(sql), Row(100L, rows / 3 - 1L, rows / 3 - 100L))

@@ -16,6 +16,7 @@ package com.clickhouse.spark.read
 
 import com.clickhouse.spark.Log4j2CaptureHelper
 import com.clickhouse.spark.ClickHouseTable
+import com.clickhouse.spark.read.TaskSplit.OneTaskReason.DistributedIndex
 import com.clickhouse.spark.spec.{
   ClusterSpec,
   DistributedEngineSpec,
@@ -28,7 +29,10 @@ import com.clickhouse.spark.spec.{
 }
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
   READ_DISTRIBUTED_CONVERT_LOCAL,
-  READ_DISTRIBUTED_USE_CLUSTER_NODES
+  READ_DISTRIBUTED_USE_CLUSTER_NODES,
+  READ_TASK_SPLIT_STRATEGY,
+  TASK_SPLIT_STRATEGY_ONE_TASK,
+  TASK_SPLIT_STRATEGY_PRIMARY_INDEX
 }
 import org.apache.spark.sql.clickhouse.ReadOptions
 import org.scalatest.funsuite.AnyFunSuite
@@ -37,12 +41,26 @@ import java.time.{LocalDateTime, ZoneId}
 
 class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
 
-  test("planning a single input partition warns about read performance") {
+  test("a read that falls back to one task warns about read performance, saying why") {
+    // the default primaryIndexSplit has no index across the shards of a Distributed table
     val scan = new ClickHouseBatchScan(scanJob())
-    val (partitions, warnings) =
-      captureWarnings(classOf[ClickHouseBatchScan].getName)(scan.inputPartitions)
-    assert(partitions.length === 1)
-    assert(warnings.exists(_.contains("Reading db.dist as a single partition")))
+    val (partitions, warnings) = captureWarnings(classOf[ClickHouseBatchScan].getName)(scan.inputPartitions)
+    assert(partitions.toSeq.map(_.filterExpr) === Seq("1=1"))
+    assert(warnings === Seq(
+      "Reading db.dist as one task, which may impact read performance: " + DistributedIndex.message
+    ))
+  }
+
+  test("a one task read that was asked for is not warned about") {
+    Seq(
+      scanJob(strategy = TASK_SPLIT_STRATEGY_ONE_TASK),
+      scanJob().copy(pushedGroupBy = Some(Nil)),
+      scanJob().copy(maxParallelism = 1)
+    ).foreach { job =>
+      val (partitions, warnings) =
+        captureWarnings(classOf[ClickHouseBatchScan].getName)(new ClickHouseBatchScan(job).inputPartitions)
+      assert(partitions.length === 1 && warnings.isEmpty)
+    }
   }
 
   test("table identity ignores volatile runtime statistics") {
@@ -147,11 +165,12 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
     lifetime_bytes = None
   )
 
-  // a Distributed table scan without convertDistributedToLocal plans exactly one partition without any I/O
-  private def scanJob(): ScanJobDescription = {
+  // a Distributed table scan without convertDistributedToLocal plans its one task without any I/O
+  private def scanJob(strategy: String = TASK_SPLIT_STRATEGY_PRIMARY_INDEX): ScanJobDescription = {
     val readOptions = new java.util.HashMap[String, String]()
     readOptions.put(READ_DISTRIBUTED_CONVERT_LOCAL.key, "false")
     readOptions.put(READ_DISTRIBUTED_USE_CLUSTER_NODES.key, "false")
+    readOptions.put(READ_TASK_SPLIT_STRATEGY.key, strategy)
     ScanJobDescription(
       node = NodeSpec("127.0.0.1"),
       tz = ZoneId.of("UTC"),
@@ -162,10 +181,12 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
         local_db = "db",
         local_table = "local"
       ),
+      tableColumns = Set.empty,
       cluster = None,
       localTableSpec = None,
       localTableEngineSpec = None,
-      readOptions = new ReadOptions(readOptions)
+      readOptions = new ReadOptions(readOptions),
+      maxParallelism = 4
     )
   }
 }

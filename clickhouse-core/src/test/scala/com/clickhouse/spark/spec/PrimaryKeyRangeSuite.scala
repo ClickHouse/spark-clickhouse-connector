@@ -14,6 +14,7 @@
 
 package com.clickhouse.spark.spec
 
+import com.clickhouse.spark.expr.PushedFilter
 import com.clickhouse.spark.spec.PrimaryKeyRange._
 import org.scalatest.funsuite.AnyFunSuite
 
@@ -106,11 +107,11 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
   test("cut points are read from the index granules the key filters keep") {
     val key = Seq("tenant" -> BytesKey, "ts" -> DateTimeKey(None))
     val filters = Seq(
-      "`tenant` = 'a'" -> Set("tenant"),
-      "`ts` >= '2024-02-01 00:00:00'" -> Set("ts"),
-      "(`tenant` = 'b') OR (`ts` < '2024-01-01 00:00:00')" -> Set("tenant", "ts"),
-      "`value` > 1" -> Set("value"),
-      "`tenant` = `value`" -> Set("tenant", "value")
+      PushedFilter("`tenant` = 'a'", Set("tenant")),
+      PushedFilter("`ts` >= '2024-02-01 00:00:00'", Set("ts")),
+      PushedFilter("(`tenant` = 'b') OR (`ts` < '2024-01-01 00:00:00')", Set("tenant", "ts")),
+      PushedFilter("`value` > 1", Set("value")),
+      PushedFilter("`tenant` = `value`", Set("tenant", "value"))
     )
     assert(cutsQuery(tableSpec, key, filters, 4) ===
       """SELECT hex(`tenant`), toString(`ts`, 'UTC')
