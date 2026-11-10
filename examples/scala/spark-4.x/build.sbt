@@ -16,9 +16,10 @@ name := "clickhouse-spark-examples"
 
 version := "1.0"
 
-scalaVersion := "2.13.16"
+scalaVersion := "2.13.18"
 
-val sparkVersion = "4.0.1"
+val sparkBinaryVersion = sys.props.getOrElse("spark_binary_version", "4.0")
+val sparkVersion = s"$sparkBinaryVersion.+" // latest patch release of that line
 val clickhouseConnectorVersion = "0.9.0"
 
 // Note: For production Spark applications, add % "provided" to Spark dependencies
@@ -26,14 +27,14 @@ libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-sql" % sparkVersion,
   "org.apache.spark" %% "spark-streaming" % sparkVersion,
   "org.scala-lang" % "scala-reflect" % scalaVersion.value,
-  "com.clickhouse.spark" %% "clickhouse-spark-runtime-4.0" % clickhouseConnectorVersion
+  "com.clickhouse.spark" %% s"clickhouse-spark-runtime-$sparkBinaryVersion" % clickhouseConnectorVersion
 )
 
 // For local debugging: uncomment to use locally built connector JAR instead of Maven
 // This allows you to debug connector code changes without publishing to Maven
 // unmanagedJars in Compile += {
 //   val runtimeJar =
-//     baseDirectory.value / ".." / ".." / ".." / "spark-4.0" / "clickhouse-spark-runtime" / "build" / "libs" / "clickhouse-spark-runtime-4.0_2.13-0.9.0-SNAPSHOT.jar"
+//     baseDirectory.value / ".." / ".." / ".." / s"spark-$sparkBinaryVersion" / "clickhouse-spark-runtime" / "build" / "libs" / s"clickhouse-spark-runtime-${sparkBinaryVersion}_2.13-0.9.0-SNAPSHOT.jar"
 //   Attributed.blank(runtimeJar)
 // }
 

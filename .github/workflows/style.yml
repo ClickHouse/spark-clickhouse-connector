@@ -33,7 +33,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        spark: [ "3.3", "3.4", "3.5", "4.0" ]
+        spark: [ "3.3", "3.4", "3.5", "4.0", "4.1" ]
         include:
           - spark: "3.3"
             java: 8
@@ -42,6 +42,8 @@ jobs:
           - spark: "3.5"
             java: 8
           - spark: "4.0"
+            java: 17
+          - spark: "4.1"
             java: 17
     steps:
       - uses: actions/checkout@v4

@@ -92,7 +92,7 @@ repeat.
 Final pre-commit pass. If you can't tick a box, don't open the PR.
 
 - [ ] Each modified file in `spark-<v>/clickhouse-spark/` has an equivalent
-      change in every applicable peer module (3.3 / 3.4 / 3.5 / 4.0), or the
+      change in every applicable peer module (3.3 / 3.4 / 3.5 / 4.0 / 4.1), or the
       PR description explicitly justifies the exclusion.
 - [ ] `./gradlew clean build -x test -Dspark_binary_version=<v>` passes for
       every `<v>` you touched.
@@ -103,7 +103,7 @@ Final pre-commit pass. If you can't tick a box, don't open the PR.
 - [ ] Apache-2.0 license header is present on every new source file.
 - [ ] If you added/changed an entry in `ClickHouseSQLConf`, you regenerated
       `docs/configurations/*.md` via `UPDATE=1 ConfigurationSuite` for every
-      Spark version that exposes the entry (3.4 / 3.5 / 4.0; 3.3 has no
+      Spark version that exposes the entry (3.4 / 3.5 / 4.0 / 4.1; 3.3 has no
       `ConfigurationSuite`).
 - [ ] If the change is user-visible, `CHANGELOG.md` has an entry under
       `[Unreleased]` in the correct section
