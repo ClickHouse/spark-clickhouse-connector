@@ -16,6 +16,8 @@ package com.clickhouse.spark.read
 
 import org.apache.spark.sql.connector.read.InputPartition
 import org.apache.spark.sql.connector.read.partitioning.Partitioning
+import com.clickhouse.spark.exception.CHClientException
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import com.clickhouse.spark.spec._
 
 case class ClickHousePartitioning(inputParts: Array[ClickHouseInputPartition]) extends Partitioning {
@@ -57,4 +59,51 @@ case class ClickHouseInputPartition(
       // Date type column is quoted if there are multi partition columns
       case _ => s"$partitionValue"
     }
+}
+
+/** How a read is split into tasks, once the strategy, the engine and the primary index have been weighed. */
+sealed trait TaskSplit
+
+object TaskSplit {
+
+  /** The whole table in one task; a Distributed table through the Distributed engine. */
+  case object OneTask extends TaskSplit
+
+  /** One task per ClickHouse partition, listed shard by shard for a Distributed table. */
+  case object PartitionSplit extends TaskSplit
+
+  /** One task per range of the primary key. */
+  case class PrimaryIndexSplit(ranges: Seq[PrimaryKeyRange]) extends TaskSplit
+
+  /**
+   * Decides the split from the configured `strategy`. Each strategy falls back to one task on its own, never to
+   * another split. Pure: `primaryKeyRanges` is the one costly input and is only evaluated when `primaryIndexSplit`
+   * gets that far; None there falls back to one task.
+   */
+  def resolve(
+    strategy: String,
+    globalAggregatePushed: Boolean,
+    engine: TableEngineSpec,
+    convertDistributedToLocal: Boolean,
+    useClusterNodesForDistributed: Boolean,
+    primaryKeyRanges: => Option[Seq[PrimaryKeyRange]]
+  ): TaskSplit = {
+    val distributed = engine.isInstanceOf[DistributedEngineSpec]
+    if (distributed && useClusterNodesForDistributed && !convertDistributedToLocal) {
+      throw CHClientException(s"${READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet.")
+    }
+    // a global aggregate is always one task: an empty task returns a row of ClickHouse's defaults (not NULL) that
+    // Spark would merge in
+    strategy match {
+      case TASK_SPLIT_STRATEGY_ONE_TASK => OneTask
+      case TASK_SPLIT_STRATEGY_PARTITION =>
+        if (globalAggregatePushed) OneTask
+        else if (distributed && !convertDistributedToLocal) OneTask // partitions can't be listed through the engine
+        else PartitionSplit // shard by shard for a Distributed table
+      case TASK_SPLIT_STRATEGY_PRIMARY_INDEX =>
+        if (globalAggregatePushed) OneTask
+        else if (distributed) OneTask // no primary index across shards
+        else primaryKeyRanges.map(PrimaryIndexSplit).getOrElse(OneTask)
+    }
+  }
 }

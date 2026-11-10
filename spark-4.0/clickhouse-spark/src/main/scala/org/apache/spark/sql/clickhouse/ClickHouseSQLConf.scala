@@ -125,7 +125,8 @@ object ClickHouseSQLConf {
   val READ_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.read.distributed.convertLocal")
       .doc("When reading Distributed table, read local table instead of itself. " +
-        s"If `true`, ignore `${READ_DISTRIBUTED_USE_CLUSTER_NODES.key}`.")
+        s"If `true`, ignore `${READ_DISTRIBUTED_USE_CLUSTER_NODES.key}`. " +
+        "Reads are split by shard only under `spark.clickhouse.read.taskSplitStrategy=partitionSplit`.")
       .version("0.1.0")
       .booleanConf
       .createWithDefault(true)
@@ -154,9 +155,9 @@ object ClickHouseSQLConf {
         s"in one input partition. `$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` falls back to " +
         s"`$TASK_SPLIT_STRATEGY_ONE_TASK` on ClickHouse before 24.2 and when the primary key does not start " +
         "with a column of an integer, date, date time, string or UUID type. Aggregations pushed down without " +
-        s"GROUP BY are always read as `$TASK_SPLIT_STRATEGY_ONE_TASK`. A Distributed table is read through the " +
-        s"Distributed engine in one input partition under `$TASK_SPLIT_STRATEGY_ONE_TASK` and ignores the other " +
-        "values.")
+        s"GROUP BY are always read as `$TASK_SPLIT_STRATEGY_ONE_TASK`. A Distributed table is read in one input " +
+        s"partition through the Distributed engine, except under `$TASK_SPLIT_STRATEGY_PARTITION` with " +
+        s"`${READ_DISTRIBUTED_CONVERT_LOCAL.key}`, which reads one input partition per shard and partition.")
       .version("0.10.2")
       .stringConf
       .transform(v => TASK_SPLIT_STRATEGIES.find(_.equalsIgnoreCase(v)).getOrElse(v))

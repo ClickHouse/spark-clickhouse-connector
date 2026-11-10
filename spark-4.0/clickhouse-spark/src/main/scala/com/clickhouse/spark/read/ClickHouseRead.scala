@@ -17,6 +17,7 @@ package com.clickhouse.spark.read
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
+import com.clickhouse.spark.read.TaskSplit._
 import com.clickhouse.spark.spec.{DistributedEngineSpec, NoPartitionSpec, TableEngineSpec}
 import com.clickhouse.spark.{BlocksReadMetric, BytesReadMetric, ClickHouseHelper, Logging, SQLHelper, Utils}
 import org.apache.spark.sql.SparkSession
@@ -167,8 +168,7 @@ class ClickHouseScanBuilder(
   }
 
   // without GROUP BY, an empty task still returns a row of ClickHouse's defaults (not NULL) that Spark merges in
-  private def taskSplitStrategy: String =
-    if (_pushedGroupByCols.exists(_.isEmpty)) TASK_SPLIT_STRATEGY_ONE_TASK else scanJob.readOptions.taskSplitStrategy
+  private def globalAggregatePushed: Boolean = _pushedGroupByCols.exists(_.isEmpty)
 
   override def build(): Scan = {
     validateReadSchema()
@@ -180,7 +180,7 @@ class ClickHouseScanBuilder(
         orderByClause = _orderByClause,
         limit = _limit
       ),
-      taskSplitStrategy = taskSplitStrategy,
+      globalAggregatePushed = globalAggregatePushed,
       tableColumns = physicalSchema.fieldNames.toSet,
       pushedFilters = pushedFilters
     )
@@ -189,7 +189,7 @@ class ClickHouseScanBuilder(
 
 class ClickHouseBatchScan(
   scanJob: ScanJobDescription,
-  taskSplitStrategy: String = TASK_SPLIT_STRATEGY_PARTITION,
+  globalAggregatePushed: Boolean = false,
   tableColumns: Set[String] = Set.empty,
   pushedFilters: Array[Filter] = Array.empty
 ) extends Scan with Batch
@@ -208,58 +208,24 @@ class ClickHouseBatchScan(
 
   private val queryTimeoutMs: Long = scanJob.readOptions.clientQueryTimeout
 
+  lazy val taskSplit: TaskSplit = TaskSplit.resolve(
+    strategy = scanJob.readOptions.taskSplitStrategy,
+    globalAggregatePushed = globalAggregatePushed,
+    engine = scanJob.tableEngineSpec,
+    convertDistributedToLocal = scanJob.readOptions.convertDistributedToLocal,
+    useClusterNodesForDistributed = scanJob.readOptions.useClusterNodesForDistributed,
+    primaryKeyRanges = planPrimaryKeyRanges()
+  )
+
   lazy val inputPartitions: Array[ClickHouseInputPartition] = {
-    val partitions = scanJob.tableEngineSpec match {
-      case _: TableEngineSpec if taskSplitStrategy == TASK_SPLIT_STRATEGY_ONE_TASK =>
-        Array(wholeTablePartition)
-      case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
-        scanJob.cluster.get.shards.flatMap { shardSpec =>
-          Utils.tryWithResource(NodeClient(shardSpec.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-            queryPartitionSpec(local_db, local_table).map { partitionSpec =>
-              ClickHouseInputPartition(
-                scanJob.localTableSpec.get,
-                partitionSpec,
-                scanJob.readOptions.splitByPartitionId,
-                shardSpec // TODO pickup preferred
-              )
-            }
-          }
-        }
-      case _: DistributedEngineSpec if scanJob.readOptions.useClusterNodesForDistributed =>
-        throw CHClientException(
-          s"${READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
-        )
-      case _: DistributedEngineSpec =>
-        // we can not collect all partitions from single node, thus should treat table as no partitioned table
-        Array(wholeTablePartition)
-      case _: TableEngineSpec if taskSplitStrategy == TASK_SPLIT_STRATEGY_PARTITION =>
-        Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-          queryPartitionSpec(database, table).map { partitionSpec =>
-            ClickHouseInputPartition(
-              scanJob.tableSpec,
-              partitionSpec,
-              scanJob.readOptions.splitByPartitionId,
-              scanJob.node // TODO pickup preferred
-            )
-          }
-        }.toArray
-      case _: TableEngineSpec =>
-        Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-          primaryKeyRanges match {
-            case Some(ranges) => ranges.map { range =>
-                ClickHouseInputPartition(
-                  scanJob.tableSpec,
-                  NoPartitionSpec,
-                  scanJob.readOptions.splitByPartitionId,
-                  scanJob.node,
-                  keyRange = Some(range)
-                )
-              }.toArray
-            case None => Array(wholeTablePartition)
-          }
-        }
+    val partitions = taskSplit match {
+      case OneTask => Array(wholeTablePartition)
+      case PartitionSplit if scanJob.tableEngineSpec.isInstanceOf[DistributedEngineSpec] => shardPartitions
+      case PartitionSplit => tablePartitions
+      case PrimaryIndexSplit(ranges) => ranges.map(range => wholeTablePartition.copy(keyRange = Some(range))).toArray
     }
-    if (partitions.length == 1 && taskSplitStrategy != TASK_SPLIT_STRATEGY_ONE_TASK) {
+    val oneTaskChosen = globalAggregatePushed || scanJob.readOptions.taskSplitStrategy == TASK_SPLIT_STRATEGY_ONE_TASK
+    if (partitions.length == 1 && !oneTaskChosen) {
       log.warn(s"Reading $database.$table as a single partition, which may impact read performance")
     }
     partitions
@@ -269,11 +235,34 @@ class ClickHouseBatchScan(
   private def wholeTablePartition: ClickHouseInputPartition =
     ClickHouseInputPartition(scanJob.tableSpec, NoPartitionSpec, scanJob.readOptions.splitByPartitionId, scanJob.node)
 
-  private def primaryKeyRanges(implicit nodeClient: NodeClient): Option[Seq[PrimaryKeyRange]] = {
-    val filters = pushedFilters.toSeq.flatMap(f => compileFilter(f).map(_ -> f.references.toSet))
-    val slices = scanJob.readOptions.parallelism.getOrElse(3 * SparkSession.active.sparkContext.defaultParallelism)
-    PrimaryKeyRange.plan(scanJob.tableSpec, tableColumns, filters, slices)
+  // one task per ClickHouse partition
+  private def tablePartitions: Array[ClickHouseInputPartition] =
+    Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
+      queryPartitionSpec(database, table).map { partitionSpec =>
+        // TODO pickup preferred
+        ClickHouseInputPartition(scanJob.tableSpec, partitionSpec, scanJob.readOptions.splitByPartitionId, scanJob.node)
+      }
+    }.toArray
+
+  // one task per shard and partition of the local tables behind a Distributed table
+  private def shardPartitions: Array[ClickHouseInputPartition] = {
+    val localTable = scanJob.localTableSpec.get
+    scanJob.cluster.get.shards.flatMap { shard =>
+      Utils.tryWithResource(NodeClient(shard.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
+        queryPartitionSpec(localTable.database, localTable.name).map { partitionSpec =>
+          // TODO pickup preferred
+          ClickHouseInputPartition(localTable, partitionSpec, scanJob.readOptions.splitByPartitionId, shard)
+        }
+      }
+    }
   }
+
+  private def planPrimaryKeyRanges(): Option[Seq[PrimaryKeyRange]] =
+    Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
+      val filters = pushedFilters.toSeq.flatMap(f => compileFilter(f).map(_ -> f.references.toSet))
+      val slices = scanJob.readOptions.parallelism.getOrElse(3 * SparkSession.active.sparkContext.defaultParallelism)
+      PrimaryKeyRange.plan(scanJob.tableSpec, tableColumns, filters, slices)
+    }
 
   override def toBatch: Batch = this
 
