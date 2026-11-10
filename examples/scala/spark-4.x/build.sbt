@@ -16,7 +16,7 @@ name := "clickhouse-spark-examples"
 
 version := "1.0"
 
-scalaVersion := "2.13.16"
+scalaVersion := "2.13.18"
 
 val sparkBinaryVersion = sys.props.getOrElse("spark_binary_version", "4.0")
 val sparkVersion = s"$sparkBinaryVersion.+" // latest patch release of that line
