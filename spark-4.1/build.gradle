@@ -51,7 +51,10 @@ project(":clickhouse-spark-runtime-${spark_binary_version}_$scala_binary_version
         // This ensures we use our version and avoid conflicts with external versions (e.g., Databricks Hudi)
         implementation "com.fasterxml.jackson.core:jackson-databind:$jackson_version"
         implementation "com.fasterxml.jackson.datatype:jackson-datatype-jsr310:$jackson_version"
-        implementation "com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version"
+        implementation("com.fasterxml.jackson.module:jackson-module-scala_$scala_binary_version:$jackson_version") {
+            // Spark provides scala-library; don't bundle a second copy in the runtime jar
+            exclude group: "org.scala-lang", module: "scala-library"
+        }
     }
 
     shadowJar {
