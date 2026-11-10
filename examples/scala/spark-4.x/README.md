@@ -24,7 +24,7 @@ both in `-Dspark_binary_version=...` and in the module names (e.g. `:clickhouse-
    ./gradlew :clickhouse-spark-runtime-4.0_2.13:shadowJar -Dspark_binary_version=4.0 -Dscala_binary_version=2.13
    ```
    
-   Then uncomment the `unmanagedJars` section in `build.sbt` to use the local JAR.
+   Then pass `-Dclickhouse_connector_local=true` to sbt to use the local JAR (see Option 2).
 
 ## Running Examples in IDE (for Debugging)
 
@@ -77,7 +77,7 @@ CH_PORT=8123 ./gradlew :examples-scala-spark-4.x:runStreaming \
 
 ### Option 2: Using sbt
 
-**Note:** sbt automatically downloads the connector from Maven Central. `build.sbt` reads two system properties:
+**Note:** sbt automatically downloads the connector from Maven Central. `build.sbt` reads these system properties:
 
 - `spark_binary_version` (default `4.0`): selects the Spark line. It sets the matching Spark and Scala
   versions (4.0 → Spark 4.0.1 / Scala 2.13.16, 4.1 → Spark 4.1.4 / Scala 2.13.18, 4.2 → Spark 4.2.1 /
@@ -85,6 +85,8 @@ CH_PORT=8123 ./gradlew :examples-scala-spark-4.x:runStreaming \
 - `clickhouse_connector_version` (default `0.10.2`): the connector release to download. The 4.1 and 4.2
   runtimes are only published from the first release that includes them; until such a release exists,
   use a locally built JAR (see below).
+- `clickhouse_connector_local` (default `false`): when `true`, use the runtime JAR built in this repo
+  instead of downloading one. Its version then defaults to the one in `version.txt`.
 
 **SimpleBatchExample:**
 ```bash
@@ -104,9 +106,16 @@ CH_PORT=8123 sbt "runMain examples.StreamingRateExample"
 CH_PORT=8123 sbt -Dspark_binary_version=4.2 "runMain examples.StreamingRateExample"
 ```
 
-**For local debugging:** Uncomment the `unmanagedJars` section in `build.sbt` to use a locally built connector JAR
-instead of Maven. It picks `spark-<spark_binary_version>/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-<spark_binary_version>_2.13-<clickhouse_connector_version>.jar`,
-so pass the version you built (the one in `version.txt`), e.g. `sbt -Dspark_binary_version=4.2 -Dclickhouse_connector_version=$(cat ../../../version.txt) ...`.
+**For local debugging:** build the runtime JAR for the Spark line, then run with `-Dclickhouse_connector_local=true`.
+sbt then uses `spark-<spark_binary_version>/clickhouse-spark-runtime/build/libs/clickhouse-spark-runtime-<spark_binary_version>_2.13-<version>.jar`
+instead of the Maven artifact, and fails with the build command to run if the JAR is missing:
+```bash
+# From project root
+./gradlew :clickhouse-spark-runtime-4.2_2.13:shadowJar -Dspark_binary_version=4.2 -Dscala_binary_version=2.13
+
+# From examples/scala/spark-4.x directory
+CH_PORT=8123 sbt -Dspark_binary_version=4.2 -Dclickhouse_connector_local=true "runMain examples.SimpleBatchExample"
+```
 
 ### Option 3: Using spark-submit
 
