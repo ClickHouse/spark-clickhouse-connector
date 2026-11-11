@@ -21,7 +21,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Anonymous usage statistics ([#576](https://github.com/ClickHouse/spark-clickhouse-connector/pull/576)). The connector now sends a lightweight, anonymous usage event to ClickHouse's telemetry endpoint when Spark plans a read from ClickHouse or executes a write to it (at most one read and one write event per table per Spark application), carrying only the connector, ClickHouse Java client, ClickHouse server, Spark, and Java versions, the OS name, coarse runtime facts (platform, table engine, wire format, `convertLocal` setting, test-run and streaming flags), a one-way hash of the Spark application name, and a truncated random table UUID — never data, names, hostnames, or credentials. Events are sent asynchronously and best-effort, so they can never fail or slow down a job. Opt out with the new SQL config `spark.clickhouse.sendAnonymousUsageStats=false` (default `true`) or the standard `DO_NOT_TRACK` environment variable. Applies to all Spark profiles (3.3/3.4/3.5/4.0/4.1).
+- Support for Spark 4.1 ([#602](https://github.com/ClickHouse/spark-clickhouse-connector/pull/602)). New `spark-4.1` build profile (Scala 2.13, Java 17), published as `clickhouse-spark-runtime-4.1_2.13`. The connector code is identical to the Spark 4.0 profile.
+
 ### Changed
+- The Spark 4.0 and 4.1 runtime jars no longer bundle `scala-library`, which came in through `jackson-module-scala`; Spark provides it ([#604](https://github.com/ClickHouse/spark-clickhouse-connector/pull/604)).
 - Bump the bundled clickhouse-java client-v2 and JDBC from 0.9.5 to 0.11.1. Unrecognized catalog `option.*` keys still log a warning and are dropped instead of failing the client build ([#598](https://github.com/ClickHouse/spark-clickhouse-connector/pull/598)).
 
 ## [0.10.2] - 2026-10-22
