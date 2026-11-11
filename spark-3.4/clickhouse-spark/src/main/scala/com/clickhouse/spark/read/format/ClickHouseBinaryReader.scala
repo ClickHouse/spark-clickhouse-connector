@@ -51,8 +51,25 @@ class ClickHouseBinaryReader(
 
   override val format: String = "RowBinaryWithNamesAndTypes"
 
+  // Decodes rows directly until it hands over to client-v2
+  private[format] lazy val rowDecoder = new RowBinaryDecoder(resp.getInputStream, resp.getSettings, readSchema)
+  private var decodedRow: InternalRow = _
+
+  override def next(): Boolean = {
+    decodedRow = null
+    if (rowDecoder.handedOver) super.next()
+    else if (rowDecoder.next()) {
+      decodedRow = rowDecoder.row
+      // client-v2 reads a row ahead: let it read the row after this one now, as it would have
+      if (rowDecoder.handedOver) streamOutput.hasNext
+      true
+    } else rowDecoder.handedOver && super.next()
+  }
+
+  override def get: InternalRow = if (decodedRow != null) decodedRow else super.get
+
   lazy val streamOutput: Iterator[GenericRecord] = {
-    val inputString: InputStream = resp.getInputStream
+    val inputString: InputStream = rowDecoder.clientInput
     val cbfr: ClickHouseBinaryFormatReader = new RowBinaryWithNamesAndTypesFormatReader(
       inputString,
       resp.getSettings,
@@ -98,13 +115,7 @@ class ClickHouseBinaryReader(
         value.asInstanceOf[Long]
       case FloatType => value.asInstanceOf[Float]
       case DoubleType => value.asInstanceOf[Double]
-      case d: DecimalType =>
-        // Java client returns BigInteger for Int256/UInt256, BigDecimal for Decimal types
-        val dec: BigDecimal = value match {
-          case bi: java.math.BigInteger => BigDecimal(bi)
-          case bd: java.math.BigDecimal => BigDecimal(bd)
-        }
-        Decimal(dec.setScale(d.scale))
+      case d: DecimalType => ClickHouseBinaryReader.toDecimal(value, d)
       case TimestampType =>
         var _instant = value.asInstanceOf[ZonedDateTime].withZoneSameInstant(ZoneOffset.UTC)
         TimeUnit.SECONDS.toMicros(_instant.toEpochSecond) + TimeUnit.NANOSECONDS.toMicros(_instant.getNano())
@@ -181,4 +192,16 @@ class ClickHouseBinaryReader(
     }
   }
 
+}
+
+object ClickHouseBinaryReader {
+
+  private[format] def toDecimal(value: Object, d: DecimalType): Decimal = {
+    // Java client returns BigInteger for Int256/UInt256, BigDecimal for Decimal types
+    val dec: BigDecimal = value match {
+      case bi: java.math.BigInteger => BigDecimal(bi)
+      case bd: java.math.BigDecimal => BigDecimal(bd)
+    }
+    Decimal(dec.setScale(d.scale))
+  }
 }
