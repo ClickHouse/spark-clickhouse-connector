@@ -18,25 +18,50 @@ version := "1.0"
 
 scalaVersion := "2.13.18"
 
+// Pick the Spark line with `sbt -Dspark_binary_version=4.1 ...` (default 4.0).
 val sparkBinaryVersion = sys.props.getOrElse("spark_binary_version", "4.0")
 val sparkVersion = s"$sparkBinaryVersion.+" // latest patch release of that line
-val clickhouseConnectorVersion = "0.9.0"
+
+// `-Dclickhouse_connector_local=true` uses the runtime JAR built in this repo instead of the Maven artifact.
+// Build it first with
+// `./gradlew :clickhouse-spark-runtime-<v>_2.13:shadowJar -Dspark_binary_version=<v> -Dscala_binary_version=2.13`.
+val useLocalConnector = sys.props.get("clickhouse_connector_local").contains("true")
 
 // Note: For production Spark applications, add % "provided" to Spark dependencies
 libraryDependencies ++= Seq(
   "org.apache.spark" %% "spark-sql" % sparkVersion,
   "org.apache.spark" %% "spark-streaming" % sparkVersion,
-  "org.scala-lang" % "scala-reflect" % scalaVersion.value,
-  "com.clickhouse.spark" %% s"clickhouse-spark-runtime-$sparkBinaryVersion" % clickhouseConnectorVersion
+  "org.scala-lang" % "scala-reflect" % scalaVersion.value
 )
 
-// For local debugging: uncomment to use locally built connector JAR instead of Maven
-// This allows you to debug connector code changes without publishing to Maven
-// unmanagedJars in Compile += {
-//   val runtimeJar =
-//     baseDirectory.value / ".." / ".." / ".." / s"spark-$sparkBinaryVersion" / "clickhouse-spark-runtime" / "build" / "libs" / s"clickhouse-spark-runtime-${sparkBinaryVersion}_2.13-0.9.0-SNAPSHOT.jar"
-//   Attributed.blank(runtimeJar)
-// }
+// The connector from Maven Central. Override the release with `-Dclickhouse_connector_version=...`
+// (the 4.1 / 4.2 runtimes are only published from the first release that includes them).
+libraryDependencies ++= {
+  if (useLocalConnector) Nil
+  else {
+    val version = sys.props.getOrElse("clickhouse_connector_version", "0.10.2")
+    Seq("com.clickhouse.spark" %% s"clickhouse-spark-runtime-$sparkBinaryVersion" % version)
+  }
+}
+
+// The locally built connector. Its version defaults to the one in the repo's version.txt.
+Compile / unmanagedJars ++= {
+  if (!useLocalConnector) Nil
+  else {
+    val repoRoot = (baseDirectory.value / ".." / ".." / "..").getCanonicalFile
+    val version = sys.props.getOrElse("clickhouse_connector_version", IO.read(repoRoot / "version.txt").trim)
+    val runtimeJar = repoRoot / s"spark-$sparkBinaryVersion" / "clickhouse-spark-runtime" / "build" / "libs" /
+      s"clickhouse-spark-runtime-${sparkBinaryVersion}_2.13-$version.jar"
+    if (!runtimeJar.exists) {
+      sys.error(
+        s"Local connector JAR not found: $runtimeJar. Build it with " +
+          s"`./gradlew :clickhouse-spark-runtime-${sparkBinaryVersion}_2.13:shadowJar " +
+          s"-Dspark_binary_version=$sparkBinaryVersion -Dscala_binary_version=2.13` from the repo root."
+      )
+    }
+    Seq(Attributed.blank(runtimeJar))
+  }
+}
 
 // Fork the JVM for run to avoid classpath issues
 fork := true

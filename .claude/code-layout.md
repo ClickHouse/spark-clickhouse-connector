@@ -28,15 +28,15 @@ spark-3.3/                 ┐
 spark-3.4/                 │
 spark-3.5/                 ├─ Per-Spark-version trees. Each one contains:
 spark-4.0/                 │    clickhouse-spark/          (main connector code)
-spark-4.1/                 ┘    clickhouse-spark-runtime/  (shadowed runtime jar)
-                                clickhouse-spark-it/       (Spark IT tests)
+spark-4.1/                 │    clickhouse-spark-runtime/  (shadowed runtime jar)
+spark-4.2/                 ┘    clickhouse-spark-it/       (Spark IT tests)
 docker/                    Compose files for single-node + cluster CH.
 .github/workflows/         CI.
 ```
 
 ## Where to edit
 
-Per-Spark-version paths (identical across `spark-3.3/` … `spark-4.1/` unless
+Per-Spark-version paths (identical across `spark-3.3/` … `spark-4.2/` unless
 noted), under `clickhouse-spark/src/main/scala/`:
 
 - `com/clickhouse/spark/`
@@ -114,9 +114,9 @@ Spark on the result rows. This is intentional, not an oversight.
 
 ### Cross-version drift
 
-The five trees diverge in narrow, predictable places. Diff carefully:
+The six trees diverge in narrow, predictable places. Diff carefully:
 
-- **Spark 4.x reworked `AnalysisException` for error classes.** 4.0 / 4.1:
+- **Spark 4.x reworked `AnalysisException` for error classes.** 4.0 / 4.1 / 4.2:
   `new AnalysisException(errorClass = "...", messageParameters = Map(...))`.
   3.3 / 3.4 / 3.5 still use the positional
   `new AnalysisException(message, cause = Some(e))`. The
@@ -139,6 +139,13 @@ The five trees diverge in narrow, predictable places. Diff carefully:
   release adds an interface only one tree implements. Always grep the actual
   `extends ScanBuilder with ...` line in each tree before assuming
   identical surface.
+- **Spark 4.2 widened catalyst case classes the connector pattern-matches
+  on.** `TransformExpression` gained a 4th field (`reducedWith`), and
+  `CharType` / `VarcharType` gained a `collation` field, so `spark-4.2/`
+  matches `TransformExpression(f, _, _, _)`, `CharType(_, _)` and
+  `VarcharType(_, _)` (in `ExprUtils`, `ClickHouseWriter`, `SchemaUtils`)
+  where 4.0 / 4.1 use one wildcard fewer. These are the only source
+  differences between `spark-4.1/` and `spark-4.2/`.
 
 ### `VariantType` is Spark 4.x-only
 
@@ -146,7 +153,7 @@ The symbols `VariantType`, `VariantVal`, and `Variant` do not exist on the
 Spark 3.x classpath. Variant-handling code — the 4.x `ClickHouseArrowStreamWriter`
 override of `revisedDataSchema`, its `variantToJsonString` helper,
 schema-mapping branches, related tests — lives **only** in the 4.x trees
-(`spark-4.0/`, `spark-4.1/`). (The base `ClickHouseWriter.revisedDataSchema`
+(`spark-4.0/`, `spark-4.1/`, `spark-4.2/`). (The base `ClickHouseWriter.revisedDataSchema`
 field itself exists in every version; only the Variant-rewrite override is
 4.x-only.)
 
@@ -180,7 +187,7 @@ wraps `com.clickhouse.client.api.Client` from `com.clickhouse:client-v2`.
   write-path server settings, use `option.clickhouse_setting_*`.
 - **Arrow write Variant workaround (Spark 4.x only):**
   `spark-4.<v>/clickhouse-spark/.../write/format/ClickHouseArrowStreamWriter.scala`
-  (identical in 4.0 / 4.1)
+  (identical in 4.0 / 4.1 / 4.2)
   overrides `revisedDataSchema` to rewrite every `VariantType` field to
   `StringType`, then serializes each value via a local `variantToJsonString`
   helper before handing it to the Arrow writer (see

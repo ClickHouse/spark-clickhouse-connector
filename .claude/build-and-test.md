@@ -101,7 +101,7 @@ confirm `Total number of tests run: N` is non-zero — never trust the exit stat
 Adding or changing a `ClickHouseSQLConf` entry requires regenerating the
 `docs/configurations/*.md` golden file, which `ConfigurationSuite` asserts
 against. Run it with `UPDATE=1` for every Spark version that exposes the entry
-(3.4 / 3.5 / 4.0 / 4.1; 3.3 predates `ConfigurationSuite`):
+(3.4 / 3.5 / 4.0 / 4.1 / 4.2; 3.3 predates `ConfigurationSuite`):
 
 ```bash
 UPDATE=1 ./gradlew test --tests=ConfigurationSuite \
@@ -159,10 +159,10 @@ profile-independent, so it cleans under any profile):
 - Spark-version-specific suites → `spark-<v>/clickhouse-spark-it/src/test/`
   (further split into `single/` and `cluster/`).
 - `ClickHouseSQLConf` golden-file tests → `spark-<v>/clickhouse-spark/src/test/scala/.../ConfigurationSuite.scala`
-  (3.4 / 3.5 / 4.0 / 4.1 only; 3.3 predates it).
+  (3.4 / 3.5 / 4.0 / 4.1 / 4.2 only; 3.3 predates it).
 
 Spark-version-specific suites must be duplicated across `spark-3.3` …
-`spark-4.1` the same way main code is.
+`spark-4.2` the same way main code is.
 
 ---
 

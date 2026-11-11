@@ -36,7 +36,7 @@ jobs:
     strategy:
       fail-fast: false
       matrix:
-        spark: [ '3.3', '3.4', '3.5', '4.0', '4.1' ]
+        spark: [ '3.3', '3.4', '3.5', '4.0', '4.1', '4.2' ]
         scala: [ '2.12', '2.13' ]
         java: [ 8, 17 ]
         exclude:
@@ -45,10 +45,14 @@ jobs:
             scala: '2.12'
           - spark: '4.1'
             scala: '2.12'
+          - spark: '4.2'
+            scala: '2.12'
           # Spark 4.x requires Java 17+
           - spark: '4.0'
             java: 8
           - spark: '4.1'
+            java: 8
+          - spark: '4.2'
             java: 8
     env:
       DOCKER_MIN_API_VERSION: "1.24"
