@@ -27,6 +27,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Changed
 - The Spark 4.0 and 4.1 runtime jars no longer bundle `scala-library`, which came in through `jackson-module-scala`; Spark provides it ([#604](https://github.com/ClickHouse/spark-clickhouse-connector/pull/604)).
+- Bump the bundled clickhouse-java client-v2 and JDBC from 0.9.5 to 0.11.1. Unrecognized catalog `option.*` keys still log a warning and are dropped instead of failing the client build ([#598](https://github.com/ClickHouse/spark-clickhouse-connector/pull/598)).
 
 ## [0.10.2] - 2026-10-22
 
