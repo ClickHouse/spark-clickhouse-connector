@@ -134,26 +134,26 @@ object PrimaryKeyRange {
     filters: Seq[PushedFilter],
     slices: Int
   )(implicit nodeClient: NodeClient): Either[NotSplittable, Seq[PrimaryKeyRange]] =
-    if (!table.engine.endsWith("MergeTree")) Left(NotSplittable(s"the ${table.engine} engine has no primary index"))
-    else if (table.primary_key.isEmpty) Left(NotSplittable("the table has no primary key"))
-    else
-      try describeIndex(table) match {
-          case None => Left(NotSplittable("reading the primary index needs ClickHouse 24.2+"))
-          case Some(indexColumns) =>
-            val key = splitColumns(indexColumns, tableColumns)
-            if (key.isEmpty) {
-              Left(NotSplittable(
-                "the primary key does not start with a column of an integer, date, date time, string or UUID type"
-              ))
-            } else {
-              val cuts = cutPoints(table, key, filters, slices)
-              if (cuts.isEmpty) Left(NotSplittable("the primary index yields no cut point within the filters"))
-              else Right(ranges(key.map(_._1), cuts))
-            }
-        }
-      catch {
-        case NonFatal(e) => Left(NotSplittable("planning the primary key ranges failed", Some(e)))
-      }
+    try
+      for {
+        _ <- check(table.engine.endsWith("MergeTree"), s"the ${table.engine} engine has no primary index")
+        _ <- check(table.primary_key.nonEmpty, "the table has no primary key")
+        indexColumns <- describeIndex(table).toRight(NotSplittable("reading the primary index needs ClickHouse 24.2+"))
+        key = splitColumns(indexColumns, tableColumns)
+        _ <- check(
+          key.nonEmpty,
+          "the primary key does not start with a column of an integer, date, date time, string or UUID type"
+        )
+        cuts = cutPoints(table, key, filters, slices)
+        _ <- check(cuts.nonEmpty, "the primary index yields no cut point within the filters")
+      } yield ranges(key.map(_._1), cuts)
+    catch {
+      case NonFatal(e) => Left(NotSplittable("planning the primary key ranges failed", Some(e)))
+    }
+
+  // a step of the plan: passes when `holds`, else ends it with why the table can't be split
+  private def check(holds: Boolean, whyNot: String): Either[NotSplittable, Unit] =
+    if (holds) Right(()) else Left(NotSplittable(whyNot))
 
   // None before ClickHouse 24.2, which lacks `mergeTreeIndex`
   private def describeIndex(table: TableSpec)(implicit nodeClient: NodeClient): Option[Seq[(String, String)]] =

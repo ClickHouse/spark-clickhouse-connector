@@ -14,6 +14,25 @@
 
 package com.clickhouse.spark.spec
 
+/** ClickHouse partitions of `table` read in one task, from one of `nodes`. */
+case class PartitionGroup(table: TableSpec, nodes: Nodes, partitions: Seq[PartitionSpec]) {
+
+  /** The rows of the group as a WHERE conjunct: by the partition ids, or by the values of the partition key. */
+  def filterExpr(byId: Boolean): String =
+    if (partitions == Seq(NoPartitionSpec)) "1=1"
+    else if (byId) partitions.map(p => s"'${p.partition_id}'").mkString("_partition_id IN (", ", ", ")")
+    else partitions.map(p => compileValue(p.partition_value)).mkString(s"${table.partition_key} IN (", ", ", ")")
+
+  // TODO improve and test
+  private def compileValue(partitionValue: String): String =
+    (partitionValue.contains("-"), partitionValue.contains("(")) match {
+      // quote when partition by a single Date Type column to avoid illegal types of arguments (Date, Int64)
+      case (true, false) => s"'$partitionValue'"
+      // Date type column is quoted if there are multi partition columns
+      case _ => s"$partitionValue"
+    }
+}
+
 /** Groups the ClickHouse partitions of a table into a bounded number of read tasks. */
 object PartitionGroups {
 
@@ -32,19 +51,4 @@ object PartitionGroups {
     }
     groups.toSeq.map(_.sorted.map(partitions))
   }
-
-  /** The rows of a group of partitions as a WHERE conjunct: by their ids, or by the values of `partitionKey`. */
-  def filterExpr(group: Seq[PartitionSpec], partitionKey: String, byId: Boolean): String =
-    if (group == Seq(NoPartitionSpec)) "1=1"
-    else if (byId) group.map(p => s"'${p.partition_id}'").mkString("_partition_id IN (", ", ", ")")
-    else group.map(p => compileValue(p.partition_value)).mkString(s"$partitionKey IN (", ", ", ")")
-
-  // TODO improve and test
-  private def compileValue(partitionValue: String): String =
-    (partitionValue.contains("-"), partitionValue.contains("(")) match {
-      // quote when partition by a single Date Type column to avoid illegal types of arguments (Date, Int64)
-      case (true, false) => s"'$partitionValue'"
-      // Date type column is quoted if there are multi partition columns
-      case _ => s"$partitionValue"
-    }
 }

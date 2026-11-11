@@ -21,6 +21,8 @@ import com.clickhouse.spark.spec.{
   MergeTreeEngineSpec,
   NodeSpec,
   NotSplittable,
+  PartitionGroup,
+  PartitionSpec,
   PrimaryKeyRange,
   TableEngineSpec
 }
@@ -39,8 +41,8 @@ class TaskSplitSuite extends AnyFunSuite {
   )
   private val ranges =
     Seq(PrimaryKeyRange(Seq("id"), None, Some(Seq("10"))), PrimaryKeyRange(Seq("id"), Some(Seq("10")), None))
-  private val partitions = Seq("_partition_id = '1'", "_partition_id = '2'")
-    .map(filterExpr => ClickHouseInputPartition(tableSpec(), filterExpr, NodeSpec("127.0.0.1")))
+  private val groups = Seq("1", "2")
+    .map(id => PartitionGroup(tableSpec(), NodeSpec("127.0.0.1"), Seq(PartitionSpec(id, id, 1, 1))))
 
   private def resolve(
     strategy: String = TASK_SPLIT_STRATEGY_PRIMARY_INDEX,
@@ -48,7 +50,7 @@ class TaskSplitSuite extends AnyFunSuite {
     maxParallelism: Int = 4,
     engine: TableEngineSpec = mergeTree,
     convertLocal: Boolean = false,
-    partitions: => Seq[ClickHouseInputPartition] = fail("the partitions must not be listed"),
+    partitionGroups: => Seq[PartitionGroup] = fail("the partitions must not be listed"),
     primaryKeyRanges: => Either[NotSplittable, Seq[PrimaryKeyRange]] = fail("the primary index must not be planned")
   ): TaskSplit =
     TaskSplit.resolve(
@@ -57,7 +59,7 @@ class TaskSplitSuite extends AnyFunSuite {
       maxParallelism,
       engine,
       convertLocal,
-      partitions,
+      partitionGroups,
       primaryKeyRanges
     )
 
@@ -68,10 +70,10 @@ class TaskSplitSuite extends AnyFunSuite {
   }
 
   test("partitionSplit splits by the listed partitions, or is one task when at most one is listed") {
-    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitions = partitions) === PartitionSplit(partitions))
-    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitions = partitions.take(1))
+    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitionGroups = groups) === PartitionSplit(groups))
+    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitionGroups = groups.take(1))
       === OneTask(SinglePartition))
-    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitions = Nil) === OneTask(SinglePartition))
+    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitionGroups = Nil) === OneTask(SinglePartition))
   }
 
   test("oneTask and a global aggregate neither list partitions nor plan the primary index") {
@@ -100,8 +102,8 @@ class TaskSplitSuite extends AnyFunSuite {
       strategy = TASK_SPLIT_STRATEGY_PARTITION,
       engine = distributed,
       convertLocal = true,
-      partitions = partitions
-    ) === PartitionSplit(partitions))
+      partitionGroups = groups
+    ) === PartitionSplit(groups))
     assert(resolve(strategy = TASK_SPLIT_STRATEGY_ONE_TASK, engine = distributed, convertLocal = true)
       === OneTask(Chosen))
   }

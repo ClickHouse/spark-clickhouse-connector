@@ -15,11 +15,15 @@
 package com.clickhouse.spark.spec
 
 import com.clickhouse.spark.spec.PartitionGroups._
+import com.clickhouse.spark.spec.TableSpecs.tableSpec
 import org.scalatest.funsuite.AnyFunSuite
 
 class PartitionGroupsSuite extends AnyFunSuite {
 
   private def partition(id: String, rows: Long): PartitionSpec = PartitionSpec(id, id, rows, rows)
+
+  private def filterExpr(partitions: Seq[PartitionSpec], partitionKey: String, byId: Boolean): String =
+    PartitionGroup(tableSpec(partitionKey = partitionKey), NodeSpec("127.0.0.1"), partitions).filterExpr(byId)
 
   test("partitions are spread over at most the given tasks by rows, largest first") {
     val partitions = Seq(5L, 4L, 3L, 2L, 1L).map(rows => partition(rows.toString, rows))

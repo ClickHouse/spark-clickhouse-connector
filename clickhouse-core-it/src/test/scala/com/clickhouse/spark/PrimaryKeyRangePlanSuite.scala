@@ -16,7 +16,8 @@ package com.clickhouse.spark
 
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseProvider, ClickHouseSingleMixIn}
 import com.clickhouse.spark.client.NodeClient
-import com.clickhouse.spark.spec.{PrimaryKeyRange, TableSpec}
+import com.clickhouse.spark.expr.PushedFilter
+import com.clickhouse.spark.spec.{NotSplittable, PrimaryKeyRange, TableSpec}
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.tags.Cloud
 
@@ -32,6 +33,7 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
 
   private val granule = 64
   private val rows = 20000
+  private val noCutPoint = "the primary index yields no cut point within the filters"
 
   Seq(
     "Int32" -> s"toInt32(number) - ${rows / 2}",
@@ -53,7 +55,7 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
     test(s"ranges of a $keyType key hold about as many rows each and cover every row once") {
       withTable(mergeTree(s"(k $keyType, v UInt64)", "ORDER BY k"), s"SELECT $values, number FROM numbers($rows)") {
         table =>
-          val ranges = table.plan(8).get
+          val ranges = table.ranges(8)
           assert(ranges.length === 8)
           assert(ranges.forall(_.columns == Seq("k")))
           table.assertCovers(ranges)
@@ -68,7 +70,7 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
       s"SELECT ['a', 'b', 'c'][1 + number % 3], toDateTime('2024-01-01 00:00:00') + number * 60, number " +
         s"FROM numbers($rows)"
     ) { table =>
-      val ranges = table.plan(8).get
+      val ranges = table.ranges(8)
       assert(ranges.length === 8)
       assert(ranges.forall(_.columns == Seq("tenant", "ts", "id")))
       table.assertCovers(ranges)
@@ -83,7 +85,7 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
       s"SELECT ['a', 'b'][1 + number % 2], toDateTime('2024-01-01 00:00:00') + number * 400 FROM numbers($rows)"
     ) { table =>
       val lastMonth = "`ts` >= '2024-03-01 00:00:00'"
-      val ranges = table.plan(4, lastMonth -> Set("ts"), "`v` > 0" -> Set("v")).get
+      val ranges = table.ranges(4, PushedFilter(lastMonth, Set("ts")), PushedFilter("`v` > 0", Set("v")))
       assert(ranges.length === 4)
       table.assertCovers(ranges)
       val inLastMonth = table.count(lastMonth)
@@ -99,7 +101,7 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
       mergeTree("(id UInt64, ts DateTime)", "ORDER BY (id, ts)"),
       s"SELECT number, toDateTime('2024-01-01 00:00:00') + number FROM numbers($rows)"
     ) { table =>
-      val ranges = table.plan(4, "`ts` >= '2024-01-01 01:00:00'" -> Set("ts")).get
+      val ranges = table.ranges(4, PushedFilter("`ts` >= '2024-01-01 01:00:00'", Set("ts")))
       assert(ranges.length === 4)
       table.assertCovers(ranges)
     }
@@ -110,7 +112,7 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
       mergeTree("(tenant String, ts DateTime)", "ORDER BY (tenant, toStartOfHour(ts))"),
       s"SELECT toString(number % 100), toDateTime('2024-01-01 00:00:00') + number FROM numbers($rows)"
     ) { table =>
-      val ranges = table.plan(4).get
+      val ranges = table.ranges(4)
       assert(ranges.forall(_.columns == Seq("tenant")))
       table.assertCovers(ranges)
     }
@@ -118,7 +120,7 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
 
   test("a table smaller than the requested ranges gets fewer, none smaller than a granule") {
     withTable(mergeTree("(k UInt64)", "ORDER BY k"), s"SELECT number FROM numbers(${granule * 3})") { table =>
-      val ranges = table.plan(8).get
+      val ranges = table.ranges(8)
       assert(ranges.length === 3)
       table.assertCovers(ranges)
       ranges.foreach(range => assert(table.count(range.filterExpr) === granule))
@@ -131,37 +133,39 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
       s"SELECT if(number < ${rows / 3}, 0, number) FROM numbers($rows)"
     ) {
       table =>
-        val ranges = table.plan(8).get
+        val ranges = table.ranges(8)
         table.assertCovers(ranges)
         ranges.foreach(range => assert(table.count(range.filterExpr) > 0, range))
     }
   }
 
-  test("cut values too long for a scan query are skipped") {
+  test("cut values too long for a scan query are skipped, leaving the table unsplit") {
     withTable(
       mergeTree("(k String)", "ORDER BY k"),
       s"SELECT concat(repeat('x', 2000), toString(number)) FROM numbers($rows)"
     ) { table =>
-      assert(table.plan(8) === Some(Seq(PrimaryKeyRange(Seq("k"), None, None))))
+      assert(table.plan(8) === Left(NotSplittable(noCutPoint)))
     }
   }
 
-  test("an empty table is one unbounded range") {
+  test("an empty table is not split") {
     withTable(mergeTree("(k UInt64)", "ORDER BY k"), "SELECT number FROM numbers(0)") { table =>
-      assert(table.plan(8) === Some(Seq(PrimaryKeyRange(Seq("k"), None, None))))
+      assert(table.plan(8) === Left(NotSplittable(noCutPoint)))
     }
   }
 
-  test("tables without a key we can cut on are not split") {
+  test("tables without a key we can cut on are not split, saying why") {
+    val noSplitColumn =
+      "the primary key does not start with a column of an integer, date, date time, string or UUID type"
     Seq(
-      mergeTree("(k UInt64)", "ORDER BY tuple()"),
-      mergeTree("(k Nullable(UInt64))", "ORDER BY k", "allow_nullable_key = 1"),
-      mergeTree("(k Float64)", "ORDER BY k"),
-      mergeTree("(k DateTime)", "ORDER BY toStartOfHour(k)"),
-      "(k UInt64) ENGINE = Memory"
-    ).foreach { ddl =>
+      mergeTree("(k UInt64)", "ORDER BY tuple()") -> "the table has no primary key",
+      mergeTree("(k Nullable(UInt64))", "ORDER BY k", "allow_nullable_key = 1") -> noSplitColumn,
+      mergeTree("(k Float64)", "ORDER BY k") -> noSplitColumn,
+      mergeTree("(k DateTime)", "ORDER BY toStartOfHour(k)") -> noSplitColumn,
+      "(k UInt64) ENGINE = Memory" -> "the Memory engine has no primary index"
+    ).foreach { case (ddl, reason) =>
       withTable(ddl, "SELECT 1") { table =>
-        assert(table.plan(8) === None, ddl)
+        assert(table.plan(8) === Left(NotSplittable(reason)), ddl)
       }
     }
   }
@@ -202,8 +206,12 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
       records(s"SELECT name FROM system.columns WHERE database = 'default' AND table = '$name'")
         .map(_.get("name").asText).toSet
 
-    def plan(slices: Int, filters: (String, Set[String])*): Option[Seq[PrimaryKeyRange]] =
+    def plan(slices: Int, filters: PushedFilter*): Either[NotSplittable, Seq[PrimaryKeyRange]] =
       PrimaryKeyRange.plan(spec, columns, filters, slices)
+
+    // the planned ranges of a table that must be splittable
+    def ranges(slices: Int, filters: PushedFilter*): Seq[PrimaryKeyRange] =
+      plan(slices, filters: _*).fold(why => fail(s"Not split: $why"), identity)
 
     def count(where: String): Long = records(s"SELECT count() AS c FROM `default`.`$name` WHERE $where")
       .head.get("c").asLong
