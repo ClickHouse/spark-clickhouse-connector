@@ -224,6 +224,18 @@ class SchemaUtilsSuite extends AnyFunSuite {
     ) == toClickHouseSchema(catalystSchema))
   }
 
+  test("spark2ch - CHAR and VARCHAR without collation map to String") {
+    assert(toClickHouseType(VarcharType(10), nullable = false) == "String")
+    assert(toClickHouseType(CharType(5), nullable = true) == "Nullable(String)")
+  }
+
+  test("spark2ch - collated CHAR and VARCHAR are unsupported") {
+    Seq(VarcharType(10, "UTF8_LCASE"), CharType(5, "UTF8_LCASE")).foreach { dataType =>
+      val e = intercept[CHClientException](toClickHouseType(dataType, nullable = false))
+      assert(e.getMessage.contains("Unsupported type"))
+    }
+  }
+
   private val mixedChSchema = Seq(
     "customer_id" -> "Int32",
     "agg_state" -> "AggregateFunction(sum, Int32)",

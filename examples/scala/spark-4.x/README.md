@@ -79,9 +79,8 @@ CH_PORT=8123 ./gradlew :examples-scala-spark-4.x:runStreaming \
 
 **Note:** sbt automatically downloads the connector from Maven Central. `build.sbt` reads these system properties:
 
-- `spark_binary_version` (default `4.0`): selects the Spark line. It sets the matching Spark and Scala
-  versions (4.0 → Spark 4.0.1 / Scala 2.13.16, 4.1 → Spark 4.1.4 / Scala 2.13.18, 4.2 → Spark 4.2.1 /
-  Scala 2.13.18) and the `clickhouse-spark-runtime-<spark_binary_version>` artifact.
+- `spark_binary_version` (default `4.0`): selects the Spark line. sbt uses the latest patch release of
+  that line (Scala 2.13.18 for all of them) and the `clickhouse-spark-runtime-<spark_binary_version>` artifact.
 - `clickhouse_connector_version` (default `0.10.2`): the connector release to download. The 4.1 and 4.2
   runtimes are only published from the first release that includes them; until such a release exists,
   use a locally built JAR (see below).

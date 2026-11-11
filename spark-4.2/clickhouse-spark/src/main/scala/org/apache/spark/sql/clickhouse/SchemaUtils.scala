@@ -132,8 +132,10 @@ object SchemaUtils extends SQLConfHelper with Logging {
       case FloatType => maybeNullable("Float32", nullable)
       case DoubleType => maybeNullable("Float64", nullable)
       case StringType => maybeNullable("String", nullable)
-      case VarcharType(_, _) => maybeNullable("String", nullable)
-      case CharType(_, _) => maybeNullable("String", nullable) // TODO: maybe FixString?
+      // Spark 4.2 adds a collation to CHAR/VARCHAR. ClickHouse String has no collation, so only the
+      // uncollated types map; collated ones fall through to the unsupported-type error.
+      case VarcharType(_, None) => maybeNullable("String", nullable)
+      case CharType(_, None) => maybeNullable("String", nullable) // TODO: maybe FixString?
       case VariantType =>
         (variantTypes, jsonHints) match {
           case (Some(types), _) => s"Variant($types)"

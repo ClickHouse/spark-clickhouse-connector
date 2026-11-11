@@ -16,34 +16,16 @@ name := "clickhouse-spark-examples"
 
 version := "1.0"
 
+scalaVersion := "2.13.18"
+
 // Pick the Spark line with `sbt -Dspark_binary_version=4.1 ...` (default 4.0).
-// Spark versions match the ones the connector builds against (gradle.properties). Scala must be at least
-// the scala-library on the dependency classpath, or sbt refuses to compile: Spark 4.1.4 pulls in 2.13.18
-// through jackson-module-scala.
 val sparkBinaryVersion = sys.props.getOrElse("spark_binary_version", "4.0")
-
-// spark_binary_version -> (Spark version, Scala version)
-val sparkVersions = Map(
-  "4.0" -> ("4.0.1", "2.13.16"),
-  "4.1" -> ("4.1.4", "2.13.18"),
-  "4.2" -> ("4.2.1", "2.13.18")
-)
-
-val selectedVersions = sparkVersions.getOrElse(
-  sparkBinaryVersion,
-  sys.error(
-    s"Unsupported spark_binary_version '$sparkBinaryVersion'; expected one of ${sparkVersions.keys.toSeq.sorted.mkString(", ")}"
-  )
-)
-
-val sparkVersion = selectedVersions._1
+val sparkVersion = s"$sparkBinaryVersion.+" // latest patch release of that line
 
 // `-Dclickhouse_connector_local=true` uses the runtime JAR built in this repo instead of the Maven artifact.
 // Build it first with
 // `./gradlew :clickhouse-spark-runtime-<v>_2.13:shadowJar -Dspark_binary_version=<v> -Dscala_binary_version=2.13`.
 val useLocalConnector = sys.props.get("clickhouse_connector_local").contains("true")
-
-scalaVersion := selectedVersions._2
 
 // Note: For production Spark applications, add % "provided" to Spark dependencies
 libraryDependencies ++= Seq(
