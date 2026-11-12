@@ -120,6 +120,18 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
     }
   }
 
+  test("a key expression over a column that needs quoting is spelled as ClickHouse formats it") {
+    withTable(
+      mergeTree("(`event time` DateTime, id UInt64)", "ORDER BY (toStartOfHour(`event time`), id)"),
+      s"SELECT toDateTime('2024-01-01 00:00:00') + number, number FROM numbers($rows)"
+    ) { table =>
+      val ranges = table.ranges(4, PushedFilter.Compare("event time", ">=", "'2024-01-01 04:00:00'"))
+      assert(ranges.length === 4)
+      assert(ranges.forall(_.key == Seq("toStartOfHour(`event time`)", "`id`")))
+      table.assertCovers(ranges)
+    }
+  }
+
   test("a filter on the column of a time function in the key places the cuts within the rows it keeps") {
     // a row a second for five and a half hours; the filter keeps the last hour and a half
     withTable(

@@ -121,17 +121,21 @@ object PrimaryKeyRange {
   private val MaxLiteralLength = 1024
 
   /**
-   * An entry of the split key: the column of `mergeTreeIndex` named `name` holds its values. A table column is
-   * compared as an identifier, an expression as it is. `monotonic` is set when the entry is a monotonic time
-   * function of a table column, so that a filter on that column can place the cuts.
+   * An entry of the split key. The column of `mergeTreeIndex` named `name` holds its values; `sql` is how a task's
+   * filter writes it against the table: a back-quoted column, or the expression as ClickHouse itself formats it in
+   * the table's primary key. `monotonic` is set when the entry is a monotonic time function of a table column, so
+   * that a filter on that column can place the cuts.
    */
-  private[spec] case class KeyEntry(name: String, keyType: KeyType, isColumn: Boolean, monotonic: Option[Monotonic]) {
+  private[spec] case class KeyEntry(
+    name: String,
+    sql: String,
+    keyType: KeyType,
+    isColumn: Boolean,
+    monotonic: Option[Monotonic]
+  ) {
 
     /** In the cut query, where the entry is a column of the index. */
     def identifier: String = Utils.wrapBackQuote(name)
-
-    /** In a task's filter, against the table. */
-    def sql: String = if (isColumn) identifier else name
   }
 
   /** `f(column, constants...)`: applies `f` to a literal of `column`, cast to the column's type. */
@@ -195,17 +199,11 @@ object PrimaryKeyRange {
     "toRelativeHourNum",
     "toRelativeMinuteNum",
     "toRelativeSecondNum",
-    "addYears",
-    "addQuarters",
-    "addMonths",
     "addWeeks",
     "addDays",
     "addHours",
     "addMinutes",
     "addSeconds",
-    "subtractYears",
-    "subtractQuarters",
-    "subtractMonths",
     "subtractWeeks",
     "subtractDays",
     "subtractHours",
@@ -213,15 +211,22 @@ object PrimaryKeyRange {
     "subtractSeconds"
   )
 
+  // the column types the functions above are monotonic over; on a String they follow string order instead
+  private val TimeOrInteger =
+    "(?:LowCardinality\\()?(?:Date|Date32|DateTime(?:64)?(?:\\(.*\\))?|U?Int(?:8|16|32|64))\\)?".r
+
   private val Call = "(\\w+)\\((.*)\\)".r
 
-  /** The monotonic time function of one table column that `expression` is, its constant arguments kept. */
+  /**
+   * The monotonic time function of one date, time or integer table column that `expression` is, its constant
+   * arguments kept. `expression` is ClickHouse's own formatting of the key entry.
+   */
   private[spec] def monotonicOf(expression: String, tableColumns: Map[String, String]): Option[Monotonic] =
     expression match {
       case Call(function, argList) if MonotonicTimeFunctions.contains(function) =>
         splitArgs(argList).flatMap { args =>
           args.indices.filter(i => tableColumns.contains(unquote(args(i)))) match {
-            case Seq(i) =>
+            case Seq(i) if TimeOrInteger.pattern.matcher(tableColumns(unquote(args(i)))).matches =>
               val column = unquote(args(i))
               val before = s"$function(" + args.take(i).map(_ + ", ").mkString
               val after = args.drop(i + 1).map(", " + _).mkString + ")"
@@ -295,7 +300,12 @@ object PrimaryKeyRange {
         _ <- check(table.engine.endsWith("MergeTree"), s"the ${table.engine} engine has no primary index")
         _ <- check(table.primary_key.nonEmpty, "the table has no primary key")
         indexColumns <- describeIndex(table).toRight(NotSplittable("reading the primary index needs ClickHouse 24.2+"))
-        key = splitColumns(indexColumns, tableColumns)
+        primaryKey <- splitArgs(table.primary_key).toRight(NotSplittable("the primary key can't be read"))
+        _ <- check(
+          indexColumns.count { case (name, _) => !IndexColumns.contains(name) } == primaryKey.size,
+          "the primary index does not list the primary key"
+        )
+        key = splitColumns(indexColumns, primaryKey, tableColumns)
         _ <- check(
           key.nonEmpty,
           "the primary key does not start with an integer, date, date time, string or UUID column or expression"
@@ -321,17 +331,25 @@ object PrimaryKeyRange {
       case Right(output) => Some(output.records.toList.map(row => row.get("name").asText -> row.get("type").asText))
     }
 
-  /** The longest prefix of the primary key of supported [[keyType]]s, columns and expressions alike. */
+  /**
+   * The longest prefix of the primary key of supported [[keyType]]s, columns and expressions alike. `primaryKey`
+   * spells the entries as ClickHouse formats them, in the order of the index columns, which name them with their
+   * identifiers unquoted.
+   */
   private[spec] def splitColumns(
     indexColumns: Seq[(String, String)],
+    primaryKey: Seq[String],
     tableColumns: Map[String, String]
   ): Seq[KeyEntry] =
     indexColumns
       .filterNot { case (name, _) => IndexColumns.contains(name) }
-      .map { case (name, chType) =>
+      .zip(primaryKey)
+      .map { case ((name, chType), spelling) =>
         keyType(chType).map { keyType =>
           val isColumn = tableColumns.contains(name)
-          KeyEntry(name, keyType, isColumn, if (isColumn) None else monotonicOf(name, tableColumns))
+          val sql = if (isColumn) Utils.wrapBackQuote(name) else spelling
+          val monotonic = if (isColumn || keyType == BytesKey) None else monotonicOf(spelling, tableColumns)
+          KeyEntry(name, sql, keyType, isColumn, monotonic)
         }
       }
       .takeWhile(_.isDefined)
