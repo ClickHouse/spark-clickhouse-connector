@@ -22,19 +22,23 @@ import java.time.LocalDateTime
 
 class PrimaryKeyRangeSuite extends AnyFunSuite {
 
-  test("a single-column range compares the column with each bound") {
-    assert(PrimaryKeyRange(Seq("id"), None, None).filterExpr === "1=1")
-    assert(PrimaryKeyRange(Seq("id"), Some(Seq("10")), None).filterExpr === "(`id` >= 10)")
-    assert(PrimaryKeyRange(Seq("id"), None, Some(Seq("20"))).filterExpr === "(`id` < 20)")
-    assert(PrimaryKeyRange(Seq("id"), Some(Seq("10")), Some(Seq("20"))).filterExpr === "(`id` >= 10) AND (`id` < 20)")
+  test("a single-entry range compares the entry with each bound") {
+    assert(PrimaryKeyRange(Seq("`id`"), None, None).filterExpr === "1=1")
+    assert(PrimaryKeyRange(Seq("`id`"), Some(Seq("10")), None).filterExpr === "(`id` >= 10)")
+    assert(PrimaryKeyRange(Seq("`id`"), None, Some(Seq("20"))).filterExpr === "(`id` < 20)")
+    assert(PrimaryKeyRange(Seq("`id`"), Some(Seq("10")), Some(Seq("20"))).filterExpr ===
+      "(`id` >= 10) AND (`id` < 20)")
   }
 
-  test("a multi-column range compares the columns lexicographically") {
-    assert(PrimaryKeyRange(Seq("a", "b"), Some(Seq("1", "2")), None).filterExpr ===
+  test("a multi-entry range compares the entries lexicographically, expressions as they are") {
+    assert(PrimaryKeyRange(Seq("`a`", "`b`"), Some(Seq("1", "2")), None).filterExpr ===
       "(`a` > 1 OR (`a` = 1 AND `b` >= 2))")
-    assert(PrimaryKeyRange(Seq("a", "b", "c"), Some(Seq("1", "2", "3")), Some(Seq("4", "5", "6"))).filterExpr ===
+    assert(PrimaryKeyRange(Seq("`a`", "`b`", "`c`"), Some(Seq("1", "2", "3")), Some(Seq("4", "5", "6"))).filterExpr ===
       "(`a` > 1 OR (`a` = 1 AND (`b` > 2 OR (`b` = 2 AND `c` >= 3)))) AND " +
       "(`a` < 4 OR (`a` = 4 AND (`b` < 5 OR (`b` = 5 AND `c` < 6))))")
+    val hour = "toDateTime('2024-01-05 10:00:00', 'UTC')"
+    assert(PrimaryKeyRange(Seq("toStartOfHour(ts)", "`id`"), Some(Seq(hour, "7")), None).filterExpr ===
+      s"(toStartOfHour(ts) > $hour OR (toStartOfHour(ts) = $hour AND `id` >= 7))")
   }
 
   test("ranges are cut on integer, date, date time, string and UUID keys") {
@@ -90,28 +94,62 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
     intercept[IllegalArgumentException](BytesKey.literal("0G"))
   }
 
-  test("the split key is the primary key prefix up to the first expression or unsupported type") {
-    val index = Seq("part_name" -> "String", "mark_number" -> "UInt64", "rows_in_granule" -> "UInt64")
-    val columns = Set("tenant", "ts", "id", "score")
+  private val index = Seq("part_name" -> "String", "mark_number" -> "UInt64", "rows_in_granule" -> "UInt64")
+  private val columns = Map("tenant" -> "String", "ts" -> "DateTime", "id" -> "UInt64", "score" -> "Float64")
+  private val hourOfTs = Monotonic("ts", "DateTime", "toStartOfHour(", ")")
+
+  test("the split key is the primary key prefix of supported types, columns and expressions alike") {
     assert(splitColumns(index ++ Seq("tenant" -> "String", "ts" -> "DateTime", "id" -> "UInt64"), columns) ===
-      Seq("tenant" -> BytesKey, "ts" -> DateTimeKey(None), "id" -> IntegerKey))
-    assert(splitColumns(index ++ Seq("tenant" -> "String", "toStartOfHour(ts)" -> "DateTime"), columns) ===
-      Seq("tenant" -> BytesKey))
+      Seq(
+        KeyEntry("tenant", BytesKey, isColumn = true, None),
+        KeyEntry("ts", DateTimeKey(None), isColumn = true, None),
+        KeyEntry("id", IntegerKey, isColumn = true, None)
+      ))
+    assert(splitColumns(index ++ Seq("toStartOfHour(ts)" -> "DateTime", "id" -> "UInt64"), columns) ===
+      Seq(
+        KeyEntry("toStartOfHour(ts)", DateTimeKey(None), isColumn = false, Some(hourOfTs)),
+        KeyEntry("id", IntegerKey, isColumn = true, None)
+      ))
+    assert(splitColumns(index ++ Seq("cityHash64(id)" -> "UInt64"), columns) ===
+      Seq(KeyEntry("cityHash64(id)", IntegerKey, isColumn = false, None)))
     assert(splitColumns(index ++ Seq("id" -> "UInt64", "score" -> "Float64", "ts" -> "DateTime"), columns) ===
-      Seq("id" -> IntegerKey))
-    assert(splitColumns(index ++ Seq("toStartOfHour(ts)" -> "DateTime", "id" -> "UInt64"), columns).isEmpty)
+      Seq(KeyEntry("id", IntegerKey, isColumn = true, None)))
     assert(splitColumns(index ++ Seq("score" -> "Nullable(Int32)"), columns).isEmpty)
     assert(splitColumns(index, columns).isEmpty)
   }
 
+  test("a monotonic time function of one column is recognised with its constant arguments") {
+    assert(monotonicOf("toStartOfHour(ts)", columns) === Some(hourOfTs))
+    assert(monotonicOf("toStartOfHour(`ts`)", columns) === Some(hourOfTs))
+    assert(monotonicOf("toYYYYMM(ts)", columns) === Some(Monotonic("ts", "DateTime", "toYYYYMM(", ")")))
+    assert(monotonicOf("date_trunc('hour', ts, 'UTC')", columns) ===
+      Some(Monotonic("ts", "DateTime", "date_trunc('hour', ", ", 'UTC')")))
+    assert(monotonicOf("toStartOfInterval(ts, toIntervalHour(1))", columns) ===
+      Some(Monotonic("ts", "DateTime", "toStartOfInterval(", ", toIntervalHour(1))")))
+    assert(monotonicOf("toStartOfDay(ts, 'Europe/Paris')", columns) ===
+      Some(Monotonic("ts", "DateTime", "toStartOfDay(", ", 'Europe/Paris')")))
+    // periodic, not a call, two columns, no column, an unknown column, unbalanced
+    assert(monotonicOf("toHour(ts)", columns) === None)
+    assert(monotonicOf("toStartOfHour(ts) + 1", columns) === None)
+    assert(monotonicOf("plus(toStartOfHour(ts), 1)", columns) === None)
+    assert(monotonicOf("toStartOfInterval(ts, id)", columns) === None)
+    assert(monotonicOf("toStartOfHour(now())", columns) === None)
+    assert(monotonicOf("toStartOfHour(other)", columns) === None)
+    assert(monotonicOf("toStartOfHour(ts))", columns) === None)
+    assert(hourOfTs("'2024-01-05 00:00:00'") === "toStartOfHour(CAST('2024-01-05 00:00:00' AS DateTime))")
+  }
+
   test("cut points are read from the index granules the key filters keep") {
-    val key = Seq("tenant" -> BytesKey, "ts" -> DateTimeKey(None))
+    val key = Seq(
+      KeyEntry("tenant", BytesKey, isColumn = true, None),
+      KeyEntry("ts", DateTimeKey(None), isColumn = true, None)
+    )
     val filters = Seq(
-      PushedFilter("`tenant` = 'a'", Set("tenant")),
-      PushedFilter("`ts` >= '2024-02-01 00:00:00'", Set("ts")),
-      PushedFilter("(`tenant` = 'b') OR (`ts` < '2024-01-01 00:00:00')", Set("tenant", "ts")),
-      PushedFilter("`value` > 1", Set("value")),
-      PushedFilter("`tenant` = `value`", Set("tenant", "value"))
+      PushedFilter.Compare("tenant", "=", "'a'"),
+      PushedFilter.Compare("ts", ">=", "'2024-02-01 00:00:00'"),
+      PushedFilter.Other("(`tenant` = 'b') OR (`ts` < '2024-01-01 00:00:00')", Set("tenant", "ts")),
+      PushedFilter.Compare("value", ">", "1"),
+      PushedFilter.Other("`tenant` = `value`", Set("tenant", "value"))
     )
     assert(cutsQuery(tableSpec, key, filters, 4) ===
       """SELECT hex(`tenant`), toString(`ts`, 'UTC')
@@ -122,6 +160,33 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
         |    intDiv(_rows_before * 4, sum(rows_in_granule) OVER ()) AS _slice
         |  FROM mergeTreeIndex('db', 'tbl')
         |  WHERE rows_in_granule > 0 AND ((`tenant` = 'a')) AND ((`ts` >= '2024-02-01 00:00:00') OR `ts` = defaultValueOfArgumentType(`ts`)) AND (((`tenant` = 'b') OR (`ts` < '2024-01-01 00:00:00')) OR `ts` = defaultValueOfArgumentType(`ts`))
+        |)
+        |ORDER BY _rows_before
+        |LIMIT 1 BY _slice
+        |""".stripMargin)
+  }
+
+  test("a filter on the column of a monotonic time function places the cuts, strict comparisons relaxed") {
+    val key = Seq(
+      KeyEntry("toStartOfHour(ts)", DateTimeKey(None), isColumn = false, Some(hourOfTs)),
+      KeyEntry("id", IntegerKey, isColumn = true, None)
+    )
+    val filters = Seq(
+      PushedFilter.Compare("ts", ">=", "'2024-01-05 00:00:00'"),
+      PushedFilter.Compare("ts", "<", "'2024-01-06 00:00:00'"),
+      PushedFilter.In("ts", Seq("'2024-01-07 00:00:00'")),
+      PushedFilter.Compare("id", ">", "5"),
+      PushedFilter.Other("`ts` IS NOT NULL", Set("ts"))
+    )
+    assert(cutsQuery(tableSpec, key, filters, 4) ===
+      """SELECT toString(`toStartOfHour(ts)`, 'UTC'), toString(`id`)
+        |FROM (
+        |  SELECT `toStartOfHour(ts)`, `id`,
+        |    sum(rows_in_granule) OVER (ORDER BY `toStartOfHour(ts)`, `id` ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+        |      - rows_in_granule AS _rows_before,
+        |    intDiv(_rows_before * 4, sum(rows_in_granule) OVER ()) AS _slice
+        |  FROM mergeTreeIndex('db', 'tbl')
+        |  WHERE rows_in_granule > 0 AND ((`toStartOfHour(ts)` >= toStartOfHour(CAST('2024-01-05 00:00:00' AS DateTime)))) AND ((`toStartOfHour(ts)` <= toStartOfHour(CAST('2024-01-06 00:00:00' AS DateTime)))) AND ((`toStartOfHour(ts)` IN (toStartOfHour(CAST('2024-01-07 00:00:00' AS DateTime))))) AND ((`id` > 5) OR `id` = defaultValueOfArgumentType(`id`))
         |)
         |ORDER BY _rows_before
         |LIMIT 1 BY _slice

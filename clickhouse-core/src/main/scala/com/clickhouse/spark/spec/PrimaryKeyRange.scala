@@ -22,10 +22,11 @@ import com.clickhouse.spark.expr.PushedFilter
 import scala.util.control.NonFatal
 
 /**
- * A `[lower, upper)` range of a primary key prefix, compared lexicographically. A missing bound is
- * open-ended, so the ranges planned for a table cover every key value exactly once.
+ * A `[lower, upper)` range of a primary key prefix, compared lexicographically. `key` holds the entries as a task's
+ * filter writes them: a back-quoted column, or an expression as it is. A missing bound is open-ended, so the ranges
+ * planned for a table cover every key value exactly once.
  */
-case class PrimaryKeyRange(columns: Seq[String], lower: Option[Seq[String]], upper: Option[Seq[String]]) {
+case class PrimaryKeyRange(key: Seq[String], lower: Option[Seq[String]], upper: Option[Seq[String]]) {
 
   def filterExpr: String = {
     val bounds = lower.map(bound(_, ">", ">=")).toSeq ++ upper.map(bound(_, "<", "<"))
@@ -35,12 +36,12 @@ case class PrimaryKeyRange(columns: Seq[String], lower: Option[Seq[String]], upp
   // expanded into `k1 > v1 OR (k1 = v1 AND ...)`, as ClickHouse's key analysis ignores tuple comparisons
   private def bound(values: Seq[String], op: String, lastOp: String): String = {
     def render(terms: List[(String, String)]): String = terms match {
-      case (column, value) :: Nil => s"$column $lastOp $value"
-      case (column, value) :: rest =>
+      case (entry, value) :: Nil => s"$entry $lastOp $value"
+      case (entry, value) :: rest =>
         val inner = if (rest.length > 1) s"(${render(rest)})" else render(rest)
-        s"$column $op $value OR ($column = $value AND $inner)"
+        s"$entry $op $value OR ($entry = $value AND $inner)"
     }
-    render(columns.map(Utils.wrapBackQuote).zip(values).toList)
+    render(key.zip(values).toList)
   }
 }
 
@@ -120,17 +121,172 @@ object PrimaryKeyRange {
   private val MaxLiteralLength = 1024
 
   /**
+   * An entry of the split key: the column of `mergeTreeIndex` named `name` holds its values. A table column is
+   * compared as an identifier, an expression as it is. `monotonic` is set when the entry is a monotonic time
+   * function of a table column, so that a filter on that column can place the cuts.
+   */
+  private[spec] case class KeyEntry(name: String, keyType: KeyType, isColumn: Boolean, monotonic: Option[Monotonic]) {
+
+    /** In the cut query, where the entry is a column of the index. */
+    def identifier: String = Utils.wrapBackQuote(name)
+
+    /** In a task's filter, against the table. */
+    def sql: String = if (isColumn) identifier else name
+  }
+
+  /** `f(column, constants...)`: applies `f` to a literal of `column`, cast to the column's type. */
+  private[spec] case class Monotonic(column: String, columnType: String, before: String, after: String) {
+    def apply(literal: String): String = s"${before}CAST($literal AS $columnType)$after"
+  }
+
+  /**
+   * ClickHouse functions that never decrease as their date, time or timestamp argument grows, so that a range of the
+   * argument maps to a range of the function. Periodic ones such as toHour, toDayOfWeek or toMonth do not qualify.
+   */
+  private val MonotonicTimeFunctions = Set(
+    "toStartOfYear",
+    "toStartOfISOYear",
+    "toStartOfQuarter",
+    "toStartOfMonth",
+    "toLastDayOfMonth",
+    "toMonday",
+    "toStartOfWeek",
+    "toLastDayOfWeek",
+    "toStartOfDay",
+    "toStartOfHour",
+    "toStartOfMinute",
+    "toStartOfSecond",
+    "toStartOfMillisecond",
+    "toStartOfMicrosecond",
+    "toStartOfNanosecond",
+    "toStartOfFiveMinutes",
+    "toStartOfFiveMinute",
+    "toStartOfTenMinutes",
+    "toStartOfFifteenMinutes",
+    "toStartOfInterval",
+    "dateTrunc",
+    "date_trunc",
+    "toYear",
+    "toISOYear",
+    "toYYYYMM",
+    "toYYYYMMDD",
+    "toYYYYMMDDhhmmss",
+    "toDate",
+    "toDate32",
+    "toDateTime",
+    "toDateTime64",
+    "toTimezone",
+    "toTimeZone",
+    "toUnixTimestamp",
+    "toUnixTimestamp64Second",
+    "toUnixTimestamp64Milli",
+    "toUnixTimestamp64Micro",
+    "toUnixTimestamp64Nano",
+    "fromUnixTimestamp",
+    "fromUnixTimestamp64Second",
+    "fromUnixTimestamp64Milli",
+    "fromUnixTimestamp64Micro",
+    "fromUnixTimestamp64Nano",
+    "toRelativeYearNum",
+    "toRelativeQuarterNum",
+    "toRelativeMonthNum",
+    "toRelativeWeekNum",
+    "toRelativeDayNum",
+    "toRelativeHourNum",
+    "toRelativeMinuteNum",
+    "toRelativeSecondNum",
+    "addYears",
+    "addQuarters",
+    "addMonths",
+    "addWeeks",
+    "addDays",
+    "addHours",
+    "addMinutes",
+    "addSeconds",
+    "subtractYears",
+    "subtractQuarters",
+    "subtractMonths",
+    "subtractWeeks",
+    "subtractDays",
+    "subtractHours",
+    "subtractMinutes",
+    "subtractSeconds"
+  )
+
+  private val Call = "(\\w+)\\((.*)\\)".r
+
+  /** The monotonic time function of one table column that `expression` is, its constant arguments kept. */
+  private[spec] def monotonicOf(expression: String, tableColumns: Map[String, String]): Option[Monotonic] =
+    expression match {
+      case Call(function, argList) if MonotonicTimeFunctions.contains(function) =>
+        splitArgs(argList).flatMap { args =>
+          args.indices.filter(i => tableColumns.contains(unquote(args(i)))) match {
+            case Seq(i) =>
+              val column = unquote(args(i))
+              val before = s"$function(" + args.take(i).map(_ + ", ").mkString
+              val after = args.drop(i + 1).map(", " + _).mkString + ")"
+              Some(Monotonic(column, tableColumns(column), before, after))
+            case _ => None
+          }
+        }
+      case _ => None
+    }
+
+  private def unquote(identifier: String): String =
+    if (identifier.length > 1 && identifier.startsWith("`") && identifier.endsWith("`"))
+      identifier.substring(1, identifier.length - 1)
+    else identifier
+
+  // the arguments of a call, split at the commas outside parentheses and quotes; None when unbalanced
+  private def splitArgs(argList: String): Option[Seq[String]] = {
+    val args = Seq.newBuilder[String]
+    val current = new StringBuilder
+    var depth = 0
+    var quote: Option[Char] = None
+    var i = 0
+    while (i < argList.length && depth >= 0) {
+      val c = argList(i)
+      quote match {
+        case Some(q) =>
+          current += c
+          if (c == '\\' && i + 1 < argList.length) {
+            current += argList(i + 1)
+            i += 1
+          } else if (c == q) quote = None
+        case None => c match {
+            case '\'' | '"' | '`' =>
+              quote = Some(c)
+              current += c
+            case '(' =>
+              depth += 1
+              current += c
+            case ')' =>
+              depth -= 1
+              current += c
+            case ',' if depth == 0 =>
+              args += current.toString.trim
+              current.clear()
+            case _ => current += c
+          }
+      }
+      i += 1
+    }
+    args += current.toString.trim
+    if (depth == 0 && quote.isEmpty) Some(args.result()) else None
+  }
+
+  /**
    * Splits `table` into ranges of its primary key holding about the same number of rows, cut from the primary index
    * without reading data: two at least, up to `slices`. Or why the table can't be split by its primary key.
    *
    * @param tableColumns
-   *   the table's columns, telling key columns from key expressions
+   *   every column with its ClickHouse type, telling key columns from key expressions
    * @param filters
-   *   the pushed-down filters; those on key columns limit the cuts to the rows read
+   *   the pushed-down filters; those the index can evaluate limit the cuts to the rows read
    */
   def plan(
     table: TableSpec,
-    tableColumns: Set[String],
+    tableColumns: Map[String, String],
     filters: Seq[PushedFilter],
     slices: Int
   )(implicit nodeClient: NodeClient): Either[NotSplittable, Seq[PrimaryKeyRange]] =
@@ -142,11 +298,11 @@ object PrimaryKeyRange {
         key = splitColumns(indexColumns, tableColumns)
         _ <- check(
           key.nonEmpty,
-          "the primary key does not start with a column of an integer, date, date time, string or UUID type"
+          "the primary key does not start with an integer, date, date time, string or UUID column or expression"
         )
         cuts = cutPoints(table, key, filters, slices)
         _ <- check(cuts.nonEmpty, "the primary index yields no cut point within the filters")
-      } yield ranges(key.map(_._1), cuts)
+      } yield ranges(key.map(_.sql), cuts)
     catch {
       case NonFatal(e) => Left(NotSplittable("planning the primary key ranges failed", Some(e)))
     }
@@ -165,35 +321,40 @@ object PrimaryKeyRange {
       case Right(output) => Some(output.records.toList.map(row => row.get("name").asText -> row.get("type").asText))
     }
 
-  /** The longest prefix of the primary key made of table columns of a supported [[keyType]]. */
+  /** The longest prefix of the primary key of supported [[keyType]]s, columns and expressions alike. */
   private[spec] def splitColumns(
     indexColumns: Seq[(String, String)],
-    tableColumns: Set[String]
-  ): Seq[(String, KeyType)] =
+    tableColumns: Map[String, String]
+  ): Seq[KeyEntry] =
     indexColumns
-      .filterNot { case (column, _) => IndexColumns.contains(column) }
-      .map { case (column, chType) => if (tableColumns.contains(column)) keyType(chType).map(column -> _) else None }
+      .filterNot { case (name, _) => IndexColumns.contains(name) }
+      .map { case (name, chType) =>
+        keyType(chType).map { keyType =>
+          val isColumn = tableColumns.contains(name)
+          KeyEntry(name, keyType, isColumn, if (isColumn) None else monotonicOf(name, tableColumns))
+        }
+      }
       .takeWhile(_.isDefined)
       .flatten
 
   /** The keys to cut at, in key order. The smallest is dropped, as cutting there would leave the first range empty. */
   private def cutPoints(
     table: TableSpec,
-    key: Seq[(String, KeyType)],
+    key: Seq[KeyEntry],
     filters: Seq[PushedFilter],
     slices: Int
   )(implicit nodeClient: NodeClient): Seq[Seq[String]] =
     nodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(cutsQuery(table, key, filters, slices))
       .records.toList
-      .map(row => key.zip(row).map { case ((_, keyType), value) => keyType.literal(value.asText) })
+      .map(row => key.zip(row).map { case (entry, value) => entry.keyType.literal(value.asText) })
       .distinct
       .drop(1)
       .filterNot(_.exists(_.length > MaxLiteralLength))
 
   /** The `[lower, upper)` ranges between consecutive cuts, open-ended at both ends. */
-  private def ranges(columns: Seq[String], cuts: Seq[Seq[String]]): Seq[PrimaryKeyRange] = {
+  private def ranges(key: Seq[String], cuts: Seq[Seq[String]]): Seq[PrimaryKeyRange] = {
     val bounds = cuts.map(Some(_))
-    (None +: bounds).zip(bounds :+ None).map { case (lower, upper) => PrimaryKeyRange(columns, lower, upper) }
+    (None +: bounds).zip(bounds :+ None).map { case (lower, upper) => PrimaryKeyRange(key, lower, upper) }
   }
 
   /**
@@ -202,32 +363,61 @@ object PrimaryKeyRange {
    */
   private[spec] def cutsQuery(
     table: TableSpec,
-    key: Seq[(String, KeyType)],
+    key: Seq[KeyEntry],
     filters: Seq[PushedFilter],
     slices: Int
   ): String = {
-    val columns = key.map { case (column, _) => Utils.wrapBackQuote(column) }
-    val keyColumns = key.map(_._1).toSet
-    // key columns after a high-cardinality prefix may be left unloaded, reading as their default: keep those granules
-    val keyFilters = filters.collect {
-      case PushedFilter(sql, columns) if columns.subsetOf(keyColumns) =>
-        val unloaded = (columns - key.head._1).toSeq.sorted.map(Utils.wrapBackQuote)
-          .map(column => s"$column = defaultValueOfArgumentType($column)")
-        (s"($sql)" +: unloaded).mkString(" OR ")
-    }
-    s"""SELECT ${key.map { case (column, keyType) => keyType.read(Utils.wrapBackQuote(column)) }.mkString(", ")}
+    val identifiers = key.map(_.identifier).mkString(", ")
+    val conditions = filters.flatMap(indexConditions(key, _))
+    s"""SELECT ${key.map(entry => entry.keyType.read(entry.identifier)).mkString(", ")}
        |FROM (
-       |  SELECT ${columns.mkString(", ")},
-       |    sum(rows_in_granule) OVER (ORDER BY ${columns.mkString(
-        ", "
-      )} ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
+       |  SELECT $identifiers,
+       |    sum(rows_in_granule) OVER (ORDER BY $identifiers ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
        |      - rows_in_granule AS _rows_before,
        |    intDiv(_rows_before * $slices, sum(rows_in_granule) OVER ()) AS _slice
        |  FROM mergeTreeIndex(${quote(table.database)}, ${quote(table.name)})
-       |  WHERE ${("rows_in_granule > 0" +: keyFilters.map(f => s"($f)")).mkString(" AND ")}
+       |  WHERE ${("rows_in_granule > 0" +: conditions.map(c => s"($c)")).mkString(" AND ")}
        |)
        |ORDER BY _rows_before
        |LIMIT 1 BY _slice
        |""".stripMargin
+  }
+
+  /**
+   * A pushed filter as conditions on the index rows, which hold the key only. A filter on key columns applies as it
+   * is. A comparison of a column with a monotonic time function of it in the key applies to the function's value,
+   * strict comparisons relaxed as the function repeats values. Other filters apply in the tasks only.
+   */
+  private def indexConditions(key: Seq[KeyEntry], filter: PushedFilter): Seq[String] = {
+    val columnEntries = key.filter(_.isColumn)
+    // key entries after a high-cardinality first entry may be left unloaded, reading as their default: keep those
+    def on(entries: Seq[KeyEntry])(condition: String): String = {
+      val unloaded = entries.filterNot(_ == key.head).map(_.identifier).distinct.sorted
+        .map(id => s"$id = defaultValueOfArgumentType($id)")
+      (s"($condition)" +: unloaded).mkString(" OR ")
+    }
+    filter match {
+      case PushedFilter.Other(sql, columns) if columns.subsetOf(columnEntries.map(_.name).toSet) =>
+        Seq(on(columnEntries.filter(entry => columns.contains(entry.name)))(sql))
+      case PushedFilter.Compare(column, op, value) => key.collect {
+          case entry if entry.isColumn && entry.name == column => on(Seq(entry))(s"${entry.identifier} $op $value")
+          case entry if entry.monotonic.exists(_.column == column) =>
+            on(Seq(entry))(s"${entry.identifier} ${relaxed(op)} ${entry.monotonic.get(value)}")
+        }
+      case PushedFilter.In(column, values) => key.collect {
+          case entry if entry.isColumn && entry.name == column =>
+            on(Seq(entry))(s"${entry.identifier} IN (${values.mkString(",")})")
+          case entry if entry.monotonic.exists(_.column == column) =>
+            on(Seq(entry))(s"${entry.identifier} IN (${values.map(entry.monotonic.get.apply).mkString(", ")})")
+        }
+      case _ => Nil
+    }
+  }
+
+  // a monotonic function repeats values, so `ts < X` only implies `f(ts) <= f(X)`
+  private def relaxed(op: String): String = op match {
+    case "<" => "<="
+    case ">" => ">="
+    case other => other
   }
 }

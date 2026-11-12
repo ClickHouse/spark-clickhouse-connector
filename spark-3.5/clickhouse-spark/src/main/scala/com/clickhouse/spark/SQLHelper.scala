@@ -106,7 +106,17 @@ trait SQLHelper {
       .flatMap(_f => compileFilter(_f)(tz))
       .map(p => s"($p)").mkString(" AND ")
 
-  /** The filters ClickHouse can evaluate, each as SQL with the columns it reads. */
-  def compilePushedFilters(filters: Seq[Filter])(implicit tz: ZoneId): Seq[PushedFilter] =
-    filters.flatMap(f => compileFilter(f).map(PushedFilter(_, f.references.toSet)))
+  /** The filters ClickHouse can evaluate, compiled on the driver. Comparisons keep their shape for the planner. */
+  def compilePushedFilters(filters: Seq[Filter])(implicit tz: ZoneId): Seq[PushedFilter] = {
+    def literal(value: Any): String = String.valueOf(compileValue(value))
+    filters.flatMap {
+      case EqualTo(attr, value) => Some(PushedFilter.Compare(attr, "=", literal(value)))
+      case LessThan(attr, value) => Some(PushedFilter.Compare(attr, "<", literal(value)))
+      case LessThanOrEqual(attr, value) => Some(PushedFilter.Compare(attr, "<=", literal(value)))
+      case GreaterThan(attr, value) => Some(PushedFilter.Compare(attr, ">", literal(value)))
+      case GreaterThanOrEqual(attr, value) => Some(PushedFilter.Compare(attr, ">=", literal(value)))
+      case In(attr, values) if values.nonEmpty => Some(PushedFilter.In(attr, values.toSeq.map(literal)))
+      case f => compileFilter(f).map(PushedFilter.Other(_, f.references.toSet))
+    }
+  }
 }

@@ -181,7 +181,7 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
         local_db = "db",
         local_table = "local"
       ),
-      tableColumns = Set.empty,
+      tableColumns = Map.empty,
       cluster = None,
       localTableSpec = None,
       localTableEngineSpec = None,

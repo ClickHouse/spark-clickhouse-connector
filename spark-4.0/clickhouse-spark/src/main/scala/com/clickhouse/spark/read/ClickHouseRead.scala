@@ -259,7 +259,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
       case PartitionSplit(groups) =>
         log.info(s"Reading $table in ${groups.length} tasks by ClickHouse partition")
       case PrimaryIndexSplit(ranges) =>
-        log.info(s"Reading $table in ${ranges.length} tasks, one per range of (${ranges.head.columns.mkString(", ")})")
+        log.info(s"Reading $table in ${ranges.length} tasks, one per range of (${ranges.head.key.mkString(", ")})")
     }
   }
 

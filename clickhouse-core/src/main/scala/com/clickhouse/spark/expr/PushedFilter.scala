@@ -14,5 +14,30 @@
 
 package com.clickhouse.spark.expr
 
-/** A filter pushed down to ClickHouse: a WHERE conjunct compiled on the driver, with the columns it reads. */
-case class PushedFilter(sql: String, columns: Set[String])
+import com.clickhouse.spark.Utils
+
+/** A filter pushed down to ClickHouse, compiled on the driver into a WHERE conjunct. */
+sealed trait PushedFilter {
+  def sql: String
+
+  /** The columns it reads. */
+  def columns: Set[String]
+}
+
+object PushedFilter {
+
+  /** `column op value`, `op` one of `<`, `<=`, `=`, `>=`, `>` and `value` a SQL literal. */
+  case class Compare(column: String, op: String, value: String) extends PushedFilter {
+    def sql: String = s"${Utils.wrapBackQuote(column)} $op $value"
+    def columns: Set[String] = Set(column)
+  }
+
+  /** `column IN (values)`, the values SQL literals. */
+  case class In(column: String, values: Seq[String]) extends PushedFilter {
+    def sql: String = s"${Utils.wrapBackQuote(column)} IN (${values.mkString(",")})"
+    def columns: Set[String] = Set(column)
+  }
+
+  /** Any other filter, as the SQL it compiled to. */
+  case class Other(sql: String, columns: Set[String]) extends PushedFilter
+}

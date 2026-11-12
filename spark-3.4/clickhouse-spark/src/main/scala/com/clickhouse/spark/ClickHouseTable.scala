@@ -16,6 +16,7 @@ package com.clickhouse.spark
 
 import org.apache.spark.sql.catalyst.expressions.GenericInternalRow
 import org.apache.spark.sql.SparkSession
+import org.apache.spark.sql.clickhouse.SchemaUtils
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, ExprUtils, ReadOptions, WriteOptions}
@@ -142,10 +143,13 @@ case class ClickHouseTable(
       ACCEPT_ANY_SCHEMA // TODO check schema and handle extra columns before writing
     ).asJava
 
-  override lazy val schema: StructType = Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) {
-    implicit nodeClient =>
-      queryTableSchema(database, table)
-  }
+  // every column with its ClickHouse type
+  private lazy val clickHouseColumns: Seq[(String, String)] =
+    Utils.tryWithResource(NodeClient(node, clientQueryTimeoutMs)) { implicit nodeClient =>
+      queryTableColumns(database, table)
+    }
+
+  override lazy val schema: StructType = SchemaUtils.fromClickHouseSchema(clickHouseColumns)
 
   private lazy val unsupportedColumns: Seq[(String, String)] = ClickHouseUnsupportedType.unsupportedColumns(schema)
 
@@ -192,7 +196,7 @@ case class ClickHouseTable(
       tz = tz,
       tableSpec = spec,
       tableEngineSpec = engineSpec,
-      tableColumns = schema.fieldNames.toSet,
+      tableColumns = clickHouseColumns.toMap,
       cluster = cluster,
       localTableSpec = localTableSpec,
       localTableEngineSpec = localTableEngineSpec,

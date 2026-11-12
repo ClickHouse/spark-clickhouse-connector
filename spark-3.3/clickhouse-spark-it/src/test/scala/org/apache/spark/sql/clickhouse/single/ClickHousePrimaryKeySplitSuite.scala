@@ -22,7 +22,7 @@ import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
   TASK_SPLIT_STRATEGY_PARTITION,
   TASK_SPLIT_STRATEGY_PRIMARY_INDEX
 }
-import org.apache.spark.sql.types.{DoubleType, IntegerType, LongType, StructField, StructType}
+import org.apache.spark.sql.types.{DoubleType, IntegerType, LongType, StructField, StructType, TimestampType}
 import org.scalatest.tags.Cloud
 
 @Cloud
@@ -63,6 +63,40 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
         }
         val expected = (rows - rows / 3 until rows).map(id => Row(id.toLong))
         checkAnswer(spark.table(s"$db.$tbl").filter(lastThird).select("id"), expected)
+      }
+    }
+  }
+
+  test("a key of a time function is cut on, and a filter on its column places the cuts") {
+    // 9000 rows a minute apart, 150 hours, keyed by the hour and the id
+    withTable(
+      "db_pk_split",
+      "tbl_pk_split_hour",
+      StructType(Seq(
+        StructField("ts", TimestampType, nullable = false),
+        StructField("id", LongType, nullable = false)
+      )),
+      sortKeys = Seq("toStartOfHour(ts)", "id"),
+      extraProperties = Map("settings.index_granularity" -> granule.toString)
+    ) { (db, tbl) =>
+      runClickHouseSQL(
+        s"INSERT INTO `$db`.`$tbl` SELECT toDateTime('2024-01-01 00:00:00') + number * 60, number FROM numbers($rows)"
+      )
+      withSQLConf(READ_MAX_PARALLELISM.key -> "4") {
+        eventuallyOnCloud {
+          val parts = inputPartitions(spark.table(s"$db.$tbl"))
+          assert(parts.length === 4)
+          assert(parts.forall(_.filterExpr.contains("toStartOfHour(ts)")))
+        }
+        // the last 54 hours; without the filter placing the cuts, two of the four tasks would read nothing.
+        // Spark parses and the connector formats the literal in the JVM's time zone, so ClickHouse gets it unchanged.
+        val df = spark.table(s"$db.$tbl").filter("ts >= '2024-01-05 00:00:00'")
+        eventuallyOnCloud {
+          assert(inputPartitions(df).length === 4)
+          val perTask = rowsPerTask(df)
+          perTask.foreach(n => assert(math.abs(n - perTask.sum / 4) <= granule))
+        }
+        checkAnswer(df.select("id"), (96 * 60 until rows).map(id => Row(id.toLong)))
       }
     }
   }

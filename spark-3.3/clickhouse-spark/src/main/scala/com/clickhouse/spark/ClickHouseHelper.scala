@@ -258,7 +258,15 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     database: String,
     table: String,
     actionIfNoSuchTable: (String, String) => Unit = DEFAULT_ACTION_IF_NO_SUCH_TABLE
-  )(implicit nodeClient: NodeClient): StructType = {
+  )(implicit nodeClient: NodeClient): StructType =
+    SchemaUtils.fromClickHouseSchema(queryTableColumns(database, table, actionIfNoSuchTable))
+
+  /** Every column of the table with its ClickHouse type, in position order. */
+  def queryTableColumns(
+    database: String,
+    table: String,
+    actionIfNoSuchTable: (String, String) => Unit = DEFAULT_ACTION_IF_NO_SUCH_TABLE
+  )(implicit nodeClient: NodeClient): Seq[(String, String)] = {
     val columnOutput = nodeClient.syncQueryAndCheckOutputJSONEachRow(
       s"""SELECT
          |  `database`,                -- String
@@ -285,11 +293,7 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
     if (columnOutput.isEmpty) {
       actionIfNoSuchTable(database, table)
     }
-    SchemaUtils.fromClickHouseSchema(columnOutput.records.map { row =>
-      val fieldName = row.get("name").asText
-      val ckType = row.get("type").asText
-      (fieldName, ckType)
-    })
+    columnOutput.records.map(row => (row.get("name").asText, row.get("type").asText))
   }
 
   def queryPartitionSpec(

@@ -26,7 +26,7 @@ case class ScanJobDescription(
   tz: ZoneId,
   tableSpec: TableSpec,
   tableEngineSpec: TableEngineSpec,
-  tableColumns: Set[String], // tells the primary key's columns from its expressions
+  tableColumns: Map[String, String], // every column with its ClickHouse type
   cluster: Option[ClusterSpec],
   localTableSpec: Option[TableSpec],
   localTableEngineSpec: Option[TableEngineSpec],

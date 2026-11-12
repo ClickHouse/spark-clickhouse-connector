@@ -155,7 +155,7 @@ object ClickHouseSQLConf {
         s"`$TASK_SPLIT_STRATEGY_ONE_TASK` reads the whole table in one input partition. Both splits make at most " +
         s"`spark.clickhouse.read.maxParallelism` input partitions. `$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` falls " +
         s"back to `$TASK_SPLIT_STRATEGY_ONE_TASK` on ClickHouse before 24.2 and when the primary key does not start " +
-        "with a column of an integer, date, date time, string or UUID type. Aggregations pushed down without " +
+        "with an integer, date, date time, string or UUID column or expression. Aggregations pushed down without " +
         s"GROUP BY are always read as `$TASK_SPLIT_STRATEGY_ONE_TASK`. A Distributed table is read in one input " +
         s"partition through the Distributed engine, except under `$TASK_SPLIT_STRATEGY_PARTITION` with " +
         s"`${READ_DISTRIBUTED_CONVERT_LOCAL.key}`, which reads it by shard and partition.")
