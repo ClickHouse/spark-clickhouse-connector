@@ -24,12 +24,6 @@ Public Release
 
     Most of the steps for a public release are done by the GitHub workflow.
 
-## Snapshot Release
-
-The daily snapshot release is managed by [Publish Snapshot](https://github.com/ClickHouse/spark-clickhouse-connector/blob/main/.github/workflows/publish-snapshot.yml)
-workflow, it is scheduled to be deployed at midnight every day.
-
-
 ## Feature Release
 
 1. Cut new branch from main branch, e.g. `branch-0.3`;

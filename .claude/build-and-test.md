@@ -199,10 +199,6 @@ Workflows in `.github/workflows/`:
   (`publishAllPublicationsToCentralPortal -Prelease`) on `v*` tag push or manual
   dispatch, across the full Scala × Spark matrix (4.x excludes 2.12). Signed
   (`SIGNING_KEY`/`SIGNING_PASSWORD`, `NMCP_*` secrets).
-- `publish-snapshot.yml` — nightly (cron) snapshot publish of `main` to Maven
-  Central; same matrix and secrets as the release workflow.
-- `sonar.yml` — nightly + manual SonarQube analysis (`./gradlew sonar
-  -PenableSonar=true`).
 
 A green local build for one Spark version is not enough — multi-version
 divergence is exactly what the matrix is designed to catch.
