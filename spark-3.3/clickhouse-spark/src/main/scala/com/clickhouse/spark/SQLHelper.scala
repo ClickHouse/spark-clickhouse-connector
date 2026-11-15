@@ -15,7 +15,7 @@
 package com.clickhouse.spark
 
 import java.sql.{Date, Timestamp}
-import java.time.{Instant, LocalDate, LocalDateTime, ZoneId}
+import java.time.{Instant, LocalDate, LocalDateTime, ZoneId, ZoneOffset}
 import org.apache.commons.lang3.StringUtils
 import org.apache.spark.sql.connector.expressions.aggregate._
 import org.apache.spark.sql.connector.expressions.NamedReference
@@ -36,13 +36,30 @@ trait SQLHelper {
   def compileValue(value: Any)(implicit tz: ZoneId): Any = value match {
     case string: String => s"'${escapeSql(string)}'"
     case utf8: UTF8String => s"'${escapeSql(utf8.toString)}'"
-    case instant: Instant => s"'${dateTimeFmt.withZone(tz).format(instant)}'"
-    case timestamp: Timestamp => s"'${legacyDateTimeFmt.format(timestamp)}'"
+    case instant: Instant => compileInstant(instant)
+    case timestamp: Timestamp => compileInstant(timestamp.toInstant)
     case localDateTime: LocalDateTime => s"'${dateTimeFmt.format(localDateTime)}'"
+    // a java.sql.Date is a calendar date whose JVM-default-zone rendering is that date, not an instant
     case legacyDate: Date => s"'${legacyDateFmt.format(legacyDate)}'"
     case localDate: LocalDate => s"'${dateFmt.format(localDate)}'"
     case array: Array[Any] => array.map(compileValue).mkString(",")
     case _ => value
+  }
+
+  /**
+   * Renders a timestamp literal in the catalog time zone, which is the zone the read path uses for `DateTime`
+   * values. A sub-second value is rendered as a UTC `DateTime64` literal instead: ClickHouse rejects a fractional
+   * string compared with a `DateTime` column, while a `DateTime64` literal compares by instant with both `DateTime`
+   * and `DateTime64` columns.
+   */
+  private def compileInstant(instant: Instant)(implicit tz: ZoneId): String =
+    if (instant.getNano == 0) s"'${dateTimeFmt.withZone(tz).format(instant)}'"
+    else s"toDateTime64('${dateTimeFmt.withZone(ZoneOffset.UTC).format(instant)}', 6, 'UTC')"
+
+  private def hasSubSecond(value: Any): Boolean = value match {
+    case instant: Instant => instant.getNano != 0
+    case timestamp: Timestamp => timestamp.getNanos != 0
+    case _ => false
   }
 
   def compileFilter(f: Filter)(implicit tz: ZoneId): Option[String] = Option(f match {
@@ -62,6 +79,8 @@ trait SQLHelper {
     case StringEndsWith(attr, value) => s"${quoted(attr)} LIKE '%$value'"
     case StringContains(attr, value) => s"${quoted(attr)} LIKE '%$value%'"
     case In(attr, value) if value.isEmpty => s"CASE WHEN ${quoted(attr)} IS NULL THEN NULL ELSE FALSE END"
+    // ClickHouse rejects a sub-second literal inside IN on a `DateTime` column, so leave such filters to Spark
+    case In(_, value) if value.exists(hasSubSecond) => null
     case In(attr, value) => s"${quoted(attr)} IN (${compileValue(value)})"
     case Not(f) => compileFilter(f).map(p => s"(NOT ($p))").orNull
     case Or(f1, f2) =>
