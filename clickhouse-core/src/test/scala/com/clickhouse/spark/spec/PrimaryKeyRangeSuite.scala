@@ -30,15 +30,15 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
       "(`id` >= 10) AND (`id` < 20)")
   }
 
-  test("a multi-entry range compares the entries lexicographically, expressions as they are") {
+  test("a multi-entry range compares the entries lexicographically, expressions in parentheses") {
     assert(PrimaryKeyRange(Seq("`a`", "`b`"), Some(Seq("1", "2")), None).filterExpr ===
       "(`a` > 1 OR (`a` = 1 AND `b` >= 2))")
     assert(PrimaryKeyRange(Seq("`a`", "`b`", "`c`"), Some(Seq("1", "2", "3")), Some(Seq("4", "5", "6"))).filterExpr ===
       "(`a` > 1 OR (`a` = 1 AND (`b` > 2 OR (`b` = 2 AND `c` >= 3)))) AND " +
       "(`a` < 4 OR (`a` = 4 AND (`b` < 5 OR (`b` = 5 AND `c` < 6))))")
     val hour = "toDateTime('2024-01-05 10:00:00', 'UTC')"
-    assert(PrimaryKeyRange(Seq("toStartOfHour(ts)", "`id`"), Some(Seq(hour, "7")), None).filterExpr ===
-      s"(toStartOfHour(ts) > $hour OR (toStartOfHour(ts) = $hour AND `id` >= 7))")
+    assert(PrimaryKeyRange(Seq("(toStartOfHour(ts))", "`id`"), Some(Seq(hour, "7")), None).filterExpr ===
+      s"((toStartOfHour(ts)) > $hour OR ((toStartOfHour(ts)) = $hour AND `id` >= 7))")
   }
 
   test("ranges are cut on integer, date, date time, string and UUID keys") {
@@ -116,11 +116,11 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
     val byHour = Seq("toStartOfHour(ts)", "id")
     assert(splitColumns(index ++ Seq("toStartOfHour(ts)" -> "DateTime", "id" -> "UInt64"), byHour, columns) ===
       Seq(
-        KeyEntry("toStartOfHour(ts)", "toStartOfHour(ts)", DateTimeKey(None), isColumn = false, Some(hourOfTs)),
+        KeyEntry("toStartOfHour(ts)", "(toStartOfHour(ts))", DateTimeKey(None), isColumn = false, Some(hourOfTs)),
         KeyEntry("id", "`id`", IntegerKey, isColumn = true, None)
       ))
     assert(splitColumns(index ++ Seq("cityHash64(id)" -> "UInt64"), Seq("cityHash64(id)"), columns) ===
-      Seq(KeyEntry("cityHash64(id)", "cityHash64(id)", IntegerKey, isColumn = false, None)))
+      Seq(KeyEntry("cityHash64(id)", "(cityHash64(id))", IntegerKey, isColumn = false, None)))
     assert(splitColumns(index ++ Seq("id" -> "UInt64", "score" -> "Float64", "ts" -> "DateTime"), key, columns) ===
       Seq(KeyEntry("id", "`id`", IntegerKey, isColumn = true, None)))
     assert(splitColumns(index ++ Seq("score" -> "Nullable(Int32)"), Seq("score"), columns).isEmpty)
@@ -134,7 +134,10 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
       Seq("toStartOfHour(`event time`)", "id"),
       columns
     )
-    assert(entries.map(_.sql) === Seq("toStartOfHour(`event time`)", "`id`"))
+    assert(entries.map(_.sql) === Seq("(toStartOfHour(`event time`))", "`id`"))
+    // an operator that binds looser than a comparison stays one operand of a range bound
+    val flags = splitColumns(index ++ Seq("and(a, b)" -> "UInt8"), Seq("a AND b"), columns)
+    assert(PrimaryKeyRange(flags.map(_.sql), Some(Seq("1")), None).filterExpr === "((a AND b) >= 1)")
     assert(entries.head.identifier === "`toStartOfHour(event time)`")
     assert(entries.head.monotonic === Some(Monotonic("event time", "DateTime", "toStartOfHour(", ")")))
     // a String-typed function result follows string order, so a filter on its column can't place the cuts

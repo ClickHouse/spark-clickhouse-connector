@@ -23,7 +23,7 @@ import scala.util.control.NonFatal
 
 /**
  * A `[lower, upper)` range of a primary key prefix, compared lexicographically. `key` holds the entries as a task's
- * filter writes them: a back-quoted column, or an expression as it is. A missing bound is open-ended, so the ranges
+ * filter writes them: a back-quoted column, or an expression in parentheses. A missing bound is open-ended, so the ranges
  * planned for a table cover every key value exactly once.
  */
 case class PrimaryKeyRange(key: Seq[String], lower: Option[Seq[String]], upper: Option[Seq[String]]) {
@@ -123,7 +123,7 @@ object PrimaryKeyRange {
   /**
    * An entry of the split key. The column of `mergeTreeIndex` named `name` holds its values; `sql` is how a task's
    * filter writes it against the table: a back-quoted column, or the expression as ClickHouse itself formats it in
-   * the table's primary key. `monotonic` is set when the entry is a monotonic time function of a table column, so
+   * the table's primary key, in parentheses. `monotonic` is set when the entry is a monotonic time function of a table column, so
    * that a filter on that column can place the cuts.
    */
   private[spec] case class KeyEntry(
@@ -347,7 +347,8 @@ object PrimaryKeyRange {
       .map { case ((name, chType), spelling) =>
         keyType(chType).map { keyType =>
           val isColumn = tableColumns.contains(name)
-          val sql = if (isColumn) Utils.wrapBackQuote(name) else spelling
+          // parenthesized, as an entry like `a AND b` binds looser than the comparison of a range bound
+          val sql = if (isColumn) Utils.wrapBackQuote(name) else s"($spelling)"
           val monotonic = if (isColumn || keyType == BytesKey) None else monotonicOf(spelling, tableColumns)
           KeyEntry(name, sql, keyType, isColumn, monotonic)
         }
