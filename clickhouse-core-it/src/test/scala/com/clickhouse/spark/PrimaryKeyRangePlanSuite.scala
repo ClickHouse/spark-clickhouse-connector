@@ -108,14 +108,14 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
     }
   }
 
-  test("a key expression is cut on as it is") {
+  test("a key expression is cut on, in parentheses") {
     withTable(
       mergeTree("(tenant String, ts DateTime)", "ORDER BY (tenant, toStartOfHour(ts))"),
       s"SELECT toString(number % 100), toDateTime('2024-01-01 00:00:00') + number FROM numbers($rows)"
     ) { table =>
       val ranges = table.ranges(4)
       assert(ranges.length === 4)
-      assert(ranges.forall(_.key == Seq("`tenant`", "toStartOfHour(ts)")))
+      assert(ranges.forall(_.key == Seq("`tenant`", "(toStartOfHour(ts))")))
       table.assertCovers(ranges)
     }
   }
@@ -127,7 +127,7 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
     ) { table =>
       val ranges = table.ranges(4, PushedFilter.Compare("event time", ">=", "'2024-01-01 04:00:00'"))
       assert(ranges.length === 4)
-      assert(ranges.forall(_.key == Seq("toStartOfHour(`event time`)", "`id`")))
+      assert(ranges.forall(_.key == Seq("(toStartOfHour(`event time`))", "`id`")))
       table.assertCovers(ranges)
     }
   }
@@ -141,7 +141,7 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
       val lastHours = "`ts` >= '2024-01-01 04:00:00'"
       val ranges = table.ranges(4, PushedFilter.Compare("ts", ">=", "'2024-01-01 04:00:00'"))
       assert(ranges.length === 4)
-      assert(ranges.forall(_.key == Seq("toStartOfHour(ts)", "`id`")))
+      assert(ranges.forall(_.key == Seq("(toStartOfHour(ts))", "`id`")))
       table.assertCovers(ranges)
       val kept = table.count(lastHours)
       ranges.foreach { range =>
