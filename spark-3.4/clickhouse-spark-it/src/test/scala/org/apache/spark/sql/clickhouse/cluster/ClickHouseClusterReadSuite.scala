@@ -14,7 +14,11 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
-import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{READ_DISTRIBUTED_CONVERT_LOCAL, READ_TASK_SPLIT_STRATEGY}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
+  READ_DISTRIBUTED_CONVERT_LOCAL,
+  READ_MAX_PARALLELISM,
+  READ_TASK_SPLIT_STRATEGY
+}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{TASK_SPLIT_STRATEGY_ONE_TASK, TASK_SPLIT_STRATEGY_PARTITION}
 import org.apache.spark.sql.{AnalysisException, Row}
 import org.apache.spark.sql.catalyst.TableIdentifier
@@ -126,12 +130,19 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
     }
   }
 
-  test("a distributed table is read in one task unless partitionSplit splits it by shard and partition") {
+  test("a distributed table is split shard by shard with convertLocal, and read in one task without") {
     withSimpleDistTable("single_replica", "db_one_task", "t_dist", true) { (_, db, tbl_dist, tbl_local) =>
-      // the default primaryIndexSplit has no index across shards and falls back to one task through the engine
-      assert(inputPartitions(spark.table(s"$db.$tbl_dist")).map(_.table.name) === Seq(tbl_dist))
+      // convertLocal is on; a shard holds one row, too few to cut, so the default primaryIndexSplit reads it in a task
+      val byShard = inputPartitions(spark.table(s"$db.$tbl_dist"))
+      assert(byShard.length === 4 && byShard.forall(p => p.table.name == tbl_local && p.filterExpr == "1=1"))
+      checkAnswer(spark.table(s"$db.$tbl_dist").select("id"), Seq(Row(1L), Row(2L), Row(3L), Row(4L)))
 
-      // convertLocal is on, so partitionSplit reads one task per shard and partition of the local table
+      // without it there is no index across shards, and the read is one task through the engine
+      withSQLConf(READ_DISTRIBUTED_CONVERT_LOCAL.key -> "false") {
+        assert(inputPartitions(spark.table(s"$db.$tbl_dist")).map(_.table.name) === Seq(tbl_dist))
+      }
+
+      // partitionSplit reads one task per shard and partition of the local table
       withSQLConf(READ_TASK_SPLIT_STRATEGY.key -> TASK_SPLIT_STRATEGY_PARTITION) {
         val parts = inputPartitions(spark.table(s"$db.$tbl_dist"))
         assert(parts.length > 1 && parts.forall(_.table.name == tbl_local))
@@ -146,6 +157,35 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
         val df = spark.table(s"$db.$tbl_dist")
         assert(inputPartitions(df).map(_.table.name) === Seq(tbl_dist))
         checkAnswer(df.select("id"), Seq(Row(1L), Row(2L), Row(3L), Row(4L)))
+      }
+    }
+  }
+
+  test("primaryIndexSplit cuts every shard's local table into ranges of its primary key") {
+    val (rows, granule) = (8000, 64)
+    autoCleanupDistTable("single_replica", "db_key_split", "t_dist") { (cluster, db, tbl_dist, tbl_local) =>
+      runClickHouseSQL(
+        s"""CREATE TABLE $db.$tbl_local ON CLUSTER '$cluster' (id Int64)
+           |ENGINE = MergeTree() ORDER BY id SETTINGS index_granularity = $granule
+           |""".stripMargin
+      )
+      runClickHouseSQL(
+        s"""CREATE TABLE $db.$tbl_dist ON CLUSTER '$cluster' (id Int64)
+           |ENGINE = Distributed('$cluster', '$db', '$tbl_local', id)
+           |""".stripMargin
+      )
+      runClickHouseSQL(
+        s"INSERT INTO $db.$tbl_dist SETTINGS insert_distributed_sync = 1 SELECT number FROM numbers($rows)"
+      )
+      // 4 shards share 8 tasks: 2 key ranges of its local table each
+      withSQLConf(READ_MAX_PARALLELISM.key -> "8") {
+        val df = spark.table(s"$db.$tbl_dist")
+        val parts = inputPartitions(df)
+        assert(parts.length === 8)
+        assert(parts.forall(p => p.table.name == tbl_local && p.filterExpr.startsWith("(`id` ")))
+        assert(parts.groupBy(_.candidateNodes.nodes.head).values.forall(_.length == 2))
+        df.rdd.mapPartitions(it => Iterator(it.size)).collect().foreach(n => assert(math.abs(n - rows / 8) <= granule))
+        checkAnswer(df, (0 until rows).map(id => Row(id.toLong)))
       }
     }
   }

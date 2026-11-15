@@ -126,7 +126,8 @@ object ClickHouseSQLConf {
     buildConf("spark.clickhouse.read.distributed.convertLocal")
       .doc("When reading Distributed table, read local table instead of itself. " +
         s"If `true`, ignore `${READ_DISTRIBUTED_USE_CLUSTER_NODES.key}`. " +
-        "Reads are split by shard only under `spark.clickhouse.read.taskSplitStrategy=partitionSplit`.")
+        "A split read then reads every shard's local table, each split on its own by " +
+        "`spark.clickhouse.read.taskSplitStrategy`.")
       .version("0.1.0")
       .booleanConf
       .createWithDefault(true)
@@ -156,9 +157,10 @@ object ClickHouseSQLConf {
         s"`spark.clickhouse.read.maxParallelism` input partitions. `$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` falls " +
         s"back to `$TASK_SPLIT_STRATEGY_ONE_TASK` on ClickHouse before 24.2 and when the primary key does not start " +
         "with an integer, date, date time, string or UUID column or expression. Aggregations pushed down without " +
-        s"GROUP BY are always read as `$TASK_SPLIT_STRATEGY_ONE_TASK`. A Distributed table is read in one input " +
-        s"partition through the Distributed engine, except under `$TASK_SPLIT_STRATEGY_PARTITION` with " +
-        s"`${READ_DISTRIBUTED_CONVERT_LOCAL.key}`, which reads it by shard and partition.")
+        s"GROUP BY are always read as `$TASK_SPLIT_STRATEGY_ONE_TASK`. A Distributed table is split only with " +
+        s"`${READ_DISTRIBUTED_CONVERT_LOCAL.key}`: every shard's local table is split on its own, and a shard " +
+        "that can't be split is read in one input partition. Without it the table is read in one input partition " +
+        "through the Distributed engine.")
       .version("0.10.3")
       .stringConf
       .transform(v => TASK_SPLIT_STRATEGIES.find(_.equalsIgnoreCase(v)).getOrElse(v))
@@ -170,8 +172,9 @@ object ClickHouseSQLConf {
       .doc("The most input partitions a read is split into. " +
         s"`$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` cuts up to that many ranges of the primary key, fewer when the data " +
         s"read is too small, as a range holds at least one granule. `$TASK_SPLIT_STRATEGY_PARTITION` groups the " +
-        "ClickHouse partitions into at most that many input partitions holding about the same number of rows; " +
-        "every shard of a Distributed table read by shard gets an equal share, one at least. A value of 1 reads " +
+        "ClickHouse partitions into at most that many input partitions holding about the same number of rows. " +
+        "A Distributed table read by shard divides it equally among its shards, each getting at least one, so the " +
+        "total exceeds it only when there are more shards than that. A value of 1 reads " +
         "the table in one input partition, a Distributed table through its engine. " +
         "Defaults to three times Spark's default parallelism.")
       .version("0.10.3")

@@ -24,7 +24,8 @@ import com.clickhouse.spark.spec.{
   PartitionGroup,
   PartitionSpec,
   PrimaryKeyRange,
-  TableEngineSpec
+  TableEngineSpec,
+  TableKeyRanges
 }
 import com.clickhouse.spark.spec.TableSpecs.tableSpec
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
@@ -41,6 +42,9 @@ class TaskSplitSuite extends AnyFunSuite {
   )
   private val ranges =
     Seq(PrimaryKeyRange(Seq("id"), None, Some(Seq("10"))), PrimaryKeyRange(Seq("id"), Some(Seq("10")), None))
+  private val why = NotSplittable("the table has no primary key")
+  private val split = TableKeyRanges(tableSpec(), NodeSpec("127.0.0.1"), Right(ranges))
+  private val unsplit = TableKeyRanges(tableSpec(), NodeSpec("127.0.0.2"), Left(why))
   private val groups = Seq("1", "2")
     .map(id => PartitionGroup(tableSpec(), NodeSpec("127.0.0.1"), Seq(PartitionSpec(id, id, 1, 1))))
 
@@ -51,7 +55,7 @@ class TaskSplitSuite extends AnyFunSuite {
     engine: TableEngineSpec = mergeTree,
     convertLocal: Boolean = false,
     partitionGroups: => Seq[PartitionGroup] = fail("the partitions must not be listed"),
-    primaryKeyRanges: => Either[NotSplittable, Seq[PrimaryKeyRange]] = fail("the primary index must not be planned")
+    primaryKeyRanges: => Seq[TableKeyRanges] = fail("the primary index must not be planned")
   ): TaskSplit =
     TaskSplit.resolve(
       strategy,
@@ -64,9 +68,18 @@ class TaskSplitSuite extends AnyFunSuite {
     )
 
   test("primaryIndexSplit splits by the planned ranges, or is one task for the planner's reason") {
-    assert(resolve(primaryKeyRanges = Right(ranges)) === PrimaryIndexSplit(ranges))
-    val why = NotSplittable("the table has no primary key")
-    assert(resolve(primaryKeyRanges = Left(why)) === OneTask(NoKeyRanges(why)))
+    assert(resolve(primaryKeyRanges = Seq(split)) === PrimaryIndexSplit(Seq(split)))
+    assert(resolve(primaryKeyRanges = Seq(unsplit)) === OneTask(NoKeyRanges(why)))
+  }
+
+  test("primaryIndexSplit with convertLocal splits a Distributed table shard by shard, an unsplit shard one task") {
+    def byShard(shards: TableKeyRanges*): TaskSplit =
+      resolve(engine = distributed, convertLocal = true, primaryKeyRanges = shards)
+    assert(byShard(split, split) === PrimaryIndexSplit(Seq(split, split)))
+    assert(byShard(split, unsplit) === PrimaryIndexSplit(Seq(split, unsplit)))
+    assert(byShard(unsplit, unsplit) === PrimaryIndexSplit(Seq(unsplit, unsplit)))
+    // a lone shard that can't be split is read through the Distributed engine
+    assert(byShard(unsplit) === OneTask(NoKeyRanges(why)))
   }
 
   test("partitionSplit splits by the listed partitions, or is one task when at most one is listed") {
@@ -94,9 +107,8 @@ class TaskSplitSuite extends AnyFunSuite {
     assert(resolve(globalAggregatePushed = true, maxParallelism = 1) === OneTask(GlobalAggregate))
   }
 
-  test("a Distributed table is one task, except partitionSplit with convertLocal splits it by shard and partition") {
+  test("a Distributed table is one task without convertLocal, which splits it by shard") {
     assert(resolve(engine = distributed) === OneTask(DistributedIndex))
-    assert(resolve(engine = distributed, convertLocal = true) === OneTask(DistributedIndex))
     assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, engine = distributed) === OneTask(DistributedPartitions))
     assert(resolve(
       strategy = TASK_SPLIT_STRATEGY_PARTITION,

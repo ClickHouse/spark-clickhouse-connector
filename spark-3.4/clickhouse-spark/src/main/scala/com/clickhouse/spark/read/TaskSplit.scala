@@ -14,13 +14,7 @@
 
 package com.clickhouse.spark.read
 
-import com.clickhouse.spark.spec.{
-  DistributedEngineSpec,
-  NotSplittable,
-  PartitionGroup,
-  PrimaryKeyRange,
-  TableEngineSpec
-}
+import com.clickhouse.spark.spec.{DistributedEngineSpec, NotSplittable, PartitionGroup, TableEngineSpec, TableKeyRanges}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 
 /** How a read is split into tasks. Every task's table, nodes and filter follow from it alone. */
@@ -34,8 +28,11 @@ object TaskSplit {
   /** One task per group of ClickHouse partitions; of every shard's local table for a Distributed table. */
   case class PartitionSplit(groups: Seq[PartitionGroup]) extends TaskSplit
 
-  /** One task per range of the primary key. */
-  case class PrimaryIndexSplit(ranges: Seq[PrimaryKeyRange]) extends TaskSplit
+  /**
+   * One task per range of the primary key; of every shard's local table for a Distributed table, a shard that can't
+   * be split being one task.
+   */
+  case class PrimaryIndexSplit(tables: Seq[TableKeyRanges]) extends TaskSplit
 
   /** Why a read is one task. */
   sealed trait OneTaskReason {
@@ -59,8 +56,7 @@ object TaskSplit {
         )
     case object DistributedIndex extends Fallback(
           "a Distributed table has no primary index across shards; " +
-            s"${READ_TASK_SPLIT_STRATEGY.key}=$TASK_SPLIT_STRATEGY_PARTITION with ${READ_DISTRIBUTED_CONVERT_LOCAL.key} " +
-            "reads it by shard and partition"
+            s"${READ_DISTRIBUTED_CONVERT_LOCAL.key} reads it by shard and key range"
         )
     case object SinglePartition extends Fallback("system.parts lists at most one partition")
     case class NoKeyRanges(why: NotSplittable) extends Fallback(why.reason)
@@ -71,7 +67,8 @@ object TaskSplit {
   /**
    * Decides the split for the configured `strategy`. Each strategy falls back to one task on its own, never to
    * another split, and says why. `partitionGroups` and `primaryKeyRanges` query ClickHouse and come sized for
-   * `maxParallelism`, so they are by-name and only evaluated when their strategy gets that far.
+   * `maxParallelism`, so they are by-name and only evaluated when their strategy gets that far. `primaryKeyRanges`
+   * holds the table read, or every shard's local table for a Distributed table.
    */
   def resolve(
     strategy: String,
@@ -80,7 +77,7 @@ object TaskSplit {
     engine: TableEngineSpec,
     convertDistributedToLocal: Boolean,
     partitionGroups: => Seq[PartitionGroup],
-    primaryKeyRanges: => Either[NotSplittable, Seq[PrimaryKeyRange]]
+    primaryKeyRanges: => Seq[TableKeyRanges]
   ): TaskSplit = {
     val distributed = engine.isInstanceOf[DistributedEngineSpec]
     strategy match {
@@ -91,9 +88,12 @@ object TaskSplit {
       case TASK_SPLIT_STRATEGY_PARTITION =>
         val groups = partitionGroups
         if (groups.size <= 1) OneTask(SinglePartition) else PartitionSplit(groups)
-      case TASK_SPLIT_STRATEGY_PRIMARY_INDEX if distributed => OneTask(DistributedIndex)
+      case TASK_SPLIT_STRATEGY_PRIMARY_INDEX if distributed && !convertDistributedToLocal => OneTask(DistributedIndex)
       case TASK_SPLIT_STRATEGY_PRIMARY_INDEX =>
-        primaryKeyRanges.fold(why => OneTask(NoKeyRanges(why)), ranges => PrimaryIndexSplit(ranges))
+        primaryKeyRanges match {
+          case Seq(TableKeyRanges(_, _, Left(why))) => OneTask(NoKeyRanges(why))
+          case tables => PrimaryIndexSplit(tables)
+        }
     }
   }
 }

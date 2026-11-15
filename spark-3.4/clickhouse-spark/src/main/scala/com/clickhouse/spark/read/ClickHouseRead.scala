@@ -26,6 +26,7 @@ import com.clickhouse.spark.spec.{
   PartitionGroup,
   PartitionGroups,
   PrimaryKeyRange,
+  TableKeyRanges,
   TableSpec
 }
 import com.clickhouse.spark.{BlocksReadMetric, BytesReadMetric, ClickHouseHelper, Logging, SQLHelper, Utils}
@@ -219,33 +220,42 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
         val byId = scanJob.readOptions.splitByPartitionId
         // TODO pickup preferred
         groups.map(group => ClickHouseInputPartition(group.table, group.filterExpr(byId), group.nodes))
-      case PrimaryIndexSplit(ranges) =>
-        ranges.map(range => ClickHouseInputPartition(scanJob.tableSpec, range.filterExpr, scanJob.node))
+      case PrimaryIndexSplit(tables) =>
+        tables.flatMap(t => t.filterExprs.map(ClickHouseInputPartition(t.table, _, t.nodes)))
     }
     tasks.toArray
   }
 
-  // the ClickHouse partitions of the table in groups of about as many rows each, maxParallelism at most; of every
-  // shard's local table for a Distributed table, listed on one node of the shard: an equal share each, one at least
-  private def listPartitionGroups(): Seq[PartitionGroup] = {
-    def groupsOf(table: TableSpec, nodes: Nodes, tasks: Int): Seq[PartitionGroup] =
-      Utils.tryWithResource(NodeClient(nodes.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-        val partitions = queryPartitionSpec(table.database, table.name)
-        PartitionGroups.group(partitions, tasks).map(PartitionGroup(table, nodes, _))
-      }
-    scanJob.tableEngineSpec match {
-      case _: DistributedEngineSpec =>
-        val shards = scanJob.cluster.get.shards.toSeq
-        val share = math.max(1, scanJob.maxParallelism / shards.length)
-        shards.flatMap(shard => groupsOf(scanJob.localTableSpec.get, shard, share))
-      case _ => groupsOf(scanJob.tableSpec, scanJob.node, scanJob.maxParallelism)
+  // a table a split reads, on `nodes`, in at most `tasks` tasks
+  private case class SplitTable(table: TableSpec, nodes: Nodes, tasks: Int)
+
+  // the table itself; for a Distributed table every shard's local table, with an equal share of maxParallelism each,
+  // one task at least
+  private def splitTables: Seq[SplitTable] = scanJob.tableEngineSpec match {
+    case _: DistributedEngineSpec =>
+      val shards = scanJob.cluster.get.shards.toSeq
+      val share = math.max(1, scanJob.maxParallelism / shards.length)
+      shards.map(shard => SplitTable(scanJob.localTableSpec.get, shard, share))
+    case _ => Seq(SplitTable(scanJob.tableSpec, scanJob.node, scanJob.maxParallelism))
+  }
+
+  // the ClickHouse partitions of every split table in groups of about as many rows each, listed on its first node
+  private def listPartitionGroups(): Seq[PartitionGroup] = splitTables.flatMap { case SplitTable(table, nodes, tasks) =>
+    Utils.tryWithResource(NodeClient(nodes.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
+      val partitions = queryPartitionSpec(table.database, table.name)
+      PartitionGroups.group(partitions, tasks).map(PartitionGroup(table, nodes, _))
     }
   }
 
-  private def planPrimaryKeyRanges(): Either[NotSplittable, Seq[PrimaryKeyRange]] =
-    Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-      PrimaryKeyRange.plan(scanJob.tableSpec, scanJob.tableColumns, scanJob.filters, scanJob.maxParallelism)
-    }
+  // the key ranges of every split table, planned on its first node; a shard left with one task is not planned
+  private def planPrimaryKeyRanges(): Seq[TableKeyRanges] = splitTables.map { case SplitTable(table, nodes, tasks) =>
+    val ranges =
+      if (tasks == 1) Left(NotSplittable(s"${READ_MAX_PARALLELISM.key} leaves one task per shard"))
+      else Utils.tryWithResource(NodeClient(nodes.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
+        PrimaryKeyRange.plan(table, scanJob.tableColumns, scanJob.filters, tasks)
+      }
+    TableKeyRanges(table, nodes, ranges)
+  }
 
   private def logSplit(split: TaskSplit): Unit = {
     val table = s"${scanJob.tableSpec.database}.${scanJob.tableSpec.name}"
@@ -258,8 +268,21 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription) extends Scan with Batch
         log.warn(s"Reading $table as one task, which may impact read performance: ${reason.message}")
       case PartitionSplit(groups) =>
         log.info(s"Reading $table in ${groups.length} tasks by ClickHouse partition")
-      case PrimaryIndexSplit(ranges) =>
-        log.info(s"Reading $table in ${ranges.length} tasks, one per range of (${ranges.head.key.mkString(", ")})")
+      case PrimaryIndexSplit(tables) =>
+        // only the shards of a Distributed table are unsplit here: a lone unsplit table is one task
+        val unsplit = tables.flatMap(_.ranges.left.toOption)
+        unsplit.distinct.foreach { why =>
+          val message = s"Reading ${unsplit.count(_ == why)} of ${tables.length} shards of $table as one task each, " +
+            s"which may impact read performance: ${why.reason}"
+          why.cause match {
+            case Some(cause) => log.warn(message, cause)
+            case None => log.warn(message)
+          }
+        }
+        val tasks = tables.map(_.filterExprs.length).sum
+        val each = tables.flatMap(_.ranges.toOption).headOption
+          .fold("shard")(ranges => s"range of (${ranges.head.key.mkString(", ")})")
+        log.info(s"Reading $table in $tasks tasks, one per $each")
     }
   }
 

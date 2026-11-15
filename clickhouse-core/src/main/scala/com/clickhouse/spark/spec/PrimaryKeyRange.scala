@@ -48,6 +48,13 @@ case class PrimaryKeyRange(key: Seq[String], lower: Option[Seq[String]], upper: 
 /** Why a table can't be split by its primary key, with the failure when planning threw. */
 case class NotSplittable(reason: String, cause: Option[Throwable] = None)
 
+/** The key ranges `table` is read in, one task each from one of `nodes`, or why it is read in one task. */
+case class TableKeyRanges(table: TableSpec, nodes: Nodes, ranges: Either[NotSplittable, Seq[PrimaryKeyRange]]) {
+
+  /** The filter of every task of the table: one per range, or `1=1` for the whole of it. */
+  def filterExprs: Seq[String] = ranges.fold(_ => Seq("1=1"), _.map(_.filterExpr))
+}
+
 object PrimaryKeyRange {
 
   /** How a key column's cut values are read from the index and written back as SQL literals. */
