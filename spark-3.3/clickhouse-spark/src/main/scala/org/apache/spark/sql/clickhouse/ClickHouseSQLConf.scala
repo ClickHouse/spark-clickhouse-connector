@@ -223,6 +223,20 @@ object ClickHouseSQLConf {
       .transform(_.toLowerCase)
       .createWithDefault("binary")
 
+  val READ_PARTITION_LISTING_UNION_REPLICAS: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.read.partitionListing.unionReplicas")
+      .doc("If `true`, list a table's partitions across the replicas of its cluster rather than " +
+        "from the server answering the query. `system.parts` reflects only that server and lags a " +
+        "recent write on an eventually consistent service such as ClickHouse Cloud, and a listing " +
+        "that lags prunes a partition out of the scan and silently drops its rows. Where permitted, an " +
+        "unreachable replica is skipped; any other failure falls back to that server's own view " +
+        "and warns. " +
+        s"Applies only to a scan filtering by `_partition_id`, so ${READ_SPLIT_BY_PARTITION_ID.key}" +
+        " being off leaves the listing un-unioned.")
+      .version("0.10.1")
+      .booleanConf
+      .createWithDefault(true)
+
   val READ_SETTINGS: OptionalConfigEntry[String] =
     buildConf("spark.clickhouse.read.settings")
       .doc("Settings when read from ClickHouse. e.g. `final=1, max_execution_time=5`")
