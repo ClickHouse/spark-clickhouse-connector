@@ -73,14 +73,18 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
     uuidAndEngine
   }
 
-  /** Ground truth fetched from the live server. */
-  private def liveServerVersion(): String = {
-    var version: String = null
+  /**
+   * Ground truth fetched from the live server. Each Cloud request can reach a different replica, and replicas can run
+   * different versions (e.g. during a rolling upgrade), so on Cloud this is the version of every replica.
+   */
+  private def liveServerVersions(): Set[String] = {
+    val source = if (isCloud) "clusterAllReplicas('default', system.one)" else "system.one"
+    var versions: Set[String] = Set.empty
     withNodeClient() { client =>
-      val output = client.syncQueryAndCheckOutputJSONEachRow("SELECT version() AS version")
-      version = output.records.head.get("version").asText
+      val output = client.syncQueryAndCheckOutputJSONEachRow(s"SELECT DISTINCT version() AS version FROM $source")
+      versions = output.records.map(_.get("version").asText).toSet
     }
-    version
+    versions
   }
 
   private def scanJob(table: ClickHouseTable, readOptions: ReadOptions): ScanJobDescription =
@@ -133,7 +137,7 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
 
       val table = loadClickHouseTable(db, tbl)
       val (uuid, engine) = tableUuidAndEngine(db, tbl)
-      val serverVersion = liveServerVersion()
+      val serverVersions = liveServerVersions()
       assert(table.spec.uuid === uuid)
 
       val enabled = options(SEND_ANONYMOUS_USAGE_STATS.key -> "true") // the shared IT conf turns reporting off
@@ -154,7 +158,9 @@ abstract class UserAnalyticsEventsSuite extends SparkClickHouseSingleTest {
         assert(event.appNameHash === Some(expectedSha256Hex16(spark.sparkContext.appName)))
         assert(event.tableId === Some(expectedTableId(uuid)))
         assert(event.engine === engine)
-        assert(event.serverVersion === Some(serverVersion)) // recorded by the catalog's connection check
+        // recorded by the catalog's connection check, which may have reached any replica
+        assert(event.serverVersion.isDefined)
+        assert(serverVersions.contains(event.serverVersion.get))
 
         // this suite runs against the fat runtime jar: the versions must survive its composite
         // `<spark>_<scala>_<connector>` manifest, so no `_` may leak through
