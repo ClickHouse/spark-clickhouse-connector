@@ -49,7 +49,6 @@ object Utils extends Logging {
     .withResolverStyle(ResolverStyle.STRICT)
 
   @transient lazy val legacyDateFmt: FastDateFormat = FastDateFormat.getInstance("yyyy-MM-dd")
-  @transient lazy val legacyDateTimeFmt: FastDateFormat = FastDateFormat.getInstance("yyyy-MM-dd HH:mm:ss")
 
   def defaultClassLoader: ClassLoader =
     Try(Thread.currentThread.getContextClassLoader) // fail if cannot access thread context ClassLoader
