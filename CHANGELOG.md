@@ -22,7 +22,7 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Fixed
-- Pushed-down timestamp filters are now rendered in the catalog time zone (`spark.clickhouse.tz`) instead of the JVM default zone, so rows are no longer silently missing or extra when the two differ ([#609](https://github.com/ClickHouse/spark-clickhouse-connector/pull/609)). Sub-second timestamp literals keep their precision and are pushed as `DateTime64`; an `IN` list containing a sub-second timestamp is left to Spark. Applies to all Spark profiles (3.3/3.4/3.5/4.0/4.1/4.2).
+- Pushed-down timestamp filters are now sent as UTC-typed literals (`toDateTime64('<UTC>', 6, 'UTC')` for comparisons, `toDateTime('<UTC>', 'UTC')` in `IN` lists) instead of plain text in the JVM default zone, so rows are no longer silently missing or extra when the JVM zone, the catalog zone (`spark.clickhouse.tz`) or the column's own zone (e.g. `DateTime('Asia/Tokyo')`) differ. Sub-second and pre-1970 values keep their value; an `IN` list containing a timestamp a `DateTime` cannot hold (sub-second, before 1970 or after 2106) is left to Spark ([#609](https://github.com/ClickHouse/spark-clickhouse-connector/pull/609)). Applies to all Spark profiles (3.3/3.4/3.5/4.0/4.1/4.2).
 
 ## [0.11.0] - 2026-11-11
 

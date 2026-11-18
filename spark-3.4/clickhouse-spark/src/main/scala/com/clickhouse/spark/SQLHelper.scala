@@ -47,19 +47,37 @@ trait SQLHelper {
   }
 
   /**
-   * Renders a timestamp literal in the catalog time zone, which is the zone the read path uses for `DateTime`
-   * values. A sub-second value is rendered as a UTC `DateTime64` literal instead: ClickHouse rejects a fractional
-   * string compared with a `DateTime` column, while a `DateTime64` literal compares by instant with both `DateTime`
-   * and `DateTime64` columns.
+   * Renders a timestamp literal as a UTC `DateTime64`. ClickHouse reads a plain string literal in the column's own
+   * time zone (a `DateTime('Asia/Tokyo')` column reads it as Tokyo time), so a string is only right when that zone
+   * happens to be the catalog's. A typed UTC literal compares by instant with `DateTime` and `DateTime64` columns in
+   * any zone, and keeps sub-second and pre-1970 values.
    */
-  private def compileInstant(instant: Instant)(implicit tz: ZoneId): String =
-    if (instant.getNano == 0) s"'${dateTimeFmt.withZone(tz).format(instant)}'"
-    else s"toDateTime64('${dateTimeFmt.withZone(ZoneOffset.UTC).format(instant)}', 6, 'UTC')"
+  private def compileInstant(instant: Instant): String =
+    s"toDateTime64('${utcDateTimeFmt.format(instant)}', 6, 'UTC')"
 
-  private def hasSubSecond(value: Any): Boolean = value match {
-    case instant: Instant => instant.getNano != 0
-    case timestamp: Timestamp => timestamp.getNanos != 0
-    case _ => false
+  private lazy val utcDateTimeFmt = dateTimeFmt.withZone(ZoneOffset.UTC)
+
+  // the last instant a `DateTime` (UInt32 seconds) can hold: 2106-02-07 06:28:15 UTC
+  private val maxDateTime = Instant.ofEpochSecond(4294967295L)
+
+  private def instantOf(value: Any): Option[Instant] = value match {
+    case instant: Instant => Some(instant)
+    case timestamp: Timestamp => Some(timestamp.toInstant)
+    case _ => None
+  }
+
+  /**
+   * An `IN` list element. ClickHouse converts each `IN` element to the column's type, and rejects a `DateTime64`
+   * element for a `DateTime` column, so a timestamp is a UTC `DateTime` literal here. That holds only whole seconds
+   * from 1970 to 2106; see [[pushableIn]].
+   */
+  private def compileInValue(value: Any)(implicit tz: ZoneId): Any = instantOf(value) match {
+    case Some(instant) => s"toDateTime('${utcDateTimeFmt.format(instant)}', 'UTC')"
+    case None => compileValue(value)
+  }
+
+  private def pushableIn(values: Array[Any]): Boolean = values.flatMap(instantOf).forall { instant =>
+    instant.getNano == 0 && !instant.isBefore(Instant.EPOCH) && !instant.isAfter(maxDateTime)
   }
 
   def compileFilter(f: Filter)(implicit tz: ZoneId): Option[String] = Option(f match {
@@ -79,9 +97,9 @@ trait SQLHelper {
     case StringEndsWith(attr, value) => s"${quoted(attr)} LIKE '%$value'"
     case StringContains(attr, value) => s"${quoted(attr)} LIKE '%$value%'"
     case In(attr, value) if value.isEmpty => s"CASE WHEN ${quoted(attr)} IS NULL THEN NULL ELSE FALSE END"
-    // ClickHouse rejects a sub-second literal inside IN on a `DateTime` column, so leave such filters to Spark
-    case In(_, value) if value.exists(hasSubSecond) => null
-    case In(attr, value) => s"${quoted(attr)} IN (${compileValue(value)})"
+    // a timestamp that a `DateTime` literal cannot hold exactly is left to Spark, see compileInValue
+    case In(_, value) if !pushableIn(value) => null
+    case In(attr, value) => s"${quoted(attr)} IN (${value.map(compileInValue).mkString(",")})"
     case Not(f) => compileFilter(f).map(p => s"(NOT ($p))").orNull
     case Or(f1, f2) =>
       val or = Seq(f1, f2).flatMap(_f => compileFilter(_f)(tz))

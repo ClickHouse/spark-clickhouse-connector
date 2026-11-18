@@ -35,20 +35,15 @@ class SQLHelperSuite extends AnyFunSuite with SQLHelper {
 
   private def compile(f: Filter, tz: ZoneId = utc): Option[String] = compileFilter(f)(tz)
 
-  test("Timestamp literal is rendered in the catalog zone, not the JVM zone") {
+  test("timestamp comparisons are UTC DateTime64 literals whatever the JVM or catalog zone") {
     withJvmZone("America/Los_Angeles") {
       // Spark's literal '2024-01-05 00:00:00' in America/Los_Angeles
-      val ts = Timestamp.from(Instant.parse("2024-01-05T08:00:00Z"))
-      assert(compile(GreaterThanOrEqual("ts", ts)) === Some("`ts` >= '2024-01-05 08:00:00'"))
-      assert(compile(EqualTo("ts", ts), ZoneId.of("Asia/Kolkata")) === Some("`ts` = '2024-01-05 13:30:00'"))
-    }
-  }
-
-  test("Instant literal is rendered in the catalog zone, not the JVM zone") {
-    withJvmZone("America/Los_Angeles") {
       val instant = Instant.parse("2024-01-05T08:00:00Z")
-      assert(compile(GreaterThanOrEqual("ts", instant)) === Some("`ts` >= '2024-01-05 08:00:00'"))
-      assert(compile(EqualTo("ts", instant), ZoneId.of("Asia/Kolkata")) === Some("`ts` = '2024-01-05 13:30:00'"))
+      val expected = Some("`ts` >= toDateTime64('2024-01-05 08:00:00', 6, 'UTC')")
+      Seq(utc, ZoneId.of("Asia/Kolkata"), ZoneId.of("Asia/Tokyo")).foreach { tz =>
+        assert(compile(GreaterThanOrEqual("ts", Timestamp.from(instant)), tz) === expected, tz)
+        assert(compile(GreaterThanOrEqual("ts", instant), tz) === expected, tz)
+      }
     }
   }
 
@@ -61,35 +56,41 @@ class SQLHelperSuite extends AnyFunSuite with SQLHelper {
     }
   }
 
-  test("sub-second Timestamp and Instant literals keep their precision as a UTC DateTime64") {
-    withJvmZone("America/Los_Angeles") {
-      val instant = Instant.parse("2024-01-05T08:00:00.123456Z")
-      val expected = Some("`ts` > toDateTime64('2024-01-05 08:00:00.123456', 6, 'UTC')")
-      assert(compile(GreaterThan("ts", Timestamp.from(instant))) === expected)
-      assert(compile(GreaterThan("ts", instant)) === expected)
-      assert(compile(LessThan("ts", instant), ZoneId.of("Asia/Kolkata")) ===
-        Some("`ts` < toDateTime64('2024-01-05 08:00:00.123456', 6, 'UTC')"))
-    }
+  test("sub-second and pre-1970 comparisons keep their value") {
+    val subSecond = Instant.parse("2024-01-05T08:00:00.123456Z")
+    assert(compile(GreaterThan("ts", subSecond)) ===
+      Some("`ts` > toDateTime64('2024-01-05 08:00:00.123456', 6, 'UTC')"))
+    val pre1970 = Instant.parse("1969-07-20T20:17:40Z")
+    assert(compile(LessThan("ts", Timestamp.from(pre1970))) ===
+      Some("`ts` < toDateTime64('1969-07-20 20:17:40', 6, 'UTC')"))
   }
 
-  test("IN with whole-second timestamps is pushed in the catalog zone") {
+  test("IN with whole-second timestamps is pushed as UTC DateTime literals") {
     withJvmZone("America/Los_Angeles") {
       val values: Array[Any] = Array(
         Timestamp.from(Instant.parse("2024-01-05T08:00:00Z")),
         Instant.parse("2024-01-05T09:00:00Z")
       )
-      assert(compile(In("ts", values)) === Some("`ts` IN ('2024-01-05 08:00:00','2024-01-05 09:00:00')"))
+      assert(compile(In("ts", values), ZoneId.of("Asia/Tokyo")) === Some(
+        "`ts` IN (toDateTime('2024-01-05 08:00:00', 'UTC'),toDateTime('2024-01-05 09:00:00', 'UTC'))"
+      ))
     }
   }
 
-  test("IN with a sub-second timestamp is not pushed") {
-    val values: Array[Any] = Array(
-      Timestamp.from(Instant.parse("2024-01-05T08:00:00Z")),
-      Timestamp.from(Instant.parse("2024-01-05T09:00:00.5Z"))
-    )
-    assert(compile(In("ts", values)) === None)
-    assert(compile(Not(In("ts", values))) === None)
-    assert(compile(And(In("ts", values), IsNotNull("ts"))) === None)
+  test("IN with a timestamp a DateTime cannot hold is not pushed") {
+    Seq("2024-01-05T09:00:00.5Z", "1969-12-31T23:59:59Z", "2106-02-07T06:28:16Z").foreach { text =>
+      val values: Array[Any] = Array(Timestamp.from(Instant.parse("2024-01-05T08:00:00Z")), Instant.parse(text))
+      assert(compile(In("ts", values)) === None, text)
+      assert(compile(Not(In("ts", values))) === None, text)
+      assert(compile(And(In("ts", values), IsNotNull("ts"))) === None, text)
+    }
+    val bounds: Array[Any] = Array(Instant.EPOCH, Instant.parse("2106-02-07T06:28:15Z"))
+    assert(compile(In("ts", bounds)).isDefined)
+  }
+
+  test("IN without timestamps is unchanged") {
+    assert(compile(In("id", Array[Any](1, 2, 3))) === Some("`id` IN (1,2,3)"))
+    assert(compile(In("s", Array[Any]("a", "b'c"))) === Some("`s` IN ('a','b''c')"))
   }
 
   test("Date literal stays a calendar date") {

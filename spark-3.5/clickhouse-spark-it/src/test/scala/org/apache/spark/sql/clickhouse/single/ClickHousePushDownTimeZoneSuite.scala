@@ -28,8 +28,9 @@ class ClickHouseCloudPushDownTimeZoneSuite extends ClickHousePushDownTimeZoneSui
 class ClickHouseSinglePushDownTimeZoneSuite extends ClickHousePushDownTimeZoneSuite with ClickHouseSingleMixIn
 
 /**
- * Pushed-down timestamp filters must be rendered in the catalog time zone (`spark.clickhouse.tz`, `server` here),
- * not the JVM default zone, see issue #607. The JVM and session zone is America/Los_Angeles, the server zone differs.
+ * Pushed-down timestamp filters must mean the same instant ClickHouse compares, whatever the JVM default zone (issue
+ * #607) and whatever the column's own zone: they are sent as UTC-typed literals. The JVM and session zone is
+ * America/Los_Angeles, the server zone differs.
  */
 abstract class ClickHousePushDownTimeZoneSuite extends SparkClickHouseSingleTest {
 
@@ -52,12 +53,14 @@ abstract class ClickHousePushDownTimeZoneSuite extends SparkClickHouseSingleTest
   // one row per minute from 2024-01-01 00:00:00 UTC to 2024-01-07 23:59:00 UTC
   private val rowCount = 7 * 24 * 60
 
-  private def withMinuteTable(f: (String, String) => Unit): Unit = {
+  private def withMinuteTable(f: (String, String) => Unit): Unit = withMinuteTable("DateTime")(f)
+
+  private def withMinuteTable(columnType: String)(f: (String, String) => Unit): Unit = {
     val db = if (useSuiteLevelDatabase) testDatabaseName else "db_pushdown_tz"
     val tbl = s"tbl_pushdown_tz_${System.nanoTime()}"
     try {
       if (!useSuiteLevelDatabase) runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS `$db`")
-      runClickHouseSQL(s"CREATE TABLE `$db`.`$tbl` (ts DateTime, id UInt64) ENGINE = MergeTree() ORDER BY id")
+      runClickHouseSQL(s"CREATE TABLE `$db`.`$tbl` (ts $columnType, id UInt64) ENGINE = MergeTree() ORDER BY id")
       runClickHouseSQL(
         s"""INSERT INTO `$db`.`$tbl`
            |SELECT toDateTime('2024-01-01 00:00:00', 'UTC') + number * 60, number FROM numbers($rowCount)
@@ -91,7 +94,8 @@ abstract class ClickHousePushDownTimeZoneSuite extends SparkClickHouseSingleTest
     tbl: String,
     condition: String,
     expected: Long,
-    pushed: String => Boolean
+    pushed: String => Boolean,
+    checkInSpark: Boolean = true
   ): Unit =
     Seq("false", "true").foreach { java8Api =>
       withSQLConf("spark.sql.datetime.java8API.enabled" -> java8Api) {
@@ -99,11 +103,11 @@ abstract class ClickHousePushDownTimeZoneSuite extends SparkClickHouseSingleTest
         val (viaConnector, sql) = countWithPushedSql(spark.table(s"`$db`.`$tbl`").filter(condition))
         info(s"java8API=$java8Api connector=$viaConnector SQL: ${sql.mkString(" | ")}")
         // the same predicate on an expression Spark cannot push, so Spark evaluates it
-        val inSpark =
+        lazy val inSpark =
           spark.table(s"`$db`.`$tbl`").where(expr(condition.replaceFirst("^ts ", "ts + INTERVAL 0 SECOND ")))
             .count()
         assert(viaConnector === expected, s"java8API=$java8Api pushed SQL: ${sql.mkString(" | ")}")
-        assert(inSpark === expected, s"java8API=$java8Api")
+        if (checkInSpark) assert(inSpark === expected, s"java8API=$java8Api")
         assert(sql.nonEmpty && sql.forall(pushed), s"java8API=$java8Api pushed SQL: ${sql.mkString(" | ")}")
       }
     }
@@ -116,7 +120,14 @@ abstract class ClickHousePushDownTimeZoneSuite extends SparkClickHouseSingleTest
         tbl,
         "ts >= '2024-01-05 00:00:00'",
         3 * 1440 - 8 * 60,
-        _.contains("`ts` >= '")
+        _.contains("`ts` >= toDateTime64(")
+      ))
+      eventuallyOnCloud(assertPushedMatchesSpark(
+        db,
+        tbl,
+        "ts IN (timestamp'2024-01-05 00:00:00', timestamp'2024-01-05 00:01:00')",
+        2,
+        _.contains("`ts` IN (toDateTime(")
       ))
     }
   }
@@ -145,6 +156,66 @@ abstract class ClickHousePushDownTimeZoneSuite extends SparkClickHouseSingleTest
         "ts IN (timestamp'2024-01-05 00:00:00.5', timestamp'2024-01-05 00:01:00')",
         1,
         !_.contains(" IN (")
+      ))
+    }
+  }
+
+  // A column with its own zone: ClickHouse reads a plain-text literal in that zone, a typed UTC literal as UTC.
+  // One row per minute from 2024-01-01 00:00:00 UTC, so 2024-01-05 05:00:00 UTC is 14:00 in Tokyo. `expected` is
+  // what ClickHouse holds; the Spark-side cross-check is off here because the read path does not yet apply the
+  // column's own zone to the values it returns.
+  test("pushed-down timestamp filters on a DateTime('Asia/Tokyo') column") {
+    withMinuteTable("DateTime('Asia/Tokyo')") { (db, tbl) =>
+      eventuallyOnCloud(assertPushedMatchesSpark(
+        db,
+        tbl,
+        "ts >= timestamp'2024-01-05 05:00:00Z'",
+        3 * 1440 - 5 * 60,
+        _.contains("`ts` >= toDateTime64("),
+        checkInSpark = false
+      ))
+      eventuallyOnCloud(assertPushedMatchesSpark(
+        db,
+        tbl,
+        "ts >= timestamp'2024-01-05 05:00:00.5Z'",
+        3 * 1440 - 5 * 60 - 1,
+        _.contains("`ts` >= toDateTime64("),
+        checkInSpark = false
+      ))
+      eventuallyOnCloud(assertPushedMatchesSpark(
+        db,
+        tbl,
+        "ts IN (timestamp'2024-01-05 00:00:00Z', timestamp'2024-01-05 00:01:00Z')",
+        2,
+        _.contains("`ts` IN (toDateTime("),
+        checkInSpark = false
+      ))
+    }
+  }
+
+  test("pushed-down timestamp filters on a DateTime64(3) column") {
+    withMinuteTable("DateTime64(3)") { (db, tbl) =>
+      eventuallyOnCloud(assertPushedMatchesSpark(
+        db,
+        tbl,
+        "ts > timestamp'2024-01-05 05:00:00.5Z'",
+        3 * 1440 - 5 * 60 - 1,
+        _.contains("`ts` > toDateTime64(")
+      ))
+      eventuallyOnCloud(assertPushedMatchesSpark(
+        db,
+        tbl,
+        "ts IN (timestamp'2024-01-05 00:00:00Z', timestamp'2024-01-05 00:01:00Z')",
+        2,
+        _.contains("`ts` IN (toDateTime(")
+      ))
+      // pre-1970: every row is later
+      eventuallyOnCloud(assertPushedMatchesSpark(
+        db,
+        tbl,
+        "ts > timestamp'1969-12-31 23:00:00Z'",
+        rowCount,
+        _.contains("`ts` > toDateTime64('1969-12-31 23:00:00', 6, 'UTC')")
       ))
     }
   }
