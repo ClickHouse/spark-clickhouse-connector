@@ -101,6 +101,48 @@ abstract class ClickHousePrimaryKeySplitSuite extends SparkClickHouseSingleTest 
     }
   }
 
+  test("a time filter places the cuts when the time function follows another key entry") {
+    // 10 tenants of 900 rows a minute apart. Tenant t starts 90 * t minutes before 2024-01-05, so 900 - 90 * t of its
+    // rows fall on that day: all 900 of tenant 0, 90 of tenant 9.
+    val perTenant = rows / 10
+    withTable(
+      "db_pk_split",
+      "tbl_pk_split_tenant_hour",
+      StructType(Seq(
+        StructField("tenant_id", LongType, nullable = false),
+        StructField("ts", TimestampType, nullable = false),
+        StructField("id", LongType, nullable = false)
+      )),
+      sortKeys = Seq("tenant_id", "toStartOfHour(ts)"),
+      extraProperties = Map("settings.index_granularity" -> granule.toString)
+    ) { (db, tbl) =>
+      runClickHouseSQL(
+        s"""INSERT INTO `$db`.`$tbl`
+           |SELECT
+           |  intDiv(number, $perTenant) AS tenant_id,
+           |  toDateTime('2024-01-05 00:00:00') - tenant_id * 90 * 60 + (number % $perTenant) * 60,
+           |  number
+           |FROM numbers($rows)
+           |""".stripMargin
+      )
+      withSQLConf(READ_MAX_PARALLELISM.key -> "4") {
+        // a filter on the time only: the tenant leads every bound, the hour follows it
+        val df = spark.table(s"$db.$tbl").filter("ts >= '2024-01-05 00:00:00' AND ts < '2024-01-06 00:00:00'")
+        eventuallyOnCloud {
+          val parts = inputPartitions(df)
+          assert(parts.length === 4)
+          assert(parts.forall(_.filterExpr.startsWith("(`tenant_id` ")))
+          assert(parts.forall(_.filterExpr.contains("(toStartOfHour(ts))")))
+          // cut over all days, the tasks would read about 1980, 1620, 810 and 540 rows of the day
+          val perTask = rowsPerTask(df)
+          perTask.foreach(n => assert(math.abs(n - perTask.sum / 4) <= 3 * granule, perTask))
+        }
+        val onTheDay = (0 until rows).filter(n => n % perTenant >= 90 * (n / perTenant))
+        checkAnswer(df.select("id"), onTheDay.map(id => Row(id.toLong)))
+      }
+    }
+  }
+
   test("a read falls back to one task when the primary key can't be split on") {
     // NaN falls outside every range, so a Float64 key is never split on
     withTable(
