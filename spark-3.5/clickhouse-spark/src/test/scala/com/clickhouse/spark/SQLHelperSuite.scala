@@ -18,12 +18,10 @@ import org.apache.spark.sql.sources._
 import org.scalatest.funsuite.AnyFunSuite
 
 import java.sql.{Date, Timestamp}
-import java.time.{Instant, ZoneId}
+import java.time.Instant
 import java.util.TimeZone
 
 class SQLHelperSuite extends AnyFunSuite with SQLHelper {
-
-  private val utc: ZoneId = ZoneId.of("UTC")
 
   // A JVM default zone that differs from the catalog zone, as in issue #607.
   private def withJvmZone[T](zone: String)(body: => T): T = {
@@ -33,16 +31,16 @@ class SQLHelperSuite extends AnyFunSuite with SQLHelper {
     finally TimeZone.setDefault(original)
   }
 
-  private def compile(f: Filter, tz: ZoneId = utc): Option[String] = compileFilter(f)(tz)
+  private def compile(f: Filter): Option[String] = compileFilter(f)
 
-  test("timestamp comparisons are UTC DateTime64 literals whatever the JVM or catalog zone") {
-    withJvmZone("America/Los_Angeles") {
-      // Spark's literal '2024-01-05 00:00:00' in America/Los_Angeles
-      val instant = Instant.parse("2024-01-05T08:00:00Z")
-      val expected = Some("`ts` >= toDateTime64('2024-01-05 08:00:00', 6, 'UTC')")
-      Seq(utc, ZoneId.of("Asia/Kolkata"), ZoneId.of("Asia/Tokyo")).foreach { tz =>
-        assert(compile(GreaterThanOrEqual("ts", Timestamp.from(instant)), tz) === expected, tz)
-        assert(compile(GreaterThanOrEqual("ts", instant), tz) === expected, tz)
+  test("timestamp comparisons are UTC DateTime64 literals whatever the JVM zone") {
+    // Spark's literal '2024-01-05 00:00:00' in America/Los_Angeles
+    val instant = Instant.parse("2024-01-05T08:00:00Z")
+    val expected = Some("`ts` >= toDateTime64('2024-01-05 08:00:00', 6, 'UTC')")
+    Seq("UTC", "America/Los_Angeles", "Asia/Kolkata", "Asia/Tokyo").foreach { zone =>
+      withJvmZone(zone) {
+        assert(compile(GreaterThanOrEqual("ts", Timestamp.from(instant))) === expected, zone)
+        assert(compile(GreaterThanOrEqual("ts", instant)) === expected, zone)
       }
     }
   }
@@ -51,7 +49,7 @@ class SQLHelperSuite extends AnyFunSuite with SQLHelper {
     withJvmZone("America/Los_Angeles") {
       Seq("2024-01-05T08:00:00Z", "2024-01-05T08:00:00.5Z", "1969-12-31T23:59:59.999999Z").foreach { text =>
         val instant = Instant.parse(text)
-        assert(compileValue(Timestamp.from(instant))(utc) === compileValue(instant)(utc), text)
+        assert(compileValue(Timestamp.from(instant)) === compileValue(instant), text)
       }
     }
   }
@@ -71,7 +69,7 @@ class SQLHelperSuite extends AnyFunSuite with SQLHelper {
         Timestamp.from(Instant.parse("2024-01-05T08:00:00Z")),
         Instant.parse("2024-01-05T09:00:00Z")
       )
-      assert(compile(In("ts", values), ZoneId.of("Asia/Tokyo")) === Some(
+      assert(compile(In("ts", values)) === Some(
         "`ts` IN (toDateTime('2024-01-05 08:00:00', 'UTC'),toDateTime('2024-01-05 09:00:00', 'UTC'))"
       ))
     }

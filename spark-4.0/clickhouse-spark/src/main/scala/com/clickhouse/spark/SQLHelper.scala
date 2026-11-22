@@ -15,7 +15,7 @@
 package com.clickhouse.spark
 
 import java.sql.{Date, Timestamp}
-import java.time.{Instant, LocalDate, LocalDateTime, ZoneId, ZoneOffset}
+import java.time.{Instant, LocalDate, LocalDateTime, ZoneOffset}
 import org.apache.commons.lang3.StringUtils
 import org.apache.spark.sql.connector.expressions.aggregate._
 import org.apache.spark.sql.connector.expressions.NamedReference
@@ -33,7 +33,7 @@ trait SQLHelper {
   // null => null, ' => ''
   def escapeSql(value: String): String = StringUtils.replace(value, "'", "''")
 
-  def compileValue(value: Any)(implicit tz: ZoneId): Any = value match {
+  def compileValue(value: Any): Any = value match {
     case string: String => s"'${escapeSql(string)}'"
     case utf8: UTF8String => s"'${escapeSql(utf8.toString)}'"
     case instant: Instant => compileInstant(instant)
@@ -71,7 +71,7 @@ trait SQLHelper {
    * element for a `DateTime` column, so a timestamp is a UTC `DateTime` literal here. That holds only whole seconds
    * from 1970 to 2106; see [[pushableIn]].
    */
-  private def compileInValue(value: Any)(implicit tz: ZoneId): Any = instantOf(value) match {
+  private def compileInValue(value: Any): Any = instantOf(value) match {
     case Some(instant) => s"toDateTime('${utcDateTimeFmt.format(instant)}', 'UTC')"
     case None => compileValue(value)
   }
@@ -80,7 +80,7 @@ trait SQLHelper {
     instant.getNano == 0 && !instant.isBefore(Instant.EPOCH) && !instant.isAfter(maxDateTime)
   }
 
-  def compileFilter(f: Filter)(implicit tz: ZoneId): Option[String] = Option(f match {
+  def compileFilter(f: Filter): Option[String] = Option(f match {
     case AlwaysTrue => "1=1"
     case AlwaysFalse => "1=0"
     case EqualTo(attr, value) => s"${quoted(attr)} = ${compileValue(value)}"
@@ -102,10 +102,10 @@ trait SQLHelper {
     case In(attr, value) => s"${quoted(attr)} IN (${value.map(compileInValue).mkString(",")})"
     case Not(f) => compileFilter(f).map(p => s"(NOT ($p))").orNull
     case Or(f1, f2) =>
-      val or = Seq(f1, f2).flatMap(_f => compileFilter(_f)(tz))
+      val or = Seq(f1, f2).flatMap(_f => compileFilter(_f))
       if (or.size == 2) or.map(p => s"($p)").mkString(" OR ") else null
     case And(f1, f2) =>
-      val and = Seq(f1, f2).flatMap(_f => compileFilter(_f)(tz))
+      val and = Seq(f1, f2).flatMap(_f => compileFilter(_f))
       if (and.size == 2) and.map(p => s"($p)").mkString(" AND ") else null
     case _ => null
   })
@@ -137,8 +137,8 @@ trait SQLHelper {
       case _ => None
     }
 
-  def compileFilters(filters: Seq[Filter])(implicit tz: ZoneId): String =
+  def compileFilters(filters: Seq[Filter]): String =
     filters
-      .flatMap(_f => compileFilter(_f)(tz))
+      .flatMap(_f => compileFilter(_f))
       .map(p => s"($p)").mkString(" AND ")
 }

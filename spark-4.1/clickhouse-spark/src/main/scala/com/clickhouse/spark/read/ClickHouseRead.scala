@@ -34,7 +34,6 @@ import com.clickhouse.spark.telemetry.{UserAnalytics, UserAnalyticsEvents, UserA
 import com.clickhouse.spark.expr.ExprRender
 import com.clickhouse.spark.spec._
 
-import java.time.ZoneId
 import scala.util.control.NonFatal
 
 class ClickHouseScanBuilder(
@@ -52,8 +51,6 @@ class ClickHouseScanBuilder(
     with SQLHelper
     with SQLConfHelper
     with Logging {
-
-  implicit private val tz: ZoneId = scanJob.tz
 
   private val reservedMetadataSchema: StructType = StructType(
     metadataSchema.dropWhile(field => physicalSchema.fields.map(_.name).contains(field.name))
@@ -188,8 +185,6 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
     with PartitionReaderFactory
     with ClickHouseHelper
     with SQLHelper {
-
-  implicit private val tz: ZoneId = scanJob.tz
 
   private var runtimeFilters: Array[Filter] = Array.empty
 
