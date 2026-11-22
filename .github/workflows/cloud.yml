@@ -70,13 +70,9 @@ jobs:
       CLICKHOUSE_CLOUD_HOST: ${{ secrets.CONNECTORS_TEAM_TESTS_CLOUD_HOST }}
       CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.CONNECTORS_TEAM_TESTS_CLOUD_PASSWORD }}
       DOCKER_MIN_API_VERSION: "1.24"
-    # Fork code runs here with the Cloud secrets, so keep the GITHUB_TOKEN read-only.
     permissions:
       contents: read
     steps:
-      # Since actions/checkout v4.4.0, checking out fork code in a pull_request_target workflow needs an explicit
-      # opt-in. Fork code only runs after a maintainer adds the 'run-cloud-tests' label, so adding the label means
-      # "I have reviewed this PR's code": it runs with the Cloud password.
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
