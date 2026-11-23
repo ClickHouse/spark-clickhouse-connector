@@ -17,6 +17,7 @@ package com.clickhouse.spark
 import org.apache.spark.sql.sources._
 import org.scalatest.funsuite.AnyFunSuite
 
+import java.io.{ByteArrayOutputStream, ObjectOutputStream}
 import java.sql.{Date, Timestamp}
 import java.time.Instant
 import java.util.TimeZone
@@ -43,6 +44,16 @@ class SQLHelperSuite extends AnyFunSuite with SQLHelper {
         assert(compile(GreaterThanOrEqual("ts", instant)) === expected, zone)
       }
     }
+  }
+
+  test("a scan that mixes in SQLHelper still serializes after compiling a timestamp") {
+    // Scans such as ClickHouseBatchScan mix this trait in and are serialized to executors after the
+    // driver has compiled the pushed filters, which initializes the (non-serializable) formatter.
+    val helper = new SQLHelper with Serializable {}
+    assert(helper.compileFilter(GreaterThan("ts", Instant.parse("2024-01-05T08:00:00Z"))).isDefined)
+    val out = new ObjectOutputStream(new ByteArrayOutputStream())
+    try out.writeObject(helper)
+    finally out.close()
   }
 
   test("Timestamp and Instant literals render the same") {

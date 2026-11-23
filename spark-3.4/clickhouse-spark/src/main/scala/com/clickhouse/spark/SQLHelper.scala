@@ -55,7 +55,8 @@ trait SQLHelper {
   private def compileInstant(instant: Instant): String =
     s"toDateTime64('${utcDateTimeFmt.format(instant)}', 6, 'UTC')"
 
-  private lazy val utcDateTimeFmt = dateTimeFmt.withZone(ZoneOffset.UTC)
+  // DateTimeFormatter isn't Serializable, and the scans that mix this in are serialized
+  @transient private lazy val utcDateTimeFmt = dateTimeFmt.withZone(ZoneOffset.UTC)
 
   // the last instant a `DateTime` (UInt32 seconds) can hold: 2106-02-07 06:28:15 UTC
   private val maxDateTime = Instant.ofEpochSecond(4294967295L)
