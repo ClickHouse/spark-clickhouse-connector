@@ -12,7 +12,9 @@
  * limitations under the License.
  */
 
-package com.clickhouse.spark.spec
+package com.clickhouse.spark.read.split.partition
+
+import com.clickhouse.spark.spec.{NoPartitionSpec, Nodes, PartitionSpec, TableSpec}
 
 /** A ClickHouse partition of `table` read in one task, from one of `nodes`. */
 case class TablePartition(table: TableSpec, nodes: Nodes, partition: PartitionSpec) {

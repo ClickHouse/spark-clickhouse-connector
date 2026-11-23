@@ -17,7 +17,13 @@ package com.clickhouse.spark
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseProvider, ClickHouseSingleMixIn}
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.expr.PushedFilter
-import com.clickhouse.spark.spec.{NotSplittable, PrimaryIndexSplitSettings, PrimaryKeyRange, TableSpec}
+import com.clickhouse.spark.read.split.primaryindex.{
+  NotSplittable,
+  PrimaryIndexSplitSettings,
+  PrimaryKeyRange,
+  PrimaryKeyRangePlanner
+}
+import com.clickhouse.spark.spec.TableSpec
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.tags.Cloud
 
@@ -266,7 +272,7 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
       plan(sized(slices), filters: _*)
 
     def plan(settings: PrimaryIndexSplitSettings, filters: PushedFilter*): Either[NotSplittable, Seq[PrimaryKeyRange]] =
-      PrimaryKeyRange.plan(spec, columns, filters, settings)
+      PrimaryKeyRangePlanner.plan(spec, columns, filters, settings)
 
     // the planned ranges of a table that must be splittable
     def ranges(slices: Int, filters: PushedFilter*): Seq[PrimaryKeyRange] =

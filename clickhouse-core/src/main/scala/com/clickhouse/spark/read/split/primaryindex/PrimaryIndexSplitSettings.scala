@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-package com.clickhouse.spark.spec
+package com.clickhouse.spark.read.split.primaryindex
 
 /**
  * How the primary index split sizes the read of a table: a task per `targetRowsPerTask` rows read, `atLeast` tasks at

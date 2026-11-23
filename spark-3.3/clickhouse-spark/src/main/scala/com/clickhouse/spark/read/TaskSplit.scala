@@ -14,7 +14,9 @@
 
 package com.clickhouse.spark.read
 
-import com.clickhouse.spark.spec.{DistributedEngineSpec, NotSplittable, TableEngineSpec, TableKeyRanges, TablePartition}
+import com.clickhouse.spark.read.split.partition.TablePartition
+import com.clickhouse.spark.read.split.primaryindex.{NotSplittable, TableKeyRanges}
+import com.clickhouse.spark.spec.{DistributedEngineSpec, TableEngineSpec}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 
 /** How a read is split into tasks. Every task's table, nodes and filter follow from it alone. */
@@ -95,6 +97,41 @@ object TaskSplit {
           case Seq(TableKeyRanges(_, _, Left(why))) => OneTask(NoKeyRanges(why))
           case tables => PrimaryIndexSplit(tables)
         }
+    }
+  }
+
+  /** A line to log about how a read is split. */
+  sealed trait SplitLog
+
+  object SplitLog {
+    case class Info(message: String) extends SplitLog
+    case class Warn(message: String, cause: Option[Throwable] = None) extends SplitLog
+  }
+
+  /** What to log about reading `table` with `split`. */
+  def describe(split: TaskSplit, table: String): Seq[SplitLog] = {
+    val slow = "which may impact read performance"
+    split match {
+      case OneTask(reason: Intended) => Seq(SplitLog.Info(s"Reading $table as one task: ${reason.message}"))
+      case OneTask(NoKeyRanges(NotSplittable(reason, cause))) =>
+        Seq(SplitLog.Warn(s"Reading $table as one task, $slow: $reason", cause))
+      case OneTask(reason: Fallback) => Seq(SplitLog.Warn(s"Reading $table as one task, $slow: ${reason.message}"))
+      case PartitionSplit(partitions) =>
+        Seq(SplitLog.Info(s"Reading $table in ${partitions.length} tasks by ClickHouse partition"))
+      case PrimaryIndexSplit(tables) =>
+        // only the shards of a Distributed table are unsplit here: a lone unsplit table is one task
+        val unsplit = tables.flatMap(_.ranges.left.toOption)
+        val shardWarnings = unsplit.distinct.map { why =>
+          SplitLog.Warn(
+            s"Reading ${unsplit.count(_ == why)} of ${tables.length} shards of $table as one task each, $slow: " +
+              why.reason,
+            why.cause
+          )
+        }
+        val tasks = tables.map(_.filterExprs.length).sum
+        val each = tables.flatMap(_.ranges.toOption).headOption
+          .fold("shard")(ranges => s"range of (${ranges.head.key.mkString(", ")})")
+        shardWarnings :+ SplitLog.Info(s"Reading $table in $tasks tasks, one per $each")
     }
   }
 }

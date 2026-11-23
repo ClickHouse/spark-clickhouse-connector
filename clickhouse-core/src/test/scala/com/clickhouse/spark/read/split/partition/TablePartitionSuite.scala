@@ -12,9 +12,10 @@
  * limitations under the License.
  */
 
-package com.clickhouse.spark.spec
+package com.clickhouse.spark.read.split.partition
 
 import com.clickhouse.spark.spec.TableSpecs.tableSpec
+import com.clickhouse.spark.spec.{NoPartitionSpec, NodeSpec, PartitionSpec}
 import org.scalatest.funsuite.AnyFunSuite
 
 class TablePartitionSuite extends AnyFunSuite {

@@ -12,10 +12,12 @@
  * limitations under the License.
  */
 
-package com.clickhouse.spark.spec
+package com.clickhouse.spark.read.split.primaryindex
 
 import com.clickhouse.spark.expr.PushedFilter
-import com.clickhouse.spark.spec.PrimaryKeyRange._
+import com.clickhouse.spark.read.split.primaryindex.KeyType._
+import com.clickhouse.spark.read.split.primaryindex.PrimaryKeyRangePlanner.{cutsQuery, splittableKeyPrefix}
+import com.clickhouse.spark.spec.TableSpec
 import org.scalatest.funsuite.AnyFunSuite
 
 import java.time.LocalDateTime
@@ -43,17 +45,17 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
 
   test("ranges are cut on integer, date, date time, string and UUID keys") {
     Seq("Int8", "Int16", "Int32", "Int64", "UInt8", "UInt16", "UInt32", "UInt64").foreach { t =>
-      assert(keyType(t) === Some(IntegerKey), t)
+      assert(KeyType.of(t) === Some(IntegerKey), t)
     }
-    Seq("Date", "Date32", "UUID").foreach(t => assert(keyType(t) === Some(StringFormKey), t))
-    assert(keyType("DateTime") === Some(DateTimeKey(None)))
-    assert(keyType("DateTime('Asia/Kolkata')") === Some(DateTimeKey(None)))
-    assert(keyType("DateTime64(3)") === Some(DateTimeKey(Some(3))))
-    assert(keyType("DateTime64(6, 'Asia/Kolkata')") === Some(DateTimeKey(Some(6))))
+    Seq("Date", "Date32", "UUID").foreach(t => assert(KeyType.of(t) === Some(StringFormKey), t))
+    assert(KeyType.of("DateTime") === Some(DateTimeKey(None)))
+    assert(KeyType.of("DateTime('Asia/Kolkata')") === Some(DateTimeKey(None)))
+    assert(KeyType.of("DateTime64(3)") === Some(DateTimeKey(Some(3))))
+    assert(KeyType.of("DateTime64(6, 'Asia/Kolkata')") === Some(DateTimeKey(Some(6))))
     Seq("String", "FixedString(16)", "LowCardinality(String)", "LowCardinality(FixedString(2))").foreach { t =>
-      assert(keyType(t) === Some(BytesKey), t)
+      assert(KeyType.of(t) === Some(BytesKey), t)
     }
-    assert(keyType("LowCardinality(UInt32)") === Some(IntegerKey))
+    assert(KeyType.of("LowCardinality(UInt32)") === Some(IntegerKey))
   }
 
   test("ranges are not cut on types with values outside the order or inexact literals") {
@@ -69,7 +71,7 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
       "Enum8('a' = 1)",
       "Array(Int32)",
       "Tuple(Int32, String)"
-    ).foreach(t => assert(keyType(t) === None, t))
+    ).foreach(t => assert(KeyType.of(t) === None, t))
   }
 
   test("cut values are written back as exact literals") {
@@ -107,73 +109,86 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
 
   test("the split key is the primary key prefix of supported types, columns and expressions alike") {
     val key = Seq("tenant", "ts", "id")
-    assert(splitColumns(index ++ Seq("tenant" -> "String", "ts" -> "DateTime", "id" -> "UInt64"), key, columns) ===
+    assert(splittableKeyPrefix(
+      index ++ Seq("tenant" -> "String", "ts" -> "DateTime", "id" -> "UInt64"),
+      key,
+      columns
+    ) ===
       Seq(
-        KeyEntry("tenant", "`tenant`", BytesKey, isColumn = true, None),
-        KeyEntry("ts", "`ts`", DateTimeKey(None), isColumn = true, None),
-        KeyEntry("id", "`id`", IntegerKey, isColumn = true, None)
+        ColumnEntry("tenant", BytesKey),
+        ColumnEntry("ts", DateTimeKey(None)),
+        ColumnEntry("id", IntegerKey)
       ))
     val byHour = Seq("toStartOfHour(ts)", "id")
-    assert(splitColumns(index ++ Seq("toStartOfHour(ts)" -> "DateTime", "id" -> "UInt64"), byHour, columns) ===
+    assert(splittableKeyPrefix(index ++ Seq("toStartOfHour(ts)" -> "DateTime", "id" -> "UInt64"), byHour, columns) ===
       Seq(
-        KeyEntry("toStartOfHour(ts)", "(toStartOfHour(ts))", DateTimeKey(None), isColumn = false, Some(hourOfTs)),
-        KeyEntry("id", "`id`", IntegerKey, isColumn = true, None)
+        MonotonicEntry("toStartOfHour(ts)", "(toStartOfHour(ts))", DateTimeKey(None), hourOfTs),
+        ColumnEntry("id", IntegerKey)
       ))
-    assert(splitColumns(index ++ Seq("cityHash64(id)" -> "UInt64"), Seq("cityHash64(id)"), columns) ===
-      Seq(KeyEntry("cityHash64(id)", "(cityHash64(id))", IntegerKey, isColumn = false, None)))
-    assert(splitColumns(index ++ Seq("id" -> "UInt64", "score" -> "Float64", "ts" -> "DateTime"), key, columns) ===
-      Seq(KeyEntry("id", "`id`", IntegerKey, isColumn = true, None)))
-    assert(splitColumns(index ++ Seq("score" -> "Nullable(Int32)"), Seq("score"), columns).isEmpty)
-    assert(splitColumns(index, Nil, columns).isEmpty)
+    assert(splittableKeyPrefix(index ++ Seq("cityHash64(id)" -> "UInt64"), Seq("cityHash64(id)"), columns) ===
+      Seq(OpaqueEntry("cityHash64(id)", "(cityHash64(id))", IntegerKey)))
+    assert(splittableKeyPrefix(
+      index ++ Seq("id" -> "UInt64", "score" -> "Float64", "ts" -> "DateTime"),
+      key,
+      columns
+    ) ===
+      Seq(ColumnEntry("id", IntegerKey)))
+    assert(splittableKeyPrefix(index ++ Seq("score" -> "Nullable(Int32)"), Seq("score"), columns).isEmpty)
+    assert(splittableKeyPrefix(index, Nil, columns).isEmpty)
   }
 
   test("an expression is spelled as ClickHouse formats the primary key, the index naming it unquoted") {
     // mergeTreeIndex calls the column `toStartOfHour(event time)`; only the primary key's spelling is valid SQL
-    val entries = splitColumns(
+    val entries = splittableKeyPrefix(
       index ++ Seq("toStartOfHour(event time)" -> "DateTime", "id" -> "UInt64"),
       Seq("toStartOfHour(`event time`)", "id"),
       columns
     )
     assert(entries.map(_.sql) === Seq("(toStartOfHour(`event time`))", "`id`"))
     // an operator that binds looser than a comparison stays one operand of a range bound
-    val flags = splitColumns(index ++ Seq("and(a, b)" -> "UInt8"), Seq("a AND b"), columns)
+    val flags = splittableKeyPrefix(index ++ Seq("and(a, b)" -> "UInt8"), Seq("a AND b"), columns)
     assert(PrimaryKeyRange(flags.map(_.sql), Some(Seq("1")), None).filterExpr === "((a AND b) >= 1)")
     assert(entries.head.identifier === "`toStartOfHour(event time)`")
-    assert(entries.head.monotonic === Some(Monotonic("event time", "DateTime", "toStartOfHour(", ")")))
+    assert(entries.head === MonotonicEntry(
+      "toStartOfHour(event time)",
+      "(toStartOfHour(`event time`))",
+      DateTimeKey(None),
+      Monotonic("event time", "DateTime", "toStartOfHour(", ")")
+    ))
     // a String-typed function result follows string order, so a filter on its column can't place the cuts
-    assert(splitColumns(index ++ Seq("toString(ts)" -> "String"), Seq("toString(ts)"), columns).head.monotonic
-      === None)
+    assert(splittableKeyPrefix(index ++ Seq("toString(ts)" -> "String"), Seq("toString(ts)"), columns) ===
+      Seq(OpaqueEntry("toString(ts)", "(toString(ts))", BytesKey)))
   }
 
   test("a monotonic time function of one column is recognised with its constant arguments") {
-    assert(monotonicOf("toStartOfHour(ts)", columns) === Some(hourOfTs))
-    assert(monotonicOf("toStartOfHour(`ts`)", columns) === Some(hourOfTs))
-    assert(monotonicOf("toYYYYMM(ts)", columns) === Some(Monotonic("ts", "DateTime", "toYYYYMM(", ")")))
-    assert(monotonicOf("date_trunc('hour', ts, 'UTC')", columns) ===
+    assert(Monotonic.of("toStartOfHour(ts)", columns) === Some(hourOfTs))
+    assert(Monotonic.of("toStartOfHour(`ts`)", columns) === Some(hourOfTs))
+    assert(Monotonic.of("toYYYYMM(ts)", columns) === Some(Monotonic("ts", "DateTime", "toYYYYMM(", ")")))
+    assert(Monotonic.of("date_trunc('hour', ts, 'UTC')", columns) ===
       Some(Monotonic("ts", "DateTime", "date_trunc('hour', ", ", 'UTC')")))
-    assert(monotonicOf("toStartOfInterval(ts, toIntervalHour(1))", columns) ===
+    assert(Monotonic.of("toStartOfInterval(ts, toIntervalHour(1))", columns) ===
       Some(Monotonic("ts", "DateTime", "toStartOfInterval(", ", toIntervalHour(1))")))
-    assert(monotonicOf("toStartOfDay(ts, 'Europe/Paris')", columns) ===
+    assert(Monotonic.of("toStartOfDay(ts, 'Europe/Paris')", columns) ===
       Some(Monotonic("ts", "DateTime", "toStartOfDay(", ", 'Europe/Paris')")))
     // periodic, not a call, two columns, no column, an unknown column, unbalanced
-    assert(monotonicOf("toHour(ts)", columns) === None)
-    assert(monotonicOf("toStartOfHour(ts) + 1", columns) === None)
-    assert(monotonicOf("plus(toStartOfHour(ts), 1)", columns) === None)
-    assert(monotonicOf("toStartOfInterval(ts, id)", columns) === None)
-    assert(monotonicOf("toStartOfHour(now())", columns) === None)
-    assert(monotonicOf("toStartOfHour(other)", columns) === None)
-    assert(monotonicOf("toStartOfHour(ts))", columns) === None)
+    assert(Monotonic.of("toHour(ts)", columns) === None)
+    assert(Monotonic.of("toStartOfHour(ts) + 1", columns) === None)
+    assert(Monotonic.of("plus(toStartOfHour(ts), 1)", columns) === None)
+    assert(Monotonic.of("toStartOfInterval(ts, id)", columns) === None)
+    assert(Monotonic.of("toStartOfHour(now())", columns) === None)
+    assert(Monotonic.of("toStartOfHour(other)", columns) === None)
+    assert(Monotonic.of("toStartOfHour(ts))", columns) === None)
     // a String column orders as text, not as time; month-level shifts of a DateTime are not monotonic either
-    assert(monotonicOf("toDateTime(s)", columns) === None)
-    assert(monotonicOf("addMonths(ts, 1)", columns) === None)
-    assert(monotonicOf("addDays(ts, 1)", columns) === Some(Monotonic("ts", "DateTime", "addDays(", ", 1)")))
+    assert(Monotonic.of("toDateTime(s)", columns) === None)
+    assert(Monotonic.of("addMonths(ts, 1)", columns) === None)
+    assert(Monotonic.of("addDays(ts, 1)", columns) === Some(Monotonic("ts", "DateTime", "addDays(", ", 1)")))
     assert(hourOfTs("'2024-01-05 00:00:00'") === "toStartOfHour(CAST('2024-01-05 00:00:00' AS DateTime))")
   }
 
   test("cut points are read from the index granules the key filters keep") {
     val key = Seq(
-      KeyEntry("tenant", "`tenant`", BytesKey, isColumn = true, None),
-      KeyEntry("ts", "`ts`", DateTimeKey(None), isColumn = true, None)
+      ColumnEntry("tenant", BytesKey),
+      ColumnEntry("ts", DateTimeKey(None))
     )
     val filters = Seq(
       PushedFilter.Compare("tenant", "=", "'a'"),
@@ -204,8 +219,8 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
 
   test("a filter on the column of a monotonic time function places the cuts, strict comparisons relaxed") {
     val key = Seq(
-      KeyEntry("toStartOfHour(ts)", "toStartOfHour(ts)", DateTimeKey(None), isColumn = false, Some(hourOfTs)),
-      KeyEntry("id", "`id`", IntegerKey, isColumn = true, None)
+      MonotonicEntry("toStartOfHour(ts)", "toStartOfHour(ts)", DateTimeKey(None), hourOfTs),
+      ColumnEntry("id", IntegerKey)
     )
     val filters = Seq(
       PushedFilter.Compare("ts", ">=", "'2024-01-05 00:00:00'"),

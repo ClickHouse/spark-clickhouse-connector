@@ -12,7 +12,7 @@
  * limitations under the License.
  */
 
-package com.clickhouse.spark.spec
+package com.clickhouse.spark.read.split.primaryindex
 
 import org.scalatest.funsuite.AnyFunSuite
 

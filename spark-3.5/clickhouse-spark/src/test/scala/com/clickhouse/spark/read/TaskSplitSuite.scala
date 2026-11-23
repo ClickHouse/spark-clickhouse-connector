@@ -16,17 +16,9 @@ package com.clickhouse.spark.read
 
 import com.clickhouse.spark.read.TaskSplit._
 import com.clickhouse.spark.read.TaskSplit.OneTaskReason._
-import com.clickhouse.spark.spec.{
-  DistributedEngineSpec,
-  MergeTreeEngineSpec,
-  NodeSpec,
-  NotSplittable,
-  PartitionSpec,
-  PrimaryKeyRange,
-  TableEngineSpec,
-  TableKeyRanges,
-  TablePartition
-}
+import com.clickhouse.spark.read.split.partition.TablePartition
+import com.clickhouse.spark.read.split.primaryindex.{NotSplittable, PrimaryKeyRange, TableKeyRanges}
+import com.clickhouse.spark.spec.{DistributedEngineSpec, MergeTreeEngineSpec, NodeSpec, PartitionSpec, TableEngineSpec}
 import com.clickhouse.spark.spec.TableSpecs.tableSpec
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.scalatest.funsuite.AnyFunSuite
