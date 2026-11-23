@@ -50,8 +50,11 @@ class ReadOptions(_options: JMap[String, String]) extends SparkOptions {
   def taskSplitStrategy: String =
     eval(READ_TASK_SPLIT_STRATEGY.key, READ_TASK_SPLIT_STRATEGY)
 
-  def maxParallelism: Option[Int] =
-    eval(READ_MAX_PARALLELISM.key, READ_MAX_PARALLELISM)
+  def primaryIndexSplitMaxParallelism: Option[Int] =
+    eval(READ_PRIMARY_INDEX_SPLIT_MAX_PARALLELISM.key, READ_PRIMARY_INDEX_SPLIT_MAX_PARALLELISM)
+
+  def primaryIndexSplitTargetRowsPerTask: Long =
+    eval(READ_PRIMARY_INDEX_SPLIT_TARGET_ROWS_PER_TASK.key, READ_PRIMARY_INDEX_SPLIT_TARGET_ROWS_PER_TASK)
 
   def compressionCodec: ClickHouseCompression =
     ClickHouseCompression.fromEncoding(eval(READ_COMPRESSION_CODEC.key, READ_COMPRESSION_CODEC))

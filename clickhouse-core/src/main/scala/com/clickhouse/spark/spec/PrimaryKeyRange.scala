@@ -289,7 +289,8 @@ object PrimaryKeyRange {
 
   /**
    * Splits `table` into ranges of its primary key holding about the same number of rows, cut from the primary index
-   * without reading data: two at least, up to `slices`. Or why the table can't be split by its primary key.
+   * without reading data: two at least, as many as `settings` size it to. Or why the table can't be split by its
+   * primary key.
    *
    * @param tableColumns
    *   every column with its ClickHouse type, telling key columns from key expressions
@@ -300,7 +301,7 @@ object PrimaryKeyRange {
     table: TableSpec,
     tableColumns: Map[String, String],
     filters: Seq[PushedFilter],
-    slices: Int
+    settings: PrimaryIndexSplitSettings
   )(implicit nodeClient: NodeClient): Either[NotSplittable, Seq[PrimaryKeyRange]] =
     try
       for {
@@ -317,7 +318,7 @@ object PrimaryKeyRange {
           key.nonEmpty,
           "the primary key does not start with an integer, date, date time, string or UUID column or expression"
         )
-        cuts = cutPoints(table, key, filters, slices)
+        cuts = cutPoints(table, key, filters, settings)
         _ <- check(cuts.nonEmpty, "the primary index yields no cut point within the filters")
       } yield ranges(key.map(_.sql), cuts)
     catch {
@@ -368,9 +369,9 @@ object PrimaryKeyRange {
     table: TableSpec,
     key: Seq[KeyEntry],
     filters: Seq[PushedFilter],
-    slices: Int
+    settings: PrimaryIndexSplitSettings
   )(implicit nodeClient: NodeClient): Seq[Seq[String]] =
-    nodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(cutsQuery(table, key, filters, slices))
+    nodeClient.syncQueryAndCheckOutputJSONCompactEachRowWithNamesAndTypes(cutsQuery(table, key, filters, settings))
       .records.toList
       .map(row => key.zip(row).map { case (entry, value) => entry.keyType.literal(value.asText) })
       .distinct
@@ -386,21 +387,25 @@ object PrimaryKeyRange {
   /**
    * Orders the granules the filters keep by the key they start at and returns the key of the first granule in each
    * `1/slices` of their rows, so ranges cut there hold about as many rows each and none less than a granule.
+   * `slices` is one per `targetRowsPerTask` of those rows, `atLeast` at the least and `maxParallelism` at the most.
    */
   private[spec] def cutsQuery(
     table: TableSpec,
     key: Seq[KeyEntry],
     filters: Seq[PushedFilter],
-    slices: Int
+    settings: PrimaryIndexSplitSettings
   ): String = {
     val identifiers = key.map(_.identifier).mkString(", ")
     val conditions = filters.flatMap(indexConditions(key, _))
+    val rows = "sum(rows_in_granule) OVER ()"
+    val bySize = s"greatest(${settings.atLeast}, toUInt64(ceil($rows / ${settings.targetRowsPerTask})))"
+    val slices = settings.maxParallelism.fold(bySize)(most => s"least($most, $bySize)")
     s"""SELECT ${key.map(entry => entry.keyType.read(entry.identifier)).mkString(", ")}
        |FROM (
        |  SELECT $identifiers,
        |    sum(rows_in_granule) OVER (ORDER BY $identifiers ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
        |      - rows_in_granule AS _rows_before,
-       |    intDiv(_rows_before * $slices, sum(rows_in_granule) OVER ()) AS _slice
+       |    intDiv(_rows_before * $slices, $rows) AS _slice
        |  FROM mergeTreeIndex(${quote(table.database)}, ${quote(table.name)})
        |  WHERE ${("rows_in_granule > 0" +: conditions.map(c => s"($c)")).mkString(" AND ")}
        |)

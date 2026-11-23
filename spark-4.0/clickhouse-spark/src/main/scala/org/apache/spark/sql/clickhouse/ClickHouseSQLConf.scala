@@ -149,12 +149,14 @@ object ClickHouseSQLConf {
 
   val READ_TASK_SPLIT_STRATEGY: ConfigEntry[String] =
     buildConf("spark.clickhouse.read.taskSplitStrategy")
-      .doc(s"How a read is split into input partitions. `$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` splits reads of " +
+      .doc(s"How a read is split into input partitions. `$TASK_SPLIT_STRATEGY_PARTITION` reads one input " +
+        s"partition per ClickHouse partition. `$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` splits reads of " +
         "MergeTree-family tables into ranges of the primary key holding about the same number of rows, cut from " +
-        s"the primary index within the query's filters on key columns. `$TASK_SPLIT_STRATEGY_PARTITION` reads " +
-        "the ClickHouse partitions, grouped into input partitions holding about the same number of rows. " +
-        s"`$TASK_SPLIT_STRATEGY_ONE_TASK` reads the whole table in one input partition. Both splits make at most " +
-        s"`spark.clickhouse.read.maxParallelism` input partitions. `$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` falls " +
+        "the primary index within the query's filters on key columns, as many as " +
+        "`spark.clickhouse.read.primaryIndexSplit.targetRowsPerTask` and " +
+        "`spark.clickhouse.read.primaryIndexSplit.maxParallelism` size the read to. " +
+        s"`$TASK_SPLIT_STRATEGY_ONE_TASK` reads the whole table in one input partition. " +
+        s"`$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` falls " +
         s"back to `$TASK_SPLIT_STRATEGY_ONE_TASK` on ClickHouse before 24.2 and when the primary key does not start " +
         "with an integer, date, date time, string or UUID column or expression. Aggregations pushed down without " +
         s"GROUP BY are always read as `$TASK_SPLIT_STRATEGY_ONE_TASK`. A Distributed table is split only with " +
@@ -165,22 +167,34 @@ object ClickHouseSQLConf {
       .stringConf
       .transform(v => TASK_SPLIT_STRATEGIES.find(_.equalsIgnoreCase(v)).getOrElse(v))
       .checkValues(TASK_SPLIT_STRATEGIES.toSet)
-      .createWithDefault(TASK_SPLIT_STRATEGY_PRIMARY_INDEX)
+      .createWithDefault(TASK_SPLIT_STRATEGY_PARTITION)
 
-  val READ_MAX_PARALLELISM: OptionalConfigEntry[Int] =
-    buildConf("spark.clickhouse.read.maxParallelism")
-      .doc("The most input partitions a read is split into. " +
-        s"`$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` cuts up to that many ranges of the primary key, fewer when the data " +
-        s"read is too small, as a range holds at least one granule. `$TASK_SPLIT_STRATEGY_PARTITION` groups the " +
-        "ClickHouse partitions into at most that many input partitions holding about the same number of rows. " +
+  val READ_PRIMARY_INDEX_SPLIT_MAX_PARALLELISM: OptionalConfigEntry[Int] =
+    buildConf("spark.clickhouse.read.primaryIndexSplit.maxParallelism")
+      .doc(s"The most input partitions `$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` splits a read into, whatever " +
+        "`spark.clickhouse.read.primaryIndexSplit.targetRowsPerTask` asks for. " +
         "A Distributed table read by shard divides it equally among its shards, each getting at least one, so the " +
         "total exceeds it only when there are more shards than that. A value of 1 reads " +
         "the table in one input partition, a Distributed table through its engine. " +
-        "Defaults to three times Spark's default parallelism.")
+        "Not set by default: no limit.")
       .version("0.10.3")
       .intConf
-      .checkValue(_ > 0, "`spark.clickhouse.read.maxParallelism` should be positive.")
+      .checkValue(_ > 0, "`spark.clickhouse.read.primaryIndexSplit.maxParallelism` should be positive.")
       .createOptional
+
+  val READ_PRIMARY_INDEX_SPLIT_TARGET_ROWS_PER_TASK: ConfigEntry[Long] =
+    buildConf("spark.clickhouse.read.primaryIndexSplit.targetRowsPerTask")
+      .doc(s"The rows `$TASK_SPLIT_STRATEGY_PRIMARY_INDEX` aims at per input partition: it cuts one range per " +
+        "that many rows of the granules the query's filters on key columns keep, three times Spark's default " +
+        "parallelism at the least and `spark.clickhouse.read.primaryIndexSplit.maxParallelism` at the most. " +
+        "It cuts fewer ranges when those rows span fewer granules, as a range holds at least one. A " +
+        "Distributed table read by shard is sized shard by shard, the least divided equally among the shards. " +
+        "An input partition holds more rows than this when the maximum is reached, when the table can't be split, " +
+        "or when one key value does.")
+      .version("0.10.3")
+      .longConf
+      .checkValue(_ > 0, "`spark.clickhouse.read.primaryIndexSplit.targetRowsPerTask` should be positive.")
+      .createWithDefault(4000000L)
 
   val WRITE_LOCAL_SORT_BY_PARTITION: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.write.localSortByPartition")

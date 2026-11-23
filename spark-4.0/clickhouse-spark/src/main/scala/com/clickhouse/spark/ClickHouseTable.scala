@@ -211,7 +211,7 @@ case class ClickHouseTable(
       localTableSpec = localTableSpec,
       localTableEngineSpec = localTableEngineSpec,
       readOptions = readOptions,
-      maxParallelism = readOptions.maxParallelism.getOrElse(3 * SparkSession.active.sparkContext.defaultParallelism),
+      defaultParallelism = SparkSession.active.sparkContext.defaultParallelism,
       functionRegistry = functionRegistry
     )
     // TODO schema of partitions

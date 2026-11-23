@@ -17,7 +17,7 @@ package com.clickhouse.spark
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseProvider, ClickHouseSingleMixIn}
 import com.clickhouse.spark.client.NodeClient
 import com.clickhouse.spark.expr.PushedFilter
-import com.clickhouse.spark.spec.{NotSplittable, PrimaryKeyRange, TableSpec}
+import com.clickhouse.spark.spec.{NotSplittable, PrimaryIndexSplitSettings, PrimaryKeyRange, TableSpec}
 import org.scalatest.funsuite.AnyFunSuite
 import org.scalatest.tags.Cloud
 
@@ -159,6 +159,26 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
     }
   }
 
+  test("a range is cut per target rows the key filters keep, no fewer than the least, no more than the maximum") {
+    withTable(mergeTree("(k UInt64)", "ORDER BY k"), s"SELECT number FROM numbers($rows)") { table =>
+      val target = rows / 10
+      val settings = PrimaryIndexSplitSettings(atLeast = 4, targetRowsPerTask = target, maxParallelism = None)
+      val ranges = table.ranges(settings)
+      assert(ranges.length === 10)
+      table.assertCovers(ranges)
+      ranges.foreach(range => assert(math.abs(table.count(range.filterExpr) - target) <= 2 * granule, range))
+      // the filter keeps half the rows
+      val upperHalf = PushedFilter.Compare("k", ">=", (rows / 2).toString)
+      assert(table.ranges(settings, upperHalf).length === 5)
+      assert(table.ranges(settings.copy(atLeast = 16)).length === 16)
+      // the maximum caps the ten the rows give, and the least when that is more
+      val capped = table.ranges(settings.copy(maxParallelism = Some(6)))
+      assert(capped.length === 6)
+      table.assertCovers(capped)
+      assert(table.ranges(settings.copy(atLeast = 16, maxParallelism = Some(6))).length === 6)
+    }
+  }
+
   test("a smallest key spanning several granules does not leave the first range empty") {
     withTable(
       mergeTree("(k UInt64)", "ORDER BY k"),
@@ -238,12 +258,22 @@ abstract class PrimaryKeyRangePlanSuite extends AnyFunSuite with ClickHouseProvi
       records(s"SELECT name, type FROM system.columns WHERE database = 'default' AND table = '$name'")
         .map(row => row.get("name").asText -> row.get("type").asText).toMap
 
+    // `slices` as the least, with a target no table reaches: that many, data permitting
+    private def sized(slices: Int): PrimaryIndexSplitSettings =
+      PrimaryIndexSplitSettings(atLeast = slices, targetRowsPerTask = Long.MaxValue, maxParallelism = None)
+
     def plan(slices: Int, filters: PushedFilter*): Either[NotSplittable, Seq[PrimaryKeyRange]] =
-      PrimaryKeyRange.plan(spec, columns, filters, slices)
+      plan(sized(slices), filters: _*)
+
+    def plan(settings: PrimaryIndexSplitSettings, filters: PushedFilter*): Either[NotSplittable, Seq[PrimaryKeyRange]] =
+      PrimaryKeyRange.plan(spec, columns, filters, settings)
 
     // the planned ranges of a table that must be splittable
     def ranges(slices: Int, filters: PushedFilter*): Seq[PrimaryKeyRange] =
-      plan(slices, filters: _*).fold(why => fail(s"Not split: $why"), identity)
+      ranges(sized(slices), filters: _*)
+
+    def ranges(settings: PrimaryIndexSplitSettings, filters: PushedFilter*): Seq[PrimaryKeyRange] =
+      plan(settings, filters: _*).fold(why => fail(s"Not split: $why"), identity)
 
     def count(where: String): Long = records(s"SELECT count() AS c FROM `default`.`$name` WHERE $where")
       .head.get("c").asLong

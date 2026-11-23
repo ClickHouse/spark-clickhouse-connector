@@ -32,7 +32,7 @@ case class ScanJobDescription(
   localTableSpec: Option[TableSpec],
   localTableEngineSpec: Option[TableEngineSpec],
   readOptions: ReadOptions,
-  maxParallelism: Int, // the most input partitions a split makes
+  defaultParallelism: Int, // Spark's, when the read is planned
   functionRegistry: FunctionRegistry,
   // Below fields will be constructed in ScanBuilder.
   readSchema: StructType = new StructType,

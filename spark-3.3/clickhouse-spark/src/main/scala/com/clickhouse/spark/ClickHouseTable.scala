@@ -192,7 +192,7 @@ case class ClickHouseTable(
       localTableSpec = localTableSpec,
       localTableEngineSpec = localTableEngineSpec,
       readOptions = readOptions,
-      maxParallelism = readOptions.maxParallelism.getOrElse(3 * SparkSession.active.sparkContext.defaultParallelism)
+      defaultParallelism = SparkSession.active.sparkContext.defaultParallelism
     )
     // TODO schema of partitions
     val partTransforms = Array[Transform]()

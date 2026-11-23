@@ -21,11 +21,11 @@ import com.clickhouse.spark.spec.{
   MergeTreeEngineSpec,
   NodeSpec,
   NotSplittable,
-  PartitionGroup,
   PartitionSpec,
   PrimaryKeyRange,
   TableEngineSpec,
-  TableKeyRanges
+  TableKeyRanges,
+  TablePartition
 }
 import com.clickhouse.spark.spec.TableSpecs.tableSpec
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
@@ -45,25 +45,25 @@ class TaskSplitSuite extends AnyFunSuite {
   private val why = NotSplittable("the table has no primary key")
   private val split = TableKeyRanges(tableSpec(), NodeSpec("127.0.0.1"), Right(ranges))
   private val unsplit = TableKeyRanges(tableSpec(), NodeSpec("127.0.0.2"), Left(why))
-  private val groups = Seq("1", "2")
-    .map(id => PartitionGroup(tableSpec(), NodeSpec("127.0.0.1"), Seq(PartitionSpec(id, id, 1, 1))))
+  private val twoPartitions = Seq("1", "2")
+    .map(id => TablePartition(tableSpec(), NodeSpec("127.0.0.1"), PartitionSpec(id, id, 1, 1)))
 
   private def resolve(
     strategy: String = TASK_SPLIT_STRATEGY_PRIMARY_INDEX,
     globalAggregatePushed: Boolean = false,
-    maxParallelism: Int = 4,
+    primaryIndexSplitMaxParallelism: Option[Int] = None,
     engine: TableEngineSpec = mergeTree,
     convertLocal: Boolean = false,
-    partitionGroups: => Seq[PartitionGroup] = fail("the partitions must not be listed"),
+    partitions: => Seq[TablePartition] = fail("the partitions must not be listed"),
     primaryKeyRanges: => Seq[TableKeyRanges] = fail("the primary index must not be planned")
   ): TaskSplit =
     TaskSplit.resolve(
       strategy,
       globalAggregatePushed,
-      maxParallelism,
+      primaryIndexSplitMaxParallelism,
       engine,
       convertLocal,
-      partitionGroups,
+      partitions,
       primaryKeyRanges
     )
 
@@ -83,10 +83,11 @@ class TaskSplitSuite extends AnyFunSuite {
   }
 
   test("partitionSplit splits by the listed partitions, or is one task when at most one is listed") {
-    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitionGroups = groups) === PartitionSplit(groups))
-    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitionGroups = groups.take(1))
+    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitions = twoPartitions)
+      === PartitionSplit(twoPartitions))
+    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitions = twoPartitions.take(1))
       === OneTask(SinglePartition))
-    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitionGroups = Nil) === OneTask(SinglePartition))
+    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, partitions = Nil) === OneTask(SinglePartition))
   }
 
   test("oneTask and a global aggregate neither list partitions nor plan the primary index") {
@@ -99,12 +100,18 @@ class TaskSplitSuite extends AnyFunSuite {
     }
   }
 
-  test("maxParallelism 1 is one task under both splits, after oneTask and a global aggregate") {
-    assert(resolve(maxParallelism = 1) === OneTask(MaxParallelismOne))
-    assert(resolve(strategy = TASK_SPLIT_STRATEGY_PARTITION, maxParallelism = 1) === OneTask(MaxParallelismOne))
-    assert(resolve(engine = distributed, maxParallelism = 1) === OneTask(MaxParallelismOne))
-    assert(resolve(strategy = TASK_SPLIT_STRATEGY_ONE_TASK, maxParallelism = 1) === OneTask(Chosen))
-    assert(resolve(globalAggregatePushed = true, maxParallelism = 1) === OneTask(GlobalAggregate))
+  test("maxParallelism 1 is one task under primaryIndexSplit only, after oneTask and a global aggregate") {
+    val one = Some(1)
+    assert(resolve(primaryIndexSplitMaxParallelism = one) === OneTask(MaxParallelismOne))
+    assert(resolve(engine = distributed, primaryIndexSplitMaxParallelism = one) === OneTask(MaxParallelismOne))
+    assert(resolve(strategy = TASK_SPLIT_STRATEGY_ONE_TASK, primaryIndexSplitMaxParallelism = one) === OneTask(Chosen))
+    assert(resolve(globalAggregatePushed = true, primaryIndexSplitMaxParallelism = one) === OneTask(GlobalAggregate))
+    // partitionSplit does not look at it
+    assert(resolve(TASK_SPLIT_STRATEGY_PARTITION, primaryIndexSplitMaxParallelism = one, partitions = twoPartitions)
+      === PartitionSplit(twoPartitions))
+    // more than 1, the rows read decide
+    assert(resolve(primaryIndexSplitMaxParallelism = Some(4), primaryKeyRanges = Seq(split))
+      === PrimaryIndexSplit(Seq(split)))
   }
 
   test("a Distributed table is one task without convertLocal, which splits it by shard") {
@@ -114,8 +121,8 @@ class TaskSplitSuite extends AnyFunSuite {
       strategy = TASK_SPLIT_STRATEGY_PARTITION,
       engine = distributed,
       convertLocal = true,
-      partitionGroups = groups
-    ) === PartitionSplit(groups))
+      partitions = twoPartitions
+    ) === PartitionSplit(twoPartitions))
     assert(resolve(strategy = TASK_SPLIT_STRATEGY_ONE_TASK, engine = distributed, convertLocal = true)
       === OneTask(Chosen))
   }

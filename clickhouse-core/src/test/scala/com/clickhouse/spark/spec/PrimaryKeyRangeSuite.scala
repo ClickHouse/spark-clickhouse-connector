@@ -182,19 +182,24 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
       PushedFilter.Compare("value", ">", "1"),
       PushedFilter.Other("`tenant` = `value`", Set("tenant", "value"))
     )
-    assert(cutsQuery(tableSpec, key, filters, 4) ===
+    assert(cutsQuery(tableSpec, key, filters, settings) ===
       """SELECT hex(`tenant`), toString(`ts`, 'UTC')
         |FROM (
         |  SELECT `tenant`, `ts`,
         |    sum(rows_in_granule) OVER (ORDER BY `tenant`, `ts` ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
         |      - rows_in_granule AS _rows_before,
-        |    intDiv(_rows_before * 4, sum(rows_in_granule) OVER ()) AS _slice
+        |    intDiv(_rows_before * greatest(6, toUInt64(ceil(sum(rows_in_granule) OVER () / 4000000))), sum(rows_in_granule) OVER ()) AS _slice
         |  FROM mergeTreeIndex('db', 'tbl')
         |  WHERE rows_in_granule > 0 AND ((`tenant` = 'a')) AND ((`ts` >= '2024-02-01 00:00:00') OR `ts` = defaultValueOfArgumentType(`ts`)) AND (((`tenant` = 'b') OR (`ts` < '2024-01-01 00:00:00')) OR `ts` = defaultValueOfArgumentType(`ts`))
         |)
         |ORDER BY _rows_before
         |LIMIT 1 BY _slice
         |""".stripMargin)
+    // a maximum caps what the rows the filters keep give
+    assert(cutsQuery(tableSpec, key, filters, settings.copy(maxParallelism = Some(4))).contains(
+      "intDiv(_rows_before * least(4, greatest(6, toUInt64(ceil(sum(rows_in_granule) OVER () / 4000000)))), " +
+        "sum(rows_in_granule) OVER ()) AS _slice"
+    ))
   }
 
   test("a filter on the column of a monotonic time function places the cuts, strict comparisons relaxed") {
@@ -209,13 +214,13 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
       PushedFilter.Compare("id", ">", "5"),
       PushedFilter.Other("`ts` IS NOT NULL", Set("ts"))
     )
-    assert(cutsQuery(tableSpec, key, filters, 4) ===
+    assert(cutsQuery(tableSpec, key, filters, settings) ===
       """SELECT toString(`toStartOfHour(ts)`, 'UTC'), toString(`id`)
         |FROM (
         |  SELECT `toStartOfHour(ts)`, `id`,
         |    sum(rows_in_granule) OVER (ORDER BY `toStartOfHour(ts)`, `id` ROWS BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW)
         |      - rows_in_granule AS _rows_before,
-        |    intDiv(_rows_before * 4, sum(rows_in_granule) OVER ()) AS _slice
+        |    intDiv(_rows_before * greatest(6, toUInt64(ceil(sum(rows_in_granule) OVER () / 4000000))), sum(rows_in_granule) OVER ()) AS _slice
         |  FROM mergeTreeIndex('db', 'tbl')
         |  WHERE rows_in_granule > 0 AND ((`toStartOfHour(ts)` >= toStartOfHour(CAST('2024-01-05 00:00:00' AS DateTime)))) AND ((`toStartOfHour(ts)` <= toStartOfHour(CAST('2024-01-06 00:00:00' AS DateTime)))) AND ((`toStartOfHour(ts)` IN (toStartOfHour(CAST('2024-01-07 00:00:00' AS DateTime))))) AND ((`id` > 5) OR `id` = defaultValueOfArgumentType(`id`))
         |)
@@ -223,6 +228,8 @@ class PrimaryKeyRangeSuite extends AnyFunSuite {
         |LIMIT 1 BY _slice
         |""".stripMargin)
   }
+
+  private val settings = PrimaryIndexSplitSettings(atLeast = 6, targetRowsPerTask = 4000000, maxParallelism = None)
 
   private val tableSpec = TableSpec(
     database = "db",

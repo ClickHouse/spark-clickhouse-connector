@@ -30,6 +30,7 @@ import com.clickhouse.spark.spec.{
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
   READ_DISTRIBUTED_CONVERT_LOCAL,
   READ_DISTRIBUTED_USE_CLUSTER_NODES,
+  READ_PRIMARY_INDEX_SPLIT_MAX_PARALLELISM,
   READ_TASK_SPLIT_STRATEGY,
   TASK_SPLIT_STRATEGY_ONE_TASK,
   TASK_SPLIT_STRATEGY_PRIMARY_INDEX
@@ -53,13 +54,13 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
 
   test("a Distributed table with more shards than tasks is read in one task per shard, warned about once") {
     // a shard left with one task is not planned, so no I/O
-    val scan = new ClickHouseBatchScan(scanJob(shards = 4).copy(maxParallelism = 2))
+    val scan = new ClickHouseBatchScan(scanJob(shards = 4, maxParallelism = 2))
     val (partitions, warnings) = captureWarnings(classOf[ClickHouseBatchScan].getName)(scan.inputPartitions)
     assert(partitions.toSeq.map(p => (p.table.name, p.filterExpr)) === Seq.fill(4)(("local", "1=1")))
     assert(partitions.toSeq.map(_.candidateNodes.nodes.head.host) === (1 to 4).map(n => s"10.0.0.$n"))
     assert(warnings === Seq(
       "Reading 4 of 4 shards of db.dist as one task each, which may impact read performance: " +
-        "spark.clickhouse.read.maxParallelism leaves one task per shard"
+        "spark.clickhouse.read.primaryIndexSplit.maxParallelism leaves one task per shard"
     ))
   }
 
@@ -67,7 +68,7 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
     Seq(
       scanJob(strategy = TASK_SPLIT_STRATEGY_ONE_TASK),
       scanJob().copy(pushedGroupBy = Some(Nil)),
-      scanJob().copy(maxParallelism = 1)
+      scanJob(maxParallelism = 1)
     ).foreach { job =>
       val (partitions, warnings) =
         captureWarnings(classOf[ClickHouseBatchScan].getName)(new ClickHouseBatchScan(job).inputPartitions)
@@ -179,11 +180,16 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
 
   // a Distributed table scan without convertDistributedToLocal plans its one task without any I/O; given `shards`,
   // it is read by shard with convertDistributedToLocal
-  private def scanJob(strategy: String = TASK_SPLIT_STRATEGY_PRIMARY_INDEX, shards: Int = 0): ScanJobDescription = {
+  private def scanJob(
+    strategy: String = TASK_SPLIT_STRATEGY_PRIMARY_INDEX,
+    shards: Int = 0,
+    maxParallelism: Int = 4
+  ): ScanJobDescription = {
     val readOptions = new java.util.HashMap[String, String]()
     readOptions.put(READ_DISTRIBUTED_CONVERT_LOCAL.key, (shards > 0).toString)
     readOptions.put(READ_DISTRIBUTED_USE_CLUSTER_NODES.key, "false")
     readOptions.put(READ_TASK_SPLIT_STRATEGY.key, strategy)
+    readOptions.put(READ_PRIMARY_INDEX_SPLIT_MAX_PARALLELISM.key, maxParallelism.toString)
     ScanJobDescription(
       node = NodeSpec("127.0.0.1"),
       tz = ZoneId.of("UTC"),
@@ -203,7 +209,7 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
       localTableSpec = if (shards == 0) None else Some(tableSpec().copy(name = "local", engine = "MergeTree")),
       localTableEngineSpec = None,
       readOptions = new ReadOptions(readOptions),
-      maxParallelism = 4
+      defaultParallelism = 2
     )
   }
 }
