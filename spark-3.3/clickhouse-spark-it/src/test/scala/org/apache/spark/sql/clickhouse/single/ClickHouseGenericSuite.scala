@@ -568,11 +568,31 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
       }
   }
 
-  // near-vacuous on a single node: no multi-member cluster to union, so this pins only the conf key
+  // A single server has no second replica, so both rows come back with the union off and this
+  // only pins the conf key. On Cloud that read is the lag the union exists for: system.parts is
+  // whichever replica answers, and the row on the other one is dropped. Check the listing query.
   test("the partition listing union can be turned off") {
     withSimpleTable("db_listing", "tbl_off", writeData = true) { (db, tbl) =>
       withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
-        checkAnswer(spark.sql(s"SELECT id FROM $db.$tbl"), Seq(Row(1L), Row(2L)))
+        if (!isCloud) {
+          checkAnswer(spark.sql(s"SELECT id FROM $db.$tbl"), Seq(Row(1L), Row(2L)))
+        } else {
+          spark.sql(s"SELECT id FROM $db.$tbl").collect()
+          runClickHouseSQL("SYSTEM FLUSH LOGS ON CLUSTER 'default'").collect()
+          val listings = runClickHouseSQL(
+            s"""SELECT query FROM clusterAllReplicas('default', system, query_log)
+               |WHERE type = 'QueryFinish'
+               |  AND query LIKE '%$tbl%'
+               |  AND query LIKE '%system%parts%'
+               |  AND query NOT LIKE '%query_log%'
+               |  AND event_time > now() - INTERVAL 5 MINUTE
+               |""".stripMargin
+          ).collect().map(_.getString(0))
+          assert(
+            listings.nonEmpty && listings.forall(!_.contains("clusterAllReplicas")),
+            s"expected a local system.parts listing for $db.$tbl, got: ${listings.mkString("; ")}"
+          )
+        }
       }
     }
   }
