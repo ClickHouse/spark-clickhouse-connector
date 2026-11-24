@@ -460,8 +460,6 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
         ()
       }
 
-      // A refusal is settled, so it is remembered and said once. Anything else means no answer
-      // arrived and the question stays open: one blip must not cost the union for the JVM's life.
       def unavailable(why: String, cause: Throwable): ListingDecision = {
         val settled = ClickHouseHelper.isSettledRefusal(cause)
         val code = cause match {
@@ -595,13 +593,6 @@ private[spark] object ClickHouseHelper {
     701 // CLUSTER_DOESNT_EXIST
   )
 
-  /**
-   * Judged by code, not by exception type, which cannot tell: the client reports any HTTP error as
-   * a server exception — a proxy 503 arrives with code 0 — and a timeout (159) or a briefly-down
-   * replica (279) arrive as server exceptions that may well succeed next time. An allowlist, since
-   * leaving one open costs a warning per scan where settling one wrongly costs the union for the
-   * JVM's life.
-   */
   def isSettledRefusal(cause: Throwable): Boolean = cause match {
     case e: CHServerException => settledRefusalCodes.contains(e.code)
     case _ => false

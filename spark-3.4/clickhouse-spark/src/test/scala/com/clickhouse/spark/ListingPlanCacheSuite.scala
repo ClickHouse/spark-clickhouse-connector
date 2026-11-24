@@ -43,8 +43,6 @@ class ListingPlanCacheSuite extends AnyFunSuite {
   }
 
   test("an undecided attempt is resolved again") {
-    // no answer arrived, so nothing is remembered: one dropped connection must not cost the union
-    // for the life of the JVM
     var calls = 0
     def resolve: ListingDecision = { calls += 1; Undecided }
     assert(ClickHouseHelper.listingPlanFor(node("undecided"))(resolve) === Undecided)
@@ -71,9 +69,6 @@ class ListingPlanCacheSuite extends AnyFunSuite {
   }
 
   test("a failure that may not recur leaves the question open") {
-    // these arrive as server exceptions too, so the exception type cannot be the discriminator:
-    // a timeout and a replica that was briefly down may both succeed on the next read, and a
-    // proxy answering an HTTP error carries no ClickHouse code at all
     assert(!ClickHouseHelper.isSettledRefusal(CHServerException(159, "timeout", None, None)))
     assert(!ClickHouseHelper.isSettledRefusal(CHServerException(279, "no connection", None, None)))
     assert(!ClickHouseHelper.isSettledRefusal(CHServerException(0, "transport error: 503", None, None)))
