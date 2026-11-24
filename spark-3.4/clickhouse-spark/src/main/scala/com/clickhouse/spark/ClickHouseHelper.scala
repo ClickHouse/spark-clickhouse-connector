@@ -360,21 +360,13 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
       else partitionListingCluster
 
     decision match {
-      case UnionAcross(name, settings, clientTimeBound) =>
+      case UnionAcross(name, settings) =>
         val union = query(
           s"clusterAllReplicas('${escapeSQLString(name)}', `system`.`parts`)",
-          if (settings.isEmpty) "" else s"SETTINGS $settings"
+          s"SETTINGS $settings"
         )
         Try {
-          val output =
-            if (clientTimeBound) {
-              nodeClient.syncQueryAndCheckOutputJSONEachRow(
-                union,
-                timeoutMs = math.min(nodeClient.queryTimeoutMs, ClickHouseHelper.listingQueryTimeoutMs)
-              )
-            } else {
-              nodeClient.syncQueryAndCheckOutputJSONEachRow(union)
-            }
+          val output = nodeClient.syncQueryAndCheckOutputJSONEachRow(union)
           // Scala 2.12 parses the rows lazily, so a mid-stream failure must surface inside the Try
           output.rows
           output
@@ -397,6 +389,9 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
   }
 
   private def escapeSQLString(value: String): String = SQLHelper.escapeSql(value)
+
+  private val listingTuningSettings =
+    "skip_unavailable_shards=1, max_execution_time=10, timeout_overflow_mode='throw'"
 
   /**
    * The cluster to union across and the settings to union it under: of the clusters containing this
@@ -424,26 +419,16 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
             |""".stripMargin
         ).records.headOption.map(_.get("cluster").asText)
 
-      // one round trip in the common case. A settled refusal is taken apart, so one setting this
-      // user may not change does not drop the others; the 10s bound is then enforced on the client
       def settingsAccepted(settings: String): Try[Boolean] =
         Try(nodeClient.syncQueryAndCheckOutputJSONEachRow(s"SELECT 1 SETTINGS $settings").rows)
           .map(_ => true)
           .recover { case cause if ClickHouseHelper.isSettledRefusal(cause) => false }
 
-      def unionAccepted(name: String, settings: String, clientTimeBound: Boolean): Try[Unit] = Try {
-        val sql = s"SELECT 1 FROM clusterAllReplicas('${escapeSQLString(name)}', `system`.`one`) " +
-          "LIMIT 1" + (if (settings.isEmpty) "" else s" SETTINGS $settings")
-        val output =
-          if (clientTimeBound) {
-            nodeClient.syncQueryAndCheckOutputJSONEachRow(
-              sql,
-              timeoutMs = math.min(nodeClient.queryTimeoutMs, ClickHouseHelper.listingQueryTimeoutMs)
-            )
-          } else {
-            nodeClient.syncQueryAndCheckOutputJSONEachRow(sql)
-          }
-        output.rows
+      def unionAccepted(name: String, settings: String): Try[Unit] = Try {
+        nodeClient.syncQueryAndCheckOutputJSONEachRow(
+          s"SELECT 1 FROM clusterAllReplicas('${escapeSQLString(name)}', `system`.`one`) " +
+            s"LIMIT 1 SETTINGS $settings"
+        ).rows
         ()
       }
 
@@ -465,36 +450,22 @@ trait ClickHouseHelper extends SQLConfHelper with Logging {
         if (settled) NoUnion else Undecided
       }
 
-      def unionOrRefuse(name: String, settings: String, clientTimeBound: Boolean): ListingDecision =
-        unionAccepted(name, settings, clientTimeBound) match {
-          case Success(_) => UnionAcross(name, settings, clientTimeBound)
-          case Failure(cause) => unavailable(s"cluster '$name' cannot be queried", cause)
-        }
-
       Try(candidate) match {
         case Failure(cause) => unavailable("no cluster could be discovered", cause)
         case Success(None) => NoUnion // nothing to union, so nothing to say
         case Success(Some(name)) =>
-          settingsAccepted(ClickHouseHelper.listingTuningSettings) match {
+          settingsAccepted(listingTuningSettings) match {
             case Failure(cause) => unavailable("the listing settings could not be probed", cause)
-            case Success(true) =>
-              unionOrRefuse(name, ClickHouseHelper.listingTuningSettings, clientTimeBound = false)
             case Success(false) =>
-              val pieces = Seq(
-                ClickHouseHelper.listingSkipSetting,
-                ClickHouseHelper.listingTimeBoundSetting,
-                ClickHouseHelper.listingGuardSetting
+              log.warn(
+                s"Not unioning partition listings on ${nodeClient.nodeSpec.host}: the listing " +
+                  "settings were refused. Reading system.parts from this server only."
               )
-              val accepted = pieces.foldLeft(Try(Set.empty[String]): Try[Set[String]]) {
-                case (failed @ Failure(_), _) => failed
-                case (Success(got), setting) =>
-                  settingsAccepted(setting).map(ok => if (ok) got + setting else got)
-              }
-              accepted match {
-                case Failure(cause) => unavailable("the listing settings could not be probed", cause)
-                case Success(got) =>
-                  val (settings, clientTimeBound) = ClickHouseHelper.listingSettings(got)
-                  unionOrRefuse(name, settings, clientTimeBound)
+              NoUnion
+            case Success(true) =>
+              unionAccepted(name, listingTuningSettings) match {
+                case Success(_) => UnionAcross(name, listingTuningSettings)
+                case Failure(cause) => unavailable(s"cluster '$name' cannot be queried", cause)
               }
           }
       }
@@ -580,26 +551,6 @@ private[spark] object ClickHouseHelper {
   private val listingPlans =
     new ConcurrentHashMap[(String, Int, String, String, Boolean), ListingDecision]()
 
-  val listingSkipSetting = "skip_unavailable_shards=1"
-  val listingTimeBoundSetting = "max_execution_time=10"
-  val listingGuardSetting = "timeout_overflow_mode='throw'"
-  val listingQueryTimeoutMs = 10000L
-  val listingTuningSettings = s"$listingSkipSetting, $listingTimeBoundSetting, $listingGuardSetting"
-
-  /**
-   * Settings the server accepted. The server-side bound is `max_execution_time` together with
-   * `timeout_overflow_mode='throw'`: without the throw mode a timeout returns a short result and no
-   * error, so that setting is left off the query. The boolean is true when the caller must cut the
-   * request off after [[listingQueryTimeoutMs]] instead.
-   */
-  def listingSettings(accepted: Set[String]): (String, Boolean) = {
-    val serverBound = accepted(listingTimeBoundSetting) && accepted(listingGuardSetting)
-    val chosen = Seq(listingSkipSetting, listingTimeBoundSetting, listingGuardSetting).filter { setting =>
-      accepted(setting) && (serverBound || setting != listingTimeBoundSetting)
-    }
-    (chosen.mkString(", "), !serverBound)
-  }
-
   /**
    * Codes the server has settled: a grant it will not give, a setting this user may not change, a
    * cluster it does not know. A later attempt would be told the same.
@@ -642,11 +593,7 @@ private[spark] object ClickHouseHelper {
  */
 sealed private[spark] trait ListingDecision
 
-private[spark] case class UnionAcross(
-  cluster: String,
-  settings: String,
-  clientTimeBound: Boolean = false
-) extends ListingDecision
+private[spark] case class UnionAcross(cluster: String, settings: String) extends ListingDecision
 
 private[spark] case object NoUnion extends ListingDecision
 

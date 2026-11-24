@@ -76,24 +76,4 @@ class ListingPlanCacheSuite extends AnyFunSuite {
     assert(!ClickHouseHelper.isSettledRefusal(new RuntimeException("boom")))
   }
 
-  test("a refused time bound is enforced by the caller") {
-    val all = Set(
-      ClickHouseHelper.listingSkipSetting,
-      ClickHouseHelper.listingTimeBoundSetting,
-      ClickHouseHelper.listingGuardSetting
-    )
-    assert(ClickHouseHelper.listingSettings(all) === (ClickHouseHelper.listingTuningSettings, false))
-
-    val skipAndGuard = Set(ClickHouseHelper.listingSkipSetting, ClickHouseHelper.listingGuardSetting)
-    assert(
-      ClickHouseHelper.listingSettings(skipAndGuard) === (
-        s"${ClickHouseHelper.listingSkipSetting}, ${ClickHouseHelper.listingGuardSetting}",
-        true
-      )
-    )
-
-    val skipAndTime = Set(ClickHouseHelper.listingSkipSetting, ClickHouseHelper.listingTimeBoundSetting)
-    assert(ClickHouseHelper.listingSettings(skipAndTime) === (ClickHouseHelper.listingSkipSetting, true))
-    assert(ClickHouseHelper.listingSettings(Set.empty) === ("", true))
-  }
 }

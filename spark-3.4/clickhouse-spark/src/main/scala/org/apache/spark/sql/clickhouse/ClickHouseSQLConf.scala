@@ -231,10 +231,8 @@ object ClickHouseSQLConf {
         "service such as ClickHouse Cloud, and a listing that lags prunes a partition out of the " +
         "scan and silently drops its rows. Where permitted, an unreachable replica is skipped and " +
         "the union is bounded by `max_execution_time=10` with `timeout_overflow_mode='throw'`. " +
-        "When the server will not enforce that bound, the connector cuts the union request off " +
-        "after 10 seconds, or sooner when `spark.clickhouse.client.queryTimeout` is shorter; a " +
-        "listing that hits the bound fails and falls back to that server's own view. Any other " +
-        "failure falls back the same way and warns. " +
+        "When the server refuses those settings, the listing stays on the server that answers. " +
+        "Any other failure falls back the same way and warns. " +
         s"Applies only to a scan filtering by `_partition_id`, so ${READ_SPLIT_BY_PARTITION_ID.key}" +
         " being off leaves the listing un-unioned.")
       .version("0.11.1")

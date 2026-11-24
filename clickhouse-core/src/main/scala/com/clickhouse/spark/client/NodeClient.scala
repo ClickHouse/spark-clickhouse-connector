@@ -21,7 +21,7 @@ import com.clickhouse.data.ClickHouseFormat
 import com.clickhouse.shaded.org.apache.commons.io.IOUtils
 import com.clickhouse.spark.Logging
 
-import java.util.concurrent.{TimeUnit, TimeoutException}
+import java.util.concurrent.TimeUnit
 import com.clickhouse.spark.exception.{CHClientException, CHException, CHServerException}
 import com.clickhouse.spark.format.{
   JSONCompactEachRowWithNamesAndTypesSimpleOutput,
@@ -45,7 +45,7 @@ object NodeClient {
     new NodeClient(node, queryTimeoutMs)
 }
 
-class NodeClient(val nodeSpec: NodeSpec, val queryTimeoutMs: Long = NodeClient.DEFAULT_QUERY_TIMEOUT_MS)
+class NodeClient(val nodeSpec: NodeSpec, queryTimeoutMs: Long = NodeClient.DEFAULT_QUERY_TIMEOUT_MS)
     extends AutoCloseable with Logging {
 
   private lazy val userAgent: String = {
@@ -121,10 +121,9 @@ class NodeClient(val nodeSpec: NodeSpec, val queryTimeoutMs: Long = NodeClient.D
 
   def syncQueryAndCheckOutputJSONEachRow(
     sql: String,
-    settings: Map[String, String] = Map.empty,
-    timeoutMs: Long = queryTimeoutMs
+    settings: Map[String, String] = Map.empty
   ): SimpleOutput[ObjectNode] =
-    syncQueryAndCheck(sql, "JSONEachRow", JSONEachRowSimpleOutput.deserialize, settings, timeoutMs)
+    syncQueryAndCheck(sql, "JSONEachRow", JSONEachRowSimpleOutput.deserialize, settings)
 
   def syncInsertOutputJSONEachRow(
     database: String,
@@ -192,8 +191,7 @@ class NodeClient(val nodeSpec: NodeSpec, val queryTimeoutMs: Long = NodeClient.D
     sql: String,
     outputFormat: String,
     deserializer: InputStream => SimpleOutput[OUT],
-    settings: Map[String, String],
-    timeoutMs: Long = queryTimeoutMs
+    settings: Map[String, String]
   ): Either[CHException, SimpleOutput[OUT]] = {
     val queryId = nextQueryId()
     onExecuteQuery(queryId, sql)
@@ -202,13 +200,9 @@ class NodeClient(val nodeSpec: NodeSpec, val queryTimeoutMs: Long = NodeClient.D
     querySettings.setFormat(clickHouseFormat)
     querySettings.setQueryId(queryId)
     settings.foreach { case (k, v) => querySettings.setOption(k, v) }
-    val future = client.query(sql, querySettings)
-    Try(future.get(timeoutMs, TimeUnit.MILLISECONDS)) match {
+    Try(client.query(sql, querySettings).get(queryTimeoutMs, TimeUnit.MILLISECONDS)) match {
       case Success(response: QueryResponse) => Right(deserializer(response.getInputStream))
       case Failure(se: ServerException) => Left(CHServerException(se.getCode, se.getMessage, Some(nodeSpec), Some(se)))
-      case Failure(ex: TimeoutException) =>
-        future.cancel(true)
-        Left(CHClientException(s"Query timed out after ${timeoutMs}ms", Some(nodeSpec), Some(ex)))
       case Failure(ex: Exception) => Left(CHClientException(ex.getMessage, Some(nodeSpec), Some(ex)))
     }
   }
@@ -217,9 +211,8 @@ class NodeClient(val nodeSpec: NodeSpec, val queryTimeoutMs: Long = NodeClient.D
     sql: String,
     outputFormat: String,
     deserializer: InputStream => SimpleOutput[OUT],
-    settings: Map[String, String],
-    timeoutMs: Long = queryTimeoutMs
-  ): SimpleOutput[OUT] = syncQuery[OUT](sql, outputFormat, deserializer, settings, timeoutMs) match {
+    settings: Map[String, String]
+  ): SimpleOutput[OUT] = syncQuery[OUT](sql, outputFormat, deserializer, settings) match {
     case Left(rethrow) => throw rethrow
     case Right(output) => output
   }
