@@ -23,6 +23,14 @@ import org.apache.spark.sql.sources._
 import org.apache.spark.unsafe.types.UTF8String
 import Utils._
 
+object SQLHelper {
+
+  def escapeSql(value: String): String = {
+    val slashed = StringUtils.replace(value, "\\", "\\\\")
+    StringUtils.replace(slashed, "'", "''")
+  }
+}
+
 trait SQLHelper {
 
   def quoted(token: String): String = token match {
@@ -30,8 +38,8 @@ trait SQLHelper {
     case t => s"`$t`"
   }
 
-  // null => null, ' => ''
-  def escapeSql(value: String): String = StringUtils.replace(value, "'", "''")
+  // null => null. A backslash is escaped before quotes are doubled, or a trailing one consumes the closer.
+  def escapeSql(value: String): String = SQLHelper.escapeSql(value)
 
   def compileValue(value: Any)(implicit tz: ZoneId): Any = value match {
     case string: String => s"'${escapeSql(string)}'"

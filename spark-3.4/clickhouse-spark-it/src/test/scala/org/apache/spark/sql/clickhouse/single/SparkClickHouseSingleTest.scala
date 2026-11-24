@@ -16,6 +16,7 @@ package org.apache.spark.sql.clickhouse.single
 
 import com.clickhouse.spark.base.{ClickHouseProvider, ClickHouseSingleMixIn, RetryUtils}
 import org.apache.spark.SparkConf
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_PARTITION_LISTING_UNION_REPLICAS
 import org.apache.spark.sql.clickhouse.SparkTest
 import org.apache.spark.sql.functions.month
 import org.apache.spark.sql.types.StructType
@@ -97,7 +98,7 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
     .set("spark.clickhouse.write.write.repartitionNum", "0")
     .set("spark.clickhouse.read.format", "json")
     .set("spark.clickhouse.write.format", "json")
-    .setAll(cloudReadSettings)
+    .setAll(cloudReadSettings ++ cloudPartitionListing)
 
   /**
    * On Cloud a read may be routed to a replica that has not yet caught up with a just-committed
@@ -109,6 +110,9 @@ trait SparkClickHouseSingleTest extends SparkTest with ClickHouseProvider with B
   private def cloudReadSettings: Iterable[(String, String)] =
     if (cloudReadSettingValues.isEmpty) Nil
     else Seq(READ_SETTINGS_KEY -> cloudReadSettingValues.mkString(", "))
+
+  private def cloudPartitionListing: Iterable[(String, String)] =
+    if (isCloud) Seq(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "true") else Nil
 
   /**
    * Read settings for a `withSQLConf(READ_SETTINGS_KEY -> ...)` override. The conf is single-valued,

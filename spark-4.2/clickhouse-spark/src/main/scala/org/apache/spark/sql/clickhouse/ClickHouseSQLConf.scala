@@ -239,16 +239,20 @@ object ClickHouseSQLConf {
   val READ_PARTITION_LISTING_UNION_REPLICAS: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.read.partitionListing.unionReplicas")
       .doc("If `true`, list a table's partitions across the replicas of its cluster rather than " +
-        "from the server answering the query. `system.parts` reflects only that server and lags a " +
-        "recent write on an eventually consistent service such as ClickHouse Cloud, and a listing " +
-        "that lags prunes a partition out of the scan and silently drops its rows. Where permitted, an " +
-        "unreachable replica is skipped; any other failure falls back to that server's own view " +
-        "and warns. " +
+        "from the server answering the query. Off by default, so a scan lists `system.parts` on " +
+        "the server that answers. That view lags a recent write on an eventually consistent " +
+        "service such as ClickHouse Cloud, and a listing that lags prunes a partition out of the " +
+        "scan and silently drops its rows. Where permitted, an unreachable replica is skipped and " +
+        "the union is bounded by `max_execution_time=10` with `timeout_overflow_mode='throw'`. " +
+        "When the server will not enforce that bound, the connector cuts the union request off " +
+        "after 10 seconds, or sooner when `spark.clickhouse.client.queryTimeout` is shorter; a " +
+        "listing that hits the bound fails and falls back to that server's own view. Any other " +
+        "failure falls back the same way and warns. " +
         s"Applies only to a scan filtering by `_partition_id`, so ${READ_SPLIT_BY_PARTITION_ID.key}" +
         " being off leaves the listing un-unioned.")
       .version("0.11.1")
       .booleanConf
-      .createWithDefault(true)
+      .createWithDefault(false)
 
   val READ_SETTINGS: OptionalConfigEntry[String] =
     buildConf("spark.clickhouse.read.settings")

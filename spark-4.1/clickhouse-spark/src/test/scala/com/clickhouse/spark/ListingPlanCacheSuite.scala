@@ -18,6 +18,8 @@ import com.clickhouse.spark.exception.{CHClientException, CHServerException}
 import com.clickhouse.spark.spec.NodeSpec
 import org.scalatest.funsuite.AnyFunSuite
 
+import java.util.Collections
+
 /**
  * The cache lives as long as the JVM, so each case uses a host of its own rather than relying on
  * the order the suites run in.
@@ -74,5 +76,36 @@ class ListingPlanCacheSuite extends AnyFunSuite {
     assert(!ClickHouseHelper.isSettledRefusal(CHServerException(0, "transport error: 503", None, None)))
     assert(!ClickHouseHelper.isSettledRefusal(CHClientException("connection reset")))
     assert(!ClickHouseHelper.isSettledRefusal(new RuntimeException("boom")))
+  }
+
+  test("connection options do not share a listing plan") {
+    def nodeWith(role: String) =
+      NodeSpec("opts", Some(8123), options = Collections.singletonMap("role", role))
+    var calls = 0
+    def resolve: ListingDecision = { calls += 1; UnionAcross(s"c$calls", "st") }
+    assert(ClickHouseHelper.listingPlanFor(nodeWith("a"))(resolve) === UnionAcross("c1", "st"))
+    assert(ClickHouseHelper.listingPlanFor(nodeWith("b"))(resolve) === UnionAcross("c2", "st"))
+    assert(calls === 2)
+  }
+
+  test("a refused time bound is enforced by the caller") {
+    val all = Set(
+      ClickHouseHelper.listingSkipSetting,
+      ClickHouseHelper.listingTimeBoundSetting,
+      ClickHouseHelper.listingGuardSetting
+    )
+    assert(ClickHouseHelper.listingSettings(all) === (ClickHouseHelper.listingTuningSettings, false))
+
+    val skipAndGuard = Set(ClickHouseHelper.listingSkipSetting, ClickHouseHelper.listingGuardSetting)
+    assert(
+      ClickHouseHelper.listingSettings(skipAndGuard) === (
+        s"${ClickHouseHelper.listingSkipSetting}, ${ClickHouseHelper.listingGuardSetting}",
+        true
+      )
+    )
+
+    val skipAndTime = Set(ClickHouseHelper.listingSkipSetting, ClickHouseHelper.listingTimeBoundSetting)
+    assert(ClickHouseHelper.listingSettings(skipAndTime) === (ClickHouseHelper.listingSkipSetting, true))
+    assert(ClickHouseHelper.listingSettings(Set.empty) === ("", true))
   }
 }
