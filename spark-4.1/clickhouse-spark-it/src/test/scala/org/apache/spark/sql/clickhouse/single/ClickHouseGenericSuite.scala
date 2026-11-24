@@ -15,6 +15,7 @@
 package org.apache.spark.sql.clickhouse.single
 
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
+import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_PARTITION_LISTING_UNION_REPLICAS
 import org.apache.spark.sql.Row
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
@@ -565,6 +566,15 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
         runClickHouseSQL(s"DROP DATABASE IF EXISTS `$db`")
       }
+  }
+
+  // near-vacuous on a single node: no multi-member cluster to union, so this pins only the conf key
+  test("the partition listing union can be turned off") {
+    withSimpleTable("db_listing", "tbl_off", writeData = true) { (db, tbl) =>
+      withSQLConf(READ_PARTITION_LISTING_UNION_REPLICAS.key -> "false") {
+        checkAnswer(spark.sql(s"SELECT id FROM $db.$tbl"), Seq(Row(1L), Row(2L)))
+      }
+    }
   }
 
   test("cache table") {
