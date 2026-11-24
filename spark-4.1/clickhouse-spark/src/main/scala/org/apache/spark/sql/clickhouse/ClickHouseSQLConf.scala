@@ -246,7 +246,7 @@ object ClickHouseSQLConf {
         "and warns. " +
         s"Applies only to a scan filtering by `_partition_id`, so ${READ_SPLIT_BY_PARTITION_ID.key}" +
         " being off leaves the listing un-unioned.")
-      .version("0.10.1")
+      .version("0.11.1")
       .booleanConf
       .createWithDefault(true)
 
