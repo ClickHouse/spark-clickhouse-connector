@@ -576,15 +576,9 @@ private[spark] object ClickHouseHelper {
    * [[NodeSpec]] so credentials stay out of a map living as long as the JVM. Only [[UnionAcross]]
    * and [[NoUnion]] are stored, and they last that long: a grant changed afterwards, or a
    * single-replica service that later scales out, is noticed only on the next driver.
-   *
-   * The options are part of the key because they reach the connection as URL parameters, and some
-   * of those decide the answer: `role=` selects which grants apply, so the same user can hold
-   * `REMOTE` on one connection and not on another, and a setting passed this way can decide
-   * whether the tuning settings are accepted. Only a digest of them is kept, since options may carry
-   * credentials of their own.
    */
   private val listingPlans =
-    new ConcurrentHashMap[(String, Int, String, String, Boolean, String), ListingDecision]()
+    new ConcurrentHashMap[(String, Int, String, String, Boolean), ListingDecision]()
 
   val listingSkipSetting = "skip_unavailable_shards=1"
   val listingTimeBoundSetting = "max_execution_time=10"
@@ -605,27 +599,6 @@ private[spark] object ClickHouseHelper {
     }
     (chosen.mkString(", "), !serverBound)
   }
-
-  private def optionsIdentity(options: java.util.Map[String, String]): String =
-    if (options == null || options.isEmpty) {
-      ""
-    } else {
-      val entries = new java.util.ArrayList[String](options.size)
-      val iterator = options.entrySet.iterator
-      while (iterator.hasNext) {
-        val entry = iterator.next()
-        entries.add(entry.getKey + "\u0000" + String.valueOf(entry.getValue))
-      }
-      java.util.Collections.sort(entries)
-      val digest = java.security.MessageDigest.getInstance("SHA-256")
-      var index = 0
-      while (index < entries.size) {
-        if (index > 0) digest.update('\n'.toByte)
-        digest.update(entries.get(index).getBytes(java.nio.charset.StandardCharsets.UTF_8))
-        index += 1
-      }
-      digest.digest().map(byte => "%02x".format(byte & 0xff)).mkString
-    }
 
   /**
    * Codes the server has settled: a grant it will not give, a setting this user may not change, a
@@ -652,7 +625,7 @@ private[spark] object ClickHouseHelper {
    */
   def listingPlanFor(node: NodeSpec)(resolve: => ListingDecision): ListingDecision = {
     val decided = listingPlans.computeIfAbsent(
-      (node.host, node.port, node.username, node.database, node.ssl, optionsIdentity(node.options)),
+      (node.host, node.port, node.username, node.database, node.ssl),
       _ => {
         // bound once: `resolve` is by-name, and probing twice would double every round trip
         val decision = resolve
