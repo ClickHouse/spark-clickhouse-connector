@@ -21,6 +21,9 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+- Reads can plan one extra task for partition ids missing from `system.parts` (`spark.clickhouse.read.partitionSplit.unlistedPartitionsTask`, default `false`). A scan that splits by `_partition_id` adds that task to each partition listing; the task reads `_partition_id NOT IN` the ids the listing returned. Whole-table scans are unchanged.
+
 ## [0.11.0] - 2026-11-11
 
 ### Added

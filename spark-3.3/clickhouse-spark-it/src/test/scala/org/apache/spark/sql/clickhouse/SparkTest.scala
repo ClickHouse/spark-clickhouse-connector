@@ -51,6 +51,7 @@ trait SparkTest extends QueryTest with SharedSparkSession {
     .set("spark.sql.shuffle.partitions", "2")
     // downstream repos compile these fixtures without the Gradle DO_NOT_TRACK env
     .set("spark.clickhouse.sendAnonymousUsageStats", "false")
+    .set("spark.clickhouse.read.partitionSplit.unlistedPartitionsTask", "true")
 
   def runClickHouseSQL(sql: String, options: Map[String, String] = cmdRunnerOptions): DataFrame =
     spark.executeCommand(classOf[ClickHouseCommandRunner].getName, sql, options)

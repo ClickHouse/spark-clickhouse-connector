@@ -26,7 +26,7 @@ case class ClickHousePartitioning(inputParts: Array[ClickHouseInputPartition]) e
 
 case class ClickHouseInputPartition(
   table: TableSpec,
-  partition: PartitionSpec,
+  partition: PartitionSlice,
   filterByPartitionId: Boolean,
   candidateNodes: Nodes, // try to use them only when preferredNode unavailable
   preferredNode: Option[NodeSpec] = None // TODO assigned by ScanBuilder in Spark Driver side
@@ -39,8 +39,10 @@ case class ClickHouseInputPartition(
 
   def partFilterExpr: String = partition match {
     case NoPartitionSpec => "1=1"
+    case UnlistedPartitions(ids) =>
+      ids.map(id => s"'${id.replace("'", "''")}'").mkString("_partition_id NOT IN (", ", ", ")")
     case PartitionSpec(_, partitionId, _, _) if filterByPartitionId =>
-      s"_partition_id = '$partitionId'"
+      s"_partition_id = '${partitionId.replace("'", "''")}'"
     case PartitionSpec(partitionValue, _, _, _) =>
       s"${table.partition_key} = ${compilePartitionFilterValue(partitionValue)}"
   }
@@ -53,4 +55,21 @@ case class ClickHouseInputPartition(
       // Date type column is quoted if there are multi partition columns
       case _ => s"$partitionValue"
     }
+}
+
+object ClickHouseInputPartition {
+
+  /** Append one slice for partition ids the listing did not return, then build the scan tasks. */
+  def plan(
+    table: TableSpec,
+    specs: Seq[PartitionSpec],
+    splitByPartitionId: Boolean,
+    unlistedPartitionsTask: Boolean,
+    nodes: Nodes
+  ): Seq[ClickHouseInputPartition] = {
+    val slices: Seq[PartitionSlice] =
+      if (!unlistedPartitionsTask || !splitByPartitionId || specs.contains(NoPartitionSpec)) specs
+      else specs :+ UnlistedPartitions(specs.map(_.partition_id))
+    slices.map(slice => ClickHouseInputPartition(table, slice, splitByPartitionId, nodes))
+  }
 }

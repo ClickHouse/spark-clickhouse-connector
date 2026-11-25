@@ -22,15 +22,19 @@ import com.clickhouse.spark.spec.{
   ClusterSpec,
   DistributedEngineSpec,
   MergeTreeEngineSpec,
+  NoPartitionSpec,
   NodeSpec,
+  PartitionSpec,
   ReplicaSpec,
   ShardSpec,
   TableEngineSpec,
   TableSpec
 }
+import com.clickhouse.spark.spec.UnlistedPartitions
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
   READ_DISTRIBUTED_CONVERT_LOCAL,
-  READ_DISTRIBUTED_USE_CLUSTER_NODES
+  READ_DISTRIBUTED_USE_CLUSTER_NODES,
+  READ_PARTITION_SPLIT_UNLISTED_PARTITIONS_TASK
 }
 import org.apache.spark.sql.clickhouse.ReadOptions
 import org.scalatest.funsuite.AnyFunSuite
@@ -149,6 +153,52 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
     lifetime_rows = None,
     lifetime_bytes = None
   )
+
+  test("unlisted partitions are appended to a split-by-id listing") {
+    val node = NodeSpec("127.0.0.1")
+    val listed = Seq(PartitionSpec("2021", "a", 1, 1), PartitionSpec("a'b", "a'b", 1, 1))
+    val off = ClickHouseInputPartition.plan(
+      tableSpec(),
+      listed,
+      splitByPartitionId = true,
+      unlistedPartitionsTask = false,
+      node
+    )
+    assert(off.length === 2)
+    assert(off.head.partFilterExpr === "_partition_id = 'a'")
+
+    val on =
+      ClickHouseInputPartition.plan(tableSpec(), listed, splitByPartitionId = true, unlistedPartitionsTask = true, node)
+    assert(on.length === 3)
+    assert(on.last.partition.isInstanceOf[UnlistedPartitions])
+    assert(on.last.partFilterExpr === "_partition_id NOT IN ('a', 'a''b')")
+
+    val byValue =
+      ClickHouseInputPartition.plan(
+        tableSpec(),
+        listed,
+        splitByPartitionId = false,
+        unlistedPartitionsTask = true,
+        node
+      )
+    assert(byValue.length === 2)
+
+    val whole = ClickHouseInputPartition.plan(tableSpec(), Seq(NoPartitionSpec), true, true, node)
+    assert(whole.map(_.partFilterExpr) === Seq("1=1"))
+  }
+
+  test("a whole-table scan stays one partition when unlisted coverage is on") {
+    val options = new java.util.HashMap[String, String]()
+    options.put(READ_DISTRIBUTED_CONVERT_LOCAL.key, "false")
+    options.put(READ_DISTRIBUTED_USE_CLUSTER_NODES.key, "false")
+    options.put(READ_PARTITION_SPLIT_UNLISTED_PARTITIONS_TASK.key, "true")
+    val scan = new ClickHouseBatchScan(
+      scanJob().copy(readOptions = new ReadOptions(options)),
+      UserAnalyticsFactory.createCapture()
+    )
+    assert(scan.inputPartitions.length === 1)
+    assert(scan.inputPartitions.head.partFilterExpr === "1=1")
+  }
 
   // a Distributed table scan without convertDistributedToLocal plans exactly one partition without any I/O
   private def scanJob(): ScanJobDescription = {

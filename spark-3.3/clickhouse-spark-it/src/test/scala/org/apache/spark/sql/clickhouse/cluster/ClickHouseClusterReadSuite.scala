@@ -17,6 +17,8 @@ package org.apache.spark.sql.clickhouse.cluster
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.{AnalysisException, Row}
 import org.apache.spark.sql.catalyst.TableIdentifier
+import com.clickhouse.spark.read.ClickHouseBatchScan
+import com.clickhouse.spark.spec.UnlistedPartitions
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 
 class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
@@ -150,6 +152,21 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
         case _ => false
       }
       assert(runtimeFilterExists)
+    }
+  }
+
+  test("each shard plans a task for partition ids its listing missed") {
+    withSimpleDistTable("single_replica", "db_unlisted", "t_dist", true) { (_, db, tbl_dist, _) =>
+      val df = spark.sql(s"SELECT id FROM $db.$tbl_dist")
+      checkAnswer(df, Seq(Row(1), Row(2), Row(3), Row(4)))
+      val partitions = df.queryExecution.executedPlan.collect {
+        case exec: BatchScanExec if exec.scan.isInstanceOf[ClickHouseBatchScan] =>
+          exec.scan.asInstanceOf[ClickHouseBatchScan].inputPartitions
+      }.flatten
+      val unlisted = partitions.filter(_.partition.isInstanceOf[UnlistedPartitions])
+      assert(unlisted.nonEmpty)
+      assert(unlisted.forall(_.partFilterExpr.startsWith("_partition_id NOT IN (")))
+      assert(partitions.exists(_.partFilterExpr.startsWith("_partition_id = ")))
     }
   }
 }

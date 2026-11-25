@@ -139,6 +139,15 @@ object ClickHouseSQLConf {
       .booleanConf
       .createWithDefault(true)
 
+  val READ_PARTITION_SPLIT_UNLISTED_PARTITIONS_TASK: ConfigEntry[Boolean] =
+    buildConf("spark.clickhouse.read.partitionSplit.unlistedPartitionsTask")
+      .doc("When a scan splits by `_partition_id`, also plan one task per partition listing that " +
+        "reads every `_partition_id` the listing did not return. A partition missing from " +
+        "`system.parts` is then still read. A whole-table scan is unchanged.")
+      .version("0.11.1")
+      .booleanConf
+      .createWithDefault(false)
+
   val WRITE_LOCAL_SORT_BY_PARTITION: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.write.localSortByPartition")
       .doc(s"If `true`, do local sort by partition before writing. If not set, it equals to " +

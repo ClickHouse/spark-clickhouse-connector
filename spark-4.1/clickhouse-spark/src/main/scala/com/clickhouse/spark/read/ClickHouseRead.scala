@@ -203,14 +203,14 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
       case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
         scanJob.cluster.get.shards.flatMap { shardSpec =>
           Utils.tryWithResource(NodeClient(shardSpec.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-            queryPartitionSpec(local_db, local_table).map { partitionSpec =>
-              ClickHouseInputPartition(
-                scanJob.localTableSpec.get,
-                partitionSpec,
-                scanJob.readOptions.splitByPartitionId,
-                shardSpec // TODO pickup preferred
-              )
-            }
+            // TODO pickup preferred
+            ClickHouseInputPartition.plan(
+              scanJob.localTableSpec.get,
+              queryPartitionSpec(local_db, local_table),
+              scanJob.readOptions.splitByPartitionId,
+              scanJob.readOptions.unlistedPartitionsTask,
+              shardSpec
+            )
           }
         }
       case _: DistributedEngineSpec if scanJob.readOptions.useClusterNodesForDistributed =>
@@ -227,17 +227,17 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
         ))
       case _: TableEngineSpec =>
         Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-          queryPartitionSpec(database, table).map { partitionSpec =>
-            ClickHouseInputPartition(
-              scanJob.tableSpec,
-              partitionSpec,
-              scanJob.readOptions.splitByPartitionId,
-              scanJob.node // TODO pickup preferred
-            )
-          }
+          // TODO pickup preferred
+          ClickHouseInputPartition.plan(
+            scanJob.tableSpec,
+            queryPartitionSpec(database, table),
+            scanJob.readOptions.splitByPartitionId,
+            scanJob.readOptions.unlistedPartitionsTask,
+            scanJob.node
+          )
         }.toArray
     }
-    if (partitions.length == 1) {
+    if (partitions.count(p => !p.partition.isInstanceOf[UnlistedPartitions]) == 1) {
       log.warn(s"Reading $database.$table as a single partition, which may impact read performance")
     }
     partitions

@@ -16,11 +16,18 @@ package com.clickhouse.spark.spec
 
 import com.clickhouse.spark.ToJson
 
+import java.io.Serializable
+
+sealed trait PartitionSlice extends Serializable
+
 case class PartitionSpec(
   partition_value: String,
   partition_id: String,
   row_count: Long,
   size_in_bytes: Long
-) extends ToJson
+) extends PartitionSlice with ToJson
 
 object NoPartitionSpec extends PartitionSpec("", "", 0, 0)
+
+/** Partition ids a listing did not return. The scan reads `_partition_id NOT IN (excludedIds)`. */
+case class UnlistedPartitions(excludedIds: Seq[String]) extends PartitionSlice
