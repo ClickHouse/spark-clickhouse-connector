@@ -14,7 +14,6 @@
 
 package com.clickhouse.spark.read
 
-import com.clickhouse.spark.SQLHelper
 import com.clickhouse.spark.spec.{NoPartitionSpec, NodeSpec, Nodes, PartitionSpec, TableSpec}
 import org.apache.spark.sql.connector.read.InputPartition
 import org.apache.spark.sql.connector.read.partitioning.Partitioning
@@ -29,17 +28,15 @@ case class ClickHousePartitioning(inputParts: Array[ClickHouseInputPartition]) e
 /**
  * One scan task of a ClickHouse read.
  *
- * With `filterByPartitionId` (`spark.clickhouse.read.splitByPartitionId=true`) a task does not read a single
- * listed partition id but the half-open range `[partitionIdLowerBound, partitionIdUpperBound)` of `_partition_id`
- * values; `None` leaves that side unbounded. [[ClickHouseInputPartition.plan]] builds the bounds from the sorted,
- * distinct partition ids of one `system.parts` listing, so neighbouring tasks share a bound, the first task has no
- * lower bound and the last no upper bound. Every row has exactly one `_partition_id`, so the tasks together read
- * every row exactly once, including rows of partitions created between planning and reading.
+ * With `filterByPartitionId` (`spark.clickhouse.read.splitByPartitionId=true`), [[ClickHouseInputPartition.plan]]
+ * gives each task a [[PartitionIdRange]] from [[PartitionIdRange.cover]] over the distinct partition ids of one
+ * `system.parts` listing. Every row has exactly one `_partition_id`, so the tasks together read every row exactly
+ * once, including rows of partitions the listing missed. Only a range unbounded on both sides reads the whole table;
+ * a task built without a range reads exactly its listed `partition_id`.
  *
  * `partition` is a listed partition inside the range (the first task's range also reaches below it); the
  * `splitByPartitionId=false` path still filters on `partition_key = partition_value`, so it does not cover partitions
- * created after planning. Build tasks through [[ClickHouseInputPartition.plan]]: a task constructed directly with
- * `filterByPartitionId` and no bounds reads the whole table.
+ * missing from the listing.
  */
 case class ClickHouseInputPartition(
   table: TableSpec,
@@ -47,8 +44,7 @@ case class ClickHouseInputPartition(
   filterByPartitionId: Boolean,
   candidateNodes: Nodes, // try to use them only when preferredNode unavailable
   preferredNode: Option[NodeSpec] = None, // TODO assigned by ScanBuilder in Spark Driver side
-  partitionIdLowerBound: Option[String] = None, // inclusive; None = unbounded
-  partitionIdUpperBound: Option[String] = None // exclusive; None = unbounded
+  partitionIdRange: Option[PartitionIdRange] = None
 ) extends InputPartition {
 
   override def preferredLocations(): Array[String] = preferredNode match {
@@ -59,10 +55,10 @@ case class ClickHouseInputPartition(
   def partFilterExpr: String = partition match {
     case NoPartitionSpec => "1=1"
     case _ if filterByPartitionId =>
-      val conds =
-        partitionIdLowerBound.map(id => s"_partition_id >= '${ClickHouseInputPartition.escapeSql(id)}'").toSeq ++
-          partitionIdUpperBound.map(id => s"_partition_id < '${ClickHouseInputPartition.escapeSql(id)}'")
-      if (conds.isEmpty) "1=1" else conds.mkString(" AND ")
+      partitionIdRange match {
+        case Some(range) => range.filterExpr.getOrElse("1=1")
+        case None => s"_partition_id = ${PartitionIdRange.quote(partition.partition_id)}"
+      }
     case PartitionSpec(partitionValue, _, _, _) =>
       s"${table.partition_key} = ${compilePartitionFilterValue(partitionValue)}"
   }
@@ -77,16 +73,14 @@ case class ClickHouseInputPartition(
     }
 }
 
-object ClickHouseInputPartition extends SQLHelper {
+object ClickHouseInputPartition {
 
   /**
    * Builds the scan tasks for the partitions of one table (or one shard's local table) listed from `system.parts`.
    *
-   * With `splitByPartitionId`, there is one task per distinct listed partition id, and the tasks read consecutive
-   * `_partition_id` ranges whose bounds are the neighbouring listed ids (first task unbounded below, last unbounded
-   * above), so a partition created after the listing still falls into exactly one task. Ids are ordered with
-   * `String` ordering; ClickHouse compares `String` bytewise, which agrees for ASCII, and partition ids are ASCII
-   * (decimal numbers, dates such as `202105`, hex hashes, `all`).
+   * With `splitByPartitionId`, there is one task per distinct listed partition id, each reading its
+   * [[PartitionIdRange]] from [[PartitionIdRange.cover]], so a partition missing from the listing still falls into
+   * exactly one task.
    *
    * Without `splitByPartitionId`, or when the table is listed as unpartitioned / empty ([[NoPartitionSpec]]),
    * this is one task per listed spec, as before.
@@ -102,16 +96,16 @@ object ClickHouseInputPartition extends SQLHelper {
     } else {
       // the listing is ordered by (partition, partition_id): dedupe and re-order by id
       val firstById = specs.groupBy(_.partition_id).map { case (id, ss) => id -> ss.head }
-      val ids = firstById.keys.toSeq.sorted
-      ids.indices.map { i =>
+      val ids = firstById.keys.toVector.sorted
+      // the i-th range contains the i-th id
+      ids.zip(PartitionIdRange.cover(ids)).map { case (id, range) =>
         ClickHouseInputPartition(
           table,
-          firstById(ids(i)),
+          firstById(id),
           filterByPartitionId = true,
           nodes,
           preferredNode = None,
-          partitionIdLowerBound = if (i == 0) None else Some(ids(i)),
-          partitionIdUpperBound = if (i == ids.length - 1) None else Some(ids(i + 1))
+          partitionIdRange = Some(range)
         )
       }
     }

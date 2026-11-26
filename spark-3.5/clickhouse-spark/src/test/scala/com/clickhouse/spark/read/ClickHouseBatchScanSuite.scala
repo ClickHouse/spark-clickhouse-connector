@@ -24,6 +24,7 @@ import com.clickhouse.spark.spec.{
   MergeTreeEngineSpec,
   NoPartitionSpec,
   NodeSpec,
+  PartitionIdRange,
   PartitionSpec,
   ReplicaSpec,
   ShardSpec,
@@ -65,37 +66,27 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
     ))
     assert(parts.map(_.partition.partition_id) === Seq("1", "10", "3"))
     assert(parts.forall(_.filterByPartitionId))
+    // each task reads the range that contains its listed partition
+    assert(parts.forall(p => p.partitionIdRange.exists(_.contains(p.partition.partition_id))))
   }
 
-  test("partition id ranges are open at both ends and adjacent ranges share a bound") {
-    val parts = plan(Seq("a", "b", "c", "d"))
-    assert(parts.head.partitionIdLowerBound.isEmpty)
-    assert(parts.last.partitionIdUpperBound.isEmpty)
-    parts.zip(parts.tail).foreach { case (prev, next) =>
-      assert(prev.partitionIdUpperBound.isDefined)
-      assert(prev.partitionIdUpperBound === next.partitionIdLowerBound)
-    }
-  }
-
-  test("a single listed partition id plans one unbounded task") {
+  test("a single listed partition id plans one task whose range is the whole table") {
     val parts = plan(Seq("202105"))
+    assert(parts.map(_.partitionIdRange) === Seq(Some(PartitionIdRange(None, None))))
     assert(parts.map(_.partFilterExpr) === Seq("1=1"))
-    assert(parts.head.partitionIdLowerBound.isEmpty && parts.head.partitionIdUpperBound.isEmpty)
   }
 
-  test("partition id bounds are SQL-escaped") {
-    assert(plan(Seq("a", "a'b")).map(_.partFilterExpr) === Seq("_partition_id < 'a''b'", "_partition_id >= 'a''b'"))
+  test("a task built without a range reads exactly its listed partition id") {
+    val part = ClickHouseInputPartition(tableSpec(), ps("a'b"), filterByPartitionId = true, node)
+    assert(part.partFilterExpr === "_partition_id = 'a''b'")
   }
 
-  test("partition id ranges cover every possible partition id exactly once") {
-    val listed = Seq("20", "40", "6d2c8d1f0f4f8e0e9b1b4c5d6e7f8a9b", "a1")
-    val parts = plan(listed)
-    def matches(p: ClickHouseInputPartition, id: String): Boolean =
-      p.partitionIdLowerBound.forall(id >= _) && p.partitionIdUpperBound.forall(id < _)
-    // listed ids, ids below / between / above them (partitions created after planning)
-    (Seq("", "10", "30", "zz") ++ listed).foreach { id =>
-      assert(parts.count(matches(_, id)) === 1, s"partition id '$id'")
-    }
+  test("planning many partitions stays fast") {
+    // indexing a List per task made this quadratic: billions of steps for 200k partitions
+    val ids = (0 until 200000).map(i => f"$i%08d")
+    val parts = plan(ids.reverse)
+    assert(parts.length === ids.length)
+    assert(parts(100000).partFilterExpr === "_partition_id >= '00100000' AND _partition_id < '00100001'")
   }
 
   test("without splitByPartitionId every listed spec filters on the partition key as before") {
@@ -106,7 +97,7 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
       node
     )
     assert(parts.map(_.partFilterExpr) === Seq("m = 1", "m = 2", "m = 2"))
-    assert(parts.forall(p => p.partitionIdLowerBound.isEmpty && p.partitionIdUpperBound.isEmpty))
+    assert(parts.forall(_.partitionIdRange.isEmpty))
   }
 
   test("an unpartitioned or empty table plans one task reading the whole table") {

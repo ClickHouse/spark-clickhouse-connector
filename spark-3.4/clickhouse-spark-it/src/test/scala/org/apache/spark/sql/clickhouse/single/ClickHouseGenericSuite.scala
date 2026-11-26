@@ -638,7 +638,9 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
       runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES (1, 'a'), (2, 'b'), (3, 'c')")
       checkReadAfterConcurrentInsert(db, tbl, expectedRows = 23) { planned =>
         assert(planned.length === 3)
-        assert(planned.head.partitionIdLowerBound.isEmpty && planned.last.partitionIdUpperBound.isEmpty)
+        assert(
+          planned.head.partitionIdRange.exists(_.lower.isEmpty) && planned.last.partitionIdRange.exists(_.upper.isEmpty)
+        )
         assert(planned.forall(_.filterByPartitionId))
       } {
         // String partition ids are hashes, so these land anywhere between and around the listed ones

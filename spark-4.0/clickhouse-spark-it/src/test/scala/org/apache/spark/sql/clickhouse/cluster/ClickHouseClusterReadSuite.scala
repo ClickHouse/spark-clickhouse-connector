@@ -176,7 +176,9 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
         assert(planned.length === 6)
         assert(byShard.keySet === Set(1, 2, 3, 4))
         byShard.values.foreach { tasks =>
-          assert(tasks.head.partitionIdLowerBound.isEmpty && tasks.last.partitionIdUpperBound.isEmpty)
+          assert(
+            tasks.head.partitionIdRange.exists(_.lower.isEmpty) && tasks.last.partitionIdRange.exists(_.upper.isEmpty)
+          )
         }
         assert(byShard(2).map(_.partFilterExpr) === Seq(
           "_partition_id < '5'",
