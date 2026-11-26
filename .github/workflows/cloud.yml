@@ -70,10 +70,14 @@ jobs:
       CLICKHOUSE_CLOUD_HOST: ${{ secrets.CONNECTORS_TEAM_TESTS_CLOUD_HOST }}
       CLICKHOUSE_CLOUD_PASSWORD: ${{ secrets.CONNECTORS_TEAM_TESTS_CLOUD_PASSWORD }}
       DOCKER_MIN_API_VERSION: "1.24"
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@v4
         with:
           ref: ${{ github.event_name == 'pull_request_target' && github.event.pull_request.head.sha || github.ref }}
+          allow-unsafe-pr-checkout: true
+          persist-credentials: false
       - uses: actions/setup-java@v4
         with:
           distribution: zulu
