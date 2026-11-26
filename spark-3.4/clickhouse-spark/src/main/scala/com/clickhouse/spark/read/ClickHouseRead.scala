@@ -26,7 +26,7 @@ import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
 import org.apache.spark.sql.types.{ArrayType, DataType, MapType, StructType}
 import com.clickhouse.spark._
 import com.clickhouse.spark.telemetry.{UserAnalytics, UserAnalyticsEvents, UserAnalyticsFactory}
-import com.clickhouse.spark.client.{NodeClient, NodeFailover}
+import com.clickhouse.spark.client.{NodeClient, NodeFailover, NodeHealthTracker}
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.expr.ExprRender
 import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
@@ -261,9 +261,13 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
   /** Re-read `system.clusters` so planning sees current replica membership. */
   private def refreshedCluster: ClusterSpec = {
     val cached = scanJob.cluster.get
+    val seen = scala.collection.mutable.LinkedHashSet.empty[String]
+    val candidates = (scanJob.node +: cached.shards.flatMap(_.nodes.toSeq)).filter { n =>
+      seen.add(NodeHealthTracker.key(n))
+    }
     try
-      Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-        queryClusterSpecs(scanJob.node).find(_.name == cached.name).getOrElse(cached)
+      NodeFailover.withFailover(candidates, queryTimeoutMs) { implicit nodeClient: NodeClient =>
+        queryClusterSpecs(nodeClient.nodeSpec).find(_.name == cached.name).getOrElse(cached)
       }
     catch {
       case NonFatal(e) =>
