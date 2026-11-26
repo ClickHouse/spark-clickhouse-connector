@@ -65,18 +65,11 @@ jobs:
           distribution: zulu
           java-version: ${{ matrix.java }}
           cache: gradle
-      - run: |
-          # Rerun the whole task once, so a single flaky failure does not fail the job.
-          run_tests() {
-            ./gradlew clean test --no-daemon --refresh-dependencies \
-            -Dscala_binary_version=${{ matrix.scala }} \
-            -Dspark_binary_version=${{ matrix.spark }} \
-            -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
-          }
-          if ! run_tests; then
-            echo "::warning title=Flaky tests::The first test attempt failed; retrying once"
-            run_tests
-          fi
+      - run: >-
+          ./gradlew clean test --no-daemon --refresh-dependencies
+          -Dscala_binary_version=${{ matrix.scala }}
+          -Dspark_binary_version=${{ matrix.spark }}
+          -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
       - name: Upload logs
         if: failure()
         uses: actions/upload-artifact@v4
