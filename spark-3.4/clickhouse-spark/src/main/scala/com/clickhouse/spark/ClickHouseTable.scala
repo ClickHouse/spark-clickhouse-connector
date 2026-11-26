@@ -29,7 +29,7 @@ import org.apache.spark.sql.types._
 import org.apache.spark.sql.util.CaseInsensitiveStringMap
 import org.apache.spark.unsafe.types.UTF8String
 import com.clickhouse.spark.Utils._
-import com.clickhouse.spark.client.NodeClient
+import com.clickhouse.spark.client.{NodeClient, NodeFailover}
 import com.clickhouse.spark.expr.{Expr, OrderExpr}
 import com.clickhouse.spark.func.FunctionRegistry
 import com.clickhouse.spark.read.{ClickHouseMetadataColumn, ClickHouseScanBuilder, ScanJobDescription}
@@ -305,7 +305,7 @@ case class ClickHouseTable(
     val partitionSpecs: Seq[PartitionSpec] = engineSpec match {
       case DistributedEngineSpec(_, _, local_db, local_table, _, _) =>
         cluster.get.shards.flatMap { shardSpec =>
-          Utils.tryWithResource(NodeClient(shardSpec.nodes.head, clientQueryTimeoutMs)) {
+          NodeFailover.withFailover(shardSpec.nodes.toSeq, clientQueryTimeoutMs) {
             implicit nodeClient: NodeClient =>
               queryPartitionSpec(local_db, local_table)
           }

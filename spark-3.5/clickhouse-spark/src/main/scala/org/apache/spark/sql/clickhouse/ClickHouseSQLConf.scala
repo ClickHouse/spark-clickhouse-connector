@@ -94,11 +94,12 @@ object ClickHouseSQLConf {
 
   val READ_DISTRIBUTED_USE_CLUSTER_NODES: ConfigEntry[Boolean] =
     buildConf("spark.clickhouse.read.distributed.useClusterNodes")
-      .doc("Read from all nodes of cluster when reading Distributed table.")
-      .internal
+      .doc("When reading a Distributed table with convertLocal=false, plan one Spark partition per " +
+        "shard and read the Distributed table scoped by `_shard_num`, using that shard's replicas " +
+        "as connection candidates (with failover). Ignored when " +
+        "`spark.clickhouse.read.distributed.convertLocal` is true.")
       .version("0.1.0")
       .booleanConf
-      .checkValue(_ == false, s"`spark.clickhouse.read.distributed.useClusterNodes` is not support yet.")
       .createWithDefault(false)
 
   val WRITE_DISTRIBUTED_CONVERT_LOCAL: ConfigEntry[Boolean] =

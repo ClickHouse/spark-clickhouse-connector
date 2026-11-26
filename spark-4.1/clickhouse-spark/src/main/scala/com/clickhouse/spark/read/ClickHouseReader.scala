@@ -67,7 +67,8 @@ abstract class ClickHouseReader[Record](
 
   def format: String
 
-  lazy val resp: QueryResponse = nodeClient.queryAndCheck(scanQuery, format)
+  // Fail over to another live replica of the same shard when the first pick is unreachable.
+  lazy val resp: QueryResponse = nodesClient.withFailover(_.queryAndCheck(scanQuery, format))
 
   def totalBlocksRead: Long = 0L // resp.getSummary.getStatistics.getBlocks
 

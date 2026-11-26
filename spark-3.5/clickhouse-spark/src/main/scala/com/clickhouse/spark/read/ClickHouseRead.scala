@@ -14,10 +14,10 @@
 
 package com.clickhouse.spark.read
 
-import com.clickhouse.spark.client.NodeClient
+import com.clickhouse.spark.client.{NodeClient, NodeFailover, NodeHealthTracker}
 import com.clickhouse.spark.exception.CHClientException
 import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
-import com.clickhouse.spark.spec.{DistributedEngineSpec, NoPartitionSpec, TableEngineSpec}
+import com.clickhouse.spark.spec.{ClusterSpec, DistributedEngineSpec, NoPartitionSpec, ShardSpec, TableEngineSpec}
 import com.clickhouse.spark.{BlocksReadMetric, BytesReadMetric, ClickHouseHelper, Logging, SQLHelper, Utils}
 import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, ExprUtils}
@@ -219,21 +219,22 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
   lazy val inputPartitions: Array[ClickHouseInputPartition] = {
     val partitions = scanJob.tableEngineSpec match {
       case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
-        scanJob.cluster.get.shards.flatMap { shardSpec =>
-          Utils.tryWithResource(NodeClient(shardSpec.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-            // per-shard _partition_id ranges, see ClickHouseInputPartition.plan
-            ClickHouseInputPartition.plan(
-              scanJob.localTableSpec.get,
-              queryPartitionSpec(local_db, local_table),
-              scanJob.readOptions.splitByPartitionId,
-              shardSpec // TODO pickup preferred
-            )
-          }
+        refreshedCluster.shards.flatMap { shardSpec =>
+          planLocalShardPartitions(shardSpec, local_db, local_table)
         }
       case _: DistributedEngineSpec if scanJob.readOptions.useClusterNodesForDistributed =>
-        throw CHClientException(
-          s"${READ_DISTRIBUTED_USE_CLUSTER_NODES.key} is not supported yet."
-        )
+        // One Spark partition per shard reading the Distributed table, scoped with `_shard_num`
+        // so rows are not duplicated across entry nodes.
+        refreshedCluster.shards.map { shardSpec =>
+          ClickHouseInputPartition(
+            scanJob.tableSpec,
+            NoPartitionSpec,
+            scanJob.readOptions.splitByPartitionId,
+            shardSpec,
+            partitionIdRange = None,
+            extraFilterExpr = s"`_shard_num` = ${shardSpec.num}"
+          )
+        }
       case _: DistributedEngineSpec =>
         // we can not collect all partitions from single node, thus should treat table as no partitioned table
         Array(ClickHouseInputPartition(
@@ -258,6 +259,39 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
     }
     partitions
   }
+
+  /** Re-read `system.clusters` so planning sees current replica membership. */
+  private def refreshedCluster: ClusterSpec = {
+    val cached = scanJob.cluster.get
+    val seen = scala.collection.mutable.LinkedHashSet.empty[String]
+    val candidates = (scanJob.node +: cached.shards.flatMap(_.nodes.toSeq)).filter { n =>
+      seen.add(NodeHealthTracker.key(n))
+    }
+    try
+      NodeFailover.withFailover(candidates, queryTimeoutMs) { implicit nodeClient: NodeClient =>
+        queryClusterSpecs(nodeClient.nodeSpec).find(_.name == cached.name).getOrElse(cached)
+      }
+    catch {
+      case NonFatal(e) =>
+        log.warn(s"Failed to refresh cluster ${cached.name} topology; using cached spec", e)
+        cached
+    }
+  }
+
+  private def planLocalShardPartitions(
+    shardSpec: ShardSpec,
+    local_db: String,
+    local_table: String
+  ): Array[ClickHouseInputPartition] =
+    NodeFailover.withFailover(shardSpec.nodes.toSeq, queryTimeoutMs) { implicit nodeClient: NodeClient =>
+      // per-shard _partition_id ranges, see ClickHouseInputPartition.plan
+      ClickHouseInputPartition.plan(
+        scanJob.localTableSpec.get,
+        queryPartitionSpec(local_db, local_table),
+        scanJob.readOptions.splitByPartitionId,
+        shardSpec // TODO pickup preferred
+      ).toArray
+    }
 
   override def toBatch: Batch = this
 
