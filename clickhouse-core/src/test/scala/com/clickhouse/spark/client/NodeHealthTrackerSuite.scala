@@ -14,7 +14,7 @@
 
 package com.clickhouse.spark.client
 
-import com.clickhouse.spark.exception.{CHClientException, RetryableCHException}
+import com.clickhouse.spark.exception.{CHClientException, CHServerException, RetryableCHException}
 import com.clickhouse.spark.spec.NodeSpec
 import org.scalatest.BeforeAndAfterEach
 import org.scalatest.funsuite.AnyFunSuite
@@ -50,5 +50,17 @@ class NodeHealthTrackerSuite extends AnyFunSuite with BeforeAndAfterEach {
     assert(NodeFailover.isFailoverWorthy(new ConnectException("refused")))
     assert(NodeFailover.isFailoverWorthy(new RuntimeException(new ConnectException("refused"))))
     assert(!NodeFailover.isFailoverWorthy(new IllegalArgumentException("bad arg")))
+    // Server codes like MEMORY_LIMIT_EXCEEDED arrive as CHServerException from syncInsert*; they are
+    // retryable on the write path but must not blackhole the replica via isFailoverWorthy/markDead.
+    assert(!NodeFailover.isFailoverWorthy(CHServerException(241, "oom", Some(a), None)))
+  }
+
+  test("withFailover falls back to all candidates when every replica is marked dead") {
+    NodeHealthTracker.markDead(a)
+    NodeHealthTracker.markDead(b)
+    assert(NodeHealthTracker.live(Seq(a, b)).isEmpty)
+    // Building a NodeClient does not open a connection; action should still run on a fallback candidate.
+    val host = NodeFailover.withFailover(Seq(a, b), queryTimeoutMs = 1000L)(_.nodeSpec.host)
+    assert(Set(a.host, b.host).contains(host))
   }
 }

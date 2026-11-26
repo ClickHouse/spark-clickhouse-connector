@@ -298,8 +298,7 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
           _totalWriteTime.add(writeTime)
           _totalRecordsWritten.add(currentBufferedRows)
           completed = true
-        case Left(err)
-            if writeJob.writeOptions.retryableErrorCodes.contains(err.code) || NodeFailover.isFailoverWorthy(err) =>
+        case Left(err) if NodeFailover.isFailoverWorthy(err) =>
           _failedWriteAttempts.add(1)
           if (attemptsLeft <= 0) {
             throw err match {
@@ -319,9 +318,27 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
               NodeHealthTracker.markDead(current.nodeSpec)
               clusterClient.failover(shardNum)
             case Right(single) =>
-              // Single-node path: retry the same endpoint for retryable server codes only
+              // Single-node path: retry the same endpoint
               single
           }
+        case Left(err) if writeJob.writeOptions.retryableErrorCodes.contains(err.code) =>
+          _failedWriteAttempts.add(1)
+          if (attemptsLeft <= 0) {
+            throw err match {
+              case r: RetryableCHException => r
+              case other =>
+                RetryableCHException(other.code, other.reason, Some(current.nodeSpec), Option(other.getCause))
+            }
+          }
+          attemptsLeft -= 1
+          log.warn(
+            s"Write to ${current.nodeSpec} failed (${err.code}: ${err.reason}); " +
+              s"$attemptsLeft retries left on the same node (retryable server code, not marked dead)"
+          )
+          LockSupport.parkNanos(writeJob.writeOptions.retryInterval.toNanos)
+          // Retryable server conditions (e.g. MEMORY_LIMIT_EXCEEDED) are not unreachability —
+          // keep the same sticky client; do not markDead / failover.
+          current = current
         case Left(rethrow) =>
           _failedWriteAttempts.add(1)
           throw rethrow

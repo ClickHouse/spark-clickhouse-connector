@@ -129,7 +129,9 @@ trait SparkClickHouseClusterTest extends SparkTest with ClickHouseClusterMixIn {
       if (writeData) {
 
         runClickHouseSQL(
+          // wait until every shard has its rows: an async Distributed insert can still be queued when a test reads
           s"""INSERT INTO $db.$tbl_dist (create_time, y, m, id, value)
+             | SETTINGS distributed_foreground_insert = 1
              | VALUES
              |('2021-01-01 10:10:10', 2021, 1, 1, '1'),
              |('2022-02-02 10:10:10', 2022, 2, 2, '2'),

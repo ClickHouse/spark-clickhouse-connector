@@ -64,12 +64,24 @@ object NodeFailover extends Logging {
    */
   def withFailover[R](candidates: Seq[NodeSpec], queryTimeoutMs: Long)(action: NodeClient => R): R = {
     val live = NodeHealthTracker.live(candidates)
-    if (live.isEmpty) {
+    val pool =
+      if (live.nonEmpty) live
+      else {
+        // All marked dead — fall back so a recovered node can be retried (same as ClusterClient /
+        // NodesClient). Prefer live when any remain.
+        if (candidates.nonEmpty) {
+          log.warn(
+            s"All candidates are marked dead; retrying among ${candidates.map(_.toString).mkString("[", ", ", "]")}"
+          )
+        }
+        candidates
+      }
+    if (pool.isEmpty) {
       throw CHClientException(
         s"No live ClickHouse replicas among ${candidates.map(_.toString).mkString("[", ", ", "]")}"
       )
     }
-    go(live, queryTimeoutMs, action, lastFailure = None)
+    go(pool, queryTimeoutMs, action, lastFailure = None)
   }
 
   @tailrec

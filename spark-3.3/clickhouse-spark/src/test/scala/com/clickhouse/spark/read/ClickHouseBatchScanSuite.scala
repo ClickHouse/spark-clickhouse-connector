@@ -21,7 +21,10 @@ import com.clickhouse.spark.spec.{
   ClusterSpec,
   DistributedEngineSpec,
   MergeTreeEngineSpec,
+  NoPartitionSpec,
   NodeSpec,
+  PartitionIdRange,
+  PartitionSpec,
   ReplicaSpec,
   ShardSpec,
   TableEngineSpec,
@@ -32,11 +35,13 @@ import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
   READ_DISTRIBUTED_USE_CLUSTER_NODES
 }
 import org.apache.spark.sql.clickhouse.ReadOptions
+import org.scalatest.concurrent.TimeLimits
 import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.time.SpanSugar._
 
 import java.time.{LocalDateTime, ZoneId}
 
-class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
+class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper with TimeLimits {
 
   test("planning a single input partition warns about read performance") {
     val scan = new ClickHouseBatchScan(scanJob(), UserAnalyticsFactory.createCapture())
@@ -44,6 +49,65 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
       captureWarnings(classOf[ClickHouseBatchScan].getName)(scan.inputPartitions)
     assert(partitions.length === 1)
     assert(warnings.exists(_.contains("Reading db.dist as a single partition")))
+    assert(partitions.head.partFilterExpr === "1=1")
+  }
+
+  private val node = NodeSpec("127.0.0.1")
+  private def ps(id: String): PartitionSpec = PartitionSpec(id, id, 1, 1)
+  private def plan(ids: Seq[String], split: Boolean = true): Seq[ClickHouseInputPartition] =
+    ClickHouseInputPartition.plan(tableSpec(), ids.map(ps), split, node)
+
+  test("splitByPartitionId plans _partition_id ranges between sorted distinct listed ids") {
+    // listed out of id order with a duplicate: String order puts "10" before "3"
+    val parts = plan(Seq("3", "1", "10", "1"))
+    assert(parts.map(_.partFilterExpr) === Seq(
+      "_partition_id < '10'",
+      "_partition_id >= '10' AND _partition_id < '3'",
+      "_partition_id >= '3'"
+    ))
+    assert(parts.map(_.partition.partition_id) === Seq("1", "10", "3"))
+    assert(parts.forall(_.filterByPartitionId))
+    // each task reads the range that contains its listed partition
+    assert(parts.forall(p => p.partitionIdRange.exists(_.contains(p.partition.partition_id))))
+  }
+
+  test("a single listed partition id plans one task whose range is the whole table") {
+    val parts = plan(Seq("202105"))
+    assert(parts.map(_.partitionIdRange) === Seq(Some(PartitionIdRange(None, None))))
+    assert(parts.map(_.partFilterExpr) === Seq("1=1"))
+  }
+
+  test("a task given no range reads exactly its listed partition id") {
+    val part =
+      ClickHouseInputPartition(tableSpec(), ps("a'b"), filterByPartitionId = true, node, partitionIdRange = None)
+    assert(part.partFilterExpr === "_partition_id = 'a''b'")
+  }
+
+  test("planning many partitions stays fast") {
+    // indexing a List per task made this quadratic: billions of steps for 200k partitions. Takes well under a
+    // second; the limit fails a regression once the slow planning returns, instead of only slowing the build.
+    val ids = (0 until 200000).map(i => f"$i%08d")
+    val parts = failAfter(15.seconds)(plan(ids.reverse))
+    assert(parts.length === ids.length)
+    assert(parts(100000).partFilterExpr === "_partition_id >= '00100000' AND _partition_id < '00100001'")
+  }
+
+  test("without splitByPartitionId every listed spec filters on the partition key as before") {
+    val parts = ClickHouseInputPartition.plan(
+      tableSpec().copy(partition_key = "m"),
+      Seq(ps("1"), ps("2"), ps("2")),
+      splitByPartitionId = false,
+      node
+    )
+    assert(parts.map(_.partFilterExpr) === Seq("m = 1", "m = 2", "m = 2"))
+    assert(parts.forall(_.partitionIdRange.isEmpty))
+  }
+
+  test("an unpartitioned or empty table plans one task reading the whole table") {
+    Seq(true, false).foreach { split =>
+      val parts = ClickHouseInputPartition.plan(tableSpec(), Seq(NoPartitionSpec), split, node)
+      assert(parts.map(_.partFilterExpr) === Seq("1=1"), s"splitByPartitionId=$split")
+    }
   }
 
   test("table identity ignores volatile runtime statistics") {

@@ -18,12 +18,12 @@ import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, ExprUtils}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.expressions.{Expressions, NamedReference, SortOrder => V2SortOrder, Transform}
-import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
+import org.apache.spark.sql.connector.expressions.aggregate.{Aggregation, Count, CountStar}
 import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.connector.read.partitioning.{Partitioning, UnknownPartitioning}
 import org.apache.spark.sql.sources.{AlwaysTrue, Filter}
-import org.apache.spark.sql.types.StructType
+import org.apache.spark.sql.types.{ArrayType, DataType, MapType, StructType}
 import com.clickhouse.spark._
 import com.clickhouse.spark.telemetry.{UserAnalytics, UserAnalyticsEvents, UserAnalyticsFactory}
 import com.clickhouse.spark.client.{NodeClient, NodeFailover}
@@ -32,7 +32,6 @@ import com.clickhouse.spark.expr.ExprRender
 import com.clickhouse.spark.read.format.{ClickHouseBinaryReader, ClickHouseJsonReader}
 import com.clickhouse.spark.spec._
 
-import java.time.ZoneId
 import scala.util.control.NonFatal
 
 class ClickHouseScanBuilder(
@@ -50,8 +49,6 @@ class ClickHouseScanBuilder(
     with SQLHelper
     with SQLConfHelper
     with Logging {
-
-  implicit private val tz: ZoneId = scanJob.tz
 
   private val reservedMetadataSchema: StructType = StructType(
     metadataSchema.dropWhile(field => physicalSchema.fields.map(_.name).contains(field.name))
@@ -98,7 +95,18 @@ class ClickHouseScanBuilder(
   }
 
   private var _pushedGroupByCols: Option[Array[String]] = None
+  // GROUP BY, or HAVING count() > 0 for an aggregation without one; see pushAggregation
   private var _groupByClause: Option[String] = None
+
+  /** Array, Map and Tuple columns, whose MIN/MAX cannot be made NULL on every server; see compileAggregate. */
+  private def containerColumns: Set[String] = physicalSchema.collect {
+    case f if isContainerType(f.dataType) => f.name
+  }.toSet
+
+  private def isContainerType(dataType: DataType): Boolean = dataType match {
+    case _: ArrayType | _: MapType | _: StructType => true
+    case _ => false
+  }
 
   /** Such aggregations must be declined - pushing them fails Spark's output-schema assertion. */
   private def referencesUnsupportedColumn(aggregation: Aggregation): Boolean = {
@@ -111,7 +119,16 @@ class ClickHouseScanBuilder(
   override def pushAggregation(aggregation: Aggregation): Boolean = {
     if (referencesUnsupportedColumn(aggregation)) return false
 
-    val compiledAggs = aggregation.aggregateExpressions.flatMap(compileAggregate)
+    // A task that matches nothing must not contribute ClickHouse's empty-set defaults to Spark's
+    // merge; see compileAggregate. With a GROUP BY it returns no group, and without one
+    // `HAVING count() > 0` drops its row - unless there is a COUNT, whose 0 row Spark needs.
+    val grouped = aggregation.groupByExpressions.nonEmpty
+    val counts = aggregation.aggregateExpressions.exists {
+      case _: Count | _: CountStar => true
+      case _ => false
+    }
+    val nullIfEmpty = !grouped && counts
+    val compiledAggs = aggregation.aggregateExpressions.flatMap(compileAggregate(_, nullIfEmpty, containerColumns))
     if (compiledAggs.length != aggregation.aggregateExpressions.length) return false
 
     val compiledGroupByCols = aggregation.groupByExpressions.map(_.toString)
@@ -123,7 +140,10 @@ class ClickHouseScanBuilder(
     //        WHERE 1=0
     //        GROUP BY `DEPT`, `NAME`
     val compiledSelectItems = compiledGroupByCols ++ compiledAggs
-    val groupByClause = if (compiledGroupByCols.nonEmpty) "GROUP BY " + compiledGroupByCols.mkString(", ") else ""
+    val groupByClause =
+      if (grouped) "GROUP BY " + compiledGroupByCols.mkString(", ")
+      else if (nullIfEmpty) ""
+      else "HAVING count() > 0"
     val aggQuery =
       s"""SELECT ${compiledSelectItems.mkString(", ")}
          |FROM ${quoted(scanJob.tableSpec.database)}.${quoted(scanJob.tableSpec.name)}
@@ -187,8 +207,6 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
     with ClickHouseHelper
     with SQLHelper {
 
-  implicit private val tz: ZoneId = scanJob.tz
-
   private var runtimeFilters: Array[Filter] = Array.empty
 
   val database: String = scanJob.database
@@ -211,6 +229,7 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
             NoPartitionSpec,
             scanJob.readOptions.splitByPartitionId,
             shardSpec,
+            partitionIdRange = None,
             extraFilterExpr = s"`_shard_num` = ${shardSpec.num}"
           )
         }
@@ -220,18 +239,17 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
           scanJob.tableSpec,
           NoPartitionSpec,
           scanJob.readOptions.splitByPartitionId,
-          scanJob.node
+          scanJob.node,
+          partitionIdRange = None
         ))
       case _: TableEngineSpec =>
         Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-          queryPartitionSpec(database, table).map { partitionSpec =>
-            ClickHouseInputPartition(
-              scanJob.tableSpec,
-              partitionSpec,
-              scanJob.readOptions.splitByPartitionId,
-              scanJob.node // TODO pickup preferred
-            )
-          }
+          ClickHouseInputPartition.plan(
+            scanJob.tableSpec,
+            queryPartitionSpec(database, table),
+            scanJob.readOptions.splitByPartitionId,
+            scanJob.node // TODO pickup preferred
+          )
         }.toArray
     }
     if (partitions.length == 1) {
@@ -260,14 +278,13 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
     local_table: String
   ): Array[ClickHouseInputPartition] =
     NodeFailover.withFailover(shardSpec.nodes.toSeq, queryTimeoutMs) { implicit nodeClient: NodeClient =>
-      queryPartitionSpec(local_db, local_table).map { partitionSpec =>
-        ClickHouseInputPartition(
-          scanJob.localTableSpec.get,
-          partitionSpec,
-          scanJob.readOptions.splitByPartitionId,
-          shardSpec
-        )
-      }.toArray
+      // per-shard _partition_id ranges, see ClickHouseInputPartition.plan
+      ClickHouseInputPartition.plan(
+        scanJob.localTableSpec.get,
+        queryPartitionSpec(local_db, local_table),
+        scanJob.readOptions.splitByPartitionId,
+        shardSpec // TODO pickup preferred
+      ).toArray
     }
 
   override def toBatch: Batch = this
