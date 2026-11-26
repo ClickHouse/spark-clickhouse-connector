@@ -14,6 +14,7 @@
 
 package com.clickhouse.spark.read
 
+import com.clickhouse.spark.spec.{NoPartitionSpec, NodeSpec, Nodes, PartitionSpec, TableSpec}
 import org.apache.spark.sql.connector.read.InputPartition
 import org.apache.spark.sql.connector.read.partitioning.Partitioning
 import com.clickhouse.spark.spec._
@@ -29,7 +30,9 @@ case class ClickHouseInputPartition(
   partition: PartitionSpec,
   filterByPartitionId: Boolean,
   candidateNodes: Nodes, // try to use them only when preferredNode unavailable
-  preferredNode: Option[NodeSpec] = None // TODO assigned by ScanBuilder in Spark Driver side
+  preferredNode: Option[NodeSpec] = None, // TODO assigned by ScanBuilder in Spark Driver side
+  /** Extra AND-ed predicate, e.g. `_shard_num = 1` for useClusterNodes Distributed reads. */
+  extraFilterExpr: String = "1=1"
 ) extends InputPartition {
 
   override def preferredLocations(): Array[String] = preferredNode match {
@@ -37,12 +40,15 @@ case class ClickHouseInputPartition(
     case None => candidateNodes.nodes.map(_.host)
   }
 
-  def partFilterExpr: String = partition match {
-    case NoPartitionSpec => "1=1"
-    case PartitionSpec(_, partitionId, _, _) if filterByPartitionId =>
-      s"_partition_id = '$partitionId'"
-    case PartitionSpec(partitionValue, _, _, _) =>
-      s"${table.partition_key} = ${compilePartitionFilterValue(partitionValue)}"
+  def partFilterExpr: String = {
+    val base = partition match {
+      case NoPartitionSpec => "1=1"
+      case PartitionSpec(_, partitionId, _, _) if filterByPartitionId =>
+        s"_partition_id = '$partitionId'"
+      case PartitionSpec(partitionValue, _, _, _) =>
+        s"${table.partition_key} = ${compilePartitionFilterValue(partitionValue)}"
+    }
+    if (extraFilterExpr == "1=1") base else s"($base) AND ($extraFilterExpr)"
   }
 
   // TODO improve and test

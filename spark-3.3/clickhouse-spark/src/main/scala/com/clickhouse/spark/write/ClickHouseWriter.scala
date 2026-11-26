@@ -25,7 +25,7 @@ import org.apache.spark.sql.connector.write.{DataWriter, WriterCommitMessage}
 import org.apache.spark.sql.types._
 import com.clickhouse.spark.Metrics._
 import com.clickhouse.spark._
-import com.clickhouse.spark.client.{ClusterClient, NodeClient}
+import com.clickhouse.spark.client.{ClusterClient, NodeClient, NodeFailover, NodeHealthTracker}
 import com.clickhouse.spark.client.WriteMetricsProjection.{flushes => projectedFlushes, _}
 import com.clickhouse.spark.exception._
 import com.clickhouse.spark.io.{ForwardingOutputStream, ObservableOutputStream}
@@ -33,7 +33,7 @@ import com.clickhouse.spark.spec.{DistributedEngineSpec, ShardUtils}
 
 import java.io.{ByteArrayInputStream, ByteArrayOutputStream, OutputStream}
 import java.util.concurrent.atomic.LongAdder
-import scala.util.{Failure, Success}
+import java.util.concurrent.locks.LockSupport
 
 abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     extends DataWriter[InternalRow] with Logging {
@@ -250,16 +250,15 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
     }
 
   def doFlush(shardNum: Option[Int]): Unit = {
-    val client = nodeClient(shardNum)
     val data = serialize()
     var writeTime = 0L
-    Utils.retry[Unit, RetryableCHException](
-      writeJob.writeOptions.maxRetry,
-      writeJob.writeOptions.retryInterval
-    ) {
-      var startWriteTime = System.currentTimeMillis
-      // , codec
-      client.syncInsertOutputJSONEachRow(
+    var current = nodeClient(shardNum)
+    var attemptsLeft = writeJob.writeOptions.maxRetry
+    var completed = false
+
+    while (!completed) {
+      val startWriteTime = System.currentTimeMillis
+      current.syncInsertOutputJSONEachRow(
         database,
         table,
         format,
@@ -270,33 +269,52 @@ abstract class ClickHouseWriter(writeJob: WriteJobDescription)
           writeTime = System.currentTimeMillis - startWriteTime
           _totalWriteTime.add(writeTime)
           _totalRecordsWritten.add(currentBufferedRows)
-        case Left(retryable) if writeJob.writeOptions.retryableErrorCodes.contains(retryable.code) =>
+          completed = true
+        case Left(err)
+            if writeJob.writeOptions.retryableErrorCodes.contains(err.code) || NodeFailover.isFailoverWorthy(err) =>
           _failedWriteAttempts.add(1)
-          startWriteTime = System.currentTimeMillis
-          throw RetryableCHException(retryable.code, retryable.reason, Some(client.nodeSpec))
+          if (attemptsLeft <= 0) {
+            throw err match {
+              case r: RetryableCHException => r
+              case other =>
+                RetryableCHException(other.code, other.reason, Some(current.nodeSpec), Option(other.getCause))
+            }
+          }
+          attemptsLeft -= 1
+          log.warn(
+            s"Write to ${current.nodeSpec} failed (${err.code}: ${err.reason}); " +
+              s"$attemptsLeft retries left, failover to another replica if available"
+          )
+          LockSupport.parkNanos(writeJob.writeOptions.retryInterval.toNanos)
+          current = client match {
+            case Left(clusterClient) =>
+              NodeHealthTracker.markDead(current.nodeSpec)
+              clusterClient.failover(shardNum)
+            case Right(single) =>
+              // Single-node path: retry the same endpoint for retryable server codes only
+              single
+          }
         case Left(rethrow) =>
           _failedWriteAttempts.add(1)
           throw rethrow
       }
-    } match {
-      case Success(_) =>
-        recordFlush(currentBufferedRows)
-        log.info(
-          s"""Job[${writeJob.queryId}]: batch write completed
-             |cluster: ${writeJob.cluster.map(_.name).getOrElse("none")}, shard: ${shardNum.getOrElse("none")}
-             |node: ${client.nodeSpec}
-             |        row count: $currentBufferedRows
-             |         raw size: ${Utils.bytesToString(currentBufferedRawBytes)}
-             |           format: $format
-             |compression codec: $codec
-             |  serialized size: ${Utils.bytesToString(lastSerializedBytesWritten)}
-             |   serialize time: ${lastSerializeTime}ms
-             |       write time: ${writeTime}ms
-             |""".stripMargin
-        )
-        reset()
-      case Failure(rethrow) => throw rethrow
     }
+
+    recordFlush(currentBufferedRows)
+    log.info(
+      s"""Job[${writeJob.queryId}]: batch write completed
+         |cluster: ${writeJob.cluster.map(_.name).getOrElse("none")}, shard: ${shardNum.getOrElse("none")}
+         |node: ${current.nodeSpec}
+         |        row count: $currentBufferedRows
+         |         raw size: ${Utils.bytesToString(currentBufferedRawBytes)}
+         |           format: $format
+         |compression codec: $codec
+         |  serialized size: ${Utils.bytesToString(lastSerializedBytesWritten)}
+         |   serialize time: ${lastSerializeTime}ms
+         |       write time: ${writeTime}ms
+         |""".stripMargin
+    )
+    reset()
   }
 
   override def commit(): WriterCommitMessage = {
