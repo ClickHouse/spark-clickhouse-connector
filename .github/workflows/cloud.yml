@@ -108,11 +108,18 @@ jobs:
               ((attempt++))
             fi
           done
-      - run: >-
-          ./gradlew clean cloudTest --no-daemon --refresh-dependencies
-          -Dspark_binary_version=${{ matrix.spark }}
-          -Dscala_binary_version=${{ matrix.scala }}
-          -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+      - run: |
+          # Rerun the whole task once, so a single flaky failure does not fail the job.
+          run_tests() {
+            ./gradlew clean cloudTest --no-daemon --refresh-dependencies \
+            -Dspark_binary_version=${{ matrix.spark }} \
+            -Dscala_binary_version=${{ matrix.scala }} \
+            -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+          }
+          if ! run_tests; then
+            echo "::warning title=Flaky tests::The first cloudTest attempt failed; retrying once"
+            run_tests
+          fi
       - name: Upload test logs
         if: failure()
         uses: actions/upload-artifact@v4

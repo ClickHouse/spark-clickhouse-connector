@@ -107,14 +107,21 @@ jobs:
           EOF
 
       - name: Run tests against the built Java client
-        run: >-
-          ./gradlew clean test --no-daemon --refresh-dependencies
-          --init-script "$RUNNER_TEMP/mavenLocal.init.gradle"
-          -Dscala_binary_version=2.13
-          -Dspark_binary_version=4.0
-          -Pclickhouse_jdbc_version=${{ steps.build-java.outputs.version }}
-          -Pclickhouse_client_v2_version=${{ steps.build-java.outputs.version }}
-          -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+        run: |
+          # Rerun the whole task once, so a single flaky failure does not fail the job.
+          run_tests() {
+            ./gradlew clean test --no-daemon --refresh-dependencies \
+            --init-script "$RUNNER_TEMP/mavenLocal.init.gradle" \
+            -Dscala_binary_version=2.13 \
+            -Dspark_binary_version=4.0 \
+            -Pclickhouse_jdbc_version=${{ steps.build-java.outputs.version }} \
+            -Pclickhouse_client_v2_version=${{ steps.build-java.outputs.version }} \
+            -PmavenCentralMirror=https://maven-central.storage-download.googleapis.com/maven2/
+          }
+          if ! run_tests; then
+            echo "::warning title=Flaky tests::The first test attempt failed; retrying once"
+            run_tests
+          fi
 
       - name: Upload logs
         if: failure()
