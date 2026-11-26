@@ -24,12 +24,27 @@ case class ClickHousePartitioning(inputParts: Array[ClickHouseInputPartition]) e
 
 }
 
+/**
+ * One scan task of a ClickHouse read.
+ *
+ * With `filterByPartitionId` (`spark.clickhouse.read.splitByPartitionId=true`), [[ClickHouseInputPartition.plan]]
+ * gives each task a [[PartitionIdRange]] from [[PartitionIdRange.cover]] over the distinct partition ids of one
+ * `system.parts` listing. Every row has exactly one `_partition_id`, so the tasks together read every row exactly
+ * once, including rows of partitions the listing missed. A range unbounded on both sides reads the whole table, as
+ * does a [[NoPartitionSpec]] task (unpartitioned or empty table); a task given no range (`None`, chosen explicitly:
+ * the field has no default) reads exactly its listed `partition_id`.
+ *
+ * `partition` is a listed partition inside the range (the first task's range also reaches below it); the
+ * `splitByPartitionId=false` path still filters on `partition_key = partition_value`, so it does not cover partitions
+ * missing from the listing.
+ */
 case class ClickHouseInputPartition(
   table: TableSpec,
   partition: PartitionSpec,
   filterByPartitionId: Boolean,
   candidateNodes: Nodes, // try to use them only when preferredNode unavailable
-  preferredNode: Option[NodeSpec] = None // TODO assigned by ScanBuilder in Spark Driver side
+  preferredNode: Option[NodeSpec] = None, // TODO assigned by ScanBuilder in Spark Driver side
+  partitionIdRange: Option[PartitionIdRange] // no default: None reads only the listed partition id
 ) extends InputPartition {
 
   override def preferredLocations(): Array[String] = preferredNode match {
@@ -39,8 +54,11 @@ case class ClickHouseInputPartition(
 
   def partFilterExpr: String = partition match {
     case NoPartitionSpec => "1=1"
-    case PartitionSpec(_, partitionId, _, _) if filterByPartitionId =>
-      s"_partition_id = '$partitionId'"
+    case _ if filterByPartitionId =>
+      partitionIdRange match {
+        case Some(range) => range.filterExpr.getOrElse("1=1")
+        case None => s"_partition_id = ${PartitionIdRange.quote(partition.partition_id)}"
+      }
     case PartitionSpec(partitionValue, _, _, _) =>
       s"${table.partition_key} = ${compilePartitionFilterValue(partitionValue)}"
   }
@@ -52,5 +70,41 @@ case class ClickHouseInputPartition(
       case (true, false) => s"'$partitionValue'"
       // Date type column is quoted if there are multi partition columns
       case _ => s"$partitionValue"
+    }
+}
+
+object ClickHouseInputPartition {
+
+  /**
+   * Builds the scan tasks for the partitions of one table (or one shard's local table) listed from `system.parts`.
+   *
+   * With `splitByPartitionId`, there is one task per distinct listed partition id, each reading its
+   * [[PartitionIdRange]] from [[PartitionIdRange.cover]], so a partition missing from the listing still falls into
+   * exactly one task.
+   *
+   * Without `splitByPartitionId`, or when the table is listed as unpartitioned / empty ([[NoPartitionSpec]]),
+   * this is one task per listed spec, as before.
+   */
+  def plan(
+    table: TableSpec,
+    specs: Seq[PartitionSpec],
+    splitByPartitionId: Boolean,
+    nodes: Nodes
+  ): Seq[ClickHouseInputPartition] =
+    if (!splitByPartitionId || specs.exists(_ eq NoPartitionSpec)) {
+      specs.map(ClickHouseInputPartition(table, _, splitByPartitionId, nodes, partitionIdRange = None))
+    } else {
+      // the listing is ordered by (partition, partition_id): dedupe and re-order by id
+      val firstById = specs.groupBy(_.partition_id).map { case (id, ss) => id -> ss.head }
+      PartitionIdRange.coverById(firstById.keys.toSeq).map { case (id, range) =>
+        ClickHouseInputPartition(
+          table,
+          firstById(id),
+          filterByPartitionId = true,
+          nodes,
+          preferredNode = None,
+          partitionIdRange = Some(range)
+        )
+      }
     }
 }

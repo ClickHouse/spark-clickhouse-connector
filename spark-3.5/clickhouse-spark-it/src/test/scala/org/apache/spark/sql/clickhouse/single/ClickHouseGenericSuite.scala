@@ -15,7 +15,7 @@
 package org.apache.spark.sql.clickhouse.single
 
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
-import com.clickhouse.spark.read.{ClickHouseBatchScan, ClickHouseReader}
+import com.clickhouse.spark.read.{ClickHouseBatchScan, ClickHouseInputPartition, ClickHouseReader}
 import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
@@ -566,6 +566,104 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
         runClickHouseSQL(s"DROP DATABASE IF EXISTS `$db`")
       }
+  }
+
+  /** The tasks `df` is planned into; a later `df.collect()` runs exactly these tasks. */
+  private def plannedPartitions(df: DataFrame): Seq[ClickHouseInputPartition] =
+    df.queryExecution.sparkPlan.collectFirst { case s: BatchScanExec => s.scan }
+      .getOrElse(fail(s"no ClickHouse scan in ${df.queryExecution.sparkPlan}"))
+      .asInstanceOf[ClickHouseBatchScan]
+      .inputPartitions
+      .toSeq
+
+  private def withPartitionRangeTable(dbName: String, tbl: String, ddl: String)(f: (String, String) => Unit): Unit = {
+    val db = if (useSuiteLevelDatabase) testDatabaseName else dbName
+    try {
+      if (!useSuiteLevelDatabase) runClickHouseSQL(s"CREATE DATABASE IF NOT EXISTS `$db`")
+      runClickHouseSQL(s"CREATE TABLE `$db`.`$tbl` $ddl")
+      f(db, tbl)
+    } finally
+      if (useSuiteLevelDatabase) dropTableWithRetry(db, tbl)
+      else {
+        runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
+        runClickHouseSQL(s"DROP DATABASE IF EXISTS `$db`")
+      }
+  }
+
+  /**
+   * Plans `SELECT id` over `db.tbl`, checks the planned tasks, runs `insertAfterPlanning`, then reads with the
+   * tasks planned before the insert and expects ids `1..expectedRows`, each once. Collecting the same
+   * Dataset is what makes this a race test: a new Dataset would list `system.parts` again.
+   */
+  private def checkReadAfterConcurrentInsert(db: String, tbl: String, expectedRows: Long)(
+    checkPlanned: Seq[ClickHouseInputPartition] => Unit
+  )(insertAfterPlanning: => Unit): Unit = {
+    var df: DataFrame = null
+    eventuallyOnCloud {
+      df = spark.table(s"$db.$tbl").select($"id")
+      checkPlanned(plannedPartitions(df))
+    }
+    insertAfterPlanning
+    eventuallyOnCloud {
+      // a known count, not a live one: a lagging Cloud replica must not make the check pass vacuously
+      val ids = df.collect().map(_.getLong(0)).toSeq
+      assert(ids.length === expectedRows, ids.sorted)
+      assert(ids.distinct.length === ids.length, ids.sorted)
+      assert(ids.sorted === (1L to expectedRows).toList)
+    }
+  }
+
+  test("a read planned before an insert reads Int and NULL partitions created after planning") {
+    withPartitionRangeTable(
+      "db_part_range_int",
+      "tbl_part_range_int",
+      "(id Int64, k Nullable(Int32)) ENGINE = MergeTree PARTITION BY k ORDER BY id SETTINGS allow_nullable_key = 1"
+    ) { (db, tbl) =>
+      runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES (1, 20), (2, 40)")
+      checkReadAfterConcurrentInsert(db, tbl, expectedRows = 7) { planned =>
+        assert(planned.map(_.partFilterExpr) === Seq("_partition_id < '40'", "_partition_id >= '40'"))
+      } {
+        // below, between and above the listed ids, a NULL key, and the already listed partition 20
+        runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES (3, 10), (4, 30), (5, 50), (6, NULL), (7, 20)")
+      }
+    }
+  }
+
+  test("a read planned before an insert reads String partitions created after planning") {
+    withPartitionRangeTable(
+      "db_part_range_str",
+      "tbl_part_range_str",
+      "(id Int64, s String) ENGINE = MergeTree PARTITION BY s ORDER BY id"
+    ) { (db, tbl) =>
+      runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES (1, 'a'), (2, 'b'), (3, 'c')")
+      checkReadAfterConcurrentInsert(db, tbl, expectedRows = 23) { planned =>
+        assert(planned.length === 3)
+        assert(
+          planned.head.partitionIdRange.exists(_.lower.isEmpty) && planned.last.partitionIdRange.exists(_.upper.isEmpty)
+        )
+        assert(planned.forall(_.filterByPartitionId))
+      } {
+        // String partition ids are hashes, so these land anywhere between and around the listed ones
+        val values = (Seq("o''k") ++ (1 to 19).map(i => s"v$i")).zipWithIndex
+          .map { case (s, i) => s"(${i + 4}, '$s')" }
+        runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES ${values.mkString(", ")}")
+      }
+    }
+  }
+
+  test("a read planned over a single partition reads partitions created after planning") {
+    withPartitionRangeTable(
+      "db_part_range_one",
+      "tbl_part_range_one",
+      "(id Int64, k Int32) ENGINE = MergeTree PARTITION BY k ORDER BY id"
+    ) { (db, tbl) =>
+      runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES (1, 1)")
+      checkReadAfterConcurrentInsert(db, tbl, expectedRows = 2) { planned =>
+        assert(planned.map(_.partFilterExpr) === Seq("1=1"))
+      } {
+        runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES (2, 2)")
+      }
+    }
   }
 
   /** The SQL the first ClickHouse scan task of `df` would send, as the reader builds it. */
