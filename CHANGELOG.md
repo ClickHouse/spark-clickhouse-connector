@@ -22,8 +22,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
-- Cluster node failover for distributed reads and writes ([#617](https://github.com/ClickHouse/spark-clickhouse-connector/issues/617)). When a replica is unreachable the connector marks it dead for the JVM, evicts the sticky client, and retries on another live replica of the same shard. ConvertLocal partition planning no longer depends on `nodes.head` alone, and `system.clusters` is refreshed at plan time. Applies to all Spark profiles (3.3/3.4/3.5/4.0/4.1/4.2).
-- Implement `spark.clickhouse.read.distributed.useClusterNodes` ([#617](https://github.com/ClickHouse/spark-clickhouse-connector/issues/617)). When `convertLocal=false`, plans one Spark partition per shard reading the Distributed table scoped by `_shard_num`, with per-shard replica failover. The option is no longer internal / forced to `false`.
+- Cluster node failover for distributed reads and writes ([#623](https://github.com/ClickHouse/spark-clickhouse-connector/pull/623)). When a replica is unreachable the connector marks it dead for the JVM, evicts the sticky client, and retries on another live replica of the same shard. ConvertLocal partition planning no longer depends on `nodes.head` alone, and `system.clusters` is refreshed at plan time. Applies to all Spark profiles (3.3/3.4/3.5/4.0/4.1/4.2).
+- Implement `spark.clickhouse.read.distributed.useClusterNodes` ([#623](https://github.com/ClickHouse/spark-clickhouse-connector/pull/623)). When `convertLocal=false`, plans one Spark partition per shard reading the Distributed table scoped by `_shard_num`, with per-shard replica failover. The option is no longer internal / forced to `false`.
 
 ## [0.11.0] - 2026-11-11
 
