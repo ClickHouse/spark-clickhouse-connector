@@ -21,7 +21,9 @@ import com.clickhouse.spark.spec.{
   ClusterSpec,
   DistributedEngineSpec,
   MergeTreeEngineSpec,
+  NoPartitionSpec,
   NodeSpec,
+  PartitionSpec,
   ReplicaSpec,
   ShardSpec,
   TableEngineSpec,
@@ -44,6 +46,73 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
       captureWarnings(classOf[ClickHouseBatchScan].getName)(scan.inputPartitions)
     assert(partitions.length === 1)
     assert(warnings.exists(_.contains("Reading db.dist as a single partition")))
+    assert(partitions.head.partFilterExpr === "1=1")
+  }
+
+  private val node = NodeSpec("127.0.0.1")
+  private def ps(id: String): PartitionSpec = PartitionSpec(id, id, 1, 1)
+  private def plan(ids: Seq[String], split: Boolean = true): Seq[ClickHouseInputPartition] =
+    ClickHouseInputPartition.plan(tableSpec(), ids.map(ps), split, node)
+
+  test("splitByPartitionId plans _partition_id ranges between sorted distinct listed ids") {
+    // listed out of id order with a duplicate: String order puts "10" before "3"
+    val parts = plan(Seq("3", "1", "10", "1"))
+    assert(parts.map(_.partFilterExpr) === Seq(
+      "_partition_id < '10'",
+      "_partition_id >= '10' AND _partition_id < '3'",
+      "_partition_id >= '3'"
+    ))
+    assert(parts.map(_.partition.partition_id) === Seq("1", "10", "3"))
+    assert(parts.forall(_.filterByPartitionId))
+  }
+
+  test("partition id ranges are open at both ends and adjacent ranges share a bound") {
+    val parts = plan(Seq("a", "b", "c", "d"))
+    assert(parts.head.partitionIdLowerBound.isEmpty)
+    assert(parts.last.partitionIdUpperBound.isEmpty)
+    parts.zip(parts.tail).foreach { case (prev, next) =>
+      assert(prev.partitionIdUpperBound.isDefined)
+      assert(prev.partitionIdUpperBound === next.partitionIdLowerBound)
+    }
+  }
+
+  test("a single listed partition id plans one unbounded task") {
+    val parts = plan(Seq("202105"))
+    assert(parts.map(_.partFilterExpr) === Seq("1=1"))
+    assert(parts.head.partitionIdLowerBound.isEmpty && parts.head.partitionIdUpperBound.isEmpty)
+  }
+
+  test("partition id bounds are SQL-escaped") {
+    assert(plan(Seq("a", "a'b")).map(_.partFilterExpr) === Seq("_partition_id < 'a''b'", "_partition_id >= 'a''b'"))
+  }
+
+  test("partition id ranges cover every possible partition id exactly once") {
+    val listed = Seq("20", "40", "6d2c8d1f0f4f8e0e9b1b4c5d6e7f8a9b", "a1")
+    val parts = plan(listed)
+    def matches(p: ClickHouseInputPartition, id: String): Boolean =
+      p.partitionIdLowerBound.forall(id >= _) && p.partitionIdUpperBound.forall(id < _)
+    // listed ids, ids below / between / above them (partitions created after planning)
+    (Seq("", "10", "30", "zz") ++ listed).foreach { id =>
+      assert(parts.count(matches(_, id)) === 1, s"partition id '$id'")
+    }
+  }
+
+  test("without splitByPartitionId every listed spec filters on the partition key as before") {
+    val parts = ClickHouseInputPartition.plan(
+      tableSpec().copy(partition_key = "m"),
+      Seq(ps("1"), ps("2"), ps("2")),
+      splitByPartitionId = false,
+      node
+    )
+    assert(parts.map(_.partFilterExpr) === Seq("m = 1", "m = 2", "m = 2"))
+    assert(parts.forall(p => p.partitionIdLowerBound.isEmpty && p.partitionIdUpperBound.isEmpty))
+  }
+
+  test("an unpartitioned or empty table plans one task reading the whole table") {
+    Seq(true, false).foreach { split =>
+      val parts = ClickHouseInputPartition.plan(tableSpec(), Seq(NoPartitionSpec), split, node)
+      assert(parts.map(_.partFilterExpr) === Seq("1=1"), s"splitByPartitionId=$split")
+    }
   }
 
   test("table identity ignores volatile runtime statistics") {

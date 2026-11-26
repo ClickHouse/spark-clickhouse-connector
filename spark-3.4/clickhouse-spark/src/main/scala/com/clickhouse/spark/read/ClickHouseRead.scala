@@ -224,14 +224,13 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
       case DistributedEngineSpec(_, _, local_db, local_table, _, _) if scanJob.readOptions.convertDistributedToLocal =>
         scanJob.cluster.get.shards.flatMap { shardSpec =>
           Utils.tryWithResource(NodeClient(shardSpec.nodes.head, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-            queryPartitionSpec(local_db, local_table).map { partitionSpec =>
-              ClickHouseInputPartition(
-                scanJob.localTableSpec.get,
-                partitionSpec,
-                scanJob.readOptions.splitByPartitionId,
-                shardSpec // TODO pickup preferred
-              )
-            }
+            // per-shard _partition_id ranges, see ClickHouseInputPartition.plan
+            ClickHouseInputPartition.plan(
+              scanJob.localTableSpec.get,
+              queryPartitionSpec(local_db, local_table),
+              scanJob.readOptions.splitByPartitionId,
+              shardSpec // TODO pickup preferred
+            )
           }
         }
       case _: DistributedEngineSpec if scanJob.readOptions.useClusterNodesForDistributed =>
@@ -248,14 +247,12 @@ class ClickHouseBatchScan(scanJob: ScanJobDescription, @transient private val us
         ))
       case _: TableEngineSpec =>
         Utils.tryWithResource(NodeClient(scanJob.node, queryTimeoutMs)) { implicit nodeClient: NodeClient =>
-          queryPartitionSpec(database, table).map { partitionSpec =>
-            ClickHouseInputPartition(
-              scanJob.tableSpec,
-              partitionSpec,
-              scanJob.readOptions.splitByPartitionId,
-              scanJob.node // TODO pickup preferred
-            )
-          }
+          ClickHouseInputPartition.plan(
+            scanJob.tableSpec,
+            queryPartitionSpec(database, table),
+            scanJob.readOptions.splitByPartitionId,
+            scanJob.node // TODO pickup preferred
+          )
         }.toArray
     }
     if (partitions.length == 1) {

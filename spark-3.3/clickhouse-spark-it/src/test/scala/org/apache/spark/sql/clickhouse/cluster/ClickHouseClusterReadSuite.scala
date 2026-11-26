@@ -14,6 +14,8 @@
 
 package org.apache.spark.sql.clickhouse.cluster
 
+import com.clickhouse.spark.read.ClickHouseBatchScan
+import com.clickhouse.spark.spec.ShardSpec
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.READ_DISTRIBUTED_CONVERT_LOCAL
 import org.apache.spark.sql.{AnalysisException, Row}
 import org.apache.spark.sql.catalyst.TableIdentifier
@@ -150,6 +152,43 @@ class ClickHouseClusterReadSuite extends SparkClickHouseClusterTest {
         case _ => false
       }
       assert(runtimeFilterExists)
+    }
+  }
+
+  test("convertLocal read plans per-shard partition id ranges and reads partitions created after planning") {
+    withSimpleDistTable("single_replica", "db_part_range", "t_dist", true) { (_, db, tbl_dist, _) =>
+      def insert(rows: String): Unit = runClickHouseSQL(
+        s"INSERT INTO $db.$tbl_dist (create_time, y, m, id, value) SETTINGS distributed_foreground_insert = 1 " +
+          s"VALUES $rows"
+      )
+      // y=2021 is routed to shard 2 (see the metadata column test), which already holds m=1
+      insert("('2021-05-05 00:00:00', 2021, 5, 5, '5'), ('2021-06-06 00:00:00', 2021, 6, 6, '6')")
+
+      withSQLConf(READ_DISTRIBUTED_CONVERT_LOCAL.key -> "true") {
+        val df = spark.sql(s"SELECT id FROM $db.$tbl_dist")
+        val planned = df.queryExecution.sparkPlan.collectFirst { case s: BatchScanExec => s.scan }
+          .getOrElse(fail(s"no ClickHouse scan in ${df.queryExecution.sparkPlan}"))
+          .asInstanceOf[ClickHouseBatchScan]
+          .inputPartitions
+          .toSeq
+        val byShard = planned.groupBy(_.candidateNodes.asInstanceOf[ShardSpec].num)
+        assert(planned.length === 6)
+        assert(byShard.keySet === Set(1, 2, 3, 4))
+        byShard.values.foreach { tasks =>
+          assert(tasks.head.partitionIdLowerBound.isEmpty && tasks.last.partitionIdUpperBound.isEmpty)
+        }
+        assert(byShard(2).map(_.partFilterExpr) === Seq(
+          "_partition_id < '5'",
+          "_partition_id >= '5' AND _partition_id < '6'",
+          "_partition_id >= '6'"
+        ))
+        Seq(1, 3, 4).foreach(shard => assert(byShard(shard).map(_.partFilterExpr) === Seq("1=1")))
+
+        // after planning: a new partition between listed ids on shard 2, and one on single-partition shard 3
+        insert("('2021-03-03 00:00:00', 2021, 3, 7, '7'), ('2022-07-07 00:00:00', 2022, 7, 8, '8')")
+        // collect the same Dataset: a new one would list system.parts again
+        assert(df.collect().map(_.getLong(0)).sorted.toSeq === (1L to 8L).toList)
+      }
     }
   }
 }
