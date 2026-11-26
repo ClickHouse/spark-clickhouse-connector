@@ -16,23 +16,39 @@ package org.apache.spark.sql.clickhouse
 
 import com.clickhouse.spark.SQLHelper
 import org.apache.spark.sql.connector.expressions.FieldReference
-import org.apache.spark.sql.connector.expressions.aggregate.{Max, Min}
+import org.apache.spark.sql.connector.expressions.aggregate.{Count, Max, Min, Sum}
 import org.scalatest.funsuite.AnyFunSuite
 
 class SQLHelperSuite extends AnyFunSuite with SQLHelper {
 
-  test("compileAggregate pushes MIN and MAX as -OrNull") {
-    assert(compileAggregate(new Min(FieldReference("id"))) === Some("minOrNull(`id`)"))
-    assert(compileAggregate(new Max(FieldReference("id"))) === Some("maxOrNull(`id`)"))
+  test("compileAggregate keeps the plain form when an empty task returns no row") {
+    assert(compileAggregate(new Min(FieldReference("id"))) === Some("MIN(`id`)"))
+    assert(compileAggregate(new Max(FieldReference("id"))) === Some("MAX(`id`)"))
+    assert(compileAggregate(new Sum(FieldReference("id"), false)) === Some("SUM(`id`)"))
+    assert(compileAggregate(new Min(FieldReference("tags")), containerColumns = Set("tags")) === Some("MIN(`tags`)"))
   }
 
-  test("compileAggregate keeps MIN and MAX plain for a container column") {
-    // `-OrNull` returns Nullable(T), and ClickHouse cannot nest Array, Map or Tuple in Nullable
-    // before 26.3: pushing it there fails and the whole column is read into Spark instead
+  test("compileAggregate makes MIN, MAX and SUM NULL when an empty task still returns a row") {
+    // not minOrNull/maxOrNull: those do not match _minmax_count_projection, so MIN of a key
+    // column would read the whole column instead of the part metadata
+    assert(
+      compileAggregate(new Min(FieldReference("id")), nullIfEmpty = true) === Some("if(count() = 0, NULL, MIN(`id`))")
+    )
+    assert(
+      compileAggregate(new Max(FieldReference("id")), nullIfEmpty = true) === Some("if(count() = 0, NULL, MAX(`id`))")
+    )
+    assert(compileAggregate(new Sum(FieldReference("id"), false), nullIfEmpty = true) === Some("sumOrNull(`id`)"))
+    assert(compileAggregate(new Count(FieldReference("id"), false), nullIfEmpty = true) === Some("COUNT(`id`)"))
+  }
+
+  test("compileAggregate does not push MIN or MAX of a container column that would need a NULL form") {
+    // ClickHouse cannot make a container Nullable before 26.3
     val containers = Set("tags")
-    assert(compileAggregate(new Min(FieldReference("tags")), containers) === Some("min(`tags`)"))
-    assert(compileAggregate(new Max(FieldReference("tags")), containers) === Some("max(`tags`)"))
-    // a scalar column named in the same aggregation is unaffected
-    assert(compileAggregate(new Min(FieldReference("id")), containers) === Some("minOrNull(`id`)"))
+    assert(compileAggregate(new Min(FieldReference("tags")), nullIfEmpty = true, containers) === None)
+    assert(compileAggregate(new Max(FieldReference("tags")), nullIfEmpty = true, containers) === None)
+    assert(
+      compileAggregate(new Min(FieldReference("id")), nullIfEmpty = true, containers) ===
+        Some("if(count() = 0, NULL, MIN(`id`))")
+    )
   }
 }

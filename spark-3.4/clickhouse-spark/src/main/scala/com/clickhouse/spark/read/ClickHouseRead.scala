@@ -18,7 +18,7 @@ import org.apache.spark.sql.catalyst.{InternalRow, SQLConfHelper}
 import org.apache.spark.sql.clickhouse.{ClickHouseUnsupportedType, ExprUtils}
 import org.apache.spark.sql.clickhouse.ClickHouseSQLConf._
 import org.apache.spark.sql.connector.expressions.{Expressions, NamedReference, SortOrder => V2SortOrder, Transform}
-import org.apache.spark.sql.connector.expressions.aggregate.Aggregation
+import org.apache.spark.sql.connector.expressions.aggregate.{Aggregation, Count, CountStar}
 import org.apache.spark.sql.connector.metric.CustomMetric
 import org.apache.spark.sql.connector.read._
 import org.apache.spark.sql.connector.read.partitioning.{Partitioning, UnknownPartitioning}
@@ -98,28 +98,16 @@ class ClickHouseScanBuilder(
   }
 
   private var _pushedGroupByCols: Option[Array[String]] = None
+  // GROUP BY, or HAVING count() > 0 for an aggregation without one; see pushAggregation
   private var _groupByClause: Option[String] = None
 
-  /**
-   * Columns whose MIN/MAX keeps the plain form, because `-OrNull` cannot be applied to them before
-   * ClickHouse 26.3 and pushing it there fails outright.
-   *
-   * Only Array and Map. `-OrNull` never wraps those even on a new server — `minOrNull` of an empty
-   * Array is `[]`, exactly as `min` is — so the plain form gives up nothing. Tuple is deliberately
-   * absent: from 26.3 ClickHouse does wrap it, `Nullable(Tuple(...))`, and `-OrNull` is what makes
-   * an empty match NULL rather than a tuple of defaults, so exempting it would give that up on
-   * every version this project tests. Below 26.3 its pushdown is declined instead, as it was
-   * before this branch.
-   *
-   * SUM needs no exemption: it rejects all of these in either form, so the probe declines it
-   * regardless.
-   */
-  private def plainMinMaxColumns: Set[String] = physicalSchema.collect {
+  /** Array, Map and Tuple columns, whose MIN/MAX cannot be made NULL on every server; see compileAggregate. */
+  private def containerColumns: Set[String] = physicalSchema.collect {
     case f if isContainerType(f.dataType) => f.name
   }.toSet
 
   private def isContainerType(dataType: DataType): Boolean = dataType match {
-    case _: ArrayType | _: MapType => true
+    case _: ArrayType | _: MapType | _: StructType => true
     case _ => false
   }
 
@@ -134,7 +122,16 @@ class ClickHouseScanBuilder(
   override def pushAggregation(aggregation: Aggregation): Boolean = {
     if (referencesUnsupportedColumn(aggregation)) return false
 
-    val compiledAggs = aggregation.aggregateExpressions.flatMap(compileAggregate(_, plainMinMaxColumns))
+    // A task that matches nothing must not contribute ClickHouse's empty-set defaults to Spark's
+    // merge; see compileAggregate. With a GROUP BY it returns no group, and without one
+    // `HAVING count() > 0` drops its row - unless there is a COUNT, whose 0 row Spark needs.
+    val grouped = aggregation.groupByExpressions.nonEmpty
+    val counts = aggregation.aggregateExpressions.exists {
+      case _: Count | _: CountStar => true
+      case _ => false
+    }
+    val nullIfEmpty = !grouped && counts
+    val compiledAggs = aggregation.aggregateExpressions.flatMap(compileAggregate(_, nullIfEmpty, containerColumns))
     if (compiledAggs.length != aggregation.aggregateExpressions.length) return false
 
     val compiledGroupByCols = aggregation.groupByExpressions.map(_.toString)
@@ -146,7 +143,10 @@ class ClickHouseScanBuilder(
     //        WHERE 1=0
     //        GROUP BY `DEPT`, `NAME`
     val compiledSelectItems = compiledGroupByCols ++ compiledAggs
-    val groupByClause = if (compiledGroupByCols.nonEmpty) "GROUP BY " + compiledGroupByCols.mkString(", ") else ""
+    val groupByClause =
+      if (grouped) "GROUP BY " + compiledGroupByCols.mkString(", ")
+      else if (nullIfEmpty) ""
+      else "HAVING count() > 0"
     val aggQuery =
       s"""SELECT ${compiledSelectItems.mkString(", ")}
          |FROM ${quoted(scanJob.tableSpec.database)}.${quoted(scanJob.tableSpec.name)}
