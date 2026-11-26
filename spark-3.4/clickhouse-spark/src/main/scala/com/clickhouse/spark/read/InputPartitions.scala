@@ -30,8 +30,9 @@ case class ClickHousePartitioning(inputParts: Array[ClickHouseInputPartition]) e
  * With `filterByPartitionId` (`spark.clickhouse.read.splitByPartitionId=true`), [[ClickHouseInputPartition.plan]]
  * gives each task a [[PartitionIdRange]] from [[PartitionIdRange.cover]] over the distinct partition ids of one
  * `system.parts` listing. Every row has exactly one `_partition_id`, so the tasks together read every row exactly
- * once, including rows of partitions the listing missed. Only a range unbounded on both sides reads the whole table;
- * a task built without a range reads exactly its listed `partition_id`.
+ * once, including rows of partitions the listing missed. A range unbounded on both sides reads the whole table, as
+ * does a [[NoPartitionSpec]] task (unpartitioned or empty table); a task given no range (`None`, chosen explicitly:
+ * the field has no default) reads exactly its listed `partition_id`.
  *
  * `partition` is a listed partition inside the range (the first task's range also reaches below it); the
  * `splitByPartitionId=false` path still filters on `partition_key = partition_value`, so it does not cover partitions
@@ -43,7 +44,7 @@ case class ClickHouseInputPartition(
   filterByPartitionId: Boolean,
   candidateNodes: Nodes, // try to use them only when preferredNode unavailable
   preferredNode: Option[NodeSpec] = None, // TODO assigned by ScanBuilder in Spark Driver side
-  partitionIdRange: Option[PartitionIdRange] = None
+  partitionIdRange: Option[PartitionIdRange] // no default: None reads only the listed partition id
 ) extends InputPartition {
 
   override def preferredLocations(): Array[String] = preferredNode match {
@@ -91,13 +92,11 @@ object ClickHouseInputPartition {
     nodes: Nodes
   ): Seq[ClickHouseInputPartition] =
     if (!splitByPartitionId || specs.exists(_ eq NoPartitionSpec)) {
-      specs.map(ClickHouseInputPartition(table, _, splitByPartitionId, nodes))
+      specs.map(ClickHouseInputPartition(table, _, splitByPartitionId, nodes, partitionIdRange = None))
     } else {
       // the listing is ordered by (partition, partition_id): dedupe and re-order by id
       val firstById = specs.groupBy(_.partition_id).map { case (id, ss) => id -> ss.head }
-      val ids = firstById.keys.toVector.sorted
-      // the i-th range contains the i-th id
-      ids.zip(PartitionIdRange.cover(ids)).map { case (id, range) =>
+      PartitionIdRange.coverById(firstById.keys.toSeq).map { case (id, range) =>
         ClickHouseInputPartition(
           table,
           firstById(id),

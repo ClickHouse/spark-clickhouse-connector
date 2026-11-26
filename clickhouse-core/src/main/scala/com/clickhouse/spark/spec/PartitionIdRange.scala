@@ -41,12 +41,15 @@ object PartitionIdRange {
    * possible id - listed or not, such as a partition created after the listing - is in exactly one range, and the
    * i-th range contains the i-th id. No ids give one range covering everything. Linear after the sort.
    */
-  def cover(ids: Seq[String]): Seq[PartitionIdRange] = {
+  def cover(ids: Seq[String]): Seq[PartitionIdRange] =
+    if (ids.isEmpty) Vector(PartitionIdRange(None, None)) else coverById(ids).map(_._2)
+
+  /** [[cover]], with each distinct id, in sorted order, beside the range that contains it. Empty for no ids. */
+  def coverById(ids: Seq[String]): Seq[(String, PartitionIdRange)] = {
     val sorted = ids.distinct.sorted.toVector
-    if (sorted.isEmpty) Vector(PartitionIdRange(None, None))
-    else {
-      val inner = sorted.tail.map(Some(_))
-      (None +: inner).zip(inner :+ None).map { case (lower, upper) => PartitionIdRange(lower, upper) }
+    val inner = sorted.drop(1).map(Some(_))
+    sorted.zip((None +: inner).zip(inner :+ None)).map { case (id, (lower, upper)) =>
+      id -> PartitionIdRange(lower, upper)
     }
   }
 

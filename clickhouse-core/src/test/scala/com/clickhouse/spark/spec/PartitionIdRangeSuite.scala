@@ -43,6 +43,14 @@ class PartitionIdRangeSuite extends AnyFunSuite {
     ids.sorted.zip(ranges).foreach { case (id, range) => assert(range.contains(id), id) }
   }
 
+  test("coverById pairs each distinct sorted id with the range that contains it") {
+    val pairs = PartitionIdRange.coverById(Seq("3", "1", "10", "1"))
+    assert(pairs.map(_._1) === Seq("1", "10", "3"))
+    assert(pairs.map(_._2) === PartitionIdRange.cover(Seq("3", "1", "10", "1")))
+    assert(pairs.forall { case (id, range) => range.contains(id) })
+    assert(PartitionIdRange.coverById(Seq.empty).isEmpty)
+  }
+
   test("cover puts every possible id in exactly one range") {
     val listed = Seq("20", "40", "6d2c8d1f0f4f8e0e9b1b4c5d6e7f8a9b", "a1")
     val ranges = PartitionIdRange.cover(listed)
@@ -72,8 +80,7 @@ class PartitionIdRangeSuite extends AnyFunSuite {
       Seq(Some("_partition_id < 'a''b'"), Some("_partition_id >= 'a''b'")))
   }
 
-  test("cover is linear in the number of ids") {
-    // a quadratic walk over a List would take billions of steps here
+  test("cover handles many ids") {
     val ids = (0 until 200000).map(i => f"$i%08d")
     val ranges = PartitionIdRange.cover(ids)
     assert(ranges.length === ids.length)

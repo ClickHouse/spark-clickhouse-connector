@@ -35,11 +35,13 @@ import org.apache.spark.sql.clickhouse.ClickHouseSQLConf.{
   READ_DISTRIBUTED_USE_CLUSTER_NODES
 }
 import org.apache.spark.sql.clickhouse.ReadOptions
+import org.scalatest.concurrent.TimeLimits
 import org.scalatest.funsuite.AnyFunSuite
+import org.scalatest.time.SpanSugar._
 
 import java.time.{LocalDateTime, ZoneId}
 
-class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
+class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper with TimeLimits {
 
   test("planning a single input partition warns about read performance") {
     val scan = new ClickHouseBatchScan(scanJob(), UserAnalyticsFactory.createCapture())
@@ -75,15 +77,17 @@ class ClickHouseBatchScanSuite extends AnyFunSuite with Log4j2CaptureHelper {
     assert(parts.map(_.partFilterExpr) === Seq("1=1"))
   }
 
-  test("a task built without a range reads exactly its listed partition id") {
-    val part = ClickHouseInputPartition(tableSpec(), ps("a'b"), filterByPartitionId = true, node)
+  test("a task given no range reads exactly its listed partition id") {
+    val part =
+      ClickHouseInputPartition(tableSpec(), ps("a'b"), filterByPartitionId = true, node, partitionIdRange = None)
     assert(part.partFilterExpr === "_partition_id = 'a''b'")
   }
 
   test("planning many partitions stays fast") {
-    // indexing a List per task made this quadratic: billions of steps for 200k partitions
+    // indexing a List per task made this quadratic: billions of steps for 200k partitions. Takes well under a
+    // second; the limit fails a regression once the slow planning returns, instead of only slowing the build.
     val ids = (0 until 200000).map(i => f"$i%08d")
-    val parts = plan(ids.reverse)
+    val parts = failAfter(15.seconds)(plan(ids.reverse))
     assert(parts.length === ids.length)
     assert(parts(100000).partFilterExpr === "_partition_id >= '00100000' AND _partition_id < '00100001'")
   }
