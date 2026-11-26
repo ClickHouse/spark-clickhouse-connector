@@ -15,7 +15,8 @@
 package org.apache.spark.sql.clickhouse.single
 
 import com.clickhouse.spark.base.{ClickHouseCloudMixIn, ClickHouseSingleMixIn}
-import org.apache.spark.sql.Row
+import com.clickhouse.spark.read.{ClickHouseBatchScan, ClickHouseReader}
+import org.apache.spark.sql.{DataFrame, Row}
 import org.apache.spark.sql.catalyst.TableIdentifier
 import org.apache.spark.sql.execution.datasources.v2.BatchScanExec
 import org.apache.spark.sql.types._
@@ -565,6 +566,118 @@ abstract class ClickHouseGenericSuite extends SparkClickHouseSingleTest {
         runClickHouseSQL(s"DROP TABLE IF EXISTS `$db`.`$tbl`")
         runClickHouseSQL(s"DROP DATABASE IF EXISTS `$db`")
       }
+  }
+
+  /** The SQL the first ClickHouse scan task of `df` would send, as the reader builds it. */
+  private def scanQuery(df: DataFrame): String = {
+    val scan = df.queryExecution.sparkPlan.collectFirst { case s: BatchScanExec => s.scan }
+      .getOrElse(fail(s"no ClickHouse scan in ${df.queryExecution.sparkPlan}"))
+      .asInstanceOf[ClickHouseBatchScan]
+    val reader = scan.createReader(scan.planInputPartitions.head).asInstanceOf[ClickHouseReader[_]]
+    try reader.scanQuery
+    finally reader.close()
+  }
+
+  test("a pushed-down aggregate over no matching rows is not the empty-set value") {
+    // a task matching nothing returns min()=0 for a non-nullable column, which Spark folds in
+    withSimpleTable("db_agg_empty", "tbl_agg", writeData = true) { (db, tbl) =>
+      val min = spark.sql(s"SELECT MIN(id) FROM $db.$tbl WHERE id > 999")
+      checkAnswer(min, Seq(Row(null)))
+      // the plain form is pushed, and HAVING drops the empty task's row
+      val minQuery = scanQuery(min)
+      assert(minQuery.contains("SELECT MIN(`id`)") && minQuery.contains("HAVING count() > 0"), minQuery)
+      checkAnswer(spark.sql(s"SELECT COUNT(*) FROM $db.$tbl WHERE id > 999"), Seq(Row(0L)))
+    }
+  }
+
+  test("a pushed-down aggregate over an empty table keeps SQL semantics") {
+    withSimpleTable("db_agg_empty", "tbl_none", writeData = false) { (db, tbl) =>
+      // COUNT of no rows is 0, but MIN and SUM of no rows are NULL, as in Spark without pushdown
+      checkAnswer(spark.sql(s"SELECT COUNT(*) FROM $db.$tbl"), Seq(Row(0L)))
+      checkAnswer(spark.sql(s"SELECT MIN(id) FROM $db.$tbl"), Seq(Row(null)))
+      checkAnswer(spark.sql(s"SELECT SUM(id) FROM $db.$tbl"), Seq(Row(null)))
+    }
+  }
+
+  test("a pushed-down GROUP BY aggregate is unaffected") {
+    withSimpleTable("db_agg_empty", "tbl_grp", writeData = true) { (db, tbl) =>
+      checkAnswer(spark.sql(s"SELECT m, COUNT(*) FROM $db.$tbl GROUP BY m ORDER BY m"), Seq(Row(1, 1L), Row(2, 1L)))
+    }
+  }
+
+  test("a pushed-down aggregate keeps a legitimately zero result") {
+    // the NULL form only changes the empty-set answer, so a genuine 0 is returned as 0
+    withSimpleTable("db_agg_zero", "tbl_zero", writeData = false) { (db, tbl) =>
+      spark.createDataFrame(Seq(
+        (0L, "zero", java.sql.Timestamp.valueOf("2021-01-01 10:10:10"), 1),
+        (5L, "five", java.sql.Timestamp.valueOf("2021-01-01 10:10:10"), 2)
+      )).toDF("id", "value", "create_time", "m").writeTo(s"$db.$tbl").append()
+      checkAnswer(spark.sql(s"SELECT MIN(id) FROM $db.$tbl"), Seq(Row(0L)))
+      checkAnswer(spark.sql(s"SELECT SUM(id) FROM $db.$tbl WHERE id = 0"), Seq(Row(0L)))
+    }
+  }
+
+  test("a pushed-down aggregate over no matching rows survives a filter") {
+    // collect() reads NULL in a non-nullable slot as 0 and cannot see this corruption; a filter can
+    withSimpleTable("db_agg_filter", "tbl_filter", writeData = true) { (db, tbl) =>
+      val counted = spark.sql(s"SELECT COUNT(*) AS c FROM $db.$tbl WHERE id > 999")
+      assert(counted.filter("c = 0").count() === 1L)
+      assert(!counted.collect().head.isNullAt(0))
+
+      // COUNT and MIN need different empty-set answers out of the same task
+      val countMin = spark.sql(s"SELECT COUNT(*), MIN(id) FROM $db.$tbl WHERE id > 999")
+      checkAnswer(countMin, Seq(Row(0L, null)))
+      // the empty task keeps its row for COUNT, so MIN is pushed in its NULL-if-empty form
+      val countMinQuery = scanQuery(countMin)
+      assert(countMinQuery.contains("COUNT(*), if(count() = 0, NULL, MIN(`id`))"), countMinQuery)
+      assert(!countMinQuery.contains("HAVING"), countMinQuery)
+    }
+  }
+
+  test("MIN and MAX of an Array or Tuple column ignore a task that matches no rows") {
+    // the plain form returns [] or a tuple of defaults over no rows, and Spark folds that in
+    val schema = StructType(
+      StructField("id", LongType, nullable = false) ::
+        StructField("m", IntegerType, nullable = false) ::
+        StructField("tags", ArrayType(LongType, containsNull = false), nullable = false) ::
+        StructField(
+          "pair",
+          StructType(
+            StructField("a", IntegerType, nullable = false) :: StructField("b", StringType, nullable = false) :: Nil
+          ),
+          nullable = false
+        ) :: Nil
+    )
+    // the columns the ClickHouse scan returns: compiled aggregates when the aggregation was pushed
+    def scannedColumns(df: org.apache.spark.sql.DataFrame): Seq[String] =
+      df.queryExecution.sparkPlan.collect { case scan: BatchScanExec =>
+        scan.scan.readSchema().fieldNames.toSeq
+      }.flatten
+    withTable("db_agg_container", "tbl_agg_container", schema, partKeys = Seq("m")) { (db, tbl) =>
+      runClickHouseSQL(s"INSERT INTO `$db`.`$tbl` VALUES (1, 1, [3, 4], (5, 'x')), (2, 2, [1, 2], (1, 'y'))")
+      val minMax = "MIN(tags), MAX(tags), MIN(pair), MAX(pair)"
+      // pushed with HAVING count() > 0, so the empty task returns no row instead of the defaults
+      for (filter <- Seq("m = 1", "id = 1")) {
+        val df = spark.sql(s"SELECT $minMax FROM `$db`.`$tbl` WHERE $filter")
+        checkAnswer(df, Seq(Row(Seq(3L, 4L), Seq(3L, 4L), Row(5, "x"), Row(5, "x"))))
+        assert(scannedColumns(df).containsSlice(Seq("MIN(`tags`)", "MAX(`tags`)", "MIN(`pair`)", "MAX(`pair`)")))
+        assert(scanQuery(df).contains("HAVING count() > 0"), scanQuery(df))
+      }
+      // every task is empty, so Spark merges no rows at all
+      checkAnswer(spark.sql(s"SELECT $minMax FROM `$db`.`$tbl` WHERE id > 999"), Seq(Row(null, null, null, null)))
+
+      // a COUNT needs the empty task's 0 row, and a container has no NULL form, so it is not pushed
+      val counted = spark.sql(s"SELECT COUNT(*), MIN(tags), MAX(pair) FROM `$db`.`$tbl` WHERE id = 1")
+      checkAnswer(counted, Seq(Row(1L, Seq(3L, 4L), Row(5, "x"))))
+      val scanned = scannedColumns(counted)
+      assert(scanned.contains("tags"), s"expected the bare column to be scanned, got $scanned")
+      assert(!scanned.exists(_.contains("(")), s"pushed with no correct empty-set form: $scanned")
+
+      // with GROUP BY no group is empty, so the plain form is pushed and is exact
+      val grouped = spark.sql(s"SELECT m, MIN(tags), MAX(pair) FROM `$db`.`$tbl` GROUP BY m")
+      checkAnswer(grouped, Seq(Row(1, Seq(3L, 4L), Row(5, "x")), Row(2, Seq(1L, 2L), Row(1, "y"))))
+      assert(scannedColumns(grouped).containsSlice(Seq("MIN(`tags`)", "MAX(`pair`)")))
+    }
   }
 
   test("cache table") {

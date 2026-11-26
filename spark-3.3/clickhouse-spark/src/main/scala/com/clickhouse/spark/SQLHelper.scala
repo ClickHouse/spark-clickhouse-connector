@@ -73,16 +73,39 @@ trait SQLHelper {
     case _ => null
   })
 
-  def compileAggregate(aggFunction: AggregateFunc): Option[String] =
+  /**
+   * ClickHouse answers an aggregate over no rows with the column's default rather than NULL (`0`,
+   * `[]`, a tuple of defaults), and Spark folds a task's partial result into the final value, so a
+   * task that matches nothing must not contribute one. The caller arranges that an empty task
+   * returns no row at all wherever it can - a GROUP BY returns only the groups that have rows, and
+   * without one the query gets `HAVING count() > 0` - and the plain aggregates are then exact and
+   * keep their types. That is not possible with a `COUNT`, whose correct empty-set value is a 0
+   * row that Spark needs, so there [[nullIfEmpty]] makes the other aggregates NULL in that row.
+   *
+   * @param nullIfEmpty
+   *   whether an empty task still returns a row. `MIN`/`MAX` are then sent as `if(count() = 0,
+   *   NULL, min(col))`, which, unlike `minOrNull`, can still be answered from
+   *   `_minmax_count_projection`, and `SUM` as `sumOrNull`. `COUNT` keeps its plain form: Spark
+   *   merges it with a `Sum` whose output attribute is non-nullable, so a NULL there corrupts it.
+   * @param containerColumns
+   *   Array, Map and Tuple columns, whose `MIN`/`MAX` is not pushed when `nullIfEmpty`: ClickHouse
+   *   cannot make a container Nullable before 26.3, and for Array and Map the NULL form is a
+   *   `Variant` after it.
+   */
+  def compileAggregate(
+    aggFunction: AggregateFunc,
+    nullIfEmpty: Boolean = false,
+    containerColumns: Set[String] = Set.empty
+  ): Option[String] =
     aggFunction match {
       case min: Min if min.column.isInstanceOf[NamedReference] =>
         val col = min.column.asInstanceOf[NamedReference]
         if (col.fieldNames().length != 1) return None
-        Some(s"MIN(${quoted(col.fieldNames.head)})")
+        compileMinMax("MIN", col.fieldNames.head, nullIfEmpty, containerColumns)
       case max: Max if max.column.isInstanceOf[NamedReference] =>
         val col = max.column.asInstanceOf[NamedReference]
         if (col.fieldNames.length != 1) return None
-        Some(s"MAX(${quoted(col.fieldNames.head)})")
+        compileMinMax("MAX", col.fieldNames.head, nullIfEmpty, containerColumns)
       case count: Count if count.column.isInstanceOf[NamedReference] =>
         val col = count.column.asInstanceOf[NamedReference]
         if (col.fieldNames.length != 1) return None
@@ -94,11 +117,24 @@ trait SQLHelper {
         if (col.fieldNames.length != 1) return None
         val distinct = if (sum.isDistinct) "DISTINCT " else ""
         val column = quoted(col.fieldNames.head)
-        Some(s"SUM($distinct$column)")
+        Some(s"${if (nullIfEmpty) "sumOrNull" else "SUM"}($distinct$column)")
       case _: CountStar =>
         Some("COUNT(*)")
       case _ => None
     }
+
+  /** See [[compileAggregate]]. */
+  private def compileMinMax(
+    function: String,
+    column: String,
+    nullIfEmpty: Boolean,
+    containerColumns: Set[String]
+  ): Option[String] = {
+    val plain = s"$function(${quoted(column)})"
+    if (!nullIfEmpty) Some(plain)
+    else if (containerColumns.contains(column)) None
+    else Some(s"if(count() = 0, NULL, $plain)")
+  }
 
   def compileFilters(filters: Seq[Filter])(implicit tz: ZoneId): String =
     filters
